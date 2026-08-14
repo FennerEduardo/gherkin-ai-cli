@@ -24,3 +24,15 @@ export function readFileSync(filePath: string): string {
 export function fileExistsSync(filePath: string): boolean {
   return fs.existsSync(filePath);
 }
+
+export function removeFileSync(filePath: string): void {
+  if (fs.existsSync(filePath)) {
+    fs.unlinkSync(filePath);
+  }
+}
+
+export function removeDirSync(dirPath: string): void {
+  if (fs.existsSync(dirPath)) {
+    fs.rmSync(dirPath, { recursive: true, force: true });
+  }
+}

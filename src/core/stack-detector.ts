@@ -1,5 +1,5 @@
 /* ==========================================================================
-   gherkin-ai-cli - Stack & Architecture Auto-Detector for Existing Projects
+   gherkin-ai-cli - Multi-Language Stack & Architecture Auto-Detector
    ========================================================================== */
 
 import path from 'path';
@@ -16,13 +16,80 @@ export function detectExistingStack(rootDir: string = process.cwd()): GherkinAIC
     outputDir: './src'
   };
 
-  const packageJsonPath = path.join(rootDir, 'package.json');
+  const composerJsonPath = path.join(rootDir, 'composer.json');
+  const artisanPath = path.join(rootDir, 'artisan');
+  const goModPath = path.join(rootDir, 'go.mod');
   const pyProjectPath = path.join(rootDir, 'pyproject.toml');
   const reqTxtPath = path.join(rootDir, 'requirements.txt');
+  const managePyPath = path.join(rootDir, 'manage.py');
   const pomXmlPath = path.join(rootDir, 'pom.xml');
+  const buildGradlePath = path.join(rootDir, 'build.gradle');
+  const packageJsonPath = path.join(rootDir, 'package.json');
 
-  // 1. Node.js / TypeScript Stack Detection
-  if (fileExistsSync(packageJsonPath)) {
+  // 1. PHP / Laravel Stack Detection (Checks artisan & composer.json first)
+  if (fileExistsSync(artisanPath) || fileExistsSync(composerJsonPath)) {
+    detected.stack.language = 'php';
+    detected.stack.framework = 'laravel';
+    detected.stack.orm = 'eloquent';
+    detected.stack.database = 'postgresql';
+    detected.stack.validation = 'laravel-validation';
+    detected.stack.auth = 'laravel-sanctum';
+    detected.stack.testing = 'phpunit';
+    detected.architecture = 'monolith';
+
+    if (fileExistsSync(composerJsonPath)) {
+      try {
+        const raw = readFileSync(composerJsonPath);
+        const composer = JSON.parse(raw);
+        if (composer.name) detected.projectName = composer.name.split('/')[1] || composer.name;
+
+        const reqs = { ...(composer.require || {}), ...(composer['require-dev'] || {}) };
+        if (reqs['pestphp/pest']) detected.stack.testing = 'pest';
+        if (reqs['symfony/symfony']) {
+          detected.stack.framework = 'symfony';
+          detected.stack.orm = 'doctrine';
+        }
+      } catch {
+        // Ignore JSON parse errors
+      }
+    }
+  }
+  // 2. Python Stack Detection (Django / FastAPI / Flask)
+  else if (fileExistsSync(managePyPath) || fileExistsSync(pyProjectPath) || fileExistsSync(reqTxtPath)) {
+    detected.stack.language = 'python';
+    detected.stack.testing = 'pytest';
+    detected.stack.database = 'postgresql';
+
+    if (fileExistsSync(managePyPath)) {
+      detected.stack.framework = 'django';
+      detected.stack.orm = 'django-orm';
+      detected.stack.validation = 'django-forms';
+    } else {
+      detected.stack.framework = 'fastapi';
+      detected.stack.orm = 'sqlalchemy';
+      detected.stack.validation = 'pydantic';
+    }
+  }
+  // 3. Go Stack Detection
+  else if (fileExistsSync(goModPath)) {
+    detected.stack.language = 'go';
+    detected.stack.framework = 'gin';
+    detected.stack.orm = 'gorm';
+    detected.stack.database = 'postgresql';
+    detected.stack.validation = 'validator-v10';
+    detected.stack.testing = 'testing';
+  }
+  // 4. Java / Kotlin Stack Detection
+  else if (fileExistsSync(pomXmlPath) || fileExistsSync(buildGradlePath)) {
+    detected.stack.language = 'java';
+    detected.stack.framework = 'spring-boot';
+    detected.stack.orm = 'hibernate';
+    detected.stack.database = 'postgresql';
+    detected.stack.validation = 'jakarta-validation';
+    detected.stack.testing = 'junit';
+  }
+  // 5. Node.js / TypeScript / JavaScript Stack Detection
+  else if (fileExistsSync(packageJsonPath)) {
     try {
       const raw = readFileSync(packageJsonPath);
       const pkg = JSON.parse(raw);
@@ -42,6 +109,7 @@ export function detectExistingStack(rootDir: string = process.cwd()): GherkinAIC
       else if (allDeps['express']) detected.stack.framework = 'express';
       else if (allDeps['fastify']) detected.stack.framework = 'fastify';
       else if (allDeps['next']) detected.stack.framework = 'nextjs';
+      else detected.stack.framework = 'express';
 
       // ORM / Persistence
       if (allDeps['prisma'] || fileExistsSync(path.join(rootDir, 'prisma', 'schema.prisma'))) detected.stack.orm = 'prisma';
@@ -66,31 +134,18 @@ export function detectExistingStack(rootDir: string = process.cwd()): GherkinAIC
     } catch {
       // Ignore JSON parse errors
     }
-  } 
-  // 2. Python Stack Detection
-  else if (fileExistsSync(pyProjectPath) || fileExistsSync(reqTxtPath)) {
-    detected.stack.language = 'python';
-    detected.stack.framework = 'fastapi';
-    detected.stack.orm = 'sqlalchemy';
-    detected.stack.validation = 'pydantic';
-    detected.stack.testing = 'pytest';
-  } 
-  // 3. Java Stack Detection
-  else if (fileExistsSync(pomXmlPath)) {
-    detected.stack.language = 'java';
-    detected.stack.framework = 'spring-boot';
-    detected.stack.orm = 'hibernate';
-    detected.stack.validation = 'jakarta-validation';
-    detected.stack.testing = 'junit';
   }
 
-  // 4. Architecture Style Heuristic Detection
+  // 6. Architecture Style Heuristic Detection
   if (fileExistsSync(path.join(rootDir, 'src', 'domain')) && fileExistsSync(path.join(rootDir, 'src', 'ports'))) {
     detected.architecture = 'hexagonal';
   } else if (fileExistsSync(path.join(rootDir, 'src', 'events')) && fileExistsSync(path.join(rootDir, 'src', 'commands'))) {
     detected.architecture = 'cqrs';
   } else if (fileExistsSync(path.join(rootDir, 'serverless.yml'))) {
     detected.architecture = 'serverless';
+  } else if (fileExistsSync(path.join(rootDir, 'app', 'Http', 'Controllers')) || fileExistsSync(artisanPath)) {
+    detected.architecture = 'monolith';
+    detected.outputDir = './app';
   } else if (fileExistsSync(path.join(rootDir, 'src', 'modules'))) {
     detected.architecture = 'modular';
   }

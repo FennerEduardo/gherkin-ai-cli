@@ -3,10 +3,12 @@
    ========================================================================== */
 
 import assert from 'assert';
+import path from 'path';
 import { parseGherkinText } from '../src/core/gherkin-parser';
 import { generateContracts } from '../src/generators/contracts';
 import { detectExistingStack } from '../src/core/stack-detector';
 import { defaultConfig } from '../src/core/config';
+import { writeFileSync, removeFileSync, ensureDirSync } from '../src/utils/file-system';
 
 const sampleSpec = `Feature: User Login Feature
   As an authenticated user
@@ -56,10 +58,26 @@ assert(contractsTs.includes('UserLoginFeatureCommandSchema'));
 assert(adrMd.includes('ADR 001'));
 console.log('✔ Contracts generator test passed!');
 
-// 4. Stack Auto-Detector Test
+// 4. Stack Auto-Detector Test (Node / TS)
 const detected = detectExistingStack(process.cwd());
 assert.strictEqual(detected.projectMode, 'brownfield');
 assert.strictEqual(detected.stack.language, 'typescript');
-console.log('✔ Stack auto-detector test passed!');
+console.log('✔ Stack auto-detector Node/TS test passed!');
+
+// 5. Stack Auto-Detector Test (PHP Laravel Mock)
+const mockLaravelDir = path.join(__dirname, 'mock-laravel');
+ensureDirSync(mockLaravelDir);
+writeFileSync(path.join(mockLaravelDir, 'artisan'), '#!/usr/bin/env php\n');
+writeFileSync(path.join(mockLaravelDir, 'composer.json'), JSON.stringify({ name: 'company/sim-rest' }));
+
+const detectedLaravel = detectExistingStack(mockLaravelDir);
+assert.strictEqual(detectedLaravel.stack.language, 'php');
+assert.strictEqual(detectedLaravel.stack.framework, 'laravel');
+assert.strictEqual(detectedLaravel.stack.orm, 'eloquent');
+
+// Cleanup mock dir
+removeFileSync(path.join(mockLaravelDir, 'artisan'));
+removeFileSync(path.join(mockLaravelDir, 'composer.json'));
+console.log('✔ Stack auto-detector Laravel/PHP test passed!');
 
 console.log('All tests passed successfully!');
