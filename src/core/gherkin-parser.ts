@@ -1,5 +1,5 @@
 /* ==========================================================================
-   gherkin-ai-cli - Gherkin Feature Parser & AST Model
+   gherkin-ai-cli - Gherkin Feature Parser & AST Model (English & Spanish i18n)
    ========================================================================== */
 
 export interface StepModel {
@@ -38,15 +38,17 @@ export function parseGherkinText(gherkinText: string): ParsedFeature {
     const line = rawLine.trim();
     if (!line || line.startsWith('#')) continue;
 
-    if (line.startsWith('Feature:')) {
-      featureName = line.replace('Feature:', '').trim();
+    // Feature / Característica Header
+    if (/^(Feature|Característica|Requerimiento):/i.test(line)) {
+      featureName = line.replace(/^(Feature|Característica|Requerimiento):/i, '').trim();
       inHeader = true;
       continue;
     }
 
-    if (line.startsWith('Scenario:') || line.startsWith('Scenario Outline:')) {
+    // Scenario / Escenario Header
+    if (/^(Scenario|Escenario|Scenario Outline|Esquema del escenario):/i.test(line)) {
       inHeader = false;
-      const name = line.replace(/Scenario( Outline)?:/, '').trim();
+      const name = line.replace(/^(Scenario|Escenario|Scenario Outline|Esquema del escenario):/i, '').trim();
       currentScenario = { name, steps: [] };
       scenarios.push(currentScenario);
       continue;
@@ -57,9 +59,18 @@ export function parseGherkinText(gherkinText: string): ParsedFeature {
       continue;
     }
 
-    const stepMatch = line.match(/^(Given|When|Then|And|But)\s+(.+)$/i);
+    // Steps Matching (EN & ES)
+    const stepMatch = line.match(/^(Given|Dado|Dada|Dados|Dadas|When|Cuando|Then|Entonces|And|Y|E|But|Pero)\s+(.+)$/i);
     if (stepMatch && currentScenario) {
-      const keyword = (stepMatch[1].charAt(0).toUpperCase() + stepMatch[1].slice(1).toLowerCase()) as StepModel['keyword'];
+      const rawKw = stepMatch[1].toLowerCase();
+      let keyword: StepModel['keyword'] = 'Given';
+
+      if (['given', 'dado', 'dada', 'dados', 'dadas'].includes(rawKw)) keyword = 'Given';
+      else if (['when', 'cuando'].includes(rawKw)) keyword = 'When';
+      else if (['then', 'entonces'].includes(rawKw)) keyword = 'Then';
+      else if (['and', 'y', 'e'].includes(rawKw)) keyword = 'And';
+      else if (['but', 'pero'].includes(rawKw)) keyword = 'But';
+
       currentScenario.steps.push({ keyword, text: stepMatch[2].trim() });
     }
   }
@@ -82,7 +93,7 @@ export function parseGherkinText(gherkinText: string): ParsedFeature {
       } else if (st.keyword === 'When') {
         commands.push(st.text);
       } else if (st.keyword === 'Then') {
-        if (/event|publishes|emits|broadcasts|evento/i.test(st.text)) {
+        if (/event|publishes|emits|broadcasts|evento|emite/i.test(st.text)) {
           events.push(st.text);
         } else {
           queries.push(st.text);

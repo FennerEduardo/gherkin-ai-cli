@@ -7,6 +7,7 @@ import { fileExistsSync, readFileSync, writeFileSync } from '../utils/file-syste
 
 export interface GherkinAIConfig {
   projectName: string;
+  projectMode?: 'greenfield' | 'brownfield';
   architecture: 'ddd' | 'hexagonal' | 'clean' | 'cqrs' | 'microservices' | 'monolith' | 'modular' | 'api-rest' | 'serverless' | 'event-driven';
   stack: {
     language: string;
@@ -29,6 +30,7 @@ export interface GherkinAIConfig {
 
 export const defaultConfig: GherkinAIConfig = {
   projectName: 'my-gherkin-service',
+  projectMode: 'greenfield',
   architecture: 'hexagonal',
   stack: {
     language: 'typescript',

@@ -16,32 +16,39 @@ While simple AI prompt generators produce generic text instructions, AI agents o
 - **`contracts.ts`**: Strict domain interfaces, event schemas, Zod DTOs, CQRS Event Store ports, and Architecture Decision Records (ADRs).
 - **`openapi.json`**: Auto-generated OpenAPI 3.0 specification derived directly from Gherkin AST schemas.
 - **`fixtures.ts` & `seed.sql`**: Concrete database seeds (hashed passwords, bcrypt cost factor 12, pre-conditions) raising AI acceptance test success rates from ~30% to ~85%.
+- **Brownfield Integration (`ghk detect` & `ghk add`)**: Inject contracts directly into existing project module folders without starting from scratch.
+- **Bilingual Gherkin Parsing**: Native support for English (`Given/When/Then`) and Spanish (`Dado/Cuando/Entonces`).
 - **Strict Stack Versions**: Enforces explicit package versions (e.g., NestJS v10 + Prisma + Zod + Redis) so agents never diverge.
 - **Runnable Infrastructure**: Includes pre-configured `docker-compose.yml` (PostgreSQL, Redis, RabbitMQ) and native AWS Lambda `serverless.yml` for FaaS architectures.
-- **`gherkin-ai validate`**: Deep Architectural Linter checking layer boundary import isolation, step coverage, and circular dependency rules.
+- **`ghk validate`**: Deep Architectural Linter checking layer boundary import isolation, step coverage, and circular dependency rules.
 
 ---
 
-## 🚀 Quick Start & Short Aliases
+## 🚀 Usage Modes: Greenfield vs. Brownfield (Existing Projects)
 
-You can use the short command alias **`ghk`** (or `gherkin-cli` / `gherkin-ia`) for fast typing:
+### 1. Existing Projects (Brownfield Mode)
+
+If you have an existing codebase, auto-detect your stack and inject feature contracts into specific module folders:
+
+```bash
+# 1. Auto-detect stack (reads package.json, prisma, tsconfig, etc.)
+ghk detect
+
+# 2. Inject contract directly into an existing module folder
+ghk add --feature ./specs/payments.feature --target ./src/modules/payments
+```
+
+### 2. New Projects (Greenfield Mode)
 
 ```bash
 # 1. Initialize project configuration interactively
-ghk init     # (or: npx ghk init)
+ghk init
 
-# 2. Generate contracts, OpenAPI, fixtures, and AI agent prompts from your feature file
-ghk generate --feature ./specs/auth.feature   # (or short alias: ghk g)
+# 2. Generate contracts, OpenAPI, fixtures, and AI agent prompts
+ghk generate --feature ./specs/auth.feature
 
 # 3. Perform deep architectural linting and layer boundary checks
-ghk validate --feature ./specs/auth.feature   # (or short alias: ghk v)
-```
-
-Or install globally:
-
-```bash
-npm install -g gherkin-ai
-ghk --help
+ghk validate --feature ./specs/auth.feature
 ```
 
 ---
@@ -54,27 +61,6 @@ ghk --help
 - **CQRS + Event Sourcing (Real Event Store & Aggregate Versions)**
 - **Serverless / FaaS (Native AWS Lambda & `serverless.yml`)**
 - **Microservices Architecture**
-
----
-
-## 📦 Generated Artifacts Structure
-
-Running `gherkin-ai generate` (or `ghk g`) produces the following folder structure:
-
-```text
-generated-specs/
-├── contracts.ts                      # Interfaces, Zod schemas, Repository & Event Store ports
-├── openapi.json                      # Auto-generated OpenAPI 3.0 specification
-├── fixtures.ts                       # Test seed functions (bcrypt, Given setup)
-├── seed.sql                          # Raw SQL initialization script
-├── docker-compose.yml / serverless.yml # Pre-configured infrastructure
-├── .env.example                      # Environment variables template
-├── ADR-001-architecture-decisions.md # Architecture Decision Record
-└── prompts/
-    ├── domain-agent.md               # Instructions for Domain Architect Agent
-    ├── backend-agent.md              # Instructions for Backend Developer Agent
-    └── qa-agent.md                   # Instructions for QA Automation Agent
-```
 
 ---
 
