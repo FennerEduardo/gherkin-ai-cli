@@ -7,6 +7,13 @@
   "bin": {
     "gherkin-ai": "./bin/gherkin-ai.js"
   },
+  "files": [
+    "dist",
+    "bin",
+    "README.md",
+    "LICENSE",
+    "docs"
+  ],
   "keywords": [
     "gherkin",
     "bdd",
@@ -26,16 +33,16 @@
   "homepage": "https://fennereduardo.com/pages/GherkinIATool/",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/fennereduardo/gherkin-ai-cli.git"
+    "url": "git+https://github.com/FennerEduardo/gherkin-ai-cli.git"
   },
   "bugs": {
-    "url": "https://github.com/fennereduardo/gherkin-ai-cli/issues"
+    "url": "https://github.com/FennerEduardo/gherkin-ai-cli/issues"
   },
   "scripts": {
-    "build": "tsc",
+    "build": "npx tsc",
     "start": "node ./bin/gherkin-ai.js",
-    "dev": "tsc --watch",
-    "test": "node --test --import ts-node/register src/**/*.test.ts",
+    "dev": "npx tsc --watch",
+    "test": "npx ts-node tests/parser.test.ts",
     "prepublishOnly": "npm run build"
   },
   "engines": {
