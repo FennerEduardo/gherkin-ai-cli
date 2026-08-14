@@ -1,11 +1,14 @@
 {
   "name": "gherkin-ai",
-  "version": "1.1.2",
+  "version": "1.2.0",
   "description": "CLI tool & contract engine translating Gherkin specs into production-grade executable prompts, TypeScript contracts, and seed fixtures for AI Coding Agents.",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "bin": {
-    "gherkin-ai": "./bin/gherkin-ai.js"
+    "gherkin-ai": "./bin/gherkin-ai.js",
+    "ghk": "./bin/gherkin-ai.js",
+    "gherkin-cli": "./bin/gherkin-ai.js",
+    "gherkin-ia": "./bin/gherkin-ai.js"
   },
   "readmeFilename": "README.md",
   "files": [
@@ -27,7 +30,8 @@
     "hexagonal-architecture",
     "claude-code",
     "cursor",
-    "antigravity"
+    "antigravity",
+    "ghk"
   ],
   "author": "Fenner Eduardo <contact@fennereduardo.com> (https://fennereduardo.com)",
   "license": "MIT",

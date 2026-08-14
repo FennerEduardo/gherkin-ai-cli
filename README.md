@@ -22,26 +22,26 @@ While simple AI prompt generators produce generic text instructions, AI agents o
 
 ---
 
-## 🚀 Quick Start
+## 🚀 Quick Start & Short Aliases
 
-Run instantly with `npx`:
+You can use the short command alias **`ghk`** (or `gherkin-cli` / `gherkin-ia`) for fast typing:
 
 ```bash
 # 1. Initialize project configuration interactively
-npx gherkin-ai init
+ghk init     # (or: npx ghk init)
 
 # 2. Generate contracts, OpenAPI, fixtures, and AI agent prompts from your feature file
-npx gherkin-ai generate --feature ./specs/auth.feature
+ghk generate --feature ./specs/auth.feature   # (or short alias: ghk g)
 
 # 3. Perform deep architectural linting and layer boundary checks
-npx gherkin-ai validate --feature ./specs/auth.feature
+ghk validate --feature ./specs/auth.feature   # (or short alias: ghk v)
 ```
 
 Or install globally:
 
 ```bash
 npm install -g gherkin-ai
-gherkin-ai --help
+ghk --help
 ```
 
 ---
@@ -59,7 +59,7 @@ gherkin-ai --help
 
 ## 📦 Generated Artifacts Structure
 
-Running `gherkin-ai generate` produces the following folder structure:
+Running `gherkin-ai generate` (or `ghk g`) produces the following folder structure:
 
 ```text
 generated-specs/
