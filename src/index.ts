@@ -11,6 +11,7 @@ import { handleDetectCommand } from './commands/detect';
 import { handleAddCommand } from './commands/add';
 import { handleCreateCommand } from './commands/create';
 import { handleLangCommand } from './commands/lang';
+import { handleMcpCommand } from './commands/mcp';
 
 // Dynamic version from package.json
 const pkg = require('../package.json');
@@ -20,7 +21,7 @@ const program = new Command();
 program
   .name('gherkin-ai')
   .description('CLI tool & contract engine translating Gherkin specs into executable prompts, TypeScript contracts, and seed fixtures for AI Agents.')
-  .version(pkg.version || '1.4.0')
+  .version(pkg.version || '1.5.0')
   .option('--init', 'Alias for init command')
   .option('--create', 'Alias for create command')
   .option('--generate', 'Alias for generate command')
@@ -33,6 +34,13 @@ program
   .description('Initialize interactive gherkin-ai project configuration (gherkin-ai.config.json)')
   .action(async () => {
     await handleInitCommand();
+  });
+
+program
+  .command('mcp')
+  .description('Start native Model Context Protocol (MCP) JSON-RPC 2.0 stdio server for AI Agents')
+  .action(async () => {
+    await handleMcpCommand();
   });
 
 program

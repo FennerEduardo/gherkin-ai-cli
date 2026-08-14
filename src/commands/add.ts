@@ -63,14 +63,19 @@ export async function handleAddCommand(options: { feature?: string; target?: str
   ensureDirSync(targetDir);
   logger.info(`Injecting contracts & AI prompts into: ${targetDir}`);
 
-  // 1. Generate Contracts & OpenAPI
-  const { contractsTs, adrMd, openApiJson } = generateContracts(parsed, config);
+  // 1. Generate Contracts, OpenAPI & Native Language Contract
+  const { contractsTs, adrMd, openApiJson, nativeContract } = generateContracts(parsed, config);
   const contractFileName = `${featurePascal.toLowerCase()}.contract.ts`;
   
   writeFileSync(path.join(targetDir, contractFileName), contractsTs);
   writeFileSync(path.join(targetDir, `${featurePascal.toLowerCase()}.openapi.json`), openApiJson);
   writeFileSync(path.join(targetDir, `ADR-${featurePascal}.md`), adrMd);
   logger.success(`Created contract file: ${path.join(targetDir, contractFileName)}`);
+
+  if (nativeContract) {
+    writeFileSync(path.join(targetDir, nativeContract.filename), nativeContract.content);
+    logger.success(`Created language-native contract file: ${path.join(targetDir, nativeContract.filename)}`);
+  }
 
   // 2. Generate Agent Prompts inside target module
   const promptsDir = path.join(targetDir, 'prompts');
@@ -84,5 +89,5 @@ export async function handleAddCommand(options: { feature?: string; target?: str
 
   logger.banner();
   logger.success(`Contracts & AI prompts injected into existing project at ${targetDir}!`);
-  logger.info(`Now your AI Coding Agent can consume ${contractFileName} directly inside your module.`);
+  logger.info(`Now your AI Coding Agent can consume ${nativeContract ? nativeContract.filename : contractFileName} directly inside your module.`);
 }

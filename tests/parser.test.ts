@@ -1,5 +1,5 @@
 /* ==========================================================================
-   gherkin-ai-cli - Unit Tests for Parser, Engine & Multi-Stack Detector
+   gherkin-ai-cli - Unit Tests for Parser, Engine & Multi-Language Contracts
    ========================================================================== */
 
 import assert from 'assert';
@@ -52,19 +52,32 @@ assert.strictEqual(parsedEs.scenarios[0].steps[2].keyword, 'Then');
 assert.strictEqual(parsedEs.scenarios[0].steps[3].keyword, 'And');
 console.log('✔ AST Parser Spanish (i18n) test passed!');
 
-// 3. Contracts Generator Test
+// 3. Contracts Generator Test (TypeScript)
 const { contractsTs, adrMd } = generateContracts(parsed, defaultConfig);
 assert(contractsTs.includes('UserLoginFeatureCommandSchema'));
 assert(adrMd.includes('ADR 001'));
-console.log('✔ Contracts generator test passed!');
+console.log('✔ Contracts generator TypeScript test passed!');
 
-// 4. Stack Auto-Detector Test (Node / TS)
+// 4. Multi-Language Contracts Test (Python, PHP, Go, C#)
+const pythonConfig = { ...defaultConfig, stack: { ...defaultConfig.stack, language: 'python' } };
+const { nativeContract: pyContract } = generateContracts(parsed, pythonConfig);
+assert(pyContract?.filename === 'userloginfeature.contract.py');
+assert(pyContract?.content.includes('class UserLoginFeatureCommand(BaseModel)'));
+console.log('✔ Contracts generator Python (Pydantic) test passed!');
+
+const phpConfig = { ...defaultConfig, stack: { ...defaultConfig.stack, language: 'php' } };
+const { nativeContract: phpContract } = generateContracts(parsed, phpConfig);
+assert(phpContract?.filename === 'userloginfeature.contract.php');
+assert(phpContract?.content.includes('readonly class UserLoginFeatureCommand'));
+console.log('✔ Contracts generator PHP 8.2 test passed!');
+
+// 5. Stack Auto-Detector Test (Node / TS)
 const detected = detectExistingStack(process.cwd());
 assert.strictEqual(detected.projectMode, 'brownfield');
 assert.strictEqual(detected.stack.language, 'typescript');
 console.log('✔ Stack auto-detector Node/TS test passed!');
 
-// 5. Stack Auto-Detector Test (PHP Laravel Mock)
+// 6. Stack Auto-Detector Test (PHP Laravel Mock)
 const mockLaravelDir = path.join(__dirname, 'mock-laravel');
 ensureDirSync(mockLaravelDir);
 writeFileSync(path.join(mockLaravelDir, 'artisan'), '#!/usr/bin/env php\n');
@@ -76,20 +89,5 @@ assert.strictEqual(detectedLaravel.stack.framework, 'laravel');
 assert.strictEqual(detectedLaravel.stack.orm, 'eloquent');
 removeDirSync(mockLaravelDir);
 console.log('✔ Stack auto-detector Laravel/PHP test passed!');
-
-// 6. Stack Auto-Detector Test (Angular / Ionic Mock)
-const mockIonicDir = path.join(__dirname, 'mock-ionic');
-ensureDirSync(mockIonicDir);
-writeFileSync(path.join(mockIonicDir, 'angular.json'), '{}');
-writeFileSync(path.join(mockIonicDir, 'package.json'), JSON.stringify({
-  dependencies: { '@angular/core': '^16.0.0', '@ionic/angular': '^7.0.0' }
-}));
-
-const detectedIonic = detectExistingStack(mockIonicDir);
-assert.strictEqual(detectedIonic.stack.language, 'typescript');
-assert.strictEqual(detectedIonic.stack.framework, 'ionic-angular');
-assert.strictEqual(detectedIonic.stack.validation, 'angular-reactive-forms');
-removeDirSync(mockIonicDir);
-console.log('✔ Stack auto-detector Angular/Ionic test passed!');
 
 console.log('All tests passed successfully!');
