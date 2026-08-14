@@ -2,6 +2,8 @@
    gherkin-ai-cli - Logger Utility (English CLI Output)
    ========================================================================== */
 
+const pkg = require('../../package.json');
+
 export const logger = {
   info(message: string): void {
     console.log(`\x1b[36mℹ\x1b[0m ${message}`);
@@ -21,7 +23,7 @@ export const logger = {
 
   banner(): void {
     console.log(`
-\x1b[35m🥒 gherkin-ai CLI v1.0.0\x1b[0m
+\x1b[35m🥒 gherkin-ai CLI v${pkg.version || '1.1.0'}\x1b[0m
 \x1b[90mExecutable Prompt & Contract Generator for AI Coding Agents\x1b[0m
 \x1b[90mWebsite: https://fennereduardo.com/pages/GherkinIATool/\x1b[0m
 `);

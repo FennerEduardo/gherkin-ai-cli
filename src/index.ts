@@ -8,12 +8,15 @@ import { handleGenerateCommand } from './commands/generate';
 import { handleValidateCommand } from './commands/validate';
 import { handleExportCommand } from './commands/export';
 
+// Dynamic version from package.json
+const pkg = require('../package.json');
+
 const program = new Command();
 
 program
   .name('gherkin-ai')
   .description('CLI tool & contract engine translating Gherkin specs into executable prompts, TypeScript contracts, and seed fixtures for AI Agents.')
-  .version('1.0.0');
+  .version(pkg.version || '1.1.0');
 
 program
   .command('init')
