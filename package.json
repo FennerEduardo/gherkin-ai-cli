@@ -1,6 +1,6 @@
 {
   "name": "gherkin-ai",
-  "version": "1.3.2",
+  "version": "1.4.0",
   "description": "CLI tool & contract engine translating Gherkin specs into production-grade executable prompts, TypeScript contracts, and seed fixtures for AI Coding Agents.",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -34,16 +34,8 @@
     "ghk",
     "brownfield",
     "detect",
-    "laravel",
-    "php",
-    "ruby",
-    "rails",
-    "dotnet",
-    "csharp",
-    "angular",
-    "ionic",
-    "react-native",
-    "flutter"
+    "create",
+    "wizard"
   ],
   "author": "Fenner Eduardo <contact@fennereduardo.com> (https://fennereduardo.com)",
   "license": "MIT",

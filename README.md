@@ -16,29 +16,33 @@ While simple AI prompt generators produce generic text instructions, AI agents o
 - **`contracts.ts`**: Strict domain interfaces, event schemas, Zod DTOs, CQRS Event Store ports, and Architecture Decision Records (ADRs).
 - **`openapi.json`**: Auto-generated OpenAPI 3.0 specification derived directly from Gherkin AST schemas.
 - **`fixtures.ts` & `seed.sql`**: Concrete database seeds (hashed passwords, bcrypt cost factor 12, pre-conditions) raising AI acceptance test success rates from ~30% to ~85%.
-- **Brownfield Integration (`ghk detect` & `ghk add`)**: Inject contracts directly into existing project module folders without starting from scratch.
+- **Interactive Spec Wizard (`ghk create`)**: Create Gherkin specifications step-by-step directly from your terminal.
+- **Brownfield Integration (`ghk detect` & `ghk add`)**: Inject contracts directly into existing project module folders (Laravel, Rails, .NET, Angular, NestJS, etc.).
 - **Bilingual Gherkin Parsing**: Native support for English (`Given/When/Then`) and Spanish (`Dado/Cuando/Entonces`).
-- **Strict Stack Versions**: Enforces explicit package versions (e.g., NestJS v10 + Prisma + Zod + Redis) so agents never diverge.
-- **Runnable Infrastructure**: Includes pre-configured `docker-compose.yml` (PostgreSQL, Redis, RabbitMQ) and native AWS Lambda `serverless.yml` for FaaS architectures.
-- **`ghk validate`**: Deep Architectural Linter checking layer boundary import isolation, step coverage, and circular dependency rules.
 
 ---
 
-## 🚀 Usage Modes: Greenfield vs. Brownfield (Existing Projects)
+## 🚀 Quick Start Commands
 
-### 1. Existing Projects (Brownfield Mode)
+### 1. Create a Gherkin Spec Interactively (`ghk create`)
 
-If you have an existing codebase, auto-detect your stack and inject feature contracts into specific module folders:
+Don't have a `.feature` file ready? Build one interactively step-by-step in terminal:
 
 ```bash
-# 1. Auto-detect stack (reads package.json, prisma, tsconfig, etc.)
+ghk create   # (or: ghk new)
+```
+
+### 2. Existing Projects (Brownfield Mode)
+
+```bash
+# 1. Auto-detect stack (Laravel, Rails, .NET, NestJS, Angular, Flutter, etc.)
 ghk detect
 
 # 2. Inject contract directly into an existing module folder
 ghk add --feature ./specs/payments.feature --target ./src/modules/payments
 ```
 
-### 2. New Projects (Greenfield Mode)
+### 3. New Projects (Greenfield Mode)
 
 ```bash
 # 1. Initialize project configuration interactively
@@ -50,17 +54,6 @@ ghk generate --feature ./specs/auth.feature
 # 3. Perform deep architectural linting and layer boundary checks
 ghk validate --feature ./specs/auth.feature
 ```
-
----
-
-## 🏗️ Supported Architecture Styles
-
-- **Hexagonal Architecture (Ports & Adapters)**
-- **Domain-Driven Design (DDD)**
-- **Clean Architecture**
-- **CQRS + Event Sourcing (Real Event Store & Aggregate Versions)**
-- **Serverless / FaaS (Native AWS Lambda & `serverless.yml`)**
-- **Microservices Architecture**
 
 ---
 

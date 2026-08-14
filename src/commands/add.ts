@@ -3,11 +3,13 @@
    ========================================================================== */
 
 import path from 'path';
+import inquirer from 'inquirer';
 import { loadConfig } from '../core/config';
 import { detectExistingStack } from '../core/stack-detector';
 import { parseGherkinText } from '../core/gherkin-parser';
 import { generateContracts } from '../generators/contracts';
 import { generatePrompts } from '../generators/prompts';
+import { handleCreateCommand } from './create';
 import { fileExistsSync, readFileSync, writeFileSync, ensureDirSync } from '../utils/file-system';
 import { logger } from '../utils/logger';
 
@@ -15,15 +17,31 @@ export async function handleAddCommand(options: { feature?: string; target?: str
   logger.banner();
 
   if (!options.feature) {
-    logger.error('Missing required option: --feature <file>');
-    logger.info('Usage: ghk add --feature ./specs/my-feature.feature [--target ./src/modules/my-feature]');
-    process.exit(1);
+    logger.info('No --feature file specified. Launching interactive spec wizard...');
+    await handleCreateCommand({ target: options.target });
+    return;
   }
 
   const featurePath = path.resolve(process.cwd(), options.feature);
+
   if (!fileExistsSync(featurePath)) {
-    logger.error(`Feature file not found at: ${featurePath}`);
-    process.exit(1);
+    logger.warn(`Feature file not found at: ${featurePath}`);
+    
+    const answer = await inquirer.prompt([
+      {
+        type: 'confirm',
+        name: 'createNow',
+        message: '¿Deseas crear la especificación Gherkin paso a paso ahora (wizard interactivo)?',
+        default: true
+      }
+    ]);
+
+    if (answer.createNow) {
+      await handleCreateCommand({ output: options.feature, target: options.target });
+      return;
+    } else {
+      process.exit(1);
+    }
   }
 
   // Load config or auto-detect if config doesn't exist
