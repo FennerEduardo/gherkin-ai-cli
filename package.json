@@ -1,12 +1,13 @@
 {
   "name": "gherkin-ai",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "description": "CLI tool & contract engine translating Gherkin specs into production-grade executable prompts, TypeScript contracts, and seed fixtures for AI Coding Agents.",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "bin": {
     "gherkin-ai": "./bin/gherkin-ai.js"
   },
+  "readmeFilename": "README.md",
   "files": [
     "dist",
     "bin",
