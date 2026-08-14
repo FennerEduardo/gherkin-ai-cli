@@ -54,11 +54,12 @@ export async function handleGenerateCommand(options: { feature?: string; config?
 
   logger.info(`Target Output Directory: ${config.outputDir}`);
 
-  // 1. Generate Contracts & ADR
-  const { contractsTs, adrMd } = generateContracts(parsed, config);
+  // 1. Generate Contracts, ADR & OpenAPI
+  const { contractsTs, adrMd, openApiJson } = generateContracts(parsed, config);
   writeFileSync(path.join(config.outputDir, 'contracts.ts'), contractsTs);
   writeFileSync(path.join(config.outputDir, 'ADR-001-architecture-decisions.md'), adrMd);
-  logger.success('Generated contracts.ts and ADR-001-architecture-decisions.md');
+  writeFileSync(path.join(config.outputDir, 'openapi.json'), openApiJson);
+  logger.success('Generated contracts.ts, ADR-001-architecture-decisions.md and openapi.json');
 
   // 2. Generate Test Fixtures & Seeds
   const { fixturesTs, seedSql } = generateFixtures(parsed, config);
@@ -74,10 +75,16 @@ export async function handleGenerateCommand(options: { feature?: string; config?
   logger.success('Generated domain, backend, and QA prompt markdown files in prompts/');
 
   // 4. Generate Infrastructure Config
-  const { dockerComposeYaml, envExample } = generateInfra(config);
-  writeFileSync(path.join(config.outputDir, 'docker-compose.yml'), dockerComposeYaml);
+  const { dockerComposeYaml, serverlessYml, envExample } = generateInfra(config);
+  if (config.architecture === 'serverless') {
+    writeFileSync(path.join(config.outputDir, 'serverless.yml'), serverlessYml);
+    logger.success('Generated serverless.yml (AWS Lambda FaaS)');
+  } else {
+    writeFileSync(path.join(config.outputDir, 'docker-compose.yml'), dockerComposeYaml);
+    logger.success('Generated docker-compose.yml');
+  }
   writeFileSync(path.join(config.outputDir, '.env.example'), envExample);
-  logger.success('Generated docker-compose.yml and .env.example');
+  logger.success('Generated .env.example');
 
   logger.banner();
   logger.success(`All artifacts successfully generated under ${config.outputDir}!`);

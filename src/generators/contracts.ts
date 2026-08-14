@@ -1,5 +1,5 @@
 /* ==========================================================================
-   gherkin-ai-cli - TypeScript Contracts & Schemas Generator
+   gherkin-ai-cli - TypeScript Contracts, CQRS Event Sourcing & OpenAPI Generator
    ========================================================================== */
 
 import { ParsedFeature } from '../core/gherkin-parser';
@@ -7,11 +7,35 @@ import { GherkinAIConfig } from '../core/config';
 import { getArchRule } from '../core/arch-rules';
 import { getStackSpec } from '../core/stack-specs';
 
-export function generateContracts(parsed: ParsedFeature, config: GherkinAIConfig): { contractsTs: string; adrMd: string } {
+export function generateContracts(parsed: ParsedFeature, config: GherkinAIConfig): { contractsTs: string; adrMd: string; openApiJson: string } {
   const arch = getArchRule(config.architecture);
   const spec = getStackSpec(config.stack);
+  const isCqrs = config.architecture === 'cqrs';
 
   const featurePascal = parsed.featureName.replace(/[^a-zA-Z0-9]/g, '');
+
+  const cqrsSection = isCqrs ? `
+// --------------------------------------------------------------------------
+// CQRS + Event Sourcing Infrastructure Contracts
+// --------------------------------------------------------------------------
+export interface IAggregateRoot<T> {
+  id: string;
+  version: number;
+  uncommittedEvents: IDomainEvent[];
+  apply(event: IDomainEvent): void;
+  clearUncommittedEvents(): void;
+}
+
+export interface IEventStore {
+  saveEvents(aggregateId: string, events: IDomainEvent[], expectedVersion: number): Promise<void>;
+  getEventsForAggregate(aggregateId: string): Promise<IDomainEvent[]>;
+}
+
+export interface ISnapshotStore<T> {
+  getSnapshot(aggregateId: string): Promise<{ version: number; state: T } | null>;
+  saveSnapshot(aggregateId: string, version: number, state: T): Promise<void>;
+}
+` : '';
 
   const contractsTs = `/* ==========================================================================
    Generated Domain Contracts & DTO Schemas
@@ -63,7 +87,7 @@ export interface I${featurePascal}Repository {
 export interface IEventPublisher {
   publish(event: IDomainEvent): Promise<void>;
 }
-`;
+${cqrsSection}`;
 
   const adrMd = `# ADR 001: Architecture Decisions for ${parsed.featureName}
 
@@ -87,5 +111,43 @@ Domain core must NOT import:
 ${arch.prohibitedImports.map(p => `- \`${p}\``).join('\n')}
 `;
 
-  return { contractsTs, adrMd };
+  const openApiJson = JSON.stringify({
+    openapi: '3.0.3',
+    info: {
+      title: `${parsed.featureName} API Specification`,
+      version: '1.0.0',
+      description: `Auto-generated OpenAPI specification for ${parsed.featureName} from Gherkin feature spec.`
+    },
+    paths: {
+      [`/api/v1/${featurePascal.toLowerCase()}`]: {
+        post: {
+          summary: `Execute ${parsed.featureName} Command`,
+          operationId: `execute${featurePascal}`,
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    requestId: { type: 'string', format: 'uuid' },
+                    timestamp: { type: 'string', format: 'date-time' },
+                    payload: { type: 'object' }
+                  },
+                  required: ['requestId', 'timestamp', 'payload']
+                }
+              }
+            }
+          },
+          responses: {
+            '200': { description: 'Successful execution' },
+            '400': { description: 'Validation error' },
+            '401': { description: 'Unauthorized' }
+          }
+        }
+      }
+    }
+  }, null, 2);
+
+  return { contractsTs, adrMd, openApiJson };
 }
