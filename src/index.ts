@@ -10,6 +10,7 @@ import { handleExportCommand } from './commands/export';
 import { handleDetectCommand } from './commands/detect';
 import { handleAddCommand } from './commands/add';
 import { handleCreateCommand } from './commands/create';
+import { handleLangCommand } from './commands/lang';
 
 // Dynamic version from package.json
 const pkg = require('../package.json');
@@ -35,12 +36,23 @@ program
   });
 
 program
+  .command('lang')
+  .alias('l')
+  .alias('language')
+  .description('Configure CLI preferred interaction language (English or Spanish)')
+  .option('-s, --set <locale>', 'Set language directly (en or es)')
+  .action(async (options) => {
+    await handleLangCommand(options);
+  });
+
+program
   .command('create')
   .alias('c')
   .alias('new')
   .description('Create a Gherkin feature specification interactively step-by-step from the terminal')
   .option('-o, --output <file>', 'Output destination for .feature file')
   .option('-t, --target <directory>', 'Target directory to inject contracts')
+  .option('-l, --lang <locale>', 'Override CLI interaction language for this run (en or es)')
   .action(async (options) => {
     await handleCreateCommand(options);
   });

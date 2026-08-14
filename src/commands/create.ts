@@ -1,96 +1,110 @@
 /* ==========================================================================
-   gherkin-ai-cli - 'create' Command Handler (Interactive Gherkin Spec Wizard)
+   gherkin-ai-cli - 'create' Command Handler (Localized Interactive Spec Wizard)
    ========================================================================== */
 
 import path from 'path';
 import inquirer from 'inquirer';
 import { handleAddCommand } from './add';
-import { fileExistsSync, writeFileSync, ensureDirSync } from '../utils/file-system';
+import { ensureCliLanguage, t } from '../utils/i18n-cli';
+import { fileExistsSync, writeFileSync } from '../utils/file-system';
 import { logger } from '../utils/logger';
 
-export async function handleCreateCommand(options: { output?: string; target?: string }): Promise<void> {
+export async function handleCreateCommand(options: { output?: string; target?: string; lang?: string }): Promise<void> {
   logger.banner();
-  logger.info('Interactive Gherkin Spec Wizard - Step-by-step feature creator');
+
+  const locale = await ensureCliLanguage(options.lang);
+  const isEs = locale === 'es';
+
+  logger.info(isEs ? 'Asistente Interactivo Gherkin - Creación paso a paso' : 'Interactive Gherkin Spec Wizard - Step-by-step feature creator');
 
   const answers = await inquirer.prompt([
     {
       type: 'input',
       name: 'featureName',
-      message: 'Feature Name (Nombre de la Feature):',
-      default: 'Autenticación de Doble Factor 2FA',
-      validate: (input: string) => input.trim().length > 0 || 'Feature name cannot be empty.'
+      message: t('featureNamePrompt', locale),
+      default: isEs ? 'Autenticación de Doble Factor 2FA' : 'Two Factor Authentication 2FA',
+      validate: (input: string) => input.trim().length > 0 || 'Name cannot be empty.'
     },
     {
       type: 'input',
       name: 'actor',
-      message: 'Actor (Como... / As a...):',
-      default: 'usuario autenticado del sistema'
+      message: t('actorPrompt', locale),
+      default: isEs ? 'usuario autenticado del sistema' : 'authenticated system user'
     },
     {
       type: 'input',
       name: 'action',
-      message: 'Action (Quiero... / I want to...):',
-      default: 'habilitar y verificar un código OTP de dos factores (2FA)'
+      message: t('actionPrompt', locale),
+      default: isEs ? 'habilitar y verificar un código OTP de dos factores' : 'enable and verify a two-factor OTP code'
     },
     {
       type: 'input',
       name: 'outcome',
-      message: 'Benefit (Para... / So that...):',
-      default: 'proteger mi cuenta contra accesos no autorizados'
+      message: t('outcomePrompt', locale),
+      default: isEs ? 'proteger mi cuenta contra accesos no autorizados' : 'protect my account against unauthorized access'
     },
     {
       type: 'input',
       name: 'scenarioName',
-      message: 'Scenario Name (Nombre del Escenario):',
-      default: 'Habilitar y verificar código 2FA exitosamente'
+      message: t('scenarioNamePrompt', locale),
+      default: isEs ? 'Habilitar y verificar código 2FA exitosamente' : 'Enable and verify 2FA code successfully'
     }
   ]);
 
   const steps: Array<{ keyword: string; text: string }> = [];
 
-  console.log('\n--- Step-by-step Gherkin Scenario Builder (Given / When / Then) ---');
+  console.log(isEs ? '\n--- Asistente de Pasos Gherkin (Dado / Cuando / Entonces) ---' : '\n--- Step-by-step Gherkin Scenario Builder (Given / When / Then) ---');
 
   let addMore = true;
-  let defaultKw = 'Dado';
+  let defaultKw = isEs ? 'Dado' : 'Given';
+
+  const choicesEn = ['Given', 'When', 'Then', 'And', 'But'];
+  const choicesEs = ['Dado', 'Cuando', 'Entonces', 'Y', 'Pero'];
 
   while (addMore) {
     const stepAnswers = await inquirer.prompt([
       {
         type: 'list',
         name: 'keyword',
-        message: 'Step Keyword (Palabra clave):',
-        choices: ['Dado', 'Cuando', 'Entonces', 'Y', 'Pero', 'Given', 'When', 'Then', 'And', 'But'],
+        message: t('stepKeywordPrompt', locale),
+        choices: isEs ? choicesEs : choicesEn,
         default: defaultKw
       },
       {
         type: 'input',
         name: 'text',
-        message: 'Step Description (Descripción del paso):',
-        validate: (input: string) => input.trim().length > 0 || 'Step description cannot be empty.'
+        message: t('stepDescPrompt', locale),
+        validate: (input: string) => input.trim().length > 0 || 'Description cannot be empty.'
       },
       {
         type: 'confirm',
         name: 'next',
-        message: 'Añadir otro paso (Add another step)?',
+        message: t('addAnotherStepPrompt', locale),
         default: true
       }
     ]);
 
     steps.push({ keyword: stepAnswers.keyword, text: stepAnswers.text });
 
-    if (stepAnswers.keyword === 'Dado' || stepAnswers.keyword === 'Given') defaultKw = 'Cuando';
-    else if (stepAnswers.keyword === 'Cuando' || stepAnswers.keyword === 'When') defaultKw = 'Entonces';
-    else defaultKw = 'Y';
+    if (['Dado', 'Given'].includes(stepAnswers.keyword)) defaultKw = isEs ? 'Cuando' : 'When';
+    else if (['Cuando', 'When'].includes(stepAnswers.keyword)) defaultKw = isEs ? 'Entonces' : 'Then';
+    else defaultKw = isEs ? 'Y' : 'And';
 
     addMore = stepAnswers.next;
   }
 
   // Construct Gherkin File Content
-  let gherkinContent = `Característica: ${answers.featureName}\n`;
-  gherkinContent += `  Como ${answers.actor}\n`;
-  gherkinContent += `  Quiero ${answers.action}\n`;
-  gherkinContent += `  Para ${answers.outcome}\n\n`;
-  gherkinContent += `  Escenario: ${answers.scenarioName}\n`;
+  const featureKw = isEs ? 'Característica:' : 'Feature:';
+  const asKw = isEs ? 'Como' : 'As a';
+  const wantKw = isEs ? 'Quiero' : 'I want to';
+  const soKw = isEs ? 'Para' : 'So that';
+  const scKw = isEs ? 'Escenario:' : 'Scenario:';
+
+  let gherkinContent = `${featureKw} ${answers.featureName}\n`;
+  gherkinContent += `  ${asKw} ${answers.actor}\n`;
+  gherkinContent += `  ${wantKw} ${answers.action}\n`;
+  gherkinContent += `  ${soKw} ${answers.outcome}\n\n`;
+  gherkinContent += `  ${scKw} ${answers.scenarioName}\n`;
 
   steps.forEach(st => {
     gherkinContent += `    ${st.keyword} ${st.text}\n`;
@@ -102,7 +116,7 @@ export async function handleCreateCommand(options: { output?: string; target?: s
     : path.resolve(process.cwd(), 'specs', defaultFileName);
 
   writeFileSync(targetSpecPath, gherkinContent);
-  logger.success(`Created Gherkin feature specification at: ${targetSpecPath}`);
+  logger.success(`${t('specCreated', locale)} ${targetSpecPath}`);
 
   console.log('\n------------------------------------------------------------');
   console.log(gherkinContent);
@@ -113,7 +127,7 @@ export async function handleCreateCommand(options: { output?: string; target?: s
     {
       type: 'confirm',
       name: 'inject',
-      message: '¿Deseas inyectar inmediatamente los contratos y prompts en tu proyecto (ghk add)?',
+      message: t('injectPrompt', locale),
       default: true
     }
   ]);
