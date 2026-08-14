@@ -1,0 +1,55 @@
+{
+  "name": "gherkin-ai",
+  "version": "1.0.0",
+  "description": "CLI tool & contract engine translating Gherkin specs into production-grade executable prompts, TypeScript contracts, and seed fixtures for AI Coding Agents.",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "gherkin-ai": "./bin/gherkin-ai.js"
+  },
+  "keywords": [
+    "gherkin",
+    "bdd",
+    "ai-agent",
+    "prompts",
+    "architecture",
+    "ddd",
+    "cqrs",
+    "clean-architecture",
+    "hexagonal-architecture",
+    "claude-code",
+    "cursor",
+    "antigravity"
+  ],
+  "author": "Fenner Eduardo <contact@fennereduardo.com> (https://fennereduardo.com)",
+  "license": "MIT",
+  "homepage": "https://fennereduardo.com/pages/GherkinIATool/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/fennereduardo/gherkin-ai-cli.git"
+  },
+  "bugs": {
+    "url": "https://github.com/fennereduardo/gherkin-ai-cli/issues"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node ./bin/gherkin-ai.js",
+    "dev": "tsc --watch",
+    "test": "node --test --import ts-node/register src/**/*.test.ts",
+    "prepublishOnly": "npm run build"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "chalk": "^4.1.2",
+    "commander": "^12.1.0",
+    "inquirer": "^8.2.6"
+  },
+  "devDependencies": {
+    "@types/inquirer": "^8.2.10",
+    "@types/node": "^20.14.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.4.5"
+  }
+}
