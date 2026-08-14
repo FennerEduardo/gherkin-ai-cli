@@ -1,5 +1,5 @@
 /* ==========================================================================
-   gherkin-ai-cli - Unit Tests for Parser, Engine & Stack Detector
+   gherkin-ai-cli - Unit Tests for Parser, Engine & Multi-Stack Detector
    ========================================================================== */
 
 import assert from 'assert';
@@ -8,7 +8,7 @@ import { parseGherkinText } from '../src/core/gherkin-parser';
 import { generateContracts } from '../src/generators/contracts';
 import { detectExistingStack } from '../src/core/stack-detector';
 import { defaultConfig } from '../src/core/config';
-import { writeFileSync, removeFileSync, ensureDirSync } from '../src/utils/file-system';
+import { writeFileSync, removeFileSync, removeDirSync, ensureDirSync } from '../src/utils/file-system';
 
 const sampleSpec = `Feature: User Login Feature
   As an authenticated user
@@ -74,10 +74,22 @@ const detectedLaravel = detectExistingStack(mockLaravelDir);
 assert.strictEqual(detectedLaravel.stack.language, 'php');
 assert.strictEqual(detectedLaravel.stack.framework, 'laravel');
 assert.strictEqual(detectedLaravel.stack.orm, 'eloquent');
-
-// Cleanup mock dir
-removeFileSync(path.join(mockLaravelDir, 'artisan'));
-removeFileSync(path.join(mockLaravelDir, 'composer.json'));
+removeDirSync(mockLaravelDir);
 console.log('✔ Stack auto-detector Laravel/PHP test passed!');
+
+// 6. Stack Auto-Detector Test (Angular / Ionic Mock)
+const mockIonicDir = path.join(__dirname, 'mock-ionic');
+ensureDirSync(mockIonicDir);
+writeFileSync(path.join(mockIonicDir, 'angular.json'), '{}');
+writeFileSync(path.join(mockIonicDir, 'package.json'), JSON.stringify({
+  dependencies: { '@angular/core': '^16.0.0', '@ionic/angular': '^7.0.0' }
+}));
+
+const detectedIonic = detectExistingStack(mockIonicDir);
+assert.strictEqual(detectedIonic.stack.language, 'typescript');
+assert.strictEqual(detectedIonic.stack.framework, 'ionic-angular');
+assert.strictEqual(detectedIonic.stack.validation, 'angular-reactive-forms');
+removeDirSync(mockIonicDir);
+console.log('✔ Stack auto-detector Angular/Ionic test passed!');
 
 console.log('All tests passed successfully!');

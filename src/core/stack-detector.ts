@@ -1,5 +1,7 @@
 /* ==========================================================================
    gherkin-ai-cli - Multi-Language Stack & Architecture Auto-Detector
+   Supports: PHP/Laravel, Ruby/Rails, C#/.NET, Java/Spring, Python/Django/FastAPI,
+             Go, Node/Nest/Express, Angular, Ionic, React, Vue, Svelte, Flutter.
    ========================================================================== */
 
 import path from 'path';
@@ -16,6 +18,7 @@ export function detectExistingStack(rootDir: string = process.cwd()): GherkinAIC
     outputDir: './src'
   };
 
+  const gemfilePath = path.join(rootDir, 'Gemfile');
   const composerJsonPath = path.join(rootDir, 'composer.json');
   const artisanPath = path.join(rootDir, 'artisan');
   const goModPath = path.join(rootDir, 'go.mod');
@@ -24,10 +27,40 @@ export function detectExistingStack(rootDir: string = process.cwd()): GherkinAIC
   const managePyPath = path.join(rootDir, 'manage.py');
   const pomXmlPath = path.join(rootDir, 'pom.xml');
   const buildGradlePath = path.join(rootDir, 'build.gradle');
+  const angularJsonPath = path.join(rootDir, 'angular.json');
+  const pubspecPath = path.join(rootDir, 'pubspec.yaml');
   const packageJsonPath = path.join(rootDir, 'package.json');
 
-  // 1. PHP / Laravel Stack Detection (Checks artisan & composer.json first)
-  if (fileExistsSync(artisanPath) || fileExistsSync(composerJsonPath)) {
+  // 1. Ruby on Rails Stack Detection
+  if (fileExistsSync(gemfilePath)) {
+    detected.stack.language = 'ruby';
+    detected.stack.framework = 'rails';
+    detected.stack.orm = 'active-record';
+    detected.stack.database = 'postgresql';
+    detected.stack.validation = 'active-model-validations';
+    detected.stack.testing = 'rspec';
+    detected.architecture = 'monolith';
+    detected.outputDir = './app';
+
+    try {
+      const gemContent = readFileSync(gemfilePath);
+      if (gemContent.includes('rspec-rails')) detected.stack.testing = 'rspec';
+      else detected.stack.testing = 'minitest';
+    } catch {
+      // Ignore
+    }
+  }
+  // 2. C# / .NET / ASP.NET Core Stack Detection
+  else if (fileExistsSync(path.join(rootDir, 'Program.cs')) || fileExistsSync(path.join(rootDir, 'appsettings.json'))) {
+    detected.stack.language = 'csharp';
+    detected.stack.framework = 'dotnet-aspnetcore';
+    detected.stack.orm = 'entity-framework-core';
+    detected.stack.database = 'sql-server';
+    detected.stack.validation = 'fluent-validation';
+    detected.stack.testing = 'xunit';
+  }
+  // 3. PHP / Laravel Stack Detection
+  else if (fileExistsSync(artisanPath) || fileExistsSync(composerJsonPath)) {
     detected.stack.language = 'php';
     detected.stack.framework = 'laravel';
     detected.stack.orm = 'eloquent';
@@ -36,6 +69,7 @@ export function detectExistingStack(rootDir: string = process.cwd()): GherkinAIC
     detected.stack.auth = 'laravel-sanctum';
     detected.stack.testing = 'phpunit';
     detected.architecture = 'monolith';
+    detected.outputDir = './app';
 
     if (fileExistsSync(composerJsonPath)) {
       try {
@@ -50,11 +84,21 @@ export function detectExistingStack(rootDir: string = process.cwd()): GherkinAIC
           detected.stack.orm = 'doctrine';
         }
       } catch {
-        // Ignore JSON parse errors
+        // Ignore
       }
     }
   }
-  // 2. Python Stack Detection (Django / FastAPI / Flask)
+  // 4. Flutter / Dart Mobile Detection
+  else if (fileExistsSync(pubspecPath)) {
+    detected.stack.language = 'dart';
+    detected.stack.framework = 'flutter';
+    detected.stack.orm = 'sqflite';
+    detected.stack.database = 'sqlite';
+    detected.stack.validation = 'form-validation';
+    detected.stack.testing = 'flutter_test';
+    detected.outputDir = './lib';
+  }
+  // 5. Python Stack Detection (Django / FastAPI / Flask)
   else if (fileExistsSync(managePyPath) || fileExistsSync(pyProjectPath) || fileExistsSync(reqTxtPath)) {
     detected.stack.language = 'python';
     detected.stack.testing = 'pytest';
@@ -70,7 +114,7 @@ export function detectExistingStack(rootDir: string = process.cwd()): GherkinAIC
       detected.stack.validation = 'pydantic';
     }
   }
-  // 3. Go Stack Detection
+  // 6. Go Stack Detection
   else if (fileExistsSync(goModPath)) {
     detected.stack.language = 'go';
     detected.stack.framework = 'gin';
@@ -79,7 +123,7 @@ export function detectExistingStack(rootDir: string = process.cwd()): GherkinAIC
     detected.stack.validation = 'validator-v10';
     detected.stack.testing = 'testing';
   }
-  // 4. Java / Kotlin Stack Detection
+  // 7. Java / Kotlin Stack Detection
   else if (fileExistsSync(pomXmlPath) || fileExistsSync(buildGradlePath)) {
     detected.stack.language = 'java';
     detected.stack.framework = 'spring-boot';
@@ -88,7 +132,7 @@ export function detectExistingStack(rootDir: string = process.cwd()): GherkinAIC
     detected.stack.validation = 'jakarta-validation';
     detected.stack.testing = 'junit';
   }
-  // 5. Node.js / TypeScript / JavaScript Stack Detection
+  // 8. Node.js / Frontend / Ionic / Angular / React / Vue Stack Detection
   else if (fileExistsSync(packageJsonPath)) {
     try {
       const raw = readFileSync(packageJsonPath);
@@ -97,46 +141,71 @@ export function detectExistingStack(rootDir: string = process.cwd()): GherkinAIC
 
       if (pkg.name) detected.projectName = pkg.name;
 
-      // Language
-      if (allDeps['typescript'] || fileExistsSync(path.join(rootDir, 'tsconfig.json'))) {
+      // Language Detection (TypeScript if angular, tsconfig or typescript dep exists)
+      if (allDeps['typescript'] || fileExistsSync(path.join(rootDir, 'tsconfig.json')) || fileExistsSync(angularJsonPath) || allDeps['@angular/core']) {
         detected.stack.language = 'typescript';
       } else {
         detected.stack.language = 'javascript';
       }
 
-      // Framework
-      if (allDeps['@nestjs/core']) detected.stack.framework = 'nestjs';
-      else if (allDeps['express']) detected.stack.framework = 'express';
-      else if (allDeps['fastify']) detected.stack.framework = 'fastify';
-      else if (allDeps['next']) detected.stack.framework = 'nextjs';
-      else detected.stack.framework = 'express';
-
-      // ORM / Persistence
-      if (allDeps['prisma'] || fileExistsSync(path.join(rootDir, 'prisma', 'schema.prisma'))) detected.stack.orm = 'prisma';
-      else if (allDeps['typeorm']) detected.stack.orm = 'typeorm';
-      else if (allDeps['sequelize']) detected.stack.orm = 'sequelize';
-      else if (allDeps['mongoose']) detected.stack.orm = 'mongoose';
-
-      // Database
-      if (allDeps['pg'] || allDeps['postgres'] || allDeps['@prisma/client']) detected.stack.database = 'postgresql';
-      else if (allDeps['mongodb'] || allDeps['mongoose']) detected.stack.database = 'mongodb';
-      else if (allDeps['redis'] || allDeps['ioredis']) detected.stack.database = 'redis';
-
-      // Validation
-      if (allDeps['zod']) detected.stack.validation = 'zod';
-      else if (allDeps['class-validator']) detected.stack.validation = 'class-validator';
-      else if (allDeps['joi']) detected.stack.validation = 'joi';
-
-      // Testing
-      if (allDeps['jest']) detected.stack.testing = 'jest';
-      else if (allDeps['vitest']) detected.stack.testing = 'vitest';
+      // Angular / Ionic Frontend Detection
+      if (fileExistsSync(angularJsonPath) || allDeps['@angular/core']) {
+        if (allDeps['@ionic/angular']) {
+          detected.stack.framework = 'ionic-angular';
+        } else {
+          detected.stack.framework = 'angular';
+        }
+        detected.stack.orm = 'http-client-rxjs';
+        detected.stack.database = 'localstorage-indexeddb';
+        detected.stack.validation = 'angular-reactive-forms';
+        detected.stack.testing = 'jasmine-karma';
+        detected.architecture = 'modular';
+        detected.outputDir = './src/app';
+      }
+      // React Native Detection
+      else if (allDeps['react-native']) {
+        detected.stack.framework = 'react-native';
+        detected.stack.orm = 'async-storage';
+        detected.stack.database = 'sqlite-capacitor';
+        detected.stack.validation = 'zod';
+        detected.stack.testing = 'jest';
+        detected.architecture = 'modular';
+      }
+      // React / Next.js Frontend
+      else if (allDeps['react'] || allDeps['next']) {
+        detected.stack.framework = allDeps['next'] ? 'nextjs' : 'react';
+        detected.stack.orm = allDeps['prisma'] ? 'prisma' : 'tanstack-query';
+        detected.stack.database = 'postgresql';
+        detected.stack.validation = 'zod';
+        detected.stack.testing = 'vitest';
+      }
+      // Vue / Nuxt Frontend
+      else if (allDeps['vue'] || allDeps['nuxt']) {
+        detected.stack.framework = allDeps['nuxt'] ? 'nuxtjs' : 'vue';
+        detected.stack.orm = 'pinia-axios';
+        detected.stack.database = 'localstorage';
+        detected.stack.validation = 'vee-validate';
+        detected.stack.testing = 'vitest';
+      }
+      // Node.js Backend Frameworks (NestJS, Express, Fastify)
+      else if (allDeps['@nestjs/core']) {
+        detected.stack.framework = 'nestjs';
+        detected.stack.orm = allDeps['prisma'] ? 'prisma' : 'typeorm';
+        detected.stack.validation = 'zod';
+        detected.stack.testing = 'jest';
+      } else if (allDeps['express']) {
+        detected.stack.framework = 'express';
+        detected.stack.orm = allDeps['prisma'] ? 'prisma' : 'sequelize';
+        detected.stack.validation = 'zod';
+        detected.stack.testing = 'jest';
+      }
 
     } catch {
       // Ignore JSON parse errors
     }
   }
 
-  // 6. Architecture Style Heuristic Detection
+  // 9. Architecture Style Heuristic Detection
   if (fileExistsSync(path.join(rootDir, 'src', 'domain')) && fileExistsSync(path.join(rootDir, 'src', 'ports'))) {
     detected.architecture = 'hexagonal';
   } else if (fileExistsSync(path.join(rootDir, 'src', 'events')) && fileExistsSync(path.join(rootDir, 'src', 'commands'))) {
@@ -145,8 +214,7 @@ export function detectExistingStack(rootDir: string = process.cwd()): GherkinAIC
     detected.architecture = 'serverless';
   } else if (fileExistsSync(path.join(rootDir, 'app', 'Http', 'Controllers')) || fileExistsSync(artisanPath)) {
     detected.architecture = 'monolith';
-    detected.outputDir = './app';
-  } else if (fileExistsSync(path.join(rootDir, 'src', 'modules'))) {
+  } else if (fileExistsSync(path.join(rootDir, 'src', 'modules')) || fileExistsSync(path.join(rootDir, 'src', 'app'))) {
     detected.architecture = 'modular';
   }
 
