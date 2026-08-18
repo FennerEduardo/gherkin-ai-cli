@@ -5,10 +5,10 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "bin": {
-    "gherkin-ai": "./bin/gherkin-ai.js",
-    "ghk": "./bin/gherkin-ai.js",
-    "gherkin-cli": "./bin/gherkin-ai.js",
-    "gherkin-ia": "./bin/gherkin-ai.js"
+    "gherkin-ai": "bin/gherkin-ai.js",
+    "ghk": "bin/gherkin-ai.js",
+    "gherkin-cli": "bin/gherkin-ai.js",
+    "gherkin-ia": "bin/gherkin-ai.js"
   },
   "readmeFilename": "README.md",
   "files": [
