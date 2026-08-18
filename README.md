@@ -22,39 +22,71 @@ While basic AI spec tools only generate text prompts, `gherkin-ai` acts as an **
 
 ---
 
-## 🚀 Quick Start
+## 📥 Installation & Execution (`v2.0.0-beta.1`)
 
-### 1. Auto-Install MCP Server for Cursor & Claude Desktop
+You can use `gherkin-ai` via global `npm` installation, on-demand zero-install `npx`, or as a project local dev dependency:
 
+### Option 1: Global Installation (`npm`)
 ```bash
-npx -y gherkin-ai@beta mcp install
+npm install -g gherkin-ai@beta
+```
+Once installed globally, you can use `ghk` or `gherkin-ai` CLI commands directly:
+```bash
+ghk mcp install
+ghk verify --auto-fix
+ghk context build
+ghk quality
 ```
 
-### 2. Closed-Loop Test Verification with Auto-Fix Loop
+### Option 2: Zero-Install On-Demand (`npx`)
+Run any `gherkin-ai` command instantly without global installation:
+```bash
+# Auto-install MCP server for Cursor & Claude Desktop
+npx -y gherkin-ai@beta mcp install
+
+# Run closed-loop verification test harness
+npx -y gherkin-ai@beta verify --auto-fix
+
+# Build project context & guardrails (.ghe/)
+npx -y gherkin-ai@beta context build
+
+# Calculate feature quality score index
+npx -y gherkin-ai@beta quality
+```
+
+### Option 3: Local Project Dev Dependency
+Add to your project's `devDependencies`:
+```bash
+npm install --save-dev gherkin-ai@beta
+```
+Then invoke via `npx` or add scripts to your `package.json`:
+```json
+{
+  "scripts": {
+    "test:verify": "ghk verify --auto-fix",
+    "quality:check": "ghk quality"
+  }
+}
+```
+
+---
+
+## 🚀 Quick Start Commands
 
 ```bash
-# Run verification with automatic agent self-healing on failure
+# 1. Setup MCP Server for Cursor & Claude Desktop
+ghk mcp install   # (or: npx -y gherkin-ai@beta mcp install)
+
+# 2. Closed-Loop Test Verification with Auto-Fix Loop
 ghk verify --auto-fix
 
-# Run inside an isolated Docker sandbox container
+# 3. Run inside an isolated Docker sandbox container
 ghk verify --auto-fix --docker
-```
 
-### 3. Build Project Context & Policy Engine
-
-```bash
+# 4. Build Project Context & Policy Engine (.ghe/)
 ghk context build
-```
 
-### 4. Interactive Spec Wizard (`ghk create`)
-
-```bash
-ghk create
-```
-
-### 5. Calculate Feature Quality Score & PR Gate Compliance
-
-```bash
+# 5. Calculate Feature Quality Score & PR Gate Compliance
 ghk quality
 ```
 

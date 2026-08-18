@@ -4,6 +4,25 @@ Comprehensive reference guide for using `gherkin-ai` closed-loop verification, c
 
 ---
 
+## 📥 Installation & Execution Guide (`v2.0.0-beta.1`)
+
+### 1. Global Installation via `npm`
+```bash
+npm install -g gherkin-ai@beta
+```
+
+### 2. On-Demand Zero-Install via `npx`
+```bash
+npx -y gherkin-ai@beta <command>
+```
+
+### 3. Project Dev Dependency via `npm`
+```bash
+npm install --save-dev gherkin-ai@beta
+```
+
+---
+
 ## 📋 Command Summary
 
 | Command | Alias | Description |

@@ -60,18 +60,28 @@ We are thrilled to announce **`gherkin-ai` v2.0.0-beta.1**, evolving the tool fr
 
 ---
 
-## 📦 Installation & Usage
+## 📦 Installation & Usage (`v2.0.0-beta.1`)
 
-### Install Beta Version via NPM
+### Global Installation via NPM
 
 ```bash
 npm install -g gherkin-ai@beta
 ```
 
-or run directly with `npx`:
+### Zero-Install On-Demand via NPX
 
 ```bash
-npx -y gherkin-ai@beta --help
+# Auto-install MCP server for Cursor & Claude Desktop
+npx -y gherkin-ai@beta mcp install
+
+# Run closed-loop verification
+npx -y gherkin-ai@beta verify --auto-fix
+```
+
+### Local Project Dev Dependency
+
+```bash
+npm install --save-dev gherkin-ai@beta
 ```
 
 ---
