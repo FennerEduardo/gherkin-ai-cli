@@ -1,7 +1,7 @@
 {
   "name": "gherkin-ai",
-  "version": "1.5.0",
-  "description": "CLI tool & contract engine translating Gherkin specs into production-grade executable prompts, TypeScript contracts, and seed fixtures for AI Coding Agents.",
+  "version": "2.0.0-beta.1",
+  "description": "Enterprise-Grade Closed-Loop Agentic Orchestration Engine & Spec-Driven Verification Framework for AI Coding Agents.",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "bin": {
@@ -22,27 +22,27 @@
     "gherkin",
     "bdd",
     "ai-agent",
+    "mcp",
+    "model-context-protocol",
+    "closed-loop",
+    "auto-fix",
+    "self-healing",
+    "guardrails",
+    "agentic-workflow",
     "prompts",
     "architecture",
     "ddd",
     "cqrs",
-    "clean-architecture",
-    "hexagonal-architecture",
     "claude-code",
     "cursor",
     "antigravity",
+    "windsurf",
     "ghk",
-    "brownfield",
-    "detect",
-    "create",
-    "wizard",
-    "pydantic",
-    "python",
-    "php",
-    "laravel",
-    "go",
-    "csharp",
-    "dotnet"
+    "playwright",
+    "cucumber",
+    "spring-boot",
+    "react",
+    "graphql"
   ],
   "author": "Fenner Eduardo <contact@fennereduardo.com> (https://fennereduardo.com)",
   "license": "MIT",
@@ -59,12 +59,14 @@
     "start": "node ./bin/gherkin-ai.js",
     "dev": "npx tsc --watch",
     "test": "npx ts-node tests/parser.test.ts",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "npm run build",
+    "publish:beta": "npm run build && npm publish --tag beta"
   },
   "engines": {
     "node": ">=18.0.0"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "chalk": "^4.1.2",
     "commander": "^12.1.0",
     "inquirer": "^8.2.6"

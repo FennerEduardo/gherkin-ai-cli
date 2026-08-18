@@ -1,145 +1,60 @@
-# 🔌 Model Context Protocol (MCP) Integration Guide for `gherkin-ai`
+# 🔌 Model Context Protocol (MCP) Integration Guide (`v2.0.0-beta.1`)
 
-`gherkin-ai` CLI includes a native **Model Context Protocol (MCP)** JSON-RPC 2.0 stdio server (`ghk mcp`). This allows AI Agents (**Claude Desktop, Cursor, Antigravity, Windsurf, Roo Code, VS Code MCP Extensions**) to invoke `gherkin-ai` tools directly when editing `.feature` files or building architecture.
-
----
-
-## 🌟 Exposed MCP Tools
-
-When connected to `ghk mcp`, AI Agents gain direct access to the following 4 tools:
-
-1. **`parse_gherkin`**: Parses `.feature` specification text into a domain AST (commands, queries, events, actors).
-2. **`generate_contracts`**: Generates TypeScript, OpenAPI 3.0, and native language contracts (Python, PHP, Go, C#) from Gherkin text.
-3. **`detect_stack`**: Auto-detects project tech stack & architecture from the workspace root directory.
-4. **`validate_architecture`**: Validates Gherkin AST step coverage and layer import boundary isolation rules.
+`gherkin-ai` includes a native **Model Context Protocol (MCP)** server enabling AI Coding Agents in **Cursor, Claude Desktop, Antigravity, and Windsurf** to invoke spec generation, AST analysis, dual-stack scaffolding, and context bundlers directly.
 
 ---
 
-## 🛠️ Step-by-Step Configuration per AI Agent / IDE
+## ⚡ Quick One-Command Setup (`ghk mcp install`)
 
-### 1. Claude Desktop App
-
-Edit your `claude_desktop_config.json`:
-- **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
-- **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
-
-Add `gherkin-ai` to the `mcpServers` section:
-
-```json
-{
-  "mcpServers": {
-    "gherkin-ai": {
-      "command": "npx",
-      "args": ["-y", "gherkin-ai@latest", "mcp"]
-    }
-  }
-}
-```
-
-Restart Claude Desktop. You will see a hammer icon 🔨 indicating that `gherkin-ai` tools are active.
-
----
-
-### 2. Cursor IDE
-
-In Cursor, configure MCP tools via **Settings** or project configuration:
-
-1. Open **Cursor Settings** (`Ctrl + ,` / `Cmd + ,`) → **Features** → **MCP Servers**.
-2. Click **+ Add New MCP Server**.
-3. Fill in:
-   - **Name**: `gherkin-ai`
-   - **Type**: `command` (stdio)
-   - **Command**: `npx -y gherkin-ai@latest mcp`
-
-Or add a `.cursor/mcp.json` file in your repository:
-
-```json
-{
-  "mcpServers": {
-    "gherkin-ai": {
-      "command": "npx",
-      "args": ["-y", "gherkin-ai@latest", "mcp"]
-    }
-  }
-}
-```
-
----
-
-### 3. Antigravity / VS Code MCP Extensions
-
-In VS Code or Antigravity with MCP extension installed:
-
-Open `settings.json` and add:
-
-```json
-{
-  "mcp.servers": {
-    "gherkin-ai": {
-      "command": "npx",
-      "args": ["-y", "gherkin-ai@latest", "mcp"]
-    }
-  }
-}
-```
-
----
-
-### 4. Windsurf IDE
-
-Add `.windsurf/mcp.json` to your user home directory or project root:
-
-```json
-{
-  "mcpServers": {
-    "gherkin-ai": {
-      "command": "npx",
-      "args": ["-y", "gherkin-ai@latest", "mcp"]
-    }
-  }
-}
-```
-
----
-
-### 5. Roo Code / Continue.dev
-
-In `~/.continue/config.json` or Roo Code settings:
-
-```json
-{
-  "experimental": {
-    "modelContextProtocolServers": [
-      {
-        "transport": {
-          "type": "stdio",
-          "command": "npx",
-          "args": ["-y", "gherkin-ai@latest", "mcp"]
-        }
-      }
-    ]
-  }
-}
-```
-
----
-
-## 🧪 Testing the MCP Server Connection
-
-You can manually verify that the stdio MCP server is working by running:
+Run the automated installer to configure Cursor and Claude Desktop in one step:
 
 ```bash
-ghk mcp
+npx -y gherkin-ai@beta mcp install
 ```
 
-Send the JSON-RPC `initialize` request via stdin:
+This will automatically create or update:
+- Local Cursor Config: `.cursor/mcp.json`
+- Global Claude Desktop Config: `claude_desktop_config.json`
+
+---
+
+## 🛠 Manual Configuration
+
+### Cursor (`.cursor/mcp.json`)
 
 ```json
-{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}}}
+{
+  "mcpServers": {
+    "gherkin-ai": {
+      "command": "npx",
+      "args": ["-y", "gherkin-ai@beta", "mcp"]
+    }
+  }
+}
 ```
 
-The server will respond with:
+### Claude Desktop (`claude_desktop_config.json`)
 
 ```json
-{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2024-11-05","capabilities":{"tools":{}},"serverInfo":{"name":"gherkin-ai-mcp","version":"1.5.0"}}}
+{
+  "mcpServers": {
+    "gherkin-ai": {
+      "command": "npx",
+      "args": ["-y", "gherkin-ai@beta", "mcp"]
+    }
+  }
+}
 ```
+
+---
+
+## 🧰 Exposed MCP Tools
+
+1. `parse_gherkin`: Parses `.feature` specifications into domain AST models.
+2. `generate_contracts`: Produces TypeScript, Python (Pydantic), PHP 8.2, Go, and C# DTO contracts.
+3. `detect_stack`: Detects workspace tech stack (Spring Boot, Laravel, Rails, NestJS, React).
+4. `validate_architecture`: Audits layer boundary isolation.
+5. `gherkin_spec_generate`: Synthesizes Gherkin specs with edge-case tables from natural language.
+6. `gherkin_verify_diff`: Compares git diff against `.feature` files to highlight missing scenarios.
+7. `gherkin_scaffold_bindings`: Scaffolds Playwright or Spring Boot Cucumber step definitions.
+8. `gherkin_context_build`: Returns structured `.ghe/` context bundle.

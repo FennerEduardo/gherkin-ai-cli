@@ -12,6 +12,10 @@ import { handleAddCommand } from './commands/add';
 import { handleCreateCommand } from './commands/create';
 import { handleLangCommand } from './commands/lang';
 import { handleMcpCommand } from './commands/mcp';
+import { handleVerifyCommand } from './commands/verify';
+import { handleContextCommand } from './commands/context';
+import { handleQualityCommand } from './commands/quality';
+import { handleAutopilotCommand } from './commands/autopilot';
 
 // Dynamic version from package.json
 const pkg = require('../package.json');
@@ -20,8 +24,8 @@ const program = new Command();
 
 program
   .name('gherkin-ai')
-  .description('CLI tool & contract engine translating Gherkin specs into executable prompts, TypeScript contracts, and seed fixtures for AI Agents.')
-  .version(pkg.version || '1.5.0')
+  .description('Enterprise-Grade Closed-Loop Agentic Orchestration Engine & Spec-Driven Verification Framework for AI Coding Agents.')
+  .version(pkg.version || '2.0.0-beta.1')
   .option('--init', 'Alias for init command')
   .option('--create', 'Alias for create command')
   .option('--generate', 'Alias for generate command')
@@ -37,11 +41,49 @@ program
   });
 
 program
-  .command('mcp')
-  .description('Start native Model Context Protocol (MCP) JSON-RPC 2.0 stdio server for AI Agents')
-  .action(async () => {
-    await handleMcpCommand();
+  .command('mcp [subcommand]')
+  .description('Start native Model Context Protocol (MCP) JSON-RPC 2.0 stdio server or auto-install config (`ghk mcp install`)')
+  .option('--install', 'Auto-install MCP config into Cursor and Claude Desktop')
+  .action(async (subcommand) => {
+    await handleMcpCommand(subcommand);
   });
+
+program
+  .command('verify')
+  .alias('v-loop')
+  .description('Run closed-loop verification test harness with optional agent auto-fix and docker isolation')
+  .option('--auto-fix', 'Invoke agent self-healing loop on test failure')
+  .option('--docker', 'Run test suite inside isolated Docker container')
+  .option('--max-retries <number>', 'Maximum auto-fix retries (default: 3)', '3')
+  .option('-c, --command <cmd>', 'Custom test execution command')
+  .action(async (options) => {
+    await handleVerifyCommand(options);
+  });
+
+program
+  .command('context [subcommand]')
+  .description('Build and package project context and conventions into .ghe/')
+  .action(async (subcommand) => {
+    await handleContextCommand(subcommand);
+  });
+
+program
+  .command('quality')
+  .alias('q')
+  .description('Calculate feature quality score index and enterprise gate compliance')
+  .action(async () => {
+    await handleQualityCommand();
+  });
+
+program
+  .command('autopilot')
+  .alias('auto')
+  .description('Run autonomous multi-agent delivery workflow from product requirement to PR')
+  .option('-r, --requirement <file>', 'Path to feature requirement file')
+  .action(async (options) => {
+    await handleAutopilotCommand(options);
+  });
+
 
 program
   .command('lang')
