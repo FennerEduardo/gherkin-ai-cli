@@ -9,6 +9,7 @@ import { generateContracts } from '../src/generators/contracts';
 import { detectExistingStack } from '../src/core/stack-detector';
 import { defaultConfig } from '../src/core/config';
 import { writeFileSync, removeFileSync, removeDirSync, ensureDirSync } from '../src/utils/file-system';
+import { suggestPatterns } from '../src/core/patterns-suggester';
 
 const sampleSpec = `Feature: User Login Feature
   As an authenticated user
@@ -90,4 +91,51 @@ assert.strictEqual(detectedLaravel.stack.orm, 'eloquent');
 removeDirSync(mockLaravelDir);
 console.log('✔ Stack auto-detector Laravel/PHP test passed!');
 
+// 7. Closed-Loop Execution Sandbox & Error Parser Test
+import { executeSandbox } from '../src/core/execution-sandbox';
+import { parseExecutionFailure } from '../src/core/error-parser';
+
+const sandboxResult = executeSandbox({ command: 'node -e "console.error(\\\"Error: AssertionError at src/app.ts:12\\\"); process.exit(1)"' });
+assert.strictEqual(sandboxResult.success, false);
+const diagnosis = parseExecutionFailure(sandboxResult);
+assert(diagnosis.affectedFiles.includes('src/app.ts'));
+console.log('✔ Closed-Loop Execution Sandbox & Error Parser test passed!');
+
+// 8. Context Builder & Guardrails Test
+import { buildProjectContext } from '../src/core/context-builder';
+import { validateGuardrails } from '../src/core/guardrails';
+
+const ctx = buildProjectContext();
+assert(ctx.detectedFiles.length > 0);
+const guardRes = validateGuardrails(['src/index.ts']);
+assert.strictEqual(guardRes.allowed, true);
+const guardViolation = validateGuardrails(['infrastructure/db.tf']);
+assert.strictEqual(guardViolation.allowed, false);
+console.log('✔ Context Builder & Guardrails Policy Engine test passed!');
+
+// 9. Enterprise Presets Test (Java Spring & React Playwright)
+import { generateJavaSpringPreset } from '../src/generators/preset-java-spring';
+import { generateReactPlaywrightPreset } from '../src/generators/preset-react-playwright';
+
+const javaPreset = generateJavaSpringPreset(parsed);
+assert(javaPreset[0].content.includes('Cucumber-JVM'));
+const reactPreset = generateReactPlaywrightPreset(parsed);
+assert(reactPreset[0].content.includes('@playwright/test'));
+console.log('✔ Enterprise Presets (Java Spring & React Playwright) test passed!');
+
+// 10. Quality Score Engine Test
+import { calculateQualityScorecard } from '../src/core/quality-score';
+const scorecard = calculateQualityScorecard();
+assert.strictEqual(scorecard.passedQualityGate, true);
+console.log('✔ Quality Score Engine test passed!');
+
+// 11. Patterns Suggester Test
+const mockReactStack = { framework: 'react', language: 'typescript' };
+const suggestions = suggestPatterns(mockReactStack, 'clean');
+assert(suggestions.designPatterns.includes('Hooks Pattern'));
+assert(suggestions.designPatterns.includes('Repository Pattern'));
+assert(suggestions.codingRules.some(rule => rule.includes('avoid "any"')));
+console.log('✔ Patterns Suggester test passed!');
+
 console.log('All tests passed successfully!');
+

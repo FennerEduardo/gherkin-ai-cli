@@ -25,6 +25,8 @@ export interface GherkinAIConfig {
     strictLayerBoundaries?: boolean;
     coverageTarget?: number;
   };
+  designPatterns?: string[];
+  codingRules?: string[];
   outputDir: string;
 }
 
@@ -48,6 +50,8 @@ export const defaultConfig: GherkinAIConfig = {
     strictLayerBoundaries: true,
     coverageTarget: 85
   },
+  designPatterns: [],
+  codingRules: [],
   outputDir: './generated-specs'
 };
 

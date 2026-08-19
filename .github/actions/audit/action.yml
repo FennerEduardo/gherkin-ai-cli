@@ -1,0 +1,13 @@
+name: 'gherkin-ai Audit Gatekeeper'
+description: 'Audits Pull Requests for Gherkin scenario coverage, @ignore tags, and quality gates.'
+author: 'Fenner Eduardo'
+
+inputs:
+  min-quality-score:
+    description: 'Minimum required quality score percentage to pass the gate'
+    required: false
+    default: '90'
+
+runs:
+  using: 'node20'
+  main: 'dist/index.js'
