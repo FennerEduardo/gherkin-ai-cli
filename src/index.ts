@@ -25,7 +25,7 @@ const program = new Command();
 program
   .name('gherkin-ai')
   .description('Enterprise-Grade Closed-Loop Agentic Orchestration Engine & Spec-Driven Verification Framework for AI Coding Agents.')
-  .version(pkg.version || '2.0.0-beta.1')
+  .version(pkg.version || '2.0.0')
   .option('--init', 'Alias for init command')
   .option('--create', 'Alias for create command')
   .option('--generate', 'Alias for generate command')

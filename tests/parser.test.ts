@@ -9,6 +9,7 @@ import { generateContracts } from '../src/generators/contracts';
 import { detectExistingStack } from '../src/core/stack-detector';
 import { defaultConfig } from '../src/core/config';
 import { writeFileSync, removeFileSync, removeDirSync, ensureDirSync } from '../src/utils/file-system';
+import { suggestPatterns } from '../src/core/patterns-suggester';
 
 const sampleSpec = `Feature: User Login Feature
   As an authenticated user
@@ -127,6 +128,14 @@ import { calculateQualityScorecard } from '../src/core/quality-score';
 const scorecard = calculateQualityScorecard();
 assert.strictEqual(scorecard.passedQualityGate, true);
 console.log('✔ Quality Score Engine test passed!');
+
+// 11. Patterns Suggester Test
+const mockReactStack = { framework: 'react', language: 'typescript' };
+const suggestions = suggestPatterns(mockReactStack, 'clean');
+assert(suggestions.designPatterns.includes('Hooks Pattern'));
+assert(suggestions.designPatterns.includes('Repository Pattern'));
+assert(suggestions.codingRules.some(rule => rule.includes('avoid "any"')));
+console.log('✔ Patterns Suggester test passed!');
 
 console.log('All tests passed successfully!');
 
