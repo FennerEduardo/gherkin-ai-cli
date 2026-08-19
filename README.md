@@ -8,7 +8,7 @@
 
 ---
 
-## 🌟 Strategic Capabilities (`v2.0.0-beta.1`)
+## 🌟 Strategic Capabilities (`v2.0.0`)
 
 While basic AI spec tools only generate text prompts, `gherkin-ai` acts as an **executable contract and verification harness** between Product Intent, AI Agents (Cursor, Claude Code, Windsurf, Antigravity), Code Implementation, and CI/CD Quality Gates:
 
@@ -18,17 +18,19 @@ While basic AI spec tools only generate text prompts, `gherkin-ai` acts as an **
 - ☕ **Enterprise Java & GraphQL Presets**: Scaffolds Cucumber-JVM, Spring Boot, GraphQL queries/mutations, and Testcontainers (PostgreSQL) fixtures.
 - ⚛️ **Modern React & Playwright Presets**: Scaffolds Playwright E2E and React Testing Library step definitions with MSW GraphQL mocks and accessibility-first selectors (`getByRole`).
 - 🚀 **Autopilot Multi-Agent Delivery (`ghk autopilot`)**: Decomposes product requirements into sub-agent workflows (Planner, Spec, Developer, Tester, Reviewer) and generates ready-to-merge Pull Requests.
+- 🎯 **Caveman Mode (`ghk create --caveman`)**: Skip the wizard and generate concise `.feature` specifications instantly from a single plain-text prompt to optimize AI token consumption.
+- 🕵️ **Interactive Stack & Pattern Detection (`ghk detect`)**: Auto-detects existing brownfield architectures and intelligently injects industry-standard design patterns (e.g., Hooks, CQRS, MVC) into Agent prompts.
 - 📊 **Enterprise Quality Gate Index (`ghk quality`)**: Measures spec coverage, unit tests, E2E, type safety, and security score before merging.
 
 ---
 
-## 📥 Installation & Execution (`v2.0.0-beta.1`)
+## 📥 Installation & Execution (`v2.0.0`)
 
 You can use `gherkin-ai` via global `npm` installation, on-demand zero-install `npx`, or as a project local dev dependency:
 
 ### Option 1: Global Installation (`npm`)
 ```bash
-npm install -g gherkin-ai@beta
+npm install -g gherkin-ai
 ```
 Once installed globally, you can use `ghk` or `gherkin-ai` CLI commands directly:
 ```bash
@@ -42,22 +44,22 @@ ghk quality
 Run any `gherkin-ai` command instantly without global installation:
 ```bash
 # Auto-install MCP server for Cursor & Claude Desktop
-npx -y gherkin-ai@beta mcp install
+npx -y gherkin-ai mcp install
 
 # Run closed-loop verification test harness
-npx -y gherkin-ai@beta verify --auto-fix
+npx -y gherkin-ai verify --auto-fix
 
 # Build project context & guardrails (.ghe/)
-npx -y gherkin-ai@beta context build
+npx -y gherkin-ai context build
 
 # Calculate feature quality score index
-npx -y gherkin-ai@beta quality
+npx -y gherkin-ai quality
 ```
 
 ### Option 3: Local Project Dev Dependency
 Add to your project's `devDependencies`:
 ```bash
-npm install --save-dev gherkin-ai@beta
+npm install --save-dev gherkin-ai
 ```
 Then invoke via `npx` or add scripts to your `package.json`:
 ```json
@@ -75,19 +77,19 @@ Then invoke via `npx` or add scripts to your `package.json`:
 
 ```bash
 # 1. Setup MCP Server for Cursor & Claude Desktop
-ghk mcp install   # (or: npx -y gherkin-ai@beta mcp install)
+ghk mcp install   # (or: npx -y gherkin-ai mcp install)
 
 # 2. Closed-Loop Test Verification with Auto-Fix Loop
 ghk verify --auto-fix
 
-# 3. Run inside an isolated Docker sandbox container
-ghk verify --auto-fix --docker
+# 3. Create a feature using Caveman Mode (skip wizard)
+ghk create --caveman
 
-# 4. Build Project Context & Policy Engine (.ghe/)
+# 4. Auto-detect project stack & suggest design patterns
+ghk detect
+
+# 5. Build Project Context & Policy Engine (.ghe/)
 ghk context build
-
-# 5. Calculate Feature Quality Score & PR Gate Compliance
-ghk quality
 ```
 
 ---
@@ -97,7 +99,7 @@ ghk quality
 - [Model Context Protocol (MCP) Integration Guide](docs/MCP_GUIDE.md)
 - [Closed-Loop Verification & Auto-Repair Guide](docs/USAGE_GUIDE.md)
 - [Architecture & Agent Pipeline Design](docs/ARCHITECTURE.md)
-- [Live Web SPA Playground](https://fennereduardo.com/pages/GherkinIATool/)
+- [Live Web SPA Playground](https://fennereduardo.com/pages/gherkin-ai-agent-architect)
 
 ---
 
