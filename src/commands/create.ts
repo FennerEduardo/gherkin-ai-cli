@@ -9,13 +9,61 @@ import { ensureCliLanguage, t } from '../utils/i18n-cli';
 import { fileExistsSync, writeFileSync } from '../utils/file-system';
 import { logger } from '../utils/logger';
 
-export async function handleCreateCommand(options: { output?: string; target?: string; lang?: string }): Promise<void> {
+export async function handleCreateCommand(options: { output?: string; target?: string; lang?: string; caveman?: boolean }): Promise<void> {
   logger.banner();
 
   const locale = await ensureCliLanguage(options.lang);
   const isEs = locale === 'es';
 
   logger.info(isEs ? 'Asistente Interactivo Gherkin - Creación paso a paso' : 'Interactive Gherkin Spec Wizard - Step-by-step feature creator');
+
+  if (options.caveman) {
+    logger.info(isEs ? 'Modo Caveman Activado - Ingreso Rápido' : 'Caveman Mode Activated - Quick Input');
+    const { quickDesc } = await inquirer.prompt([{
+      type: 'input',
+      name: 'quickDesc',
+      message: isEs ? 'Describe lo que quieres construir con tus propias palabras:' : 'Describe what you want to build in your own words:',
+      validate: (input: string) => input.trim().length > 0 || 'Description cannot be empty.'
+    }]);
+
+    const featureKw = isEs ? 'Característica:' : 'Feature:';
+    const scKw = isEs ? 'Escenario:' : 'Scenario:';
+    const givenKw = isEs ? 'Dado' : 'Given';
+
+    let gherkinContent = `${featureKw} Requirement generated from Caveman Mode\n`;
+    gherkinContent += `  ${scKw} Main implementation flow\n`;
+    gherkinContent += `    ${givenKw} the following requirement:\n      """\n      ${quickDesc}\n      """\n`;
+
+    const defaultFileName = 'caveman_' + Date.now() + '.feature';
+    const targetSpecPath = options.output
+      ? path.resolve(process.cwd(), options.output)
+      : path.resolve(process.cwd(), 'specs', defaultFileName);
+
+    writeFileSync(targetSpecPath, gherkinContent);
+    logger.success(`${t('specCreated', locale)} ${targetSpecPath}`);
+
+    console.log('\n------------------------------------------------------------');
+    console.log(gherkinContent);
+    console.log('------------------------------------------------------------\n');
+
+    const injectAnswer = await inquirer.prompt([
+      {
+        type: 'confirm',
+        name: 'inject',
+        message: t('injectPrompt', locale),
+        default: true
+      }
+    ]);
+
+    if (injectAnswer.inject) {
+      await handleAddCommand({
+        feature: targetSpecPath,
+        target: options.target
+      });
+    }
+    return;
+  }
+
 
   const answers = await inquirer.prompt([
     {

@@ -103,6 +103,7 @@ program
   .option('-o, --output <file>', 'Output destination for .feature file')
   .option('-t, --target <directory>', 'Target directory to inject contracts')
   .option('-l, --lang <locale>', 'Override CLI interaction language for this run (en or es)')
+  .option('-C, --caveman', 'Enable simple prompt creation mode (skip step-by-step wizard)')
   .action(async (options) => {
     await handleCreateCommand(options);
   });

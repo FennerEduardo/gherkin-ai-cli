@@ -11,6 +11,9 @@ export function generatePrompts(parsed: ParsedFeature, config: GherkinAIConfig):
   const arch = getArchRule(config.architecture);
   const spec = getStackSpec(config.stack);
 
+  const extraPatterns = config.designPatterns && config.designPatterns.length > 0 ? `\n\n🧩 Additional Design Patterns:\n${config.designPatterns.map(p => `- ${p}`).join('\n')}` : '';
+  const extraRules = config.codingRules && config.codingRules.length > 0 ? `\n\n📜 Coding Rules:\n${config.codingRules.map(r => `- ${r}`).join('\n')}` : '';
+
   const domainPrompt = `🤖 ROLE: DOMAIN ARCHITECT AGENT
 Objective: Implement domain entities, value objects, aggregates, and domain event ports according to ${arch.name}.
 
@@ -23,7 +26,7 @@ ${arch.patterns.map(p => `- ${p}`).join('\n')}
 🛠️ Technical Rails:
 - Language: ${config.stack.language} (ES2022 / Strict TypeScript)
 - Layer Boundary Rule: Core domain must NEVER import framework libraries.
-- Prohibited Core Imports: ${arch.prohibitedImports.join(', ')}
+- Prohibited Core Imports: ${arch.prohibitedImports.join(', ')}${extraPatterns}${extraRules}
 
 📂 Folder Structure Target:
 ${arch.folderStructure}
@@ -44,7 +47,7 @@ Objective: Implement Use Cases, Handlers, Controllers, DTOs, and ORM Persistence
 - ORM / Persistence: ${config.stack.orm} (${spec.ormPackage})
 - Validation: ${config.stack.validation} (${spec.validationPackage})
 - Auth & Hash: ${config.stack.auth} (${spec.authPackages.join(', ')}, bcrypt cost ${spec.bcryptCostFactor})
-- Messaging: ${config.stack.messaging} (${spec.messagingPackage})
+- Messaging: ${config.stack.messaging} (${spec.messagingPackage})${extraPatterns}${extraRules}
 
 📌 Contract References:
 - Read interfaces from ./contracts.ts
@@ -58,7 +61,7 @@ ${parsed.scenarios.map(sc => `   - Endpoint for: "${sc.name}"`).join('\n')}
 `;
 
   const qaPrompt = `🤖 ROLE: QA & AUTOMATION ENGINEER AGENT
-Objective: Implement automated tests (Unit, Integration, BDD) using ${config.stack.testing} (${spec.testPackages.join(', ')}).
+Objective: Implement automated tests (Unit, Integration, BDD) using ${config.stack.testing} (${spec.testPackages.join(', ')}).${extraRules}
 
 📌 Fixture Reference:
 - Use test fixture setup from ./fixtures.ts
