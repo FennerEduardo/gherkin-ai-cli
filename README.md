@@ -8,7 +8,7 @@
 
 ---
 
-## 🌟 Strategic Capabilities (`v2.0.0`)
+## 🌟 Strategic Capabilities (`v2.1.0`)
 
 While basic AI spec tools only generate text prompts, `gherkin-ai` acts as an **executable contract and verification harness** between Product Intent, AI Agents (Cursor, Claude Code, Windsurf, Antigravity), Code Implementation, and CI/CD Quality Gates:
 
@@ -17,14 +17,17 @@ While basic AI spec tools only generate text prompts, `gherkin-ai` acts as an **
 - 📦 **Context Engineering & Guardrails Engine (`ghk context`)**: Structurally packages project architecture, conventions, and security policies into `.ghe/`, enforcing strict path protection and agent change limits.
 - ☕ **Enterprise Java & GraphQL Presets**: Scaffolds Cucumber-JVM, Spring Boot, GraphQL queries/mutations, and Testcontainers (PostgreSQL) fixtures.
 - ⚛️ **Modern React & Playwright Presets**: Scaffolds Playwright E2E and React Testing Library step definitions with MSW GraphQL mocks and accessibility-first selectors (`getByRole`).
-- 🚀 **Autopilot Multi-Agent Delivery (`ghk autopilot`)**: Decomposes product requirements into sub-agent workflows (Planner, Spec, Developer, Tester, Reviewer) and generates ready-to-merge Pull Requests.
+- 🚀 **Autopilot Multi-Agent Delivery (`ghk autopilot`)**: Decomposes product requirements into sub-agent workflows (Planner, Spec, Developer, Tester, Reviewer) and generates ready-to-merge Pull Requests. Now supports real LLM APIs (OpenAI, Anthropic, Ollama) and IDE Delegation Mode.
 - 🎯 **Caveman Mode (`ghk create --caveman`)**: Skip the wizard and generate concise `.feature` specifications instantly from a single plain-text prompt to optimize AI token consumption.
 - 🕵️ **Interactive Stack & Pattern Detection (`ghk detect`)**: Auto-detects existing brownfield architectures and intelligently injects industry-standard design patterns (e.g., Hooks, CQRS, MVC) into Agent prompts.
-- 📊 **Enterprise Quality Gate Index (`ghk quality`)**: Measures spec coverage, unit tests, E2E, type safety, and security score before merging.
+- 📊 **Enterprise Quality Gate Index (`ghk quality`)**: Measures spec coverage, unit tests, E2E, type safety, and security score before merging by parsing real test coverage and linter outputs.
+- 📡 **Event-Driven & AsyncAPI Support**: Automatically extracts domain events from Gherkin and scaffolds standard `asyncapi.json` contracts.
+- 🔍 **Drift Detection (`ghk diff`)**: Validates in CI/CD pipelines if the implemented DTOs and code have drifted from the `.feature` file (Single Source of Truth).
+- 🧩 **Semantic Annotations & Stubs**: Supports custom Gherkin tags (e.g., `@validate:email`) to generate strictly typed Zod validations and auto-generates test stubs during `ghk add`.
 
 ---
 
-## 📥 Installation & Execution (`v2.0.0`)
+## 📥 Installation & Execution (`v2.1.0`)
 
 You can use `gherkin-ai` via global `npm` installation, on-demand zero-install `npx`, or as a project local dev dependency:
 

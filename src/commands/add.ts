@@ -63,12 +63,13 @@ export async function handleAddCommand(options: { feature?: string; target?: str
   ensureDirSync(targetDir);
   logger.info(`Injecting contracts & AI prompts into: ${targetDir}`);
 
-  // 1. Generate Contracts, OpenAPI & Native Language Contract
-  const { contractsTs, adrMd, openApiJson, nativeContract } = generateContracts(parsed, config);
+  // 1. Generate Contracts, OpenAPI, AsyncAPI & Native Language Contract
+  const { contractsTs, adrMd, openApiJson, asyncApiJson, nativeContract } = generateContracts(parsed, config);
   const contractFileName = `${featurePascal.toLowerCase()}.contract.ts`;
   
   writeFileSync(path.join(targetDir, contractFileName), contractsTs);
   writeFileSync(path.join(targetDir, `${featurePascal.toLowerCase()}.openapi.json`), openApiJson);
+  writeFileSync(path.join(targetDir, `${featurePascal.toLowerCase()}.asyncapi.json`), asyncApiJson);
   writeFileSync(path.join(targetDir, `ADR-${featurePascal}.md`), adrMd);
   logger.success(`Created contract file: ${path.join(targetDir, contractFileName)}`);
 
@@ -77,7 +78,23 @@ export async function handleAddCommand(options: { feature?: string; target?: str
     logger.success(`Created language-native contract file: ${path.join(targetDir, nativeContract.filename)}`);
   }
 
-  // 2. Generate Agent Prompts inside target module
+  // 2. Generate Test Stubs
+  const testsDir = path.join(targetDir, '__tests__');
+  ensureDirSync(testsDir);
+  let stubContent = `// Auto-generated Test Stub for ${featurePascal}\n\n`;
+  stubContent += `describe('${parsed.featureName}', () => {\n`;
+  parsed.scenarios.forEach(sc => {
+    stubContent += `  describe('Scenario: ${sc.name}', () => {\n`;
+    sc.steps.forEach(st => {
+      stubContent += `    it('${st.keyword} ${st.text.replace(/'/g, "\\'")}', async () => {\n      // TODO: Implement step\n    });\n`;
+    });
+    stubContent += `  });\n`;
+  });
+  stubContent += `});\n`;
+  writeFileSync(path.join(testsDir, `${featurePascal.toLowerCase()}.stub.spec.ts`), stubContent);
+  logger.success(`Created test stubs inside: ${testsDir}`);
+
+  // 3. Generate Agent Prompts inside target module
   const promptsDir = path.join(targetDir, 'prompts');
   ensureDirSync(promptsDir);
 

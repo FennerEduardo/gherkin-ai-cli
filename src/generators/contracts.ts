@@ -15,6 +15,7 @@ export interface GeneratedContractsOutput {
   contractsTs: string;
   adrMd: string;
   openApiJson: string;
+  asyncApiJson: string;
   nativeContract?: {
     filename: string;
     content: string;
@@ -175,6 +176,36 @@ ${arch.prohibitedImports.map(p => `- \`${p}\``).join('\n')}
     }
   }, null, 2);
 
+  const asyncApiJson = JSON.stringify({
+    asyncapi: '2.6.0',
+    info: {
+      title: `${parsed.featureName} AsyncAPI Specification`,
+      version: '1.0.0',
+      description: `Auto-generated AsyncAPI events for ${parsed.featureName} from Gherkin feature spec.`
+    },
+    channels: parsed.domainAnalysis.events.reduce((acc, ev) => {
+      const eventName = ev.replace(/[^a-zA-Z0-9]/g, '');
+      acc[`${featurePascal.toLowerCase()}/events/${eventName.toLowerCase()}`] = {
+        publish: {
+          summary: `Publish ${eventName} event`,
+          message: {
+            name: eventName,
+            payload: {
+              type: 'object',
+              properties: {
+                eventId: { type: 'string', format: 'uuid' },
+                occurredOn: { type: 'string', format: 'date-time' },
+                eventType: { type: 'string', enum: [eventName] },
+                payload: { type: 'object' }
+              }
+            }
+          }
+        }
+      };
+      return acc;
+    }, {} as Record<string, any>)
+  }, null, 2);
+
   // Generate Native Contract file based on target stack language
   let nativeContract: GeneratedContractsOutput['nativeContract'];
 
@@ -200,5 +231,5 @@ ${arch.prohibitedImports.map(p => `- \`${p}\``).join('\n')}
     };
   }
 
-  return { contractsTs, adrMd, openApiJson, nativeContract };
+  return { contractsTs, adrMd, openApiJson, asyncApiJson, nativeContract };
 }
