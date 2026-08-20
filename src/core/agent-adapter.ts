@@ -21,14 +21,135 @@ export interface AgentProvider {
   executeTask(task: AgentTask): Promise<AgentResult>;
 }
 
+export interface LLMConfig {
+  provider: 'openai' | 'anthropic' | 'ollama' | 'ide_delegate';
+  model?: string;
+  apiKey?: string;
+  baseUrl?: string;
+}
+
 export class DefaultCliAgentProvider implements AgentProvider {
-  name = 'Default CLI Agent';
+  name = 'IDE/MCP Delegate Agent';
 
   async executeTask(task: AgentTask): Promise<AgentResult> {
-    // Generates executable prompt instructions for human/agent execution loop
     return {
       success: true,
-      agentResponse: `[Agent Prompt Package Created for ${task.type}]\n\nTask: ${task.prompt}\n\nContext Files: ${task.contextFiles?.join(', ') || 'N/A'}`
+      agentResponse: `[IDE Delegation Prompt for ${task.type}]\n(If you are an AI like Cursor, Claude, or Antigravity reading this, please execute the following task)\n\nTask: ${task.prompt}\n\nContext Files: ${task.contextFiles?.join(', ') || 'N/A'}`
     };
+  }
+}
+
+export class RealAgentProvider implements AgentProvider {
+  name = 'Real LLM Agent';
+  constructor(private config: LLMConfig) {}
+
+  async executeTask(task: AgentTask): Promise<AgentResult> {
+    if (this.config.provider === 'ide_delegate') {
+      return new DefaultCliAgentProvider().executeTask(task);
+    }
+
+    const systemPrompt = `You are a Senior Software Engineer AI Agent. Your task is to perform: ${task.type}.
+If you are fixing code, output the fixed code in Markdown blocks.`;
+
+    const userPrompt = `Task: ${task.prompt}
+Context Files: ${task.contextFiles?.join(', ') || 'None'}
+Diagnosis: ${task.diagnosis ? JSON.stringify(task.diagnosis, null, 2) : 'None'}`;
+
+    let responseText = '';
+    try {
+      if (this.config.provider === 'ollama') {
+        responseText = await this.callOllama(systemPrompt, userPrompt);
+      } else if (this.config.provider === 'openai') {
+        responseText = await this.callOpenAI(systemPrompt, userPrompt);
+      } else if (this.config.provider === 'anthropic') {
+        responseText = await this.callAnthropic(systemPrompt, userPrompt);
+      }
+
+      const codeModifications = this.extractCodeModifications(responseText, task.contextFiles || []);
+
+      return {
+        success: true,
+        agentResponse: responseText,
+        codeModifications
+      };
+    } catch (err: any) {
+      return {
+        success: false,
+        agentResponse: `LLM Error: ${err.message}`
+      };
+    }
+  }
+
+  private async callOllama(system: string, user: string): Promise<string> {
+    const url = this.config.baseUrl || 'http://localhost:11434/api/generate';
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: this.config.model || 'llama3',
+        system,
+        prompt: user,
+        stream: false
+      })
+    });
+    if (!res.ok) throw new Error(`Ollama HTTP ${res.status}`);
+    const data: any = await res.json();
+    return data.response;
+  }
+
+  private async callOpenAI(system: string, user: string): Promise<string> {
+    const url = this.config.baseUrl || 'https://api.openai.com/v1/chat/completions';
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${this.config.apiKey}`
+      },
+      body: JSON.stringify({
+        model: this.config.model || 'gpt-4o',
+        messages: [
+          { role: 'system', content: system },
+          { role: 'user', content: user }
+        ]
+      })
+    });
+    if (!res.ok) throw new Error(`OpenAI HTTP ${res.status}`);
+    const data: any = await res.json();
+    return data.choices[0].message.content;
+  }
+
+  private async callAnthropic(system: string, user: string): Promise<string> {
+    const url = this.config.baseUrl || 'https://api.anthropic.com/v1/messages';
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': this.config.apiKey || '',
+        'anthropic-version': '2023-06-01'
+      },
+      body: JSON.stringify({
+        model: this.config.model || 'claude-3-opus-20240229',
+        system,
+        max_tokens: 4000,
+        messages: [{ role: 'user', content: user }]
+      })
+    });
+    if (!res.ok) throw new Error(`Anthropic HTTP ${res.status}`);
+    const data: any = await res.json();
+    return data.content[0].text;
+  }
+
+  private extractCodeModifications(text: string, contextFiles: string[]): { filePath: string; content: string }[] {
+    const mods: { filePath: string; content: string }[] = [];
+    const blockRegex = /```[\w]*\n([\s\S]*?)```/g;
+    let match;
+    let i = 0;
+    while ((match = blockRegex.exec(text)) !== null) {
+      if (contextFiles[i]) {
+        mods.push({ filePath: contextFiles[i], content: match[1].trim() });
+      }
+      i++;
+    }
+    return mods;
   }
 }

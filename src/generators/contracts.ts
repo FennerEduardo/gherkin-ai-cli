@@ -81,7 +81,19 @@ ${parsed.domainAnalysis.events.map((ev, i) => `export interface Event${i + 1} ex
 export const ${featurePascal}CommandSchema = z.object({
   requestId: z.string().uuid(),
   timestamp: z.string().datetime(),
-  payload: z.record(z.unknown())
+  payload: z.object({
+${parsed.domainAnalysis.fields.map(f => {
+  let zType = f.type === 'number' ? 'z.number()' : 'z.string()';
+  f.validations.forEach(v => {
+    if (v === '@validate:email') zType += '.email()';
+    if (v.startsWith('@range(')) {
+       const match = v.match(/@range\((\d+),(\d+)\)/);
+       if (match) zType += `.min(${match[1]}).max(${match[2]})`;
+    }
+  });
+  return `    ${f.name}: ${zType}`;
+}).join(',\n')}
+  })
 });
 
 export type ${featurePascal}Command = z.infer<typeof ${featurePascal}CommandSchema>;

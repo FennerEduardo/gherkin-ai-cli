@@ -5,7 +5,7 @@
 import chalk from 'chalk';
 import { executeSandbox, SandboxExecutionOptions } from '../core/execution-sandbox';
 import { parseExecutionFailure } from '../core/error-parser';
-import { DefaultCliAgentProvider } from '../core/agent-adapter';
+import { RealAgentProvider, LLMConfig } from '../core/agent-adapter';
 
 export interface VerifyCommandOptions {
   autoFix?: boolean;
@@ -59,7 +59,13 @@ export async function handleVerifyCommand(options: VerifyCommandOptions = {}): P
     }
 
     console.log(chalk.cyan(`\n🤖 Invoking Agent Repair Loop (Attempt ${iteration})...`));
-    const agent = new DefaultCliAgentProvider();
+    const config: LLMConfig = {
+      provider: (process.env.LLM_PROVIDER as any) || 'ide_delegate',
+      model: process.env.LLM_MODEL,
+      apiKey: process.env.OPENAI_API_KEY || process.env.ANTHROPIC_API_KEY || process.env.LLM_API_KEY,
+      baseUrl: process.env.LLM_BASE_URL
+    };
+    const agent = new RealAgentProvider(config);
     const repairResult = await agent.executeTask({
       id: `fix-${iteration}`,
       type: 'auto_fix',
@@ -69,6 +75,21 @@ export async function handleVerifyCommand(options: VerifyCommandOptions = {}): P
     });
 
     console.log(chalk.gray(`   ${repairResult.agentResponse.split('\n')[0]}`));
+    
+    // Apply Code Modifications if provided by RealAgentProvider
+    if (repairResult.codeModifications && repairResult.codeModifications.length > 0) {
+      console.log(chalk.green(`   Applying ${repairResult.codeModifications.length} code modification(s)...`));
+      for (const mod of repairResult.codeModifications) {
+        try {
+          const fs = require('fs');
+          fs.writeFileSync(mod.filePath, mod.content, 'utf8');
+          console.log(chalk.green(`     ✓ ${mod.filePath} updated.`));
+        } catch (e: any) {
+          console.log(chalk.red(`     ✖ Failed to write ${mod.filePath}: ${e.message}`));
+        }
+      }
+    }
+    
     iteration++;
   }
 

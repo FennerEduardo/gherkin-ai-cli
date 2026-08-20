@@ -58,7 +58,7 @@
     "build": "npx tsc",
     "start": "node ./bin/gherkin-ai.js",
     "dev": "npx tsc --watch",
-    "test": "npx ts-node tests/parser.test.ts",
+    "test": "vitest run",
     "prepublishOnly": "npm run build",
     "publish:beta": "npm run build && npm publish --tag beta",
     "publish:prod": "npm run build && npm publish"
@@ -76,6 +76,7 @@
     "@types/inquirer": "^8.2.10",
     "@types/node": "^20.14.0",
     "ts-node": "^10.9.2",
-    "typescript": "^5.4.5"
+    "typescript": "^5.4.5",
+    "vitest": "^4.1.11"
   }
 }

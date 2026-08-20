@@ -16,6 +16,7 @@ import { handleVerifyCommand } from './commands/verify';
 import { handleContextCommand } from './commands/context';
 import { handleQualityCommand } from './commands/quality';
 import { handleAutopilotCommand } from './commands/autopilot';
+import { handleDiffCommand } from './commands/diff';
 
 // Dynamic version from package.json
 const pkg = require('../package.json');
@@ -84,6 +85,12 @@ program
     await handleAutopilotCommand(options);
   });
 
+program
+  .command('diff')
+  .description('Run Drift Detection to ensure code DTOs match Gherkin specs')
+  .option('-f, --feature <file>', 'Gherkin feature file source of truth')
+  .option('-t, --target <file>', 'Target source code file (e.g. DTO or Contract)')
+  .action(handleDiffCommand);
 
 program
   .command('lang')
