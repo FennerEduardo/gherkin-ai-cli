@@ -182,4 +182,10 @@ program.action(async (options) => {
   }
 });
 
-program.parse(process.argv);
+async function bootstrap() {
+  const { resolveWorkspaceDirectory } = await import('./utils/workspace-detector');
+  await resolveWorkspaceDirectory();
+  program.parse(process.argv);
+}
+
+bootstrap();

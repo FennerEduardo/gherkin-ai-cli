@@ -8,6 +8,7 @@ import { getArchRule } from '../core/arch-rules';
 import { parseGherkinText } from '../core/gherkin-parser';
 import { fileExistsSync, readFileSync } from '../utils/file-system';
 import { logger } from '../utils/logger';
+import { Project } from 'ts-morph';
 
 export async function handleValidateCommand(options: { feature?: string; config?: string }): Promise<void> {
   logger.banner();
@@ -48,25 +49,33 @@ export async function handleValidateCommand(options: { feature?: string; config?
     }
   }
 
-  // 2. Contracts & Layer Boundary Verification
-  const contractsPath = path.join(config.outputDir, 'contracts.ts');
-  if (fileExistsSync(contractsPath)) {
-    const contractsContent = readFileSync(contractsPath);
+  // 2. Contracts & Layer Boundary Verification via AST (ts-morph)
+  const tsProject = new Project();
+  const outputDirGlob = path.posix.join(config.outputDir.replace(/\\/g, '/'), '**/*.ts');
+  const sourceFiles = tsProject.addSourceFilesAtPaths(outputDirGlob);
+
+  if (sourceFiles.length > 0) {
     let prohibitedFound = false;
 
-    arch.prohibitedImports.forEach(imp => {
-      if (contractsContent.includes(`from '${imp}'`) || contractsContent.includes(`require('${imp}')`)) {
-        logger.error(`Layer Boundary Violation: Core contract imports prohibited library "${imp}"`);
-        errorsCount++;
-        prohibitedFound = true;
+    for (const sourceFile of sourceFiles) {
+      const imports = sourceFile.getImportDeclarations();
+      for (const importDecl of imports) {
+        const moduleSpecifier = importDecl.getModuleSpecifierValue();
+        arch.prohibitedImports.forEach(imp => {
+          if (moduleSpecifier === imp || moduleSpecifier.startsWith(`${imp}/`)) {
+            logger.error(`Layer Boundary Violation: ${sourceFile.getBaseName()} imports prohibited library "${imp}"`);
+            errorsCount++;
+            prohibitedFound = true;
+          }
+        });
       }
-    });
+    }
 
     if (!prohibitedFound) {
-      logger.success(`Layer Boundary Check: Core contracts isolate domain logic cleanly from ${arch.prohibitedImports.join(', ')}.`);
+      logger.success(`Layer Boundary Check: ${sourceFiles.length} files scanned via AST. Core cleanly isolates domain from ${arch.prohibitedImports.join(', ')}.`);
     }
   } else {
-    logger.warn(`No contracts.ts found under ${config.outputDir}. Run "npx gherkin-ai generate" first.`);
+    logger.warn(`No .ts files found under ${config.outputDir}. Run "npx gherkin-ai generate" first.`);
     warningsCount++;
   }
 

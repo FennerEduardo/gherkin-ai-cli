@@ -141,6 +141,19 @@ export function detectExistingStack(rootDir: string = process.cwd()): GherkinAIC
 
       if (pkg.name) detected.projectName = pkg.name;
 
+      // Monorepo / Workspaces Detection
+      if (pkg.workspaces || fileExistsSync(path.join(rootDir, 'nx.json')) || fileExistsSync(path.join(rootDir, 'lerna.json')) || fileExistsSync(path.join(rootDir, 'pnpm-workspace.yaml'))) {
+        detected.projectMode = 'monorepo';
+        detected.architecture = 'monorepo-workspaces';
+      }
+
+      // Deep Dependencies (Message Brokers, API Protocols)
+      if (allDeps['graphql'] || allDeps['@apollo/server']) detected.stack.language += ' + GraphQL';
+      if (allDeps['kafkajs']) detected.stack.messaging = 'kafka';
+      if (allDeps['amqplib']) detected.stack.messaging = 'rabbitmq';
+      if (allDeps['@grpc/grpc-js']) detected.stack.language += ' + gRPC';
+
+
       // Language Detection (TypeScript if angular, tsconfig or typescript dep exists)
       if (allDeps['typescript'] || fileExistsSync(path.join(rootDir, 'tsconfig.json')) || fileExistsSync(angularJsonPath) || allDeps['@angular/core']) {
         detected.stack.language = 'typescript';

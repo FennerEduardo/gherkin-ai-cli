@@ -7,8 +7,8 @@ import { fileExistsSync, readFileSync, writeFileSync } from '../utils/file-syste
 
 export interface GherkinAIConfig {
   projectName: string;
-  projectMode?: 'greenfield' | 'brownfield';
-  architecture: 'ddd' | 'hexagonal' | 'clean' | 'cqrs' | 'microservices' | 'monolith' | 'modular' | 'api-rest' | 'serverless' | 'event-driven';
+  projectMode?: 'greenfield' | 'brownfield' | 'monorepo';
+  architecture: 'ddd' | 'hexagonal' | 'clean' | 'cqrs' | 'microservices' | 'monolith' | 'modular' | 'api-rest' | 'serverless' | 'event-driven' | 'monorepo-workspaces';
   stack: {
     language: string;
     framework: string;

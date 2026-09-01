@@ -11,6 +11,8 @@ import { generatePrompts } from '../generators/prompts';
 import { generateInfra } from '../generators/infra';
 import { fileExistsSync, readFileSync, writeFileSync } from '../utils/file-system';
 import { logger } from '../utils/logger';
+import inquirer from 'inquirer';
+import chalk from 'chalk';
 
 const DEFAULT_SAMPLE_GHERKIN = `Feature: User Authentication & Token Issuance
   As a registered user
@@ -67,12 +69,47 @@ export async function handleGenerateCommand(options: { feature?: string; config?
   writeFileSync(path.join(config.outputDir, 'seed.sql'), seedSql);
   logger.success('Generated fixtures.ts and seed.sql');
 
-  // 3. Generate Agent Prompts
-  const prompts = generatePrompts(parsed, config);
-  Object.keys(prompts).forEach(filename => {
-    writeFileSync(path.join(config.outputDir, 'prompts', filename), prompts[filename]);
-  });
-  logger.success('Generated domain, backend, and QA prompt markdown files in prompts/');
+  console.log(chalk.bold.cyan('\n🔍 Context Confirmation for AI Agents:'));
+  console.log(`- Architecture: ${config.architecture}`);
+  console.log(`- Stack: ${config.stack.language} + ${config.stack.framework}`);
+  console.log(`- Persistence: ${config.stack.orm} + ${config.stack.database}`);
+  console.log(`- Tools: ${config.stack.testing} (Testing), ${config.stack.validation} (Validation)`);
+
+  const { confirmContext } = await inquirer.prompt([{
+    type: 'confirm',
+    name: 'confirmContext',
+    message: 'Is this technical context correct for the agent prompts?',
+    default: true
+  }]);
+
+  if (!confirmContext) {
+    logger.warn('Context rejected. Please update gherkin-ai.config.json or run `ghk detect` and run again.');
+    process.exit(1);
+  }
+
+  const { selectedAgents } = await inquirer.prompt([{
+    type: 'checkbox',
+    name: 'selectedAgents',
+    message: 'Which Agent Prompts do you want to generate?',
+    choices: [
+      { name: 'Domain Architect Agent', value: 'domain-agent.md', checked: true },
+      { name: 'Backend Developer Agent', value: 'backend-agent.md', checked: true },
+      { name: 'QA Automation Agent', value: 'qa-agent.md', checked: true }
+    ]
+  }]);
+
+  if (selectedAgents.length > 0) {
+    // 3. Generate Agent Prompts
+    const prompts = generatePrompts(parsed, config);
+    selectedAgents.forEach((filename: string) => {
+      if (prompts[filename]) {
+        writeFileSync(path.join(config.outputDir, 'prompts', filename), prompts[filename]);
+      }
+    });
+    logger.success(`Generated selected prompts in prompts/: ${selectedAgents.join(', ')}`);
+  } else {
+    logger.warn('No agents selected. Skipping prompt generation.');
+  }
 
   // 4. Generate Infrastructure Config
   const { dockerComposeYaml, serverlessYml, envExample } = generateInfra(config);

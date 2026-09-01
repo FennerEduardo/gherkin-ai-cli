@@ -25,7 +25,8 @@ export interface SandboxResult {
 
 export function executeSandbox(options: SandboxExecutionOptions = {}): SandboxResult {
   const cwd = options.cwd || process.cwd();
-  const timeout = options.timeoutMs || 120000;
+  // Use a longer default timeout for large projects (300000 = 5 mins)
+  const timeout = options.timeoutMs || 300000;
   const startTime = Date.now();
 
   let commandToRun = options.command || detectDefaultTestCommand(cwd);
@@ -65,10 +66,35 @@ export function executeSandbox(options: SandboxExecutionOptions = {}): SandboxRe
 }
 
 export function detectDefaultTestCommand(projectDir: string): string {
+  // Advanced Test Runner Detection for Large Projects
+  if (fs.existsSync(path.join(projectDir, 'jest.config.js')) || fs.existsSync(path.join(projectDir, 'jest.config.ts'))) {
+    return 'npx jest';
+  }
+  if (fs.existsSync(path.join(projectDir, 'vitest.config.ts'))) {
+    return 'npx vitest run';
+  }
+  if (fs.existsSync(path.join(projectDir, 'playwright.config.ts'))) {
+    return 'npx playwright test';
+  }
+
   const pkgPath = path.join(projectDir, 'package.json');
   if (fs.existsSync(pkgPath)) {
     try {
       const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+      let baseCmd = pkg.scripts?.test ? 'npm test' : 'npx jest';
+      
+      // Setup phase detection (e.g., db seed or push)
+      if (pkg.scripts?.['db:push'] || pkg.scripts?.['db:seed'] || pkg.scripts?.['test:setup']) {
+        const setups = [];
+        if (pkg.scripts['db:push']) setups.push('npm run db:push');
+        if (pkg.scripts['db:seed']) setups.push('npm run db:seed');
+        if (pkg.scripts['test:setup']) setups.push('npm run test:setup');
+        
+        if (setups.length > 0) {
+          return `${setups.join(' && ')} && ${baseCmd}`;
+        }
+      }
+
       if (pkg.scripts?.test) return 'npm test';
     } catch (_) {}
   }
