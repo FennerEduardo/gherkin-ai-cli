@@ -74,6 +74,9 @@ export async function handleGenerateCommand(options: { feature?: string; config?
   console.log(`- Stack: ${config.stack.language} + ${config.stack.framework}`);
   console.log(`- Persistence: ${config.stack.orm} + ${config.stack.database}`);
   console.log(`- Tools: ${config.stack.testing} (Testing), ${config.stack.validation} (Validation)`);
+  if (config.stack.aiEngine) {
+    console.log(`- AI Tools: ${config.stack.aiEngine}`);
+  }
 
   const { confirmContext } = await inquirer.prompt([{
     type: 'confirm',
@@ -87,15 +90,21 @@ export async function handleGenerateCommand(options: { feature?: string; config?
     process.exit(1);
   }
 
+  const agentChoices = [
+    { name: 'Domain Architect Agent', value: 'domain-agent.md', checked: true },
+    { name: 'Backend Developer Agent', value: 'backend-agent.md', checked: true },
+    { name: 'QA Automation Agent', value: 'qa-agent.md', checked: true }
+  ];
+  
+  if (config.stack.aiEngine) {
+    agentChoices.push({ name: 'AI Engineer Agent (RAG/VectorDB)', value: 'ai-engineer-agent.md', checked: true });
+  }
+
   const { selectedAgents } = await inquirer.prompt([{
     type: 'checkbox',
     name: 'selectedAgents',
     message: 'Which Agent Prompts do you want to generate?',
-    choices: [
-      { name: 'Domain Architect Agent', value: 'domain-agent.md', checked: true },
-      { name: 'Backend Developer Agent', value: 'backend-agent.md', checked: true },
-      { name: 'QA Automation Agent', value: 'qa-agent.md', checked: true }
-    ]
+    choices: agentChoices
   }]);
 
   if (selectedAgents.length > 0) {

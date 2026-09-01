@@ -30,6 +30,9 @@ export function detectExistingStack(rootDir: string = process.cwd()): GherkinAIC
   const angularJsonPath = path.join(rootDir, 'angular.json');
   const pubspecPath = path.join(rootDir, 'pubspec.yaml');
   const packageJsonPath = path.join(rootDir, 'package.json');
+  const cargoTomlPath = path.join(rootDir, 'Cargo.toml');
+  const swiftPackage = path.join(rootDir, 'Package.swift');
+  const xcodeProj = path.join(rootDir, 'project.pbxproj');
 
   // 1. Ruby on Rails Stack Detection
   if (fileExistsSync(gemfilePath)) {
@@ -109,7 +112,14 @@ export function detectExistingStack(rootDir: string = process.cwd()): GherkinAIC
       detected.stack.orm = 'django-orm';
       detected.stack.validation = 'django-forms';
     } else {
-      detected.stack.framework = 'fastapi';
+      try {
+        const reqContent = readFileSync(reqTxtPath);
+        if (reqContent.includes('flask')) detected.stack.framework = 'flask';
+        else detected.stack.framework = 'fastapi';
+        if (reqContent.includes('langchain') || reqContent.includes('llama-index')) detected.stack.aiEngine = 'langchain';
+      } catch {
+        detected.stack.framework = 'fastapi';
+      }
       detected.stack.orm = 'sqlalchemy';
       detected.stack.validation = 'pydantic';
     }
@@ -117,11 +127,37 @@ export function detectExistingStack(rootDir: string = process.cwd()): GherkinAIC
   // 6. Go Stack Detection
   else if (fileExistsSync(goModPath)) {
     detected.stack.language = 'go';
-    detected.stack.framework = 'gin';
     detected.stack.orm = 'gorm';
     detected.stack.database = 'postgresql';
     detected.stack.validation = 'validator-v10';
     detected.stack.testing = 'testing';
+    
+    try {
+      const modContent = readFileSync(goModPath);
+      if (modContent.includes('github.com/gofiber/fiber')) detected.stack.framework = 'fiber';
+      else if (modContent.includes('github.com/labstack/echo')) detected.stack.framework = 'echo';
+      else detected.stack.framework = 'gin';
+    } catch {
+      detected.stack.framework = 'gin';
+    }
+  }
+  // 6.5. Rust Stack Detection
+  else if (fileExistsSync(cargoTomlPath)) {
+    detected.stack.language = 'rust';
+    detected.stack.framework = 'axum';
+    detected.stack.orm = 'diesel-or-sqlx';
+    detected.stack.database = 'postgresql';
+    detected.stack.testing = 'cargo-test';
+    
+    try {
+      const tomlContent = readFileSync(cargoTomlPath);
+      if (tomlContent.includes('actix-web')) detected.stack.framework = 'actix-web';
+      if (tomlContent.includes('rocket')) detected.stack.framework = 'rocket';
+      if (tomlContent.includes('tauri')) {
+        detected.stack.framework = 'tauri';
+        detected.architecture = 'desktop';
+      }
+    } catch {}
   }
   // 7. Java / Kotlin Stack Detection
   else if (fileExistsSync(pomXmlPath) || fileExistsSync(buildGradlePath)) {
@@ -131,6 +167,27 @@ export function detectExistingStack(rootDir: string = process.cwd()): GherkinAIC
     detected.stack.database = 'postgresql';
     detected.stack.validation = 'jakarta-validation';
     detected.stack.testing = 'junit';
+    
+    try {
+      const gradleContent = fileExistsSync(buildGradlePath) ? readFileSync(buildGradlePath) : '';
+      if (gradleContent.includes('org.jetbrains.kotlin')) {
+        detected.stack.language = 'kotlin';
+      }
+      if (gradleContent.includes('com.android.application')) {
+        detected.stack.framework = 'android-native';
+        detected.architecture = 'modular';
+        detected.outputDir = './app/src/main/java';
+      }
+    } catch {}
+  }
+  // 7.5. Swift / iOS Detection
+  else if (fileExistsSync(swiftPackage) || fileExistsSync(xcodeProj)) {
+    detected.stack.language = 'swift';
+    detected.stack.framework = 'ios-native';
+    detected.stack.orm = 'core-data';
+    detected.stack.database = 'sqlite';
+    detected.architecture = 'modular';
+    detected.outputDir = './';
   }
   // 8. Node.js / Frontend / Ionic / Angular / React / Vue Stack Detection
   else if (fileExistsSync(packageJsonPath)) {
@@ -147,12 +204,14 @@ export function detectExistingStack(rootDir: string = process.cwd()): GherkinAIC
         detected.architecture = 'monorepo-workspaces';
       }
 
-      // Deep Dependencies (Message Brokers, API Protocols)
+      // Deep Dependencies (Message Brokers, API Protocols, AI)
       if (allDeps['graphql'] || allDeps['@apollo/server']) detected.stack.language += ' + GraphQL';
       if (allDeps['kafkajs']) detected.stack.messaging = 'kafka';
       if (allDeps['amqplib']) detected.stack.messaging = 'rabbitmq';
       if (allDeps['@grpc/grpc-js']) detected.stack.language += ' + gRPC';
-
+      if (allDeps['langchain'] || allDeps['pinecone-client'] || allDeps['@pinecone-database/pinecone']) {
+        detected.stack.aiEngine = 'langchain-pinecone';
+      }
 
       // Language Detection (TypeScript if angular, tsconfig or typescript dep exists)
       if (allDeps['typescript'] || fileExistsSync(path.join(rootDir, 'tsconfig.json')) || fileExistsSync(angularJsonPath) || allDeps['@angular/core']) {
@@ -184,6 +243,11 @@ export function detectExistingStack(rootDir: string = process.cwd()): GherkinAIC
         detected.stack.testing = 'jest';
         detected.architecture = 'modular';
       }
+      // Electron Desktop
+      else if (allDeps['electron']) {
+        detected.stack.framework = 'electron';
+        detected.architecture = 'desktop';
+      }
       // React / Next.js Frontend
       else if (allDeps['react'] || allDeps['next']) {
         detected.stack.framework = allDeps['next'] ? 'nextjs' : 'react';
@@ -200,12 +264,24 @@ export function detectExistingStack(rootDir: string = process.cwd()): GherkinAIC
         detected.stack.validation = 'vee-validate';
         detected.stack.testing = 'vitest';
       }
+      // Svelte / Astro / Solid Frontend
+      else if (allDeps['svelte'] || allDeps['astro'] || allDeps['solid-js']) {
+        detected.stack.framework = allDeps['svelte'] ? 'svelte' : (allDeps['astro'] ? 'astro' : 'solid-js');
+        detected.stack.orm = 'fetch-api';
+        detected.stack.validation = 'zod';
+        detected.stack.testing = 'vitest';
+      }
       // Node.js Backend Frameworks (NestJS, Express, Fastify)
       else if (allDeps['@nestjs/core']) {
         detected.stack.framework = 'nestjs';
         detected.stack.orm = allDeps['prisma'] ? 'prisma' : 'typeorm';
         detected.stack.validation = 'zod';
         detected.stack.testing = 'jest';
+      } else if (allDeps['fastify']) {
+        detected.stack.framework = 'fastify';
+        detected.stack.orm = allDeps['prisma'] ? 'prisma' : 'drizzle';
+        detected.stack.validation = 'zod';
+        detected.stack.testing = 'vitest';
       } else if (allDeps['express']) {
         detected.stack.framework = 'express';
         detected.stack.orm = allDeps['prisma'] ? 'prisma' : 'sequelize';

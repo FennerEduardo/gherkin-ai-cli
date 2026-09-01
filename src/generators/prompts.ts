@@ -25,9 +25,15 @@ export function generatePrompts(parsed: ParsedFeature, config: GherkinAIConfig):
 
   const template = resolvePromptTemplate(config);
 
-  return {
+  const result: Record<string, string> = {
     'domain-agent.md': template.generateDomainAgent(ctx),
     'backend-agent.md': template.generateBackendAgent(ctx),
     'qa-agent.md': template.generateQaAgent(ctx)
   };
+
+  if (template.generateAiAgent && config.stack.aiEngine) {
+    result['ai-engineer-agent.md'] = template.generateAiAgent(ctx);
+  }
+
+  return result;
 }

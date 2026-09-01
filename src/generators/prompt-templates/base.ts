@@ -17,6 +17,7 @@ export interface PromptTemplate {
   generateDomainAgent: (ctx: PromptTemplateContext) => string;
   generateBackendAgent: (ctx: PromptTemplateContext) => string;
   generateQaAgent: (ctx: PromptTemplateContext) => string;
+  generateAiAgent?: (ctx: PromptTemplateContext) => string;
 }
 
 export function buildCommonHeader(role: string, objective: string, ctx: PromptTemplateContext): string {
