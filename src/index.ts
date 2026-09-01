@@ -17,6 +17,8 @@ import { handleContextCommand } from './commands/context';
 import { handleQualityCommand } from './commands/quality';
 import { handleAutopilotCommand } from './commands/autopilot';
 import { handleDiffCommand } from './commands/diff';
+import { handleSkillCommand } from './commands/skill';
+import { handleWebCommand } from './commands/web';
 
 // Dynamic version from package.json
 const pkg = require('../package.json');
@@ -163,6 +165,24 @@ program
   .option('-o, --output <file>', 'Output destination file path')
   .action(async (options) => {
     await handleExportCommand(options);
+  });
+
+program
+  .command('skill')
+  .alias('s')
+  .description('Configure Gherkin AI as a native tool/skill for AI IDEs like Cursor and Windsurf')
+  .action(async () => {
+    await handleSkillCommand();
+  });
+
+program
+  .command('web')
+  .alias('w')
+  .alias('ui')
+  .description('Launch local Web UI Server to visually guide the generation process')
+  .option('-p, --port <number>', 'Port to run the web server on')
+  .action(async (options) => {
+    await handleWebCommand(options);
   });
 
 // Action fallback for root flags (--init, --create, --generate, --validate, --detect)
