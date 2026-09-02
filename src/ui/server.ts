@@ -13,6 +13,7 @@ import { generatePrompts } from '../generators/prompts';
 import { parseGherkinText } from '../core/gherkin-parser';
 import { loadConfig, saveConfig } from '../core/config';
 import { RealAgentProvider, LLMConfig } from '../core/agent-adapter';
+import { exec } from 'child_process';
 
 export function startWebServer(port: number): void {
   const app = express();
@@ -145,6 +146,63 @@ export function startWebServer(port: number): void {
       });
       
       res.json({ success: true, suggestion: result.agentResponse });
+    } catch (err) {
+      res.status(500).json({ success: false, error: (err as Error).message });
+    }
+  });
+
+  // API: Get Directory Tree
+  app.get('/api/tree', (req, res) => {
+    try {
+      const buildTree = (dirPath: string): any => {
+        const result: any = { name: path.basename(dirPath), type: 'dir', children: [] };
+        const items = fs.readdirSync(dirPath);
+        for (const item of items) {
+          if (['node_modules', '.git', 'dist'].includes(item)) continue;
+          
+          const fullPath = path.join(dirPath, item);
+          const stat = fs.statSync(fullPath);
+          if (stat.isDirectory()) {
+            result.children.push(buildTree(fullPath));
+          } else {
+            result.children.push({ name: item, type: 'file' });
+          }
+        }
+        return result;
+      };
+      
+      const tree = buildTree(process.cwd());
+      res.json({ success: true, tree });
+    } catch (err) {
+      res.status(500).json({ success: false, error: (err as Error).message });
+    }
+  });
+
+  // API: Execute CLI Command
+  app.post('/api/execute', (req, res) => {
+    try {
+      const { command } = req.body;
+      if (!command) {
+        return res.status(400).json({ success: false, error: 'Command is required' });
+      }
+
+      // Ensure it's a ghk command
+      let safeCmd = command.trim();
+      if (safeCmd.startsWith('ghk ')) {
+        safeCmd = safeCmd.replace('ghk ', '');
+      }
+      
+      const cliPath = path.resolve(__dirname, '../../dist/index.js');
+      const fullCmd = `node "${cliPath}" ${safeCmd}`;
+
+      exec(fullCmd, { cwd: process.cwd() }, (error, stdout, stderr) => {
+        res.json({ 
+          success: !error, 
+          output: stdout || '', 
+          errorOutput: stderr || '', 
+          error: error ? error.message : null 
+        });
+      });
     } catch (err) {
       res.status(500).json({ success: false, error: (err as Error).message });
     }

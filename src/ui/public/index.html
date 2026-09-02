@@ -11,99 +11,136 @@
         .glass-panel { background: rgba(30, 41, 59, 0.7); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 12px; }
         .code-bg { background-color: #1e293b; color: #38bdf8; font-family: monospace; }
         .gradient-text { background: linear-gradient(to right, #38bdf8, #818cf8); -webkit-background-clip: text; color: transparent; }
+        .terminal-output { white-space: pre-wrap; font-family: monospace; font-size: 0.85rem; }
     </style>
 </head>
 <body class="h-screen flex flex-col p-4 overflow-hidden">
+    <!-- Header -->
     <header class="flex justify-between items-center mb-4 glass-panel p-3 px-6 shadow-lg shrink-0">
-        <h1 class="text-2xl font-bold gradient-text flex items-center gap-3">
-            <i class="fa-solid fa-robot"></i> Gherkin AI Studio
-        </h1>
-        <div id="stack-badge" class="hidden items-center gap-2 px-3 py-1 bg-indigo-900/50 text-indigo-200 border border-indigo-700/50 rounded-full text-sm font-medium">
-            <i class="fa-solid fa-layer-group"></i> <span id="stack-name">Detecting...</span>
+        <div class="flex items-center gap-4">
+            <h1 class="text-2xl font-bold gradient-text flex items-center gap-3">
+                <i class="fa-solid fa-robot"></i> <span data-i18n="title">Gherkin AI Studio</span>
+            </h1>
+            <div id="stack-badge" class="hidden items-center gap-2 px-3 py-1 bg-indigo-900/50 text-indigo-200 border border-indigo-700/50 rounded-full text-sm font-medium">
+                <i class="fa-solid fa-layer-group"></i> <span id="stack-name">Detecting...</span>
+            </div>
+        </div>
+        <div class="flex items-center gap-3">
+            <button id="lang-toggle" class="bg-slate-700 hover:bg-slate-600 px-3 py-1 rounded text-sm transition-colors border border-slate-500">
+                🌐 EN/ES
+            </button>
         </div>
     </header>
 
-    <div class="flex flex-1 gap-4 overflow-hidden">
+    <div class="flex flex-1 gap-4 overflow-hidden mb-2">
         <!-- Sidebar -->
-        <aside class="w-64 glass-panel flex flex-col shadow-xl overflow-hidden">
-            <div class="p-4 border-b border-slate-700 flex justify-between items-center">
-                <h3 class="font-semibold text-slate-300"><i class="fa-solid fa-list"></i> Features</h3>
-                <button id="new-feature-btn" class="text-sky-400 hover:text-sky-300 text-sm" title="New Feature">
-                    <i class="fa-solid fa-plus"></i>
-                </button>
+        <aside class="w-72 glass-panel flex flex-col shadow-xl overflow-hidden">
+            <div class="flex border-b border-slate-700 shrink-0">
+                <button id="tab-sidebar-features" class="flex-1 py-2 text-center text-sky-400 text-sm font-semibold border-b-2 border-sky-400 bg-slate-800/50" data-i18n="features">Features</button>
+                <button id="tab-sidebar-explorer" class="flex-1 py-2 text-center text-slate-400 text-sm font-semibold hover:text-slate-300" data-i18n="explorer">Explorer</button>
             </div>
-            <ul id="features-list" class="flex-1 overflow-y-auto p-2 space-y-1">
-                <!-- Features populated by JS -->
-            </ul>
+            
+            <!-- Features List -->
+            <div id="sidebar-features-view" class="flex-1 flex flex-col overflow-hidden">
+                <div class="p-2 border-b border-slate-700 flex justify-end">
+                    <button id="new-feature-btn" class="text-sky-400 hover:text-sky-300 text-sm" title="New Feature">
+                        <i class="fa-solid fa-plus"></i> <span data-i18n="newBtn">New</span>
+                    </button>
+                </div>
+                <ul id="features-list" class="flex-1 overflow-y-auto p-2 space-y-1"></ul>
+            </div>
+
+            <!-- Explorer List -->
+            <div id="sidebar-explorer-view" class="hidden flex-1 flex flex-col overflow-y-auto p-2">
+                <ul id="explorer-tree" class="text-sm space-y-1 text-slate-300"></ul>
+            </div>
         </aside>
 
         <!-- Main Editor -->
         <main class="flex-1 grid grid-cols-1 lg:grid-cols-2 gap-4 overflow-hidden">
             <!-- Editor Section -->
             <section class="glass-panel p-4 flex flex-col shadow-xl overflow-hidden">
-                <h2 class="text-xl font-semibold mb-3 text-sky-400 border-b border-slate-700 pb-2 flex justify-between">
-                    <span><i class="fa-regular fa-file-code"></i> Feature Specification</span>
-                    <button id="ask-agent-btn" class="text-sm bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1 rounded transition-colors">
-                        <i class="fa-solid fa-wand-magic-sparkles"></i> Ask Agent
-                    </button>
+                <h2 class="text-xl font-semibold mb-3 text-sky-400 border-b border-slate-700 pb-2 flex justify-between items-center">
+                    <span><i class="fa-regular fa-file-code"></i> <span data-i18n="featureSpec">Feature Specification</span></span>
                 </h2>
                 
                 <div class="mb-3 shrink-0">
-                    <label class="block text-sm font-medium text-slate-400 mb-1">Feature Name</label>
+                    <label class="block text-sm font-medium text-slate-400 mb-1" data-i18n="featureNameLabel">Feature Name</label>
                     <input type="text" id="feature-name" placeholder="e.g. User Authentication" class="w-full bg-slate-800 border border-slate-600 rounded-md p-2 text-white focus:outline-none focus:ring-2 focus:ring-sky-500">
                 </div>
                 <div class="flex-1 flex flex-col min-h-0">
-                    <label class="block text-sm font-medium text-slate-400 mb-1">Gherkin Scenarios</label>
+                    <label class="block text-sm font-medium text-slate-400 mb-1" data-i18n="gherkinScenariosLabel">Gherkin Scenarios</label>
                     <textarea id="gherkin-text" class="w-full flex-1 bg-slate-900 border border-slate-700 rounded-md p-3 text-sky-100 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-sky-500 resize-none" placeholder="Feature: Example Feature..."></textarea>
                 </div>
                 <button id="generate-btn" class="mt-4 shrink-0 w-full py-2 bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 text-white font-bold rounded-lg shadow-lg shadow-sky-500/20 transition-all flex justify-center items-center gap-2">
-                    <i class="fa-solid fa-cogs"></i> Generate Contracts
+                    <i class="fa-solid fa-cogs"></i> <span data-i18n="generateBtn">Generate Contracts</span>
                 </button>
             </section>
 
-            <!-- Results & Agent Section -->
+            <!-- Results, Terminal, Agent Section -->
             <section class="glass-panel flex flex-col shadow-xl overflow-hidden">
                 
                 <!-- Tabs -->
-                <div class="flex border-b border-slate-700 shrink-0">
-                    <button id="tab-results" class="flex-1 py-3 text-center text-sky-400 font-semibold border-b-2 border-sky-400 bg-slate-800/50">Generation Results</button>
-                    <button id="tab-agent" class="flex-1 py-3 text-center text-slate-400 font-semibold hover:text-slate-300">Agent Suggestions</button>
+                <div class="flex border-b border-slate-700 shrink-0 text-sm">
+                    <button id="tab-results" class="flex-1 py-3 text-center text-sky-400 font-semibold border-b-2 border-sky-400 bg-slate-800/50" data-i18n="tabResults">Generation</button>
+                    <button id="tab-terminal" class="flex-1 py-3 text-center text-slate-400 font-semibold hover:text-slate-300" data-i18n="tabTerminal">Terminal</button>
+                    <button id="tab-agent" class="flex-1 py-3 text-center text-slate-400 font-semibold hover:text-slate-300" data-i18n="tabAgent">Agent</button>
                 </div>
 
                 <!-- Results Content -->
                 <div id="results-view" class="flex-1 p-4 flex flex-col overflow-y-auto">
                     <div id="loading" class="hidden flex-1 flex-col justify-center items-center text-slate-400">
                         <i class="fa-solid fa-circle-notch fa-spin text-4xl mb-4 text-sky-500"></i>
-                        <p>Orchestrating agents...</p>
+                        <p data-i18n="loading">Orchestrating agents...</p>
                     </div>
 
                     <div id="results-empty" class="flex-1 flex flex-col justify-center items-center text-slate-500 text-center p-8">
                         <i class="fa-regular fa-folder-open text-6xl mb-4 opacity-50"></i>
-                        <p>Waiting for Gherkin specification.<br>Click Generate to see the results here.</p>
+                        <p data-i18n="resultsEmpty">Waiting for Gherkin specification.<br>Click Generate to see the results here.</p>
                     </div>
 
                     <div id="results-content" class="hidden flex-1 flex flex-col gap-4">
                         <div class="bg-emerald-900/30 border border-emerald-700/50 text-emerald-200 p-4 rounded-lg flex items-start gap-3">
                             <i class="fa-solid fa-check-circle mt-1"></i>
                             <div>
-                                <p class="font-bold">Generation Successful!</p>
+                                <p class="font-bold" data-i18n="genSuccess">Generation Successful!</p>
                                 <p class="text-sm opacity-80" id="success-path"></p>
                             </div>
                         </div>
-                        <h3 class="font-semibold text-slate-300 mt-2">Generated Files:</h3>
+                        <h3 class="font-semibold text-slate-300 mt-2" data-i18n="generatedFiles">Generated Files:</h3>
                         <div id="file-list" class="flex flex-col gap-2"></div>
+                    </div>
+                </div>
+
+                <!-- Terminal Content -->
+                <div id="terminal-view" class="hidden flex-1 p-2 flex flex-col bg-black overflow-hidden rounded-b-lg">
+                    <!-- Quick Actions -->
+                    <div class="flex flex-wrap gap-2 mb-2 shrink-0 p-1 border-b border-slate-800">
+                        <span class="text-slate-500 text-xs self-center mr-2 uppercase tracking-wide">Quick Run:</span>
+                        <button class="quick-cmd-btn bg-slate-800 hover:bg-slate-700 text-sky-400 border border-slate-700 px-2 py-1 rounded text-xs transition-colors" data-cmd="verify">verify</button>
+                        <button class="quick-cmd-btn bg-slate-800 hover:bg-slate-700 text-sky-400 border border-slate-700 px-2 py-1 rounded text-xs transition-colors" data-cmd="verify --auto-fix">verify --auto-fix</button>
+                        <button class="quick-cmd-btn bg-slate-800 hover:bg-slate-700 text-sky-400 border border-slate-700 px-2 py-1 rounded text-xs transition-colors" data-cmd="diff">diff</button>
+                        <button class="quick-cmd-btn bg-slate-800 hover:bg-slate-700 text-sky-400 border border-slate-700 px-2 py-1 rounded text-xs transition-colors" data-cmd="skill">skill</button>
+                        <button class="quick-cmd-btn bg-slate-800 hover:bg-slate-700 text-sky-400 border border-slate-700 px-2 py-1 rounded text-xs transition-colors" data-cmd="evaluate src/index.ts">evaluate</button>
+                    </div>
+                    <div id="terminal-output" class="flex-1 overflow-y-auto terminal-output text-slate-300 p-2 space-y-2">
+                        <div class="text-green-500">Gherkin AI CLI Terminal (Restricted to ghk commands)</div>
+                    </div>
+                    <div class="flex gap-2 shrink-0 p-2 border-t border-slate-800 items-center">
+                        <span class="text-green-500 font-bold">❯</span>
+                        <input type="text" id="terminal-input" placeholder="ghk --help" data-i18n-placeholder="terminalPlaceholder" class="flex-1 bg-transparent border-none text-white focus:outline-none font-mono text-sm">
                     </div>
                 </div>
 
                 <!-- Agent Chat Content -->
                 <div id="agent-view" class="hidden flex-1 p-4 flex flex-col">
                     <div id="chat-history" class="flex-1 overflow-y-auto space-y-4 mb-4">
-                        <div class="bg-indigo-900/30 border border-indigo-700/50 p-3 rounded-lg text-sm text-indigo-100">
+                        <div class="bg-indigo-900/30 border border-indigo-700/50 p-3 rounded-lg text-sm text-indigo-100" data-i18n="agentGreeting">
                             Hi! I'm your Gherkin AI assistant. Ask me to suggest test scenarios, review your specs, or write step definitions!
                         </div>
                     </div>
                     <div class="flex gap-2 shrink-0">
-                        <input type="text" id="agent-prompt" placeholder="Ask for suggestions..." class="flex-1 bg-slate-800 border border-slate-600 rounded-md p-2 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm">
+                        <input type="text" id="agent-prompt" placeholder="Ask for suggestions..." data-i18n-placeholder="askAgentPlaceholder" class="flex-1 bg-slate-800 border border-slate-600 rounded-md p-2 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm">
                         <button id="send-agent-btn" class="bg-indigo-600 hover:bg-indigo-500 text-white px-4 rounded-md transition-colors">
                             <i class="fa-solid fa-paper-plane"></i>
                         </button>
@@ -114,8 +151,82 @@
         </main>
     </div>
 
+    <footer class="text-center text-slate-500 text-sm py-2 shrink-0" data-i18n="footerHtml">
+        Created by <a href="https://fennereduardo.com" target="_blank" class="text-sky-400 hover:underline">fennereduardo.com</a>
+    </footer>
+
     <script>
+        // --- i18n logic ---
+        const dict = {
+            en: {
+                title: 'Gherkin AI Studio',
+                features: 'Features',
+                explorer: 'Explorer',
+                newBtn: 'New',
+                featureSpec: 'Feature Specification',
+                featureNameLabel: 'Feature Name',
+                gherkinScenariosLabel: 'Gherkin Scenarios',
+                generateBtn: 'Generate Contracts',
+                tabResults: 'Generation',
+                tabTerminal: 'Terminal',
+                tabAgent: 'Agent',
+                loading: 'Orchestrating agents...',
+                resultsEmpty: 'Waiting for Gherkin specification.<br>Click Generate to see the results here.',
+                genSuccess: 'Generation Successful!',
+                generatedFiles: 'Generated Files:',
+                agentGreeting: "Hi! I'm your Gherkin AI assistant. Ask me to suggest test scenarios, review your specs, or write step definitions!",
+                askAgentPlaceholder: 'Ask for suggestions...',
+                terminalPlaceholder: 'Type a ghk command and press Enter...',
+                footerHtml: 'Created by <a href="https://fennereduardo.com" target="_blank" class="text-sky-400 hover:underline">fennereduardo.com</a>'
+            },
+            es: {
+                title: 'Gherkin AI Studio',
+                features: 'Características',
+                explorer: 'Explorador',
+                newBtn: 'Nuevo',
+                featureSpec: 'Especificación del Feature',
+                featureNameLabel: 'Nombre del Feature',
+                gherkinScenariosLabel: 'Escenarios Gherkin',
+                generateBtn: 'Generar Contratos',
+                tabResults: 'Generación',
+                tabTerminal: 'Terminal',
+                tabAgent: 'Agente',
+                loading: 'Orquestando agentes...',
+                resultsEmpty: 'Esperando especificación Gherkin.<br>Haz clic en Generar para ver los resultados aquí.',
+                genSuccess: '¡Generación Exitosa!',
+                generatedFiles: 'Archivos Generados:',
+                agentGreeting: "¡Hola! Soy tu asistente de Gherkin AI. Pídeme que sugiera escenarios de prueba, revise tus specs o escriba definiciones de pasos.",
+                askAgentPlaceholder: 'Pide sugerencias...',
+                terminalPlaceholder: 'Escribe un comando ghk y presiona Enter...',
+                footerHtml: 'Creado por <a href="https://fennereduardo.com" target="_blank" class="text-sky-400 hover:underline">fennereduardo.com</a>'
+            }
+        };
+
+        let currentLang = 'en';
+
+        function updateLang() {
+            document.querySelectorAll('[data-i18n]').forEach(el => {
+                const key = el.getAttribute('data-i18n');
+                if (dict[currentLang][key]) {
+                    el.innerHTML = dict[currentLang][key];
+                }
+            });
+            document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
+                const key = el.getAttribute('data-i18n-placeholder');
+                if (dict[currentLang][key]) {
+                    el.placeholder = dict[currentLang][key];
+                }
+            });
+        }
+
+        document.getElementById('lang-toggle').addEventListener('click', () => {
+            currentLang = currentLang === 'en' ? 'es' : 'en';
+            updateLang();
+        });
+
         document.addEventListener('DOMContentLoaded', async () => {
+            updateLang(); // Init text
+
             // Fetch Stack
             try {
                 const res = await fetch('/api/stack');
@@ -163,37 +274,94 @@
                 document.getElementById('gherkin-text').value = '';
             });
 
+            // Load Explorer Tree
+            async function loadTree() {
+                try {
+                    const res = await fetch('/api/tree');
+                    const data = await res.json();
+                    if (data.success) {
+                        const root = document.getElementById('explorer-tree');
+                        root.innerHTML = '';
+                        
+                        function renderNode(node, container, level = 0) {
+                            const div = document.createElement('div');
+                            div.className = `flex items-center gap-2 py-1 hover:bg-slate-800 cursor-default px-2 rounded`;
+                            div.style.paddingLeft = `${level * 12 + 8}px`;
+                            
+                            const icon = node.type === 'dir' ? '<i class="fa-solid fa-folder text-amber-400"></i>' : '<i class="fa-regular fa-file text-sky-300"></i>';
+                            div.innerHTML = `${icon} <span>${node.name}</span>`;
+                            container.appendChild(div);
+
+                            if (node.children && node.children.length > 0) {
+                                // Subcontainer
+                                const sub = document.createElement('div');
+                                node.children.sort((a,b) => {
+                                    if(a.type===b.type) return a.name.localeCompare(b.name);
+                                    return a.type === 'dir' ? -1 : 1;
+                                }).forEach(child => renderNode(child, sub, level + 1));
+                                container.appendChild(sub);
+                            }
+                        }
+
+                        renderNode(data.tree, root);
+                    }
+                } catch (err) {}
+            }
+
             loadFeatures();
+            loadTree();
 
-            // Tabs Logic
-            const tabResults = document.getElementById('tab-results');
-            const tabAgent = document.getElementById('tab-agent');
-            const viewResults = document.getElementById('results-view');
-            const viewAgent = document.getElementById('agent-view');
+            // Tabs Logic Sidebar
+            const tabFeat = document.getElementById('tab-sidebar-features');
+            const tabExp = document.getElementById('tab-sidebar-explorer');
+            const viewFeat = document.getElementById('sidebar-features-view');
+            const viewExp = document.getElementById('sidebar-explorer-view');
 
-            function switchTab(toAgent) {
-                if (toAgent) {
-                    tabAgent.classList.replace('text-slate-400', 'text-sky-400');
-                    tabAgent.classList.replace('hover:text-slate-300', 'border-b-2');
-                    tabAgent.classList.add('border-sky-400', 'bg-slate-800/50');
-                    tabResults.className = 'flex-1 py-3 text-center text-slate-400 font-semibold hover:text-slate-300';
-                    viewAgent.classList.remove('hidden');
-                    viewAgent.classList.add('flex');
-                    viewResults.classList.add('hidden');
-                    viewResults.classList.remove('flex');
+            function switchSidebar(toExplorer) {
+                if (toExplorer) {
+                    tabExp.className = 'flex-1 py-2 text-center text-sky-400 text-sm font-semibold border-b-2 border-sky-400 bg-slate-800/50';
+                    tabFeat.className = 'flex-1 py-2 text-center text-slate-400 text-sm font-semibold hover:text-slate-300';
+                    viewExp.classList.remove('hidden'); viewExp.classList.add('flex');
+                    viewFeat.classList.add('hidden'); viewFeat.classList.remove('flex');
                 } else {
-                    tabResults.className = 'flex-1 py-3 text-center text-sky-400 font-semibold border-b-2 border-sky-400 bg-slate-800/50';
-                    tabAgent.className = 'flex-1 py-3 text-center text-slate-400 font-semibold hover:text-slate-300';
-                    viewResults.classList.remove('hidden');
-                    viewResults.classList.add('flex');
-                    viewAgent.classList.add('hidden');
-                    viewAgent.classList.remove('flex');
+                    tabFeat.className = 'flex-1 py-2 text-center text-sky-400 text-sm font-semibold border-b-2 border-sky-400 bg-slate-800/50';
+                    tabExp.className = 'flex-1 py-2 text-center text-slate-400 text-sm font-semibold hover:text-slate-300';
+                    viewFeat.classList.remove('hidden'); viewFeat.classList.add('flex');
+                    viewExp.classList.add('hidden'); viewExp.classList.remove('flex');
                 }
             }
 
-            tabResults.addEventListener('click', () => switchTab(false));
-            tabAgent.addEventListener('click', () => switchTab(true));
-            document.getElementById('ask-agent-btn').addEventListener('click', () => switchTab(true));
+            tabFeat.addEventListener('click', () => switchSidebar(false));
+            tabExp.addEventListener('click', () => switchSidebar(true));
+
+            // Tabs Logic Main
+            const tabRes = document.getElementById('tab-results');
+            const tabTerm = document.getElementById('tab-terminal');
+            const tabAgt = document.getElementById('tab-agent');
+            const viewRes = document.getElementById('results-view');
+            const viewTerm = document.getElementById('terminal-view');
+            const viewAgt = document.getElementById('agent-view');
+
+            function switchMainTab(tab) {
+                [tabRes, tabTerm, tabAgt].forEach(t => t.className = 'flex-1 py-3 text-center text-slate-400 font-semibold hover:text-slate-300');
+                [viewRes, viewTerm, viewAgt].forEach(v => { v.classList.add('hidden'); v.classList.remove('flex'); });
+
+                if (tab === 'results') {
+                    tabRes.className = 'flex-1 py-3 text-center text-sky-400 font-semibold border-b-2 border-sky-400 bg-slate-800/50';
+                    viewRes.classList.remove('hidden'); viewRes.classList.add('flex');
+                } else if (tab === 'terminal') {
+                    tabTerm.className = 'flex-1 py-3 text-center text-sky-400 font-semibold border-b-2 border-sky-400 bg-slate-800/50';
+                    viewTerm.classList.remove('hidden'); viewTerm.classList.add('flex');
+                    document.getElementById('terminal-input').focus();
+                } else {
+                    tabAgt.className = 'flex-1 py-3 text-center text-sky-400 font-semibold border-b-2 border-sky-400 bg-slate-800/50';
+                    viewAgt.classList.remove('hidden'); viewAgt.classList.add('flex');
+                }
+            }
+
+            tabRes.addEventListener('click', () => switchMainTab('results'));
+            tabTerm.addEventListener('click', () => switchMainTab('terminal'));
+            tabAgt.addEventListener('click', () => switchMainTab('agent'));
 
             // Agent Suggestion
             document.getElementById('send-agent-btn').addEventListener('click', async () => {
@@ -202,7 +370,7 @@
                 if (!prompt) return;
 
                 const chat = document.getElementById('chat-history');
-                chat.innerHTML += `<div class="bg-slate-800 border border-slate-600 p-3 rounded-lg text-sm text-white ml-8">\${prompt}</div>`;
+                chat.innerHTML += `<div class="bg-slate-800 border border-slate-600 p-3 rounded-lg text-sm text-white ml-8">${prompt}</div>`;
                 document.getElementById('agent-prompt').value = '';
                 chat.scrollTop = chat.scrollHeight;
 
@@ -214,12 +382,62 @@
                     });
                     const data = await res.json();
                     if (data.success) {
-                        chat.innerHTML += `<div class="bg-indigo-900/30 border border-indigo-700/50 p-3 rounded-lg text-sm text-indigo-100 mr-8 whitespace-pre-wrap">\${data.suggestion}</div>`;
+                        chat.innerHTML += `<div class="bg-indigo-900/30 border border-indigo-700/50 p-3 rounded-lg text-sm text-indigo-100 mr-8 whitespace-pre-wrap">${data.suggestion}</div>`;
                     } else {
-                        chat.innerHTML += `<div class="text-red-400 text-sm">Error: \${data.error}</div>`;
+                        chat.innerHTML += `<div class="text-red-400 text-sm">Error: ${data.error}</div>`;
                     }
                     chat.scrollTop = chat.scrollHeight;
                 } catch(e) {}
+            });
+
+            // Terminal Execution
+            async function executeTerminalCommand(command) {
+                if (!command) return;
+
+                const input = document.getElementById('terminal-input');
+                const out = document.getElementById('terminal-output');
+                
+                out.innerHTML += `<div><span class="text-green-500 font-bold">❯</span> <span class="text-white">${command}</span></div>`;
+                input.value = '';
+                input.disabled = true;
+
+                try {
+                    const res = await fetch('/api/execute', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ command })
+                    });
+                    const data = await res.json();
+                    
+                    if (data.output) {
+                        out.innerHTML += `<div class="text-slate-300 mt-1">${data.output.replace(/\\n/g, '<br>')}</div>`;
+                    }
+                    if (data.errorOutput) {
+                        out.innerHTML += `<div class="text-red-400 mt-1">${data.errorOutput.replace(/\\n/g, '<br>')}</div>`;
+                    }
+                    if (data.error) {
+                        out.innerHTML += `<div class="text-red-500 mt-1">[Error] ${data.error}</div>`;
+                    }
+                } catch(err) {
+                    out.innerHTML += `<div class="text-red-500 mt-1">Request failed: ${err.message}</div>`;
+                }
+                
+                input.disabled = false;
+                input.focus();
+                out.scrollTop = out.scrollHeight;
+            }
+
+            document.getElementById('terminal-input').addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    executeTerminalCommand(e.target.value);
+                }
+            });
+
+            // Quick Command Buttons
+            document.querySelectorAll('.quick-cmd-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    executeTerminalCommand(btn.getAttribute('data-cmd'));
+                });
             });
 
             // Generate Button
@@ -229,7 +447,7 @@
 
                 if (!gherkinText.trim()) return alert("Please write some Gherkin scenarios first.");
 
-                switchTab(false);
+                switchMainTab('results');
                 document.getElementById('results-empty').classList.add('hidden');
                 document.getElementById('results-content').classList.add('hidden');
                 document.getElementById('loading').classList.remove('hidden');
@@ -250,7 +468,7 @@
                     if (data.success) {
                         document.getElementById('results-content').classList.remove('hidden');
                         document.getElementById('results-content').classList.add('flex');
-                        document.getElementById('success-path').textContent = `Saved to: \${data.outDir}`;
+                        document.getElementById('success-path').textContent = `Saved to: ${data.outDir}`;
 
                         const fileList = document.getElementById('file-list');
                         fileList.innerHTML = '';
@@ -259,13 +477,14 @@
                             fileList.innerHTML += `
                                 <div class="bg-slate-800 border border-slate-700 rounded p-3 text-sm flex justify-between items-center">
                                     <div class="flex items-center gap-2">
-                                        <i class="fa-solid \${isMd ? 'fa-file-lines text-sky-400' : 'fa-code text-amber-400'}"></i>
-                                        <span class="font-mono">\${filename}</span>
+                                        <i class="fa-solid ${isMd ? 'fa-file-lines text-sky-400' : 'fa-code text-amber-400'}"></i>
+                                        <span class="font-mono">${filename}</span>
                                     </div>
                                 </div>
                             `;
                         });
                         loadFeatures();
+                        loadTree(); // Refresh tree after generation
                     } else {
                         alert("Error generating specs: " + data.error);
                         document.getElementById('results-empty').classList.remove('hidden');
