@@ -1,6 +1,6 @@
 {
   "name": "gherkin-ai",
-  "version": "2.3.0",
+  "version": "2.3.1",
   "description": "Enterprise-Grade Closed-Loop Agentic Orchestration Engine & Spec-Driven Verification Framework for AI Coding Agents.",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -64,7 +64,7 @@
     "publish:prod": "npm run build && npm publish"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=20.12.0"
   },
   "dependencies": {
     "@cucumber/gherkin": "^42.0.1",
