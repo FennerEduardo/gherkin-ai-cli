@@ -1,0 +1,27 @@
+{
+  "projectName": "test",
+  "projectMode": "brownfield",
+  "architecture": "hexagonal",
+  "stack": {
+    "language": "typescript",
+    "framework": "nextjs"
+  },
+  "designPatterns": [
+    "Ports and Adapters",
+    "Repository Pattern",
+    "Dependency Injection",
+    "Hooks Pattern",
+    "Atomic Design",
+    "Component-Based Architecture"
+  ],
+  "codingRules": [
+    "Write clean, self-documenting code",
+    "Follow DRY and SOLID principles",
+    "Ensure proper error handling and logging",
+    "Core domain must not depend on external frameworks",
+    "Use functional components and hooks",
+    "Avoid prop drilling, use context or state management",
+    "Use strict typings, avoid \"any\"",
+    "Prefer interfaces over types for object shapes"
+  ]
+}

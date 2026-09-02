@@ -11,7 +11,7 @@ test.describe('Gherkin AI Web Studio', () => {
     await page.goto('/');
     
     // Wait for features to load (from the specs/ folder we created)
-    await page.waitForSelector('.feature-card');
+    await page.waitForSelector('#features-list li');
     
     // Check if the login or checkout features are visible
     const textContent = await page.textContent('body');
@@ -27,8 +27,7 @@ test.describe('Gherkin AI Web Studio', () => {
     await toggle.click();
 
     // Check if English text is replaced by Spanish
-    // According to server.ts/index.html logic, "Features" should become "Características"
-    const heading = await page.locator('h1.text-xl').textContent();
+    const heading = await page.locator('#tab-sidebar-features').textContent();
     expect(heading).toMatch(/características|features/i);
   });
 
