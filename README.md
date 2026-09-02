@@ -8,26 +8,25 @@
 
 ---
 
-## 🌟 Strategic Capabilities (`v2.1.0`)
+## 🌟 Strategic Capabilities (`v2.2.0`)
 
 While basic AI spec tools only generate text prompts, `gherkin-ai` acts as an **executable contract and verification harness** between Product Intent, AI Agents (Cursor, Claude Code, Windsurf, Antigravity), Code Implementation, and CI/CD Quality Gates:
 
-- 🔌 **Native MCP Server & Auto-Installer (`ghk mcp install`)**: Zero-config Model Context Protocol (MCP) JSON-RPC 2.0 stdio server connecting directly with Cursor (`.cursor/mcp.json`) and Claude Desktop (`claude_desktop_config.json`).
-- 🔁 **Closed-Loop Verification & Self-Healing (`ghk verify --auto-fix`)**: Programmatically executes test suites (`npm test`, `vitest`, `playwright`, `mvn test`), parses compiler/test stacktraces into targeted AI context, and iteratively repairs code until assertions pass.
+- 🤖 **True Agentic Engine & Self-Healing (`ghk verify --auto-fix` & `ghk autopilot`)**: Natively connects with LLMs (OpenAI, Anthropic, Ollama). It doesn't just log output; it actively writes and modifies your source code, intercepts test failures, and recursively applies repairs in a true **Closed-Loop**.
+- 🌐 **Web Studio UI (`ghk web`)**: Launch a premium local graphical interface to interactively generate your Gherkin specifications, detect your stack, and orchestrate agent prompts visually.
+- 🌳 **Official Cucumber AST Parser**: 100% compliant with the Gherkin standard using the official `@cucumber/gherkin` package. Flawlessly parses DataTables, DocStrings, and advanced scenarios for semantic extraction.
+- 🛡️ **Semantically Typed Contracts**: Extracts variables straight from your Gherkin data tables (like `@validate:email`) and outputs strictly typed Zod DTOs instead of generic objects.
+- 🔌 **Native MCP Server & Cursor Skills (`ghk mcp install` & `ghk skill`)**: Zero-config Model Context Protocol (MCP) server. The new `ghk skill` command injects native Cursor and Windsurf `.cursorrules` to let your IDE automatically invoke Gherkin AI as an internal skill.
 - 📦 **Context Engineering & Guardrails Engine (`ghk context`)**: Structurally packages project architecture, conventions, and security policies into `.ghe/`, enforcing strict path protection and agent change limits.
-- ☕ **Enterprise Java & GraphQL Presets**: Scaffolds Cucumber-JVM, Spring Boot, GraphQL queries/mutations, and Testcontainers (PostgreSQL) fixtures.
-- ⚛️ **Modern React & Playwright Presets**: Scaffolds Playwright E2E and React Testing Library step definitions with MSW GraphQL mocks and accessibility-first selectors (`getByRole`).
-- 🚀 **Autopilot Multi-Agent Delivery (`ghk autopilot`)**: Decomposes product requirements into sub-agent workflows (Planner, Spec, Developer, Tester, Reviewer) and generates ready-to-merge Pull Requests. Now supports real LLM APIs (OpenAI, Anthropic, Ollama) and IDE Delegation Mode.
-- 🎯 **Caveman Mode (`ghk create --caveman`)**: Skip the wizard and generate concise `.feature` specifications instantly from a single plain-text prompt to optimize AI token consumption.
+- 🏆 **Dynamic Quality Gate Index (`ghk quality`)**: Measures spec coverage, unit tests, E2E, type safety, and security dynamically by parsing your real test coverage (`coverage-summary.json`) and linter outputs.
+- ☕ **Enterprise Java, React, Rust & Go Templates**: Extensive boilerplate support. Scaffolds Spring Boot, Next.js, Rust Axum, Go Fiber, and mobile (Flutter/React Native) architectures out-of-the-box.
 - 🕵️ **Interactive Stack & Pattern Detection (`ghk detect`)**: Auto-detects existing brownfield architectures and intelligently injects industry-standard design patterns (e.g., Hooks, CQRS, MVC) into Agent prompts.
-- 📊 **Enterprise Quality Gate Index (`ghk quality`)**: Measures spec coverage, unit tests, E2E, type safety, and security score before merging by parsing real test coverage and linter outputs.
 - 📡 **Event-Driven & AsyncAPI Support**: Automatically extracts domain events from Gherkin and scaffolds standard `asyncapi.json` contracts.
 - 🔍 **Drift Detection (`ghk diff`)**: Validates in CI/CD pipelines if the implemented DTOs and code have drifted from the `.feature` file (Single Source of Truth).
-- 🧩 **Semantic Annotations & Stubs**: Supports custom Gherkin tags (e.g., `@validate:email`) to generate strictly typed Zod validations and auto-generates test stubs during `ghk add`.
 
 ---
 
-## 📥 Installation & Execution (`v2.1.0`)
+## 📥 Installation & Execution (`v2.2.0`)
 
 You can use `gherkin-ai` via global `npm` installation, on-demand zero-install `npx`, or as a project local dev dependency:
 
