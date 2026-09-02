@@ -8,7 +8,7 @@
 
 ---
 
-## 🌟 Strategic Capabilities (`v2.4.0-beta.0`)
+## 🌟 Strategic Capabilities (`v2.4.0`)
 
 While basic AI spec tools only generate text prompts, `gherkin-ai` acts as an **executable contract and verification harness** between Product Intent, AI Agents (Cursor, Claude Code, Windsurf, Antigravity), Code Implementation, and CI/CD Quality Gates:
 
@@ -29,7 +29,7 @@ While basic AI spec tools only generate text prompts, `gherkin-ai` acts as an **
 
 ---
 
-## 📥 Installation & Execution (`v2.4.0-beta.0`)
+## 📥 Installation & Execution (`v2.4.0`)
 
 You can use `gherkin-ai` via global `npm` installation, on-demand zero-install `npx`, or as a project local dev dependency:
 
