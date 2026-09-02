@@ -59,6 +59,7 @@
     "start": "node ./bin/gherkin-ai.js",
     "dev": "npx tsc --watch",
     "test": "vitest run",
+    "test:e2e": "playwright test",
     "prepublishOnly": "npm run build",
     "publish:beta": "npm run build && npm publish --tag beta",
     "publish:prod": "npm run build && npm publish"
@@ -78,6 +79,7 @@
     "ts-morph": "^28.0.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.62.1",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
     "@types/inquirer": "^8.2.10",

@@ -101,6 +101,7 @@ ghk context build
 
 ## 📖 Comprehensive Documentation
 
+- [CLI Commands Reference Guide](docs/COMMANDS.md)
 - [Model Context Protocol (MCP) Integration Guide](docs/MCP_GUIDE.md)
 - [Closed-Loop Verification & Auto-Repair Guide](docs/USAGE_GUIDE.md)
 - [Architecture & Agent Pipeline Design](docs/ARCHITECTURE.md)
