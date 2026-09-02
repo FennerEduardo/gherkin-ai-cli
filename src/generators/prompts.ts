@@ -41,6 +41,13 @@ export function generatePrompts(parsed: ParsedFeature, config: GherkinAIConfig):
     'qa-agent.md': template.generateQaAgent(ctx)
   };
 
+  // Inject Security & Compliance Guardrails
+  const securityGuardrails = `\n## [MANDATORY] Enterprise Security & Compliance\n- SAST Guidelines: Do NOT generate code susceptible to SQL injection, XSS, or CSRF. Use parameterized queries and ORM functions securely.\n- Secret Scanning: NEVER generate or suggest default hardcoded passwords, API keys, or JWT secrets in code or fixtures. Always use environment variables.\n`;
+  result['domain-agent.md'] += securityGuardrails;
+  result['backend-agent.md'] += securityGuardrails;
+  result['qa-agent.md'] += securityGuardrails;
+
+
   // Inject DOM and Data Models to Backend/QA/Domain agents
   let contextDict = '';
   if (ctx.appContext.dataModels.length > 0) {

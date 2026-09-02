@@ -13,8 +13,8 @@
         .gradient-text { background: linear-gradient(to right, #38bdf8, #818cf8); -webkit-background-clip: text; color: transparent; }
     </style>
 </head>
-<body class="min-h-screen flex flex-col p-6">
-    <header class="flex justify-between items-center mb-8 glass-panel p-4 px-6 shadow-lg">
+<body class="h-screen flex flex-col p-4 overflow-hidden">
+    <header class="flex justify-between items-center mb-4 glass-panel p-3 px-6 shadow-lg shrink-0">
         <h1 class="text-2xl font-bold gradient-text flex items-center gap-3">
             <i class="fa-solid fa-robot"></i> Gherkin AI Studio
         </h1>
@@ -23,57 +23,100 @@
         </div>
     </header>
 
-    <main class="flex-1 grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <!-- Editor Section -->
-        <section class="glass-panel p-6 flex flex-col shadow-xl">
-            <h2 class="text-xl font-semibold mb-4 text-sky-400 border-b border-slate-700 pb-2"><i class="fa-regular fa-file-code"></i> Feature Specification</h2>
-            <div class="mb-4">
-                <label class="block text-sm font-medium text-slate-400 mb-1">Feature Name</label>
-                <input type="text" id="feature-name" placeholder="e.g. User Authentication" class="w-full bg-slate-800 border border-slate-600 rounded-md p-2 text-white focus:outline-none focus:ring-2 focus:ring-sky-500">
+    <div class="flex flex-1 gap-4 overflow-hidden">
+        <!-- Sidebar -->
+        <aside class="w-64 glass-panel flex flex-col shadow-xl overflow-hidden">
+            <div class="p-4 border-b border-slate-700 flex justify-between items-center">
+                <h3 class="font-semibold text-slate-300"><i class="fa-solid fa-list"></i> Features</h3>
+                <button id="new-feature-btn" class="text-sky-400 hover:text-sky-300 text-sm" title="New Feature">
+                    <i class="fa-solid fa-plus"></i>
+                </button>
             </div>
-            <div class="flex-1 flex flex-col">
-                <label class="block text-sm font-medium text-slate-400 mb-1">Gherkin Scenarios</label>
-                <textarea id="gherkin-text" class="w-full flex-1 min-h-[300px] bg-slate-900 border border-slate-700 rounded-md p-4 text-sky-100 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-sky-500" placeholder="Feature: Example Feature&#10;&#10;  Scenario: Successful login&#10;    Given the user is on the login page&#10;    When they enter valid credentials&#10;    Then they should be redirected to the dashboard"></textarea>
-            </div>
-            <button id="generate-btn" class="mt-6 w-full py-3 bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 text-white font-bold rounded-lg shadow-lg shadow-sky-500/20 transition-all flex justify-center items-center gap-2">
-                <i class="fa-solid fa-wand-magic-sparkles"></i> Generate AI Agents & Contracts
-            </button>
-        </section>
+            <ul id="features-list" class="flex-1 overflow-y-auto p-2 space-y-1">
+                <!-- Features populated by JS -->
+            </ul>
+        </aside>
 
-        <!-- Results Section -->
-        <section class="glass-panel p-6 flex flex-col shadow-xl">
-            <h2 class="text-xl font-semibold mb-4 text-indigo-400 border-b border-slate-700 pb-2"><i class="fa-solid fa-microchip"></i> Generation Results</h2>
-            
-            <div id="loading" class="hidden flex-1 flex flex-col justify-center items-center text-slate-400">
-                <i class="fa-solid fa-circle-notch fa-spin text-4xl mb-4 text-sky-500"></i>
-                <p>Orchestrating agents and generating code...</p>
-            </div>
+        <!-- Main Editor -->
+        <main class="flex-1 grid grid-cols-1 lg:grid-cols-2 gap-4 overflow-hidden">
+            <!-- Editor Section -->
+            <section class="glass-panel p-4 flex flex-col shadow-xl overflow-hidden">
+                <h2 class="text-xl font-semibold mb-3 text-sky-400 border-b border-slate-700 pb-2 flex justify-between">
+                    <span><i class="fa-regular fa-file-code"></i> Feature Specification</span>
+                    <button id="ask-agent-btn" class="text-sm bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1 rounded transition-colors">
+                        <i class="fa-solid fa-wand-magic-sparkles"></i> Ask Agent
+                    </button>
+                </h2>
+                
+                <div class="mb-3 shrink-0">
+                    <label class="block text-sm font-medium text-slate-400 mb-1">Feature Name</label>
+                    <input type="text" id="feature-name" placeholder="e.g. User Authentication" class="w-full bg-slate-800 border border-slate-600 rounded-md p-2 text-white focus:outline-none focus:ring-2 focus:ring-sky-500">
+                </div>
+                <div class="flex-1 flex flex-col min-h-0">
+                    <label class="block text-sm font-medium text-slate-400 mb-1">Gherkin Scenarios</label>
+                    <textarea id="gherkin-text" class="w-full flex-1 bg-slate-900 border border-slate-700 rounded-md p-3 text-sky-100 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-sky-500 resize-none" placeholder="Feature: Example Feature..."></textarea>
+                </div>
+                <button id="generate-btn" class="mt-4 shrink-0 w-full py-2 bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 text-white font-bold rounded-lg shadow-lg shadow-sky-500/20 transition-all flex justify-center items-center gap-2">
+                    <i class="fa-solid fa-cogs"></i> Generate Contracts
+                </button>
+            </section>
 
-            <div id="results-empty" class="flex-1 flex flex-col justify-center items-center text-slate-500 text-center p-8">
-                <i class="fa-regular fa-folder-open text-6xl mb-4 opacity-50"></i>
-                <p>Waiting for Gherkin specification.<br>Click Generate to see the results here.</p>
-            </div>
+            <!-- Results & Agent Section -->
+            <section class="glass-panel flex flex-col shadow-xl overflow-hidden">
+                
+                <!-- Tabs -->
+                <div class="flex border-b border-slate-700 shrink-0">
+                    <button id="tab-results" class="flex-1 py-3 text-center text-sky-400 font-semibold border-b-2 border-sky-400 bg-slate-800/50">Generation Results</button>
+                    <button id="tab-agent" class="flex-1 py-3 text-center text-slate-400 font-semibold hover:text-slate-300">Agent Suggestions</button>
+                </div>
 
-            <div id="results-content" class="hidden flex-1 flex flex-col gap-4 overflow-y-auto pr-2">
-                <div class="bg-emerald-900/30 border border-emerald-700/50 text-emerald-200 p-4 rounded-lg flex items-start gap-3">
-                    <i class="fa-solid fa-check-circle mt-1"></i>
-                    <div>
-                        <p class="font-bold">Generation Successful!</p>
-                        <p class="text-sm opacity-80" id="success-path">Files saved to ./generated-specs/</p>
+                <!-- Results Content -->
+                <div id="results-view" class="flex-1 p-4 flex flex-col overflow-y-auto">
+                    <div id="loading" class="hidden flex-1 flex-col justify-center items-center text-slate-400">
+                        <i class="fa-solid fa-circle-notch fa-spin text-4xl mb-4 text-sky-500"></i>
+                        <p>Orchestrating agents...</p>
+                    </div>
+
+                    <div id="results-empty" class="flex-1 flex flex-col justify-center items-center text-slate-500 text-center p-8">
+                        <i class="fa-regular fa-folder-open text-6xl mb-4 opacity-50"></i>
+                        <p>Waiting for Gherkin specification.<br>Click Generate to see the results here.</p>
+                    </div>
+
+                    <div id="results-content" class="hidden flex-1 flex flex-col gap-4">
+                        <div class="bg-emerald-900/30 border border-emerald-700/50 text-emerald-200 p-4 rounded-lg flex items-start gap-3">
+                            <i class="fa-solid fa-check-circle mt-1"></i>
+                            <div>
+                                <p class="font-bold">Generation Successful!</p>
+                                <p class="text-sm opacity-80" id="success-path"></p>
+                            </div>
+                        </div>
+                        <h3 class="font-semibold text-slate-300 mt-2">Generated Files:</h3>
+                        <div id="file-list" class="flex flex-col gap-2"></div>
                     </div>
                 </div>
 
-                <h3 class="font-semibold text-slate-300 mt-2">Generated Files:</h3>
-                <div id="file-list" class="flex flex-col gap-2">
-                    <!-- Files injected via JS -->
+                <!-- Agent Chat Content -->
+                <div id="agent-view" class="hidden flex-1 p-4 flex flex-col">
+                    <div id="chat-history" class="flex-1 overflow-y-auto space-y-4 mb-4">
+                        <div class="bg-indigo-900/30 border border-indigo-700/50 p-3 rounded-lg text-sm text-indigo-100">
+                            Hi! I'm your Gherkin AI assistant. Ask me to suggest test scenarios, review your specs, or write step definitions!
+                        </div>
+                    </div>
+                    <div class="flex gap-2 shrink-0">
+                        <input type="text" id="agent-prompt" placeholder="Ask for suggestions..." class="flex-1 bg-slate-800 border border-slate-600 rounded-md p-2 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm">
+                        <button id="send-agent-btn" class="bg-indigo-600 hover:bg-indigo-500 text-white px-4 rounded-md transition-colors">
+                            <i class="fa-solid fa-paper-plane"></i>
+                        </button>
+                    </div>
                 </div>
-            </div>
-        </section>
-    </main>
+
+            </section>
+        </main>
+    </div>
 
     <script>
         document.addEventListener('DOMContentLoaded', async () => {
-            // Fetch detected stack
+            // Fetch Stack
             try {
                 const res = await fetch('/api/stack');
                 const data = await res.json();
@@ -83,21 +126,110 @@
                     document.getElementById('stack-badge').classList.remove('hidden');
                     document.getElementById('stack-badge').classList.add('flex');
                 }
-            } catch (err) {
-                console.error("Failed to fetch stack", err);
+            } catch (err) {}
+
+            // Load Features List
+            async function loadFeatures() {
+                try {
+                    const res = await fetch('/api/features');
+                    const data = await res.json();
+                    if (data.success) {
+                        const list = document.getElementById('features-list');
+                        list.innerHTML = '';
+                        data.features.forEach(feat => {
+                            const li = document.createElement('li');
+                            li.className = 'p-2 text-sm text-slate-300 hover:bg-slate-800 hover:text-white rounded cursor-pointer truncate transition-colors';
+                            li.innerHTML = `<i class="fa-regular fa-file-lines mr-2 text-sky-500"></i> ${feat}`;
+                            li.onclick = () => loadFeatureContent(feat);
+                            list.appendChild(li);
+                        });
+                    }
+                } catch(e) {}
+            }
+            
+            async function loadFeatureContent(feat) {
+                try {
+                    const res = await fetch(`/api/features/${feat}`);
+                    const data = await res.json();
+                    if (data.success) {
+                        document.getElementById('feature-name').value = feat.replace('.feature', '');
+                        document.getElementById('gherkin-text').value = data.content;
+                    }
+                } catch(e) {}
             }
 
-            // Handle Generate Button
+            document.getElementById('new-feature-btn').addEventListener('click', () => {
+                document.getElementById('feature-name').value = '';
+                document.getElementById('gherkin-text').value = '';
+            });
+
+            loadFeatures();
+
+            // Tabs Logic
+            const tabResults = document.getElementById('tab-results');
+            const tabAgent = document.getElementById('tab-agent');
+            const viewResults = document.getElementById('results-view');
+            const viewAgent = document.getElementById('agent-view');
+
+            function switchTab(toAgent) {
+                if (toAgent) {
+                    tabAgent.classList.replace('text-slate-400', 'text-sky-400');
+                    tabAgent.classList.replace('hover:text-slate-300', 'border-b-2');
+                    tabAgent.classList.add('border-sky-400', 'bg-slate-800/50');
+                    tabResults.className = 'flex-1 py-3 text-center text-slate-400 font-semibold hover:text-slate-300';
+                    viewAgent.classList.remove('hidden');
+                    viewAgent.classList.add('flex');
+                    viewResults.classList.add('hidden');
+                    viewResults.classList.remove('flex');
+                } else {
+                    tabResults.className = 'flex-1 py-3 text-center text-sky-400 font-semibold border-b-2 border-sky-400 bg-slate-800/50';
+                    tabAgent.className = 'flex-1 py-3 text-center text-slate-400 font-semibold hover:text-slate-300';
+                    viewResults.classList.remove('hidden');
+                    viewResults.classList.add('flex');
+                    viewAgent.classList.add('hidden');
+                    viewAgent.classList.remove('flex');
+                }
+            }
+
+            tabResults.addEventListener('click', () => switchTab(false));
+            tabAgent.addEventListener('click', () => switchTab(true));
+            document.getElementById('ask-agent-btn').addEventListener('click', () => switchTab(true));
+
+            // Agent Suggestion
+            document.getElementById('send-agent-btn').addEventListener('click', async () => {
+                const prompt = document.getElementById('agent-prompt').value;
+                const context = document.getElementById('gherkin-text').value;
+                if (!prompt) return;
+
+                const chat = document.getElementById('chat-history');
+                chat.innerHTML += `<div class="bg-slate-800 border border-slate-600 p-3 rounded-lg text-sm text-white ml-8">\${prompt}</div>`;
+                document.getElementById('agent-prompt').value = '';
+                chat.scrollTop = chat.scrollHeight;
+
+                try {
+                    const res = await fetch('/api/suggest', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ prompt, context })
+                    });
+                    const data = await res.json();
+                    if (data.success) {
+                        chat.innerHTML += `<div class="bg-indigo-900/30 border border-indigo-700/50 p-3 rounded-lg text-sm text-indigo-100 mr-8 whitespace-pre-wrap">\${data.suggestion}</div>`;
+                    } else {
+                        chat.innerHTML += `<div class="text-red-400 text-sm">Error: \${data.error}</div>`;
+                    }
+                    chat.scrollTop = chat.scrollHeight;
+                } catch(e) {}
+            });
+
+            // Generate Button
             document.getElementById('generate-btn').addEventListener('click', async () => {
                 const featureName = document.getElementById('feature-name').value;
                 const gherkinText = document.getElementById('gherkin-text').value;
 
-                if (!gherkinText.trim()) {
-                    alert("Please write some Gherkin scenarios first.");
-                    return;
-                }
+                if (!gherkinText.trim()) return alert("Please write some Gherkin scenarios first.");
 
-                // UI State
+                switchTab(false);
                 document.getElementById('results-empty').classList.add('hidden');
                 document.getElementById('results-content').classList.add('hidden');
                 document.getElementById('loading').classList.remove('hidden');
@@ -118,35 +250,28 @@
                     if (data.success) {
                         document.getElementById('results-content').classList.remove('hidden');
                         document.getElementById('results-content').classList.add('flex');
-                        document.getElementById('success-path').textContent = `Saved to: ${data.outDir}`;
+                        document.getElementById('success-path').textContent = `Saved to: \${data.outDir}`;
 
                         const fileList = document.getElementById('file-list');
                         fileList.innerHTML = '';
                         Object.keys(data.files).forEach(filename => {
-                            const div = document.createElement('div');
                             const isMd = filename.endsWith('.md');
-                            div.className = 'bg-slate-800 border border-slate-700 rounded p-3 text-sm flex justify-between items-center';
-                            div.innerHTML = `
-                                <div class="flex items-center gap-2">
-                                    <i class="fa-solid ${isMd ? 'fa-file-lines text-sky-400' : 'fa-code text-amber-400'}"></i>
-                                    <span class="font-mono">${filename}</span>
+                            fileList.innerHTML += `
+                                <div class="bg-slate-800 border border-slate-700 rounded p-3 text-sm flex justify-between items-center">
+                                    <div class="flex items-center gap-2">
+                                        <i class="fa-solid \${isMd ? 'fa-file-lines text-sky-400' : 'fa-code text-amber-400'}"></i>
+                                        <span class="font-mono">\${filename}</span>
+                                    </div>
                                 </div>
-                                <span class="text-xs bg-slate-700 px-2 py-1 rounded text-slate-300">Generated</span>
                             `;
-                            fileList.appendChild(div);
                         });
+                        loadFeatures();
                     } else {
                         alert("Error generating specs: " + data.error);
                         document.getElementById('results-empty').classList.remove('hidden');
                         document.getElementById('results-empty').classList.add('flex');
                     }
-                } catch (err) {
-                    alert("Network error: " + err.message);
-                    document.getElementById('loading').classList.add('hidden');
-                    document.getElementById('loading').classList.remove('flex');
-                    document.getElementById('results-empty').classList.remove('hidden');
-                    document.getElementById('results-empty').classList.add('flex');
-                } finally {
+                } catch (err) {} finally {
                     document.getElementById('generate-btn').disabled = false;
                 }
             });

@@ -25,6 +25,7 @@ export async function handleVerifyCommand(options: VerifyCommandOptions = {}): P
 
   let iteration = 1;
   let success = false;
+  const fileBackups: Record<string, string> = {};
 
   while (iteration <= maxRetries && !success) {
     console.log(chalk.bold.blue(`[Iteration ${iteration}/${maxRetries}] Running Test Harness...`));
@@ -53,7 +54,18 @@ export async function handleVerifyCommand(options: VerifyCommandOptions = {}): P
     }
 
     if (iteration === maxRetries) {
-      console.log(chalk.bold.red(`\n✖ Auto-fix retry limit reached (${maxRetries} attempts). Fix manually.\n`));
+      console.log(chalk.bold.red(`\n✖ Auto-fix retry limit reached (${maxRetries} attempts). Initiating rollback...\n`));
+      
+      const fs = require('fs');
+      for (const [filePath, oldContent] of Object.entries(fileBackups)) {
+        try {
+          fs.writeFileSync(filePath, oldContent, 'utf8');
+          console.log(chalk.yellow(`   ↺ Rolled back: ${filePath}`));
+        } catch (e: any) {
+          console.log(chalk.red(`   ✖ Failed to rollback ${filePath}: ${e.message}`));
+        }
+      }
+      
       process.exitCode = result.exitCode;
       return;
     }
@@ -91,6 +103,11 @@ export async function handleVerifyCommand(options: VerifyCommandOptions = {}): P
           }
 
           const fullPath = path.resolve(mod.filePath);
+          
+          if (!fileBackups[fullPath] && fs.existsSync(fullPath)) {
+             fileBackups[fullPath] = fs.readFileSync(fullPath, 'utf8');
+          }
+          
           fs.mkdirSync(path.dirname(fullPath), { recursive: true });
           fs.writeFileSync(fullPath, mod.content, 'utf8');
           console.log(chalk.green(`     ✓ ${mod.filePath} updated.`));

@@ -69,6 +69,14 @@ export async function handleGenerateCommand(options: { feature?: string; config?
   writeFileSync(path.join(config.outputDir, 'seed.sql'), seedSql);
   logger.success('Generated fixtures.ts and seed.sql');
 
+  // 2.5 Generate Boilerplate Presets (Step Definitions)
+  const { generatePresets } = require('../generators/presets');
+  const presets = generatePresets(parsed, config);
+  presets.forEach((preset: { filename: string; content: string }) => {
+    writeFileSync(path.join(config.outputDir, preset.filename), preset.content);
+    logger.success(`Generated boilerplate preset: ${preset.filename}`);
+  });
+
   console.log(chalk.bold.cyan('\n🔍 Context Confirmation for AI Agents:'));
   console.log(`- Architecture: ${config.architecture}`);
   console.log(`- Stack: ${config.stack.language} + ${config.stack.framework}`);

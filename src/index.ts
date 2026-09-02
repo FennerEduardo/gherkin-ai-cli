@@ -19,6 +19,7 @@ import { handleAutopilotCommand } from './commands/autopilot';
 import { handleDiffCommand } from './commands/diff';
 import { handleSkillCommand } from './commands/skill';
 import { handleWebCommand } from './commands/web';
+import { handleEvaluateCommand } from './commands/evaluate';
 
 // Dynamic version from package.json
 const pkg = require('../package.json');
@@ -185,6 +186,16 @@ program
   .option('-p, --port <number>', 'Port to run the web server on')
   .action(async (options) => {
     await handleWebCommand(options);
+  });
+
+program
+  .command('evaluate <files...>')
+  .alias('eval')
+  .description('Evaluate one or more files for code quality and architectural pattern compliance')
+  .option('--max-file-lines <number>', 'Maximum lines allowed per file (default: 300)')
+  .option('--max-class-lines <number>', 'Maximum lines allowed per class (default: 200)')
+  .action(async (files, options) => {
+    await handleEvaluateCommand(files, options);
   });
 
 // Action fallback for root flags (--init, --create, --generate, --validate, --detect)

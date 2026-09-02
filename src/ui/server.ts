@@ -12,6 +12,7 @@ import { generateContracts } from '../generators/contracts';
 import { generatePrompts } from '../generators/prompts';
 import { parseGherkinText } from '../core/gherkin-parser';
 import { loadConfig, saveConfig } from '../core/config';
+import { RealAgentProvider, LLMConfig } from '../core/agent-adapter';
 
 export function startWebServer(port: number): void {
   const app = express();
@@ -91,6 +92,59 @@ export function startWebServer(port: number): void {
       }
 
       res.json({ success: true, message: 'Files generated successfully', files, featurePath, outDir });
+    } catch (err) {
+      res.status(500).json({ success: false, error: (err as Error).message });
+    }
+  });
+
+  // API: List Features
+  app.get('/api/features', (req, res) => {
+    try {
+      const specsDir = path.join(process.cwd(), 'specs');
+      if (!fs.existsSync(specsDir)) {
+        return res.json({ success: true, features: [] });
+      }
+      const files = fs.readdirSync(specsDir).filter(f => f.endsWith('.feature'));
+      res.json({ success: true, features: files });
+    } catch (err) {
+      res.status(500).json({ success: false, error: (err as Error).message });
+    }
+  });
+
+  // API: Get Feature Content
+  app.get('/api/features/:name', (req, res) => {
+    try {
+      const featurePath = path.join(process.cwd(), 'specs', req.params.name);
+      if (!fs.existsSync(featurePath)) {
+        return res.status(404).json({ success: false, error: 'Feature not found' });
+      }
+      const content = fs.readFileSync(featurePath, 'utf8');
+      res.json({ success: true, content });
+    } catch (err) {
+      res.status(500).json({ success: false, error: (err as Error).message });
+    }
+  });
+
+  // API: Get LLM Suggestion
+  app.post('/api/suggest', async (req, res) => {
+    try {
+      const { prompt, context } = req.body;
+      const config: LLMConfig = {
+        provider: (process.env.LLM_PROVIDER as any) || 'ide_delegate',
+        model: process.env.LLM_MODEL,
+        apiKey: process.env.OPENAI_API_KEY || process.env.ANTHROPIC_API_KEY || process.env.LLM_API_KEY,
+        baseUrl: process.env.LLM_BASE_URL
+      };
+      
+      const agent = new RealAgentProvider(config);
+      const result = await agent.executeTask({
+        id: 'ui-suggest',
+        type: 'spec_generation',
+        prompt,
+        contextFiles: context ? [context] : []
+      });
+      
+      res.json({ success: true, suggestion: result.agentResponse });
     } catch (err) {
       res.status(500).json({ success: false, error: (err as Error).message });
     }
