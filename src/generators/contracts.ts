@@ -73,7 +73,9 @@ export interface IDomainEvent {
 
 ${parsed.domainAnalysis.events.map((ev, i) => `export interface Event${i + 1} extends IDomainEvent {
   eventType: '${ev.replace(/[^a-zA-Z0-9]/g, '')}';
-  payload: Record<string, unknown>;
+  payload: {
+${parsed.domainAnalysis.fields.map(f => `    ${f.name}: ${f.type};`).join('\n')}
+  };
 }`).join('\n\n')}
 
 // --------------------------------------------------------------------------
@@ -159,7 +161,14 @@ ${arch.prohibitedImports.map(p => `- \`${p}\``).join('\n')}
                   properties: {
                     requestId: { type: 'string', format: 'uuid' },
                     timestamp: { type: 'string', format: 'date-time' },
-                    payload: { type: 'object' }
+                    payload: { 
+                      type: 'object',
+                      properties: parsed.domainAnalysis.fields.reduce((acc, f) => {
+                        acc[f.name] = { type: f.type === 'number' ? 'number' : 'string' };
+                        return acc;
+                      }, {} as Record<string, any>),
+                      required: parsed.domainAnalysis.fields.map(f => f.name)
+                    }
                   },
                   required: ['requestId', 'timestamp', 'payload']
                 }
@@ -196,7 +205,14 @@ ${arch.prohibitedImports.map(p => `- \`${p}\``).join('\n')}
                 eventId: { type: 'string', format: 'uuid' },
                 occurredOn: { type: 'string', format: 'date-time' },
                 eventType: { type: 'string', enum: [eventName] },
-                payload: { type: 'object' }
+                payload: { 
+                  type: 'object',
+                  properties: parsed.domainAnalysis.fields.reduce((acc, f) => {
+                    acc[f.name] = { type: f.type === 'number' ? 'number' : 'string' };
+                    return acc;
+                  }, {} as Record<string, any>),
+                  required: parsed.domainAnalysis.fields.map(f => f.name)
+                }
               }
             }
           }

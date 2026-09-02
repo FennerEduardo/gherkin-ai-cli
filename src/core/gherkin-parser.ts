@@ -1,6 +1,10 @@
 /* ==========================================================================
-   gherkin-ai-cli - Gherkin Feature Parser & AST Model (English & Spanish i18n)
+   gherkin-ai-cli - Gherkin Feature Parser & AST Model
+   Powered by @cucumber/gherkin
    ========================================================================== */
+
+import { generateMessages } from '@cucumber/gherkin';
+import { IdGenerator, SourceMediaType } from '@cucumber/messages';
 
 export interface StepModel {
   keyword: 'Given' | 'When' | 'Then' | 'And' | 'But';
@@ -36,78 +40,68 @@ export interface ParsedFeature {
 }
 
 export function parseGherkinText(gherkinText: string): ParsedFeature {
-  const lines = gherkinText.split('\n');
-  let featureName = 'Feature Specification';
-  const descriptionLines: string[] = [];
-  const featureTags: string[] = [];
-  const scenarios: ScenarioModel[] = [];
+  const options = {
+    includeSource: false,
+    includeGherkinDocument: true,
+    includePickles: true,
+    newId: IdGenerator.uuid(),
+  };
+
+  const msgs = generateMessages(gherkinText, 'feature.feature', SourceMediaType.TEXT_X_CUCUMBER_GHERKIN_PLAIN, options);
+  const docMsg = msgs.find(m => m.gherkinDocument);
   
-  let currentScenario: ScenarioModel | null = null;
-  let inHeader = true;
-  let accumulatedTags: string[] = [];
+  if (!docMsg || !docMsg.gherkinDocument || !docMsg.gherkinDocument.feature) {
+    throw new Error('Invalid Gherkin specification. Could not parse feature.');
+  }
 
-  for (let rawLine of lines) {
-    const line = rawLine.trim();
-    if (!line || line.startsWith('#')) continue;
+  const feature = docMsg.gherkinDocument.feature;
+  const featureName = feature.name;
+  const descriptionLines = feature.description ? feature.description.split('\n').map(l => l.trim()).filter(l => l) : [];
+  const featureTags = feature.tags.map(t => t.name);
 
-    // Collect tags (e.g. @validate:email)
-    if (line.startsWith('@')) {
-      const lineTags = line.split(/\s+/).filter(t => t.startsWith('@'));
-      accumulatedTags.push(...lineTags);
-      continue;
-    }
+  const scenarios: ScenarioModel[] = [];
 
-    // Feature / Característica Header
-    if (/^(Feature|Característica|Requerimiento):/i.test(line)) {
-      featureName = line.replace(/^(Feature|Característica|Requerimiento):/i, '').trim();
-      featureTags.push(...accumulatedTags);
-      accumulatedTags = [];
-      inHeader = true;
-      continue;
-    }
+  for (const child of feature.children) {
+    if (child.scenario) {
+      const scenario = child.scenario;
+      const scenarioTags = scenario.tags.map(t => t.name);
+      const steps: StepModel[] = [];
 
-    // Scenario / Escenario Header
-    if (/^(Scenario|Escenario|Scenario Outline|Esquema del escenario):/i.test(line)) {
-      inHeader = false;
-      const name = line.replace(/^(Scenario|Escenario|Scenario Outline|Esquema del escenario):/i, '').trim();
-      currentScenario = { name, steps: [], tags: [...accumulatedTags] };
-      scenarios.push(currentScenario);
-      accumulatedTags = [];
-      continue;
-    }
+      for (const step of scenario.steps) {
+        let kwStr = step.keyword.trim().toLowerCase();
+        let keyword: StepModel['keyword'] = 'Given';
 
-    if (inHeader) {
-      descriptionLines.push(line);
-      continue;
-    }
+        if (['given', 'dado', 'dada', 'dados', 'dadas'].includes(kwStr)) keyword = 'Given';
+        else if (['when', 'cuando'].includes(kwStr)) keyword = 'When';
+        else if (['then', 'entonces'].includes(kwStr)) keyword = 'Then';
+        else if (['and', 'y', 'e'].includes(kwStr)) keyword = 'And';
+        else if (['but', 'pero'].includes(kwStr)) keyword = 'But';
 
-    // Steps Matching (EN & ES)
-    const stepMatch = line.match(/^(Given|Dado|Dada|Dados|Dadas|When|Cuando|Then|Entonces|And|Y|E|But|Pero)\s+(.+)$/i);
-    if (stepMatch && currentScenario) {
-      const rawKw = stepMatch[1].toLowerCase();
-      let keyword: StepModel['keyword'] = 'Given';
+        let stepText = step.text;
 
-      if (['given', 'dado', 'dada', 'dados', 'dadas'].includes(rawKw)) keyword = 'Given';
-      else if (['when', 'cuando'].includes(rawKw)) keyword = 'When';
-      else if (['then', 'entonces'].includes(rawKw)) keyword = 'Then';
-      else if (['and', 'y', 'e'].includes(rawKw)) keyword = 'And';
-      else if (['but', 'pero'].includes(rawKw)) keyword = 'But';
+        // Support for DataTables in steps
+        if (step.dataTable) {
+          const rows = step.dataTable.rows.map(r => '| ' + r.cells.map(c => c.value).join(' | ') + ' |').join('\n');
+          stepText += '\n' + rows;
+        }
 
-      let text = stepMatch[2].trim();
-      
-      // Look for inline tags at the end of the step (e.g. Given an email "test@test.com" @validate:email)
-      const inlineTags: string[] = [];
-      text = text.replace(/(^|\s)(@[a-zA-Z0-9_:]+(?:\([^)]+\))?)/g, (match, space, tag) => {
-        inlineTags.push(tag);
-        return space;
-      }).trim();
+        // Support for DocStrings
+        if (step.docString) {
+          stepText += '\n"""\n' + step.docString.content + '\n"""';
+        }
 
-      currentScenario.steps.push({ 
-        keyword, 
-        text, 
-        tags: [...accumulatedTags, ...inlineTags] 
+        steps.push({
+          keyword,
+          text: stepText,
+          tags: [...featureTags, ...scenarioTags] // Cucumber doesn't support tags on steps natively, we inherit
+        });
+      }
+
+      scenarios.push({
+        name: scenario.name,
+        tags: scenarioTags,
+        steps
       });
-      accumulatedTags = [];
     }
   }
 
@@ -137,9 +131,23 @@ export function parseGherkinText(gherkinText: string): ParsedFeature {
         }
       }
 
-      // Very simple semantic field extraction: looking for quotes and linking to step tags
-      // If a step has @validate:email and mentions "email", we infer a field.
-      // We also look for field names right before quoted strings (e.g., email "test@ex.com")
+      // Enhanced semantic field extraction, especially from DataTables
+      const lines = st.text.split('\n');
+      for (const line of lines) {
+        if (line.startsWith('|')) {
+          const cells = line.split('|').map(c => c.trim()).filter(c => c);
+          cells.forEach(cell => {
+            const fieldName = cell.toLowerCase().replace(/[^a-z0-9_]/g, '_');
+            if (fieldName && fieldName.length > 2) {
+              if (!fieldsMap.has(fieldName)) {
+                fieldsMap.set(fieldName, { name: fieldName, type: 'string', validations: [] });
+              }
+            }
+          });
+        }
+      }
+
+      // Semantic extraction from quotes
       const quoteRegex = /(\w+)\s+"([^"]+)"/g;
       let qMatch;
       while ((qMatch = quoteRegex.exec(st.text)) !== null) {
@@ -153,7 +161,7 @@ export function parseGherkinText(gherkinText: string): ParsedFeature {
         
         const existing = fieldsMap.get(fieldName)!;
         st.tags.forEach(tag => {
-          if (!existing.validations.includes(tag)) {
+          if (tag.startsWith('@validate:') && !existing.validations.includes(tag)) {
             existing.validations.push(tag);
           }
         });
