@@ -48,9 +48,33 @@ export async function handleDiffCommand(options: DiffCommandOptions = {}): Promi
 
   console.log(chalk.blue(`Checking synchronization for ${fields.length} semantic fields...\n`));
 
+  let targetProperties: string[] = [];
+  if (options.target.endsWith('.ts')) {
+    try {
+      const { Project } = require('ts-morph');
+      const project = new Project({ useInMemoryFileSystem: true });
+      const sourceFile = project.createSourceFile(options.target, targetContent);
+      
+      const interfaces = sourceFile.getInterfaces();
+      const classes = sourceFile.getClasses();
+      
+      for (const intf of interfaces) {
+        targetProperties.push(...intf.getProperties().map((p: any) => p.getName()));
+      }
+      for (const cls of classes) {
+        targetProperties.push(...cls.getProperties().map((p: any) => p.getName()));
+      }
+    } catch (e: any) {
+       console.log(chalk.yellow(`⚠ Could not parse AST of target file: ${e.message}. Falling back to string match.`));
+    }
+  }
+
   for (const field of fields) {
-     // Basic check: Does the target code at least mention the field?
-     if (!targetContent.includes(field.name)) {
+     const isFound = targetProperties.length > 0 
+       ? targetProperties.includes(field.name)
+       : targetContent.includes(field.name);
+
+     if (!isFound) {
          console.log(chalk.red(`  ✖ Drift Detected! Field '${field.name}' from feature is missing in ${options.target}`));
          driftFound = true;
      } else {

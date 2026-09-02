@@ -25,7 +25,8 @@ const sampleSpec = `Feature: User Login Feature
     And emits "UserLoggedIn" event
 `;
 
-const sampleSpanishSpec = `Característica: Autenticación de Usuarios
+const sampleSpanishSpec = `# language: es
+Característica: Autenticación de Usuarios
   Como usuario registrado
   Quiero iniciar sesión
 
@@ -166,6 +167,56 @@ describe('gherkin-ai CLI unit tests', () => {
       expect(suggestions.designPatterns).toContain('Hooks Pattern');
       expect(suggestions.designPatterns).toContain('Repository Pattern');
       expect(suggestions.codingRules.some(rule => rule.includes('avoid "any"'))).toBe(true);
+    });
+  });
+
+  describe('RealAgentProvider (LLM Rate Limits & Backoff)', () => {
+    it('should retry on HTTP 429 and eventually succeed', async () => {
+      let attempts = 0;
+      global.fetch = async (url: any, options: any) => {
+        attempts++;
+        if (attempts < 3) {
+          return { ok: false, status: 429, text: async () => 'Rate Limit Exceeded' } as any;
+        }
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ choices: [{ message: { content: 'Mock response' } }] })
+        } as any;
+      };
+
+      const { RealAgentProvider } = await import('../src/core/agent-adapter');
+      const agent = new RealAgentProvider({ provider: 'openai', apiKey: 'mock' });
+      
+      const result = await agent.executeTask({
+        id: 'test',
+        type: 'auto_fix',
+        prompt: 'Fix this',
+        contextFiles: []
+      });
+
+      expect(attempts).toBe(3);
+      expect(result.success).toBe(true);
+      expect(result.agentResponse).toBe('Mock response');
+    });
+
+    it('should fail after max retries', async () => {
+      global.fetch = async () => {
+        return { ok: false, status: 500, text: async () => 'Internal Server Error' } as any;
+      };
+
+      const { RealAgentProvider } = await import('../src/core/agent-adapter');
+      const agent = new RealAgentProvider({ provider: 'openai', apiKey: 'mock' });
+      
+      const result = await agent.executeTask({
+        id: 'test',
+        type: 'auto_fix',
+        prompt: 'Fix this',
+        contextFiles: []
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.agentResponse).toContain('LLM Error: HTTP 500 after 3 attempts');
     });
   });
 });

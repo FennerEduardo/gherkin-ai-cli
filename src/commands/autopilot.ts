@@ -65,7 +65,12 @@ export async function handleAutopilotCommand(options: AutopilotOptions = {}): Pr
   });
 
   if (scaffoldRes.codeModifications && scaffoldRes.codeModifications.length > 0) {
+    const { validateTypeScriptSyntax } = require('../core/syntax-validator');
     for (const mod of scaffoldRes.codeModifications) {
+      if (!validateTypeScriptSyntax(mod.filePath, mod.content)) {
+        console.log(chalk.yellow(`     ✖ Skipped writing ${mod.filePath} due to syntax errors.`));
+        continue;
+      }
       const fullPath = path.resolve(mod.filePath);
       fs.mkdirSync(path.dirname(fullPath), { recursive: true });
       fs.writeFileSync(fullPath, mod.content);

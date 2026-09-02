@@ -83,6 +83,13 @@ export async function handleVerifyCommand(options: VerifyCommandOptions = {}): P
         try {
           const fs = require('fs');
           const path = require('path');
+          const { validateTypeScriptSyntax } = require('../core/syntax-validator');
+          
+          if (!validateTypeScriptSyntax(mod.filePath, mod.content)) {
+            console.log(chalk.yellow(`     ✖ Skipped writing ${mod.filePath} due to syntax errors.`));
+            continue;
+          }
+
           const fullPath = path.resolve(mod.filePath);
           fs.mkdirSync(path.dirname(fullPath), { recursive: true });
           fs.writeFileSync(fullPath, mod.content, 'utf8');

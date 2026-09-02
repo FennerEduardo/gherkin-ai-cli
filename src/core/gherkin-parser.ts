@@ -160,8 +160,11 @@ export function parseGherkinText(gherkinText: string): ParsedFeature {
         }
         
         const existing = fieldsMap.get(fieldName)!;
-        st.tags.forEach(tag => {
-          if (tag.startsWith('@validate:') && !existing.validations.includes(tag)) {
+        
+        // Extract inline tags from step text
+        const inlineTags = st.text.match(/@[\w:(),]+/g) || [];
+        inlineTags.forEach(tag => {
+          if (!existing.validations.includes(tag)) {
             existing.validations.push(tag);
           }
         });

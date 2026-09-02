@@ -85,9 +85,25 @@ Diagnosis: ${task.diagnosis ? JSON.stringify(task.diagnosis, null, 2) : 'None'}`
     }
   }
 
+  private async fetchWithRetry(url: string, options: any, maxRetries = 3): Promise<Response> {
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      const res = await fetch(url, options);
+      if (res.ok) return res;
+      if (res.status === 429 || res.status >= 500) {
+        if (attempt === maxRetries) throw new Error(`HTTP ${res.status} after ${maxRetries} attempts`);
+        const delay = Math.pow(2, attempt) * 1000;
+        console.log(`\n   ⚠️ API Rate limit or server error (${res.status}). Retrying in ${delay/1000}s...`);
+        await new Promise(r => setTimeout(r, delay));
+        continue;
+      }
+      throw new Error(`HTTP ${res.status}: ${await res.text()}`);
+    }
+    throw new Error('Unreachable');
+  }
+
   private async callOllama(system: string, user: string): Promise<string> {
     const url = this.config.baseUrl || 'http://localhost:11434/api/generate';
-    const res = await fetch(url, {
+    const res = await this.fetchWithRetry(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -97,14 +113,13 @@ Diagnosis: ${task.diagnosis ? JSON.stringify(task.diagnosis, null, 2) : 'None'}`
         stream: false
       })
     });
-    if (!res.ok) throw new Error(`Ollama HTTP ${res.status}`);
     const data: any = await res.json();
     return data.response;
   }
 
   private async callOpenAI(system: string, user: string): Promise<string> {
     const url = this.config.baseUrl || 'https://api.openai.com/v1/chat/completions';
-    const res = await fetch(url, {
+    const res = await this.fetchWithRetry(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -118,14 +133,13 @@ Diagnosis: ${task.diagnosis ? JSON.stringify(task.diagnosis, null, 2) : 'None'}`
         ]
       })
     });
-    if (!res.ok) throw new Error(`OpenAI HTTP ${res.status}`);
     const data: any = await res.json();
     return data.choices[0].message.content;
   }
 
   private async callAnthropic(system: string, user: string): Promise<string> {
     const url = this.config.baseUrl || 'https://api.anthropic.com/v1/messages';
-    const res = await fetch(url, {
+    const res = await this.fetchWithRetry(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -139,7 +153,6 @@ Diagnosis: ${task.diagnosis ? JSON.stringify(task.diagnosis, null, 2) : 'None'}`
         messages: [{ role: 'user', content: user }]
       })
     });
-    if (!res.ok) throw new Error(`Anthropic HTTP ${res.status}`);
     const data: any = await res.json();
     return data.content[0].text;
   }
