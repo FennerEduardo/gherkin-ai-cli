@@ -2,6 +2,8 @@ import { GherkinAIConfig } from '../../core/config';
 import { ParsedFeature } from '../../core/gherkin-parser';
 import { ArchRuleSpec } from '../../core/arch-rules';
 import { StackSpec } from '../../core/stack-specs';
+import { ExtractedStep } from '../../core/step-indexer';
+import { AppContext } from '../../core/context-extractor';
 
 export interface PromptTemplateContext {
   config: GherkinAIConfig;
@@ -9,6 +11,8 @@ export interface PromptTemplateContext {
   arch: ArchRuleSpec;
   spec: StackSpec;
   isSpanishUser: boolean;
+  availableSteps: ExtractedStep[];
+  appContext: AppContext;
 }
 
 export interface PromptTemplate {

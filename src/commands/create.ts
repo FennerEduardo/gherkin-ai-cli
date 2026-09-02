@@ -9,13 +9,65 @@ import { ensureCliLanguage, t } from '../utils/i18n-cli';
 import { fileExistsSync, writeFileSync } from '../utils/file-system';
 import { logger } from '../utils/logger';
 
-export async function handleCreateCommand(options: { output?: string; target?: string; lang?: string; caveman?: boolean }): Promise<void> {
+export async function handleCreateCommand(options: { output?: string; target?: string; lang?: string; caveman?: boolean; headless?: boolean; config?: string }): Promise<void> {
   logger.banner();
 
   const locale = await ensureCliLanguage(options.lang);
   const isEs = locale === 'es';
 
   logger.info(isEs ? 'Asistente Interactivo Gherkin - Creación paso a paso' : 'Interactive Gherkin Spec Wizard - Step-by-step feature creator');
+
+  if (options.headless) {
+    logger.info(isEs ? 'Modo Headless (CI/CD) Activado' : 'Headless Mode (CI/CD) Activated');
+    let configData: any = {};
+    if (options.config) {
+       const fs = require('fs');
+       const path = require('path');
+       const fullPath = path.resolve(process.cwd(), options.config);
+       if (fs.existsSync(fullPath)) {
+         configData = JSON.parse(fs.readFileSync(fullPath, 'utf8'));
+       } else {
+         logger.error(`Config file not found: ${fullPath}`);
+         return;
+       }
+    } else {
+       logger.error('Headless mode requires a --config file with feature data.');
+       return;
+    }
+
+    const featureKw = isEs ? 'Característica:' : 'Feature:';
+    const asKw = isEs ? 'Como' : 'As a';
+    const wantKw = isEs ? 'Quiero' : 'I want to';
+    const soKw = isEs ? 'Para' : 'So that';
+    const scKw = isEs ? 'Escenario:' : 'Scenario:';
+
+    let gherkinContent = `${featureKw} ${configData.featureName || 'Headless Feature'}\n`;
+    if (configData.actor) gherkinContent += `  ${asKw} ${configData.actor}\n`;
+    if (configData.action) gherkinContent += `  ${wantKw} ${configData.action}\n`;
+    if (configData.outcome) gherkinContent += `  ${soKw} ${configData.outcome}\n\n`;
+    gherkinContent += `  ${scKw} ${configData.scenarioName || 'Headless Scenario'}\n`;
+
+    const steps = configData.steps || [];
+    steps.forEach((st: any) => {
+      gherkinContent += `    ${st.keyword} ${st.text}\n`;
+    });
+
+    const defaultFileName = (configData.featureName || 'headless').toLowerCase().replace(/[^a-z0-9]/g, '_') + '.feature';
+    const targetSpecPath = options.output
+      ? path.resolve(process.cwd(), options.output)
+      : path.resolve(process.cwd(), 'specs', defaultFileName);
+
+    writeFileSync(targetSpecPath, gherkinContent);
+    logger.success(`${t('specCreated', locale)} ${targetSpecPath}`);
+
+    if (configData.injectTarget || options.target) {
+      await handleAddCommand({
+        feature: targetSpecPath,
+        target: configData.injectTarget || options.target
+      });
+    }
+    return;
+  }
 
   if (options.caveman) {
     logger.info(isEs ? 'Modo Caveman Activado - Ingreso Rápido' : 'Caveman Mode Activated - Quick Input');
@@ -63,7 +115,6 @@ export async function handleCreateCommand(options: { output?: string; target?: s
     }
     return;
   }
-
 
   const answers = await inquirer.prompt([
     {
