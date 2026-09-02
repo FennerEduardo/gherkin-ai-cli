@@ -49,7 +49,12 @@ export class RealAgentProvider implements AgentProvider {
     }
 
     const systemPrompt = `You are a Senior Software Engineer AI Agent. Your task is to perform: ${task.type}.
-If you are fixing code, output the fixed code in Markdown blocks.`;
+If you are fixing or writing code, output the code in Markdown blocks.
+IMPORTANT: Precede each markdown block with the exact file path like this:
+**File:** \`path/to/file.ts\`
+\`\`\`typescript
+// code
+\`\`\``;
 
     const userPrompt = `Task: ${task.prompt}
 Context Files: ${task.contextFiles?.join(', ') || 'None'}
@@ -141,15 +146,29 @@ Diagnosis: ${task.diagnosis ? JSON.stringify(task.diagnosis, null, 2) : 'None'}`
 
   private extractCodeModifications(text: string, contextFiles: string[]): { filePath: string; content: string }[] {
     const mods: { filePath: string; content: string }[] = [];
-    const blockRegex = /```[\w]*\n([\s\S]*?)```/g;
+    
+    // Regex looks for "**File:** `path/to/file`" followed by a code block
+    const blockRegex = /\*\*File:\*\*\s*`([^`]+)`[\s\S]*?```[\w]*\n([\s\S]*?)```/g;
     let match;
-    let i = 0;
+    let found = false;
+
     while ((match = blockRegex.exec(text)) !== null) {
-      if (contextFiles[i]) {
-        mods.push({ filePath: contextFiles[i], content: match[1].trim() });
-      }
-      i++;
+      found = true;
+      mods.push({ filePath: match[1].trim(), content: match[2].trim() });
     }
+
+    // Fallback: if no **File:** markers were found, use the old naive extraction
+    if (!found) {
+      const fallbackRegex = /```[\w]*\n([\s\S]*?)```/g;
+      let i = 0;
+      while ((match = fallbackRegex.exec(text)) !== null) {
+        if (contextFiles[i]) {
+          mods.push({ filePath: contextFiles[i], content: match[1].trim() });
+        }
+        i++;
+      }
+    }
+
     return mods;
   }
 }

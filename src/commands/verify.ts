@@ -82,7 +82,10 @@ export async function handleVerifyCommand(options: VerifyCommandOptions = {}): P
       for (const mod of repairResult.codeModifications) {
         try {
           const fs = require('fs');
-          fs.writeFileSync(mod.filePath, mod.content, 'utf8');
+          const path = require('path');
+          const fullPath = path.resolve(mod.filePath);
+          fs.mkdirSync(path.dirname(fullPath), { recursive: true });
+          fs.writeFileSync(fullPath, mod.content, 'utf8');
           console.log(chalk.green(`     ✓ ${mod.filePath} updated.`));
         } catch (e: any) {
           console.log(chalk.red(`     ✖ Failed to write ${mod.filePath}: ${e.message}`));

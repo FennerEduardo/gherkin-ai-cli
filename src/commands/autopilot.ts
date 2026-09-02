@@ -40,25 +40,37 @@ export async function handleAutopilotCommand(options: AutopilotOptions = {}): Pr
     contextFiles: ['.ghe/conventions.md']
   });
 
-  const specContent = specRes.codeModifications?.[0]?.content || 'Feature: Auto-generated feature...';
-  const specPath = 'specs/autopilot.feature';
-  fs.mkdirSync('specs', { recursive: true });
-  fs.writeFileSync(specPath, specContent);
-  console.log(chalk.green(`   ✓ Wrote specification to ${specPath}`));
+  let specContent = 'Feature: Auto-generated feature...';
+  if (specRes.codeModifications && specRes.codeModifications.length > 0) {
+    for (const mod of specRes.codeModifications) {
+      const p = mod.filePath.endsWith('.feature') ? mod.filePath : `specs/${mod.filePath}`;
+      const fullPath = path.resolve(p);
+      fs.mkdirSync(path.dirname(fullPath), { recursive: true });
+      fs.writeFileSync(fullPath, mod.content);
+      console.log(chalk.green(`   ✓ Wrote specification to ${p}`));
+      if (mod.filePath.endsWith('.feature')) {
+        specContent = mod.content;
+      }
+    }
+  } else {
+    console.log(chalk.yellow(`   ⚠️ Agent didn't return proper code blocks. Using fallback.`));
+  }
 
   console.log(chalk.blue(`3. Invoking Scaffolding Agent -> Generating Bindings...`));
   const scaffoldRes = await agent.executeTask({
     id: 'auto-scaffold',
     type: 'scaffold_binding',
     prompt: `Generate step definitions for the following spec:\n\n${specContent}\n\nWrap code in \`\`\`ts ... \`\`\``,
-    contextFiles: [specPath]
+    contextFiles: []
   });
 
   if (scaffoldRes.codeModifications && scaffoldRes.codeModifications.length > 0) {
-     const bindPath = 'tests/steps/autopilot.steps.ts';
-     fs.mkdirSync('tests/steps', { recursive: true });
-     fs.writeFileSync(bindPath, scaffoldRes.codeModifications[0].content);
-     console.log(chalk.green(`   ✓ Wrote bindings to ${bindPath}`));
+    for (const mod of scaffoldRes.codeModifications) {
+      const fullPath = path.resolve(mod.filePath);
+      fs.mkdirSync(path.dirname(fullPath), { recursive: true });
+      fs.writeFileSync(fullPath, mod.content);
+      console.log(chalk.green(`   ✓ Wrote bindings to ${mod.filePath}`));
+    }
   }
 
   console.log(chalk.blue(`4. Invoking Verification Agent & Closed-Loop Repair...`));
