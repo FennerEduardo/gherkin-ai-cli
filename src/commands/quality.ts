@@ -4,11 +4,13 @@
 
 import chalk from 'chalk';
 import { calculateQualityScorecard } from '../core/quality-score';
+import { loadConfig } from '../core/config';
 
 export async function handleQualityCommand(): Promise<void> {
   console.log(chalk.bold.cyan('\n📊 Calculating Feature Quality Index Score...\n'));
 
-  const scorecard = calculateQualityScorecard();
+  const config = loadConfig();
+  const scorecard = calculateQualityScorecard(process.cwd(), config.specDir);
 
   console.log(`  Specification Score : ${chalk.bold.green(scorecard.specificationScore + '%')}`);
   console.log(`  Unit Tests Score    : ${chalk.bold.green(scorecard.unitTestsScore + '%')}`);

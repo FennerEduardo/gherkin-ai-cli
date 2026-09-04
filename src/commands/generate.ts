@@ -33,7 +33,7 @@ const DEFAULT_SAMPLE_GHERKIN = `Feature: User Authentication & Token Issuance
     And returns error message "Invalid credentials"
 `;
 
-export async function handleGenerateCommand(options: { feature?: string; config?: string }): Promise<void> {
+export async function handleGenerateCommand(options: { feature?: string; config?: string; yes?: boolean }): Promise<void> {
   logger.banner();
 
   const config = loadConfig(options.config);
@@ -86,12 +86,16 @@ export async function handleGenerateCommand(options: { feature?: string; config?
     console.log(`- AI Tools: ${config.stack.aiEngine}`);
   }
 
-  const { confirmContext } = await inquirer.prompt([{
-    type: 'confirm',
-    name: 'confirmContext',
-    message: 'Is this technical context correct for the agent prompts?',
-    default: true
-  }]);
+  let confirmContext = true;
+  if (!options.yes && !process.env.CI) {
+    const answer = await inquirer.prompt([{
+      type: 'confirm',
+      name: 'confirmContext',
+      message: 'Is this technical context correct for the agent prompts?',
+      default: true
+    }]);
+    confirmContext = answer.confirmContext;
+  }
 
   if (!confirmContext) {
     logger.warn('Context rejected. Please update gherkin-ai.config.json or run `ghk detect` and run again.');
@@ -108,12 +112,16 @@ export async function handleGenerateCommand(options: { feature?: string; config?
     agentChoices.push({ name: 'AI Engineer Agent (RAG/VectorDB)', value: 'ai-engineer-agent.md', checked: true });
   }
 
-  const { selectedAgents } = await inquirer.prompt([{
-    type: 'checkbox',
-    name: 'selectedAgents',
-    message: 'Which Agent Prompts do you want to generate?',
-    choices: agentChoices
-  }]);
+  let selectedAgents = agentChoices.map(c => c.value);
+  if (!options.yes && !process.env.CI) {
+    const answer = await inquirer.prompt([{
+      type: 'checkbox',
+      name: 'selectedAgents',
+      message: 'Which Agent Prompts do you want to generate?',
+      choices: agentChoices
+    }]);
+    selectedAgents = answer.selectedAgents;
+  }
 
   if (selectedAgents.length > 0) {
     // 3. Generate Agent Prompts

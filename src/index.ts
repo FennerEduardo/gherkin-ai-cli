@@ -30,6 +30,9 @@ program
   .name('gherkin-ai')
   .description('Enterprise-Grade Closed-Loop Agentic Orchestration Engine & Spec-Driven Verification Framework for AI Coding Agents.')
   .version(pkg.version || '2.0.0')
+  .option('--project <dir>', 'Target project directory (skip interactive selector)')
+  .option('--yes', 'Accept all defaults without prompting (non-interactive mode)')
+  .option('--non-interactive', 'Alias for --yes')
   .option('--init', 'Alias for init command')
   .option('--create', 'Alias for create command')
   .option('--generate', 'Alias for generate command')
@@ -217,7 +220,14 @@ program.action(async (options) => {
 
 async function bootstrap() {
   const { resolveWorkspaceDirectory } = await import('./utils/workspace-detector');
-  await resolveWorkspaceDirectory();
+  
+  // Extract global options manually before parsing because we need to know the workspace first
+  const argv = process.argv;
+  const projectIdx = argv.findIndex(arg => arg === '--project');
+  const project = projectIdx > -1 ? argv[projectIdx + 1] : undefined;
+  const nonInteractive = argv.includes('--yes') || argv.includes('--non-interactive');
+
+  await resolveWorkspaceDirectory({ project, nonInteractive });
   program.parse(process.argv);
 }
 

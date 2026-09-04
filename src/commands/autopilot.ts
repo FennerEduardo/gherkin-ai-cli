@@ -9,6 +9,9 @@ import { buildProjectContext } from '../core/context-builder';
 import { calculateQualityScorecard } from '../core/quality-score';
 import { RealAgentProvider, LLMConfig } from '../core/agent-adapter';
 import { handleVerifyCommand } from './verify';
+import { loadConfig } from '../core/config';
+import { resolveSpecDir } from '../utils/spec-dir-resolver';
+import { validateRequirement } from '../core/requirement-validator';
 
 export interface AutopilotOptions {
   requirement?: string;
@@ -19,7 +22,28 @@ export async function handleAutopilotCommand(options: AutopilotOptions = {}): Pr
   console.log(chalk.bold.cyan('\n🚀 Launching gherkin-ai Autopilot Autonomous Delivery Orchestrator...\n'));
 
   const reqFile = options.requirement || 'requirement.md';
-  const reqContent = fs.existsSync(reqFile) ? fs.readFileSync(reqFile, 'utf8') : 'No requirement provided.';
+  if (!fs.existsSync(reqFile)) {
+    console.log(chalk.red(`\n✖ Requirement file not found: ${reqFile}`));
+    console.log(chalk.yellow(`  → Fix: Provide a valid path with --requirement <file>`));
+    console.log(chalk.yellow(`  → Example: ghk autopilot --requirement docs/user-crud.md\n`));
+    process.exitCode = 1;
+    return;
+  }
+  const reqContent = fs.readFileSync(reqFile, 'utf8');
+
+  // Validate requirement before proceeding with agents
+  const validation = validateRequirement(reqContent);
+  if (!validation.isValid) {
+    console.log(chalk.red('\n✖ Requirement validation failed:'));
+    for (const issue of validation.issues) {
+      console.log(chalk.yellow(`  ⚠ ${issue.message}`));
+      console.log(chalk.gray(`    → ${issue.suggestion}`));
+    }
+    process.exitCode = 1;
+    return;
+  }
+
+  const configInstance = loadConfig();
 
   console.log(chalk.blue(`1. Analyzing repository & building context package...`));
   const context = buildProjectContext();
@@ -42,8 +66,20 @@ export async function handleAutopilotCommand(options: AutopilotOptions = {}): Pr
 
   let specContent = 'Feature: Auto-generated feature...';
   if (specRes.codeModifications && specRes.codeModifications.length > 0) {
+    let specDirPath = 'specs';
+    try {
+      specDirPath = resolveSpecDir(configInstance.specDir);
+    } catch {
+      // Use fallback if none found
+    }
+
     for (const mod of specRes.codeModifications) {
-      const p = mod.filePath.endsWith('.feature') ? mod.filePath : `specs/${mod.filePath}`;
+      let p = mod.filePath;
+      if (!p.endsWith('.feature')) {
+        p = path.join(specDirPath, p);
+      } else if (!p.includes('/') && !p.includes('\\')) {
+        p = path.join(specDirPath, p);
+      }
       const fullPath = path.resolve(p);
       fs.mkdirSync(path.dirname(fullPath), { recursive: true });
       fs.writeFileSync(fullPath, mod.content);
@@ -82,7 +118,7 @@ export async function handleAutopilotCommand(options: AutopilotOptions = {}): Pr
   await handleVerifyCommand({ autoFix: true, maxRetries: 2 });
 
   console.log(chalk.blue(`5. Evaluating Enterprise Quality Score Gate...`));
-  const scorecard = calculateQualityScorecard();
+  const scorecard = calculateQualityScorecard(process.cwd(), configInstance.specDir);
   console.log(chalk.bold.green(`\n✅ Autopilot Execution Complete! Quality Score: ${scorecard.overallScore}%`));
   console.log(chalk.bold.cyan(`   Ready for PR Review & Human Approval.\n`));
 }

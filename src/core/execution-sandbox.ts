@@ -8,6 +8,7 @@ import fs from 'fs';
 
 export interface SandboxExecutionOptions {
   command?: string;
+  configCommand?: string;
   cwd?: string;
   docker?: boolean;
   dockerImage?: string;
@@ -29,7 +30,7 @@ export function executeSandbox(options: SandboxExecutionOptions = {}): SandboxRe
   const timeout = options.timeoutMs || 300000;
   const startTime = Date.now();
 
-  let commandToRun = options.command || detectDefaultTestCommand(cwd);
+  let commandToRun = options.command || options.configCommand || detectDefaultTestCommand(cwd);
 
   if (options.docker) {
     const imageName = options.dockerImage || 'node:20-alpine';

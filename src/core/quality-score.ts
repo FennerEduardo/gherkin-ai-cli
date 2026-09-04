@@ -17,7 +17,7 @@ export interface FeatureQualityScorecard {
   passedQualityGate: boolean;
 }
 
-export function calculateQualityScorecard(cwd: string = process.cwd()): FeatureQualityScorecard {
+export function calculateQualityScorecard(cwd: string = process.cwd(), specDirOverride?: string): FeatureQualityScorecard {
   let unitTestsScore = 0;
   
   try {
@@ -63,11 +63,15 @@ export function calculateQualityScorecard(cwd: string = process.cwd()): FeatureQ
     } catch { }
   }
 
-  // Specification Score: Checking if specs exist in the repo
+  // Specification Score: Use resolved spec directory
   let specificationScore = 0;
-  if (fs.existsSync(path.join(cwd, 'specs')) || fs.existsSync(path.join(cwd, 'features'))) {
-    const specFiles = fs.readdirSync(path.join(cwd, 'specs')).filter(f => f.endsWith('.feature'));
+  try {
+    const { resolveSpecDir } = require('../utils/spec-dir-resolver');
+    const specDirPath = resolveSpecDir(specDirOverride, cwd);
+    const specFiles = fs.readdirSync(specDirPath).filter((f: string) => f.endsWith('.feature'));
     specificationScore = specFiles.length > 0 ? 95 : 40;
+  } catch {
+    specificationScore = 0;
   }
 
   const integrationTestsScore = unitTestsScore > 0 ? Math.round(unitTestsScore * 0.8) : 0;

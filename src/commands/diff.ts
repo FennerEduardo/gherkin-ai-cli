@@ -11,6 +11,14 @@ export interface DiffCommandOptions {
   target?: string;
 }
 
+export interface DriftReport {
+  fieldsSync: { field: string; status: 'synced' | 'missing' | 'extra' }[];
+  endpointsSync: { endpoint: string; status: 'synced' | 'missing' }[];
+  httpCodesSync: { code: string; status: 'synced' | 'missing' }[];
+  scenariosWithoutTests: string[];
+  hasDrift: boolean;
+}
+
 export async function handleDiffCommand(options: DiffCommandOptions = {}): Promise<void> {
   console.log(chalk.bold.cyan('\n🔍 Running Drift Detection (Gherkin vs Code)...\n'));
   
@@ -39,8 +47,8 @@ export async function handleDiffCommand(options: DiffCommandOptions = {}): Promi
   const parsed = parseGherkinText(featureContent);
   const fields = parsed.domainAnalysis.fields;
 
-  if (fields.length === 0) {
-      console.log(chalk.yellow(`⚠ No semantic fields found in ${options.feature}. Ensure you use quotes like "email" to define fields.`));
+  if (fields.length === 0 && parsed.scenarios.length === 0) {
+      console.log(chalk.yellow(`⚠ No semantic fields or scenarios found in ${options.feature}.`));
       return;
   }
 
@@ -80,6 +88,28 @@ export async function handleDiffCommand(options: DiffCommandOptions = {}): Promi
      } else {
          console.log(chalk.green(`  ✓ Field '${field.name}' is synchronized.`));
      }
+  }
+
+  console.log(chalk.blue(`\nChecking HTTP Codes and Endpoints...\n`));
+  const httpCodes = featureContent.match(/HTTP (?:status )?(\d{3})/gi) || [];
+  for (const codeMatch of httpCodes) {
+    const code = codeMatch.replace(/[^\d]/g, '');
+    if (!targetContent.includes(code)) {
+      console.log(chalk.red(`  ✖ Drift Detected! Expected HTTP code ${code} from feature is not explicitly handled in ${options.target}`));
+      driftFound = true;
+    } else {
+      console.log(chalk.green(`  ✓ HTTP code ${code} is synchronized.`));
+    }
+  }
+
+  const endpoints = featureContent.match(/(?:\/api\/[\w/-]+)/gi) || [];
+  for (const endpoint of endpoints) {
+    if (!targetContent.includes(endpoint)) {
+      console.log(chalk.red(`  ✖ Drift Detected! Endpoint ${endpoint} from feature is not explicitly found in ${options.target}`));
+      driftFound = true;
+    } else {
+      console.log(chalk.green(`  ✓ Endpoint ${endpoint} is synchronized.`));
+    }
   }
 
   if (driftFound) {

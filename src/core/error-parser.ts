@@ -11,9 +11,11 @@ export interface FailureDiagnosis {
   cleanedStackTrace: string;
   suggestedFixContext: string;
   confidenceScore: number;
+  suggestedActions: string[];
+  agentName?: string;
 }
 
-export function parseExecutionFailure(result: SandboxResult): FailureDiagnosis {
+export function parseExecutionFailure(result: SandboxResult, agentName?: string): FailureDiagnosis {
   const combinedLog = `${result.stdout}\n${result.stderr}`;
   const lines = combinedLog.split('\n');
 
@@ -50,6 +52,12 @@ export function parseExecutionFailure(result: SandboxResult): FailureDiagnosis {
     affectedFiles,
     cleanedStackTrace,
     suggestedFixContext: `Fix the underlying code in [${affectedFiles.join(', ')}] to resolve:\n${cleanedStackTrace}`,
-    confidenceScore: affectedFiles.length > 0 ? 0.92 : 0.75
+    confidenceScore: affectedFiles.length > 0 ? 0.92 : 0.75,
+    suggestedActions: [
+      'Check if the test command matches your project structure.',
+      'Review the modified files for compilation or logical errors.',
+      'Consider running the tests manually to get more details.'
+    ],
+    agentName
   };
 }

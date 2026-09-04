@@ -3,7 +3,22 @@ import path from 'path';
 import inquirer from 'inquirer';
 import { getGlobalUserLocale } from './i18n-cli';
 
-export async function resolveWorkspaceDirectory(): Promise<void> {
+export async function resolveWorkspaceDirectory(opts?: { project?: string; nonInteractive?: boolean }): Promise<void> {
+  // If --project is provided, skip interactive selector and switch directly
+  if (opts?.project) {
+    const target = path.resolve(process.cwd(), opts.project);
+    if (!fs.existsSync(target)) {
+      throw new Error(`Project directory not found: ${target}`);
+    }
+    process.chdir(target);
+    return;
+  }
+
+  // If non-interactive mode or CI, don't show prompts
+  if (opts?.nonInteractive || process.env.CI === 'true') {
+    return;
+  }
+
   const cwd = process.cwd();
   const subProjects: { name: string, value: string }[] = [];
 

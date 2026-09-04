@@ -154,18 +154,50 @@ export function startWebServer(port: number): void {
   // API: Get Directory Tree
   app.get('/api/tree', (req, res) => {
     try {
-      const buildTree = (dirPath: string): any => {
+      const buildTree = (dirPath: string, depth: number = 0): any => {
         const result: any = { name: path.basename(dirPath), type: 'dir', children: [] };
-        const items = fs.readdirSync(dirPath);
+        
+        // Prevent infinite recursion on deep trees
+        if (depth > 10) return result;
+        
+        let items: string[];
+        try {
+          items = fs.readdirSync(dirPath);
+        } catch {
+          // Directory not readable (permissions, etc.)
+          return result;
+        }
+
         for (const item of items) {
-          if (['node_modules', '.git', 'dist'].includes(item)) continue;
+          if (['node_modules', '.git', 'dist', '.cache', '.next', 'vendor', '__pycache__'].includes(item)) continue;
+          if (item.startsWith('.')) continue;
           
           const fullPath = path.join(dirPath, item);
-          const stat = fs.statSync(fullPath);
-          if (stat.isDirectory()) {
-            result.children.push(buildTree(fullPath));
-          } else {
-            result.children.push({ name: item, type: 'file' });
+          try {
+            // Use lstatSync to avoid following broken symlinks
+            const stat = fs.lstatSync(fullPath);
+
+            if (stat.isSymbolicLink()) {
+              // Check if symlink target exists before following
+              try {
+                const realStat = fs.statSync(fullPath);
+                if (realStat.isDirectory()) {
+                  result.children.push(buildTree(fullPath, depth + 1));
+                } else {
+                  result.children.push({ name: item, type: 'file', symlink: true });
+                }
+              } catch {
+                // Broken symlink — include it as a marker but don't crash
+                result.children.push({ name: item, type: 'symlink-broken' });
+              }
+            } else if (stat.isDirectory()) {
+              result.children.push(buildTree(fullPath, depth + 1));
+            } else {
+              result.children.push({ name: item, type: 'file' });
+            }
+          } catch {
+            // Skip entries we can't stat at all (race condition, permissions, etc.)
+            continue;
           }
         }
         return result;

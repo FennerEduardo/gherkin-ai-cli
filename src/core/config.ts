@@ -29,6 +29,8 @@ export interface GherkinAIConfig {
   designPatterns?: string[];
   codingRules?: string[];
   outputDir: string;
+  specDir?: string;       // Directorio de features/specs (default: auto-detect)
+  testCommand?: string;   // Comando de pruebas personalizado para verify/autopilot
 }
 
 export const defaultConfig: GherkinAIConfig = {
@@ -53,7 +55,9 @@ export const defaultConfig: GherkinAIConfig = {
   },
   designPatterns: [],
   codingRules: [],
-  outputDir: './generated-specs'
+  outputDir: './generated-specs',
+  specDir: undefined,
+  testCommand: undefined
 };
 
 export function loadConfig(configPath?: string): GherkinAIConfig {

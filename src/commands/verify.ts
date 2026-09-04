@@ -6,6 +6,7 @@ import chalk from 'chalk';
 import { executeSandbox, SandboxExecutionOptions } from '../core/execution-sandbox';
 import { parseExecutionFailure } from '../core/error-parser';
 import { RealAgentProvider, LLMConfig } from '../core/agent-adapter';
+import { loadConfig } from '../core/config';
 
 export interface VerifyCommandOptions {
   autoFix?: boolean;
@@ -18,8 +19,10 @@ export async function handleVerifyCommand(options: VerifyCommandOptions = {}): P
   console.log(chalk.bold.cyan('\n🔁 Executing Closed-Loop Verification Pipeline...\n'));
 
   const maxRetries = parseInt(String(options.maxRetries || '3'), 10);
+  const config = loadConfig();
   const sandboxOpts: SandboxExecutionOptions = {
     command: options.command,
+    configCommand: config.testCommand,
     docker: options.docker || false
   };
 
