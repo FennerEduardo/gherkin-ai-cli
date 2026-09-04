@@ -8,7 +8,7 @@
 
 ---
 
-## 🌟 Strategic Capabilities (`v2.4.0`)
+## 🌟 Strategic Capabilities (`v2.5.0`)
 
 While basic AI spec tools only generate text prompts, `gherkin-ai` acts as an **executable contract and verification harness** between Product Intent, AI Agents (Cursor, Claude Code, Windsurf, Antigravity), Code Implementation, and CI/CD Quality Gates:
 
@@ -17,7 +17,8 @@ While basic AI spec tools only generate text prompts, `gherkin-ai` acts as an **
 - 🌳 **Official Cucumber AST Parser**: 100% compliant with the Gherkin standard using the official `@cucumber/gherkin` package. Flawlessly parses DataTables, DocStrings, and advanced scenarios for semantic extraction.
 - 🔗 **AST Step Definitions Indexer**: Prevents AI hallucinations by statically analyzing your E2E project (Cypress/Playwright/Cucumber-JS) via `ts-morph`, extracting existing `Given/When/Then` steps, and forcing the LLM to reuse them.
 - 🛡️ **Semantically Typed Contracts**: Extracts variables straight from your Gherkin data tables (like `@validate:email`) and outputs strictly typed Zod DTOs instead of generic objects.
-- ⚙️ **Headless CI/CD Mode**: Fully decoupled non-interactive mode (`ghk create --headless --config spec.json`) designed for frictionless integration into GitHub Actions, Azure DevOps, and automated pipelines.
+- ⚙️ **Headless CI/CD Mode**: Fully decoupled non-interactive mode (`--yes`, `--non-interactive`, `--project <dir>`) designed for frictionless integration into GitHub Actions, Azure DevOps, and automated pipelines.
+- 📋 **Pre-flight Requirement Validation**: Built-in semantic validator inside `ghk autopilot` that analyzes requirements before triggering LLM agents, preventing token waste on vague features.
 - 🔌 **Native MCP Server & Cursor Skills (`ghk mcp install` & `ghk skill`)**: Zero-config Model Context Protocol (MCP) server. The new `ghk skill` command injects native Cursor and Windsurf `.cursorrules` to let your IDE automatically invoke Gherkin AI as an internal skill.
 - 📦 **Context Engineering & Guardrails Engine (`ghk context`)**: Structurally packages project architecture, conventions, and security policies into `.ghe/`, enforcing strict path protection and agent change limits.
 - 🏗️ **DOM & Data Model Anchor**: Automatically extracts `schema.prisma` models and Page Object Model (POM) `data-test` selectors, injecting them into the agent's context to ensure generated tests are grounded in technical reality.
@@ -25,11 +26,11 @@ While basic AI spec tools only generate text prompts, `gherkin-ai` acts as an **
 - ☕ **Enterprise Java, React, Rust & Go Templates**: Extensive boilerplate support. Scaffolds Spring Boot, Next.js, Rust Axum, Go Fiber, and mobile (Flutter/React Native) architectures out-of-the-box.
 - 🕵️ **Interactive Stack & Pattern Detection (`ghk detect`)**: Auto-detects existing brownfield architectures and intelligently injects industry-standard design patterns (e.g., Hooks, CQRS, MVC) into Agent prompts.
 - 📡 **Event-Driven & AsyncAPI Support**: Automatically extracts domain events from Gherkin and scaffolds standard `asyncapi.json` contracts.
-- 🔍 **True AST Drift Detection (`ghk diff`)**: Validates in CI/CD pipelines if the implemented DTOs and code have drifted from the `.feature` file using native TypeScript AST compilation.
+- 🔍 **Deep AST Drift Detection (`ghk diff`)**: Validates in CI/CD pipelines if the implemented DTOs and code have drifted from the `.feature` file. Now cross-references semantic fields, HTTP status codes, and API Endpoints.
 
 ---
 
-## 📥 Installation & Execution (`v2.4.0`)
+## 📥 Installation & Execution (`v2.5.0`)
 
 You can use `gherkin-ai` via global `npm` installation, on-demand zero-install `npx`, or as a project local dev dependency:
 
