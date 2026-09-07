@@ -1,6 +1,9 @@
 {
-  "projectName": "test",
-  "projectMode": "brownfield",
+  "projectName": "gherkin-ai",
+  "specDir": "./specs",
+  "outputDir": "./generated-specs",
+  "testCommand": "npx vitest run",
+  "projectMode": "greenfield",
   "architecture": "hexagonal",
   "stack": {
     "language": "typescript",

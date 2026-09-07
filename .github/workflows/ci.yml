@@ -19,10 +19,20 @@ jobs:
         cache: 'npm'
         
     - name: Install dependencies
-      run: npm install
+      run: npm ci
       
     - name: Type Check & Build
       run: npm run build
       
-    - name: Run Tests
-      run: npm test
+    - name: Run Tests with Coverage
+      run: npx vitest run --coverage
+      
+    - name: Check Coverage Threshold
+      run: npx vitest run --coverage --coverage.thresholds.lines=70
+      
+    - name: Security Audit
+      run: npm audit --audit-level=high
+      continue-on-error: true
+      
+    - name: Lint Own Specs
+      run: node bin/gherkin-ai.js lint || true

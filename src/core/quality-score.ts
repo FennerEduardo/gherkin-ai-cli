@@ -10,6 +10,7 @@ import path from 'path';
 import { parseGherkinText } from './gherkin-parser';
 import { lintSpecification } from './specification-linter';
 import { scanContextSecurity } from './context-security';
+import { resolveSpecDir } from '../utils/spec-dir-resolver';
 
 export interface FeatureQualityScorecard {
   specificationScore: number;
@@ -32,7 +33,6 @@ export function calculateQualityScorecard(cwd: string = process.cwd(), specDirOv
 
   // 1. Specification Score via SpecificationLinter & IR
   try {
-    const { resolveSpecDir } = require('../utils/spec-dir-resolver');
     const specDirPath = resolveSpecDir(specDirOverride, cwd);
 
     if (fs.existsSync(specDirPath)) {
@@ -55,7 +55,8 @@ export function calculateQualityScorecard(cwd: string = process.cwd(), specDirOv
     } else {
       specificationScore = 0;
     }
-  } catch {
+  } catch (e) {
+    console.error('Error calculating specification score:', e);
     specificationScore = 0;
   }
 

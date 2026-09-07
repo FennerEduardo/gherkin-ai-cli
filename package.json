@@ -59,6 +59,7 @@
     "start": "node ./bin/gherkin-ai.js",
     "dev": "npx tsc --watch",
     "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
     "test:e2e": "playwright test",
     "prepublishOnly": "npm run build",
     "publish:beta": "npm run build && npm publish --tag beta",
