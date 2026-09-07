@@ -65,7 +65,7 @@ function handleJsonRpcMessage(message: any): void {
         },
         serverInfo: {
           name: 'gherkin-ai-mcp',
-          version: '2.6.0'
+          version: '2.6.1'
         }
       });
       break;
