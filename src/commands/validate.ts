@@ -9,8 +9,9 @@ import { parseGherkinText } from '../core/gherkin-parser';
 import { fileExistsSync, readFileSync } from '../utils/file-system';
 import { logger } from '../utils/logger';
 import { Project } from 'ts-morph';
+import { validateOpenAPIAgainstIR, validateOpenAPISpec } from '../core/openapi-validator';
 
-export async function handleValidateCommand(options: { feature?: string; config?: string }): Promise<void> {
+export async function handleValidateCommand(options: { feature?: string; config?: string; openapi?: string }): Promise<void> {
   logger.banner();
   logger.info('Validating project architecture, step coverage & layer boundaries...');
 
@@ -22,6 +23,7 @@ export async function handleValidateCommand(options: { feature?: string; config?
 
   let errorsCount = 0;
   let warningsCount = 0;
+  let parsedFeatureIR: any = null;
 
   // 1. Gherkin AST & Step Coverage Analysis
   if (options.feature) {
@@ -32,6 +34,7 @@ export async function handleValidateCommand(options: { feature?: string; config?
     } else {
       const gherkinText = readFileSync(featurePath);
       const parsed = parseGherkinText(gherkinText);
+      parsedFeatureIR = parsed;
       
       if (parsed.scenarios.length === 0) {
         logger.error('Feature file contains zero valid scenarios.');
@@ -79,7 +82,39 @@ export async function handleValidateCommand(options: { feature?: string; config?
     warningsCount++;
   }
 
-  // 3. Final Validation Summary Scorecard
+  // 3. OpenAPI Specification Validation (Optional)
+  if (options.openapi) {
+    const openapiPath = path.resolve(process.cwd(), options.openapi);
+    if (!fileExistsSync(openapiPath)) {
+      logger.error(`OpenAPI spec file not found at ${openapiPath}`);
+      errorsCount++;
+    } else {
+      logger.info(`Validating OpenAPI specification: ${options.openapi}`);
+      let oaResult;
+      
+      if (parsedFeatureIR) {
+        logger.info(`Cross-referencing OpenAPI with Gherkin IR from ${options.feature}`);
+        oaResult = validateOpenAPIAgainstIR(openapiPath, parsedFeatureIR);
+      } else {
+        oaResult = validateOpenAPISpec(openapiPath);
+      }
+      
+      if (!oaResult.valid) {
+        logger.error(`OpenAPI validation failed (${oaResult.specVersion}):`);
+        oaResult.errors.forEach(e => logger.error(`  [${e.path}] ${e.message}`));
+        errorsCount += oaResult.errors.length;
+      } else {
+        logger.success(`OpenAPI validation passed (${oaResult.specVersion}).`);
+      }
+      
+      if (oaResult.warnings.length > 0) {
+        oaResult.warnings.forEach(w => logger.warn(`  [${w.path}] ${w.message}`));
+        warningsCount += oaResult.warnings.length;
+      }
+    }
+  }
+
+  // 4. Final Validation Summary Scorecard
   console.log('\n------------------------------------------------------------');
   console.log('📊 Architectural Linter Summary Scorecard:');
   console.log(`- Architecture Style: ${arch.name}`);

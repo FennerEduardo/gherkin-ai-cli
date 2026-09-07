@@ -14,6 +14,11 @@ export interface AgentResult {
   success: boolean;
   codeModifications?: { filePath: string; content: string }[];
   agentResponse: string;
+  telemetry?: {
+    inputTokens: number;
+    outputTokens: number;
+    modelUsed: string;
+  };
 }
 
 export interface AgentProvider {
@@ -92,13 +97,20 @@ Context Files: ${task.contextFiles?.join(', ') || 'None'}
 Diagnosis: ${task.diagnosis ? JSON.stringify(task.diagnosis, null, 2) : 'None'}`;
 
     let responseText = '';
+    let agentTelemetry: AgentResult['telemetry'];
     try {
       if (this.config.provider === 'ollama') {
-        responseText = await this.callOllama(systemPrompt, userPrompt);
+        const res = await this.callOllama(systemPrompt, userPrompt);
+        responseText = res.text;
+        agentTelemetry = res.telemetry;
       } else if (this.config.provider === 'openai') {
-        responseText = await this.callOpenAI(systemPrompt, userPrompt);
+        const res = await this.callOpenAI(systemPrompt, userPrompt);
+        responseText = res.text;
+        agentTelemetry = res.telemetry;
       } else if (this.config.provider === 'anthropic') {
-        responseText = await this.callAnthropic(systemPrompt, userPrompt);
+        const res = await this.callAnthropic(systemPrompt, userPrompt);
+        responseText = res.text;
+        agentTelemetry = res.telemetry;
       }
 
       const codeModifications = this.extractCodeModifications(responseText, task.contextFiles || []);
@@ -106,7 +118,8 @@ Diagnosis: ${task.diagnosis ? JSON.stringify(task.diagnosis, null, 2) : 'None'}`
       return {
         success: true,
         agentResponse: responseText,
-        codeModifications
+        codeModifications,
+        telemetry: agentTelemetry
       };
     } catch (err: any) {
       return {
@@ -132,24 +145,33 @@ Diagnosis: ${task.diagnosis ? JSON.stringify(task.diagnosis, null, 2) : 'None'}`
     throw new Error('Unreachable');
   }
 
-  private async callOllama(system: string, user: string): Promise<string> {
+  private async callOllama(system: string, user: string): Promise<{ text: string; telemetry: AgentResult['telemetry'] }> {
     const url = this.config.baseUrl || 'http://localhost:11434/api/generate';
+    const model = this.config.model || 'llama3';
     const res = await this.fetchWithRetry(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: this.config.model || 'llama3',
+        model,
         system,
         prompt: user,
         stream: false
       })
     });
     const data: any = await res.json();
-    return data.response;
+    return {
+      text: data.response,
+      telemetry: {
+        inputTokens: data.prompt_eval_count || 0,
+        outputTokens: data.eval_count || 0,
+        modelUsed: model
+      }
+    };
   }
 
-  private async callOpenAI(system: string, user: string): Promise<string> {
+  private async callOpenAI(system: string, user: string): Promise<{ text: string; telemetry: AgentResult['telemetry'] }> {
     const url = this.config.baseUrl || 'https://api.openai.com/v1/chat/completions';
+    const model = this.config.model || 'gpt-4o';
     const res = await this.fetchWithRetry(url, {
       method: 'POST',
       headers: {
@@ -157,7 +179,7 @@ Diagnosis: ${task.diagnosis ? JSON.stringify(task.diagnosis, null, 2) : 'None'}`
         'Authorization': `Bearer ${this.config.apiKey}`
       },
       body: JSON.stringify({
-        model: this.config.model || 'gpt-4o',
+        model,
         messages: [
           { role: 'system', content: system },
           { role: 'user', content: user }
@@ -165,11 +187,19 @@ Diagnosis: ${task.diagnosis ? JSON.stringify(task.diagnosis, null, 2) : 'None'}`
       })
     });
     const data: any = await res.json();
-    return data.choices[0].message.content;
+    return {
+      text: data.choices[0].message.content,
+      telemetry: {
+        inputTokens: data.usage?.prompt_tokens || 0,
+        outputTokens: data.usage?.completion_tokens || 0,
+        modelUsed: data.model || model
+      }
+    };
   }
 
-  private async callAnthropic(system: string, user: string): Promise<string> {
+  private async callAnthropic(system: string, user: string): Promise<{ text: string; telemetry: AgentResult['telemetry'] }> {
     const url = this.config.baseUrl || 'https://api.anthropic.com/v1/messages';
+    const model = this.config.model || 'claude-3-opus-20240229';
     const res = await this.fetchWithRetry(url, {
       method: 'POST',
       headers: {
@@ -178,14 +208,21 @@ Diagnosis: ${task.diagnosis ? JSON.stringify(task.diagnosis, null, 2) : 'None'}`
         'anthropic-version': '2023-06-01'
       },
       body: JSON.stringify({
-        model: this.config.model || 'claude-3-opus-20240229',
+        model,
         system,
         max_tokens: 4000,
         messages: [{ role: 'user', content: user }]
       })
     });
     const data: any = await res.json();
-    return data.content[0].text;
+    return {
+      text: data.content[0].text,
+      telemetry: {
+        inputTokens: data.usage?.input_tokens || 0,
+        outputTokens: data.usage?.output_tokens || 0,
+        modelUsed: data.model || model
+      }
+    };
   }
 
   private extractCodeModifications(text: string, contextFiles: string[]): { filePath: string; content: string }[] {

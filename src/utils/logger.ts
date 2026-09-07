@@ -8,11 +8,13 @@ export const logger = {
   verboseMode: false,
   debugMode: false,
   jsonMode: false,
+  executionId: undefined as string | undefined,
 
-  configure(opts: { verbose?: boolean; debug?: boolean; json?: boolean }) {
+  configure(opts: { verbose?: boolean; debug?: boolean; json?: boolean; executionId?: string }) {
     this.verboseMode = opts.verbose || false;
     this.debugMode = opts.debug || false;
     this.jsonMode = opts.json || false;
+    this.executionId = opts.executionId;
   },
 
   _logToFile(level: string, message: string) {
@@ -24,6 +26,7 @@ export const logger = {
       const logFile = path.join(logDir, 'execution.log.jsonl');
       const logEntry = JSON.stringify({
         timestamp: new Date().toISOString(),
+        executionId: this.executionId,
         level,
         message
       });

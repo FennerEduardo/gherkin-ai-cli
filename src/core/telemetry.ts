@@ -18,6 +18,9 @@ export interface TelemetryEvent {
   convergenceScore?: number;
   success: boolean;
   metadata?: Record<string, any>;
+  inputTokens?: number;
+  outputTokens?: number;
+  modelUsed?: string;
 }
 
 export interface AuditLogEntry {
@@ -87,14 +90,16 @@ export class TelemetryManager {
     }
   }
 
-  public getSummary(): { totalEvents: number; averageConvergenceScore: number; guardrailViolations: number } {
+  public getSummary(): { totalEvents: number; averageConvergenceScore: number; guardrailViolations: number; totalInputTokens: number; totalOutputTokens: number } {
     let totalEvents = 0;
     let totalConvergence = 0;
     let convergenceCount = 0;
     let guardrailViolations = 0;
+    let totalInputTokens = 0;
+    let totalOutputTokens = 0;
 
     if (!fs.existsSync(this.telemetryFile)) {
-      return { totalEvents: 0, averageConvergenceScore: 0, guardrailViolations: 0 };
+      return { totalEvents: 0, averageConvergenceScore: 0, guardrailViolations: 0, totalInputTokens: 0, totalOutputTokens: 0 };
     }
 
     try {
@@ -112,6 +117,8 @@ export class TelemetryManager {
           if (evt.eventType === 'GUARDRAIL_VIOLATION') {
             guardrailViolations++;
           }
+          if (evt.inputTokens) totalInputTokens += evt.inputTokens;
+          if (evt.outputTokens) totalOutputTokens += evt.outputTokens;
         } catch { }
       }
     } catch { }
@@ -119,7 +126,9 @@ export class TelemetryManager {
     return {
       totalEvents,
       averageConvergenceScore: convergenceCount > 0 ? Math.round(totalConvergence / convergenceCount) : 0,
-      guardrailViolations
+      guardrailViolations,
+      totalInputTokens,
+      totalOutputTokens
     };
   }
 }
