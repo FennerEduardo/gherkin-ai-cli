@@ -44,6 +44,15 @@ export async function handleAutopilotCommand(options: AutopilotOptions = {}): Pr
     return;
   }
 
+  const { detectPromptInjection } = require('../core/security-sanitizer');
+  const securityCheck = detectPromptInjection(reqContent);
+  if (!securityCheck.isSafe) {
+    console.log(chalk.red('\n✖ SECURITY ALERT: Prompt Injection Attempt Blocked!'));
+    console.log(chalk.red(`  ⚠ Reason: ${securityCheck.reason}`));
+    process.exitCode = 1;
+    return;
+  }
+
   const configInstance = loadConfig();
 
   console.log(chalk.blue(`1. Analyzing repository & building context package...`));

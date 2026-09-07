@@ -51,6 +51,15 @@ export async function handleGenerateCommand(options: { feature?: string; config?
     logger.info('No feature file specified. Using built-in sample feature spec.');
   }
 
+  const { detectPromptInjection } = require('../core/security-sanitizer');
+  const securityCheck = detectPromptInjection(gherkinText);
+  if (!securityCheck.isSafe) {
+    logger.error('SECURITY ALERT: Prompt Injection Attempt Blocked!');
+    logger.error(`Reason: ${securityCheck.reason}`);
+    process.exitCode = 1;
+    return;
+  }
+
   logger.info('Parsing Gherkin specification and extracting domain AST...');
   const parsed = parseGherkinText(gherkinText);
 
