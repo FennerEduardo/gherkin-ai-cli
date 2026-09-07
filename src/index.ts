@@ -249,6 +249,25 @@ program
     await handleImpactCommand(options);
   });
 
+program
+  .command('doc')
+  .alias('site')
+  .description('Generate Living Documentation (Static Site) from Gherkin specifications')
+  .action(async () => {
+    const { handleDocCommand } = await import('./commands/doc');
+    await handleDocCommand();
+  });
+
+program
+  .command('pr-review')
+  .description('AI Code Reviewer for Pull Requests checking architectural drift')
+  .option('-f, --feature <file>', 'Feature file to validate the PR against')
+  .option('--diff <file>', 'Path to git patch/diff file (defaults to stdin)')
+  .action(async (options) => {
+    const { handlePrReviewCommand } = await import('./commands/pr-review');
+    await handlePrReviewCommand(options);
+  });
+
 // Action fallback for root flags (--init, --create, --generate, --validate, --detect)
 program.action(async (options) => {
   if (options.init) {
