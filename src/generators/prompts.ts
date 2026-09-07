@@ -42,7 +42,24 @@ export function generatePrompts(parsed: ParsedFeature, config: GherkinAIConfig):
   };
 
   // Inject Security & Compliance Guardrails
-  const securityGuardrails = `\n## [MANDATORY] Enterprise Security & Compliance\n- SAST Guidelines: Do NOT generate code susceptible to SQL injection, XSS, or CSRF. Use parameterized queries and ORM functions securely.\n- Secret Scanning: NEVER generate or suggest default hardcoded passwords, API keys, or JWT secrets in code or fixtures. Always use environment variables.\n`;
+  const { loadConstitution } = require('../core/constitution');
+  const constitution = loadConstitution();
+  
+  let securityGuardrails = `\n## [MANDATORY] Enterprise Security & Compliance\n- SAST Guidelines: Do NOT generate code susceptible to SQL injection, XSS, or CSRF. Use parameterized queries and ORM functions securely.\n- Secret Scanning: NEVER generate or suggest default hardcoded passwords, API keys, or JWT secrets in code or fixtures. Always use environment variables.\n`;
+  
+  if (constitution) {
+    securityGuardrails += `\n## [MANDATORY] Enterprise Constitution Constraints\n`;
+    securityGuardrails += `You must strictly adhere to the following architectural and security constraints:\n`;
+    securityGuardrails += `\n**Architecture Requirements:**\n`;
+    constitution.architecture.required?.forEach((r: string) => securityGuardrails += `- MUST: ${r}\n`);
+    securityGuardrails += `\n**Architecture Forbidden:**\n`;
+    constitution.architecture.forbidden?.forEach((f: string) => securityGuardrails += `- MUST NOT: ${f}\n`);
+    securityGuardrails += `\n**Security Policies:**\n`;
+    securityGuardrails += `- Data Classification: ${constitution.security.dataClassification}\n`;
+    securityGuardrails += `- Auth Provider: ${constitution.security.authProvider}\n`;
+    securityGuardrails += `- Secrets Policy: ${constitution.security.secretsPolicy}\n`;
+  }
+  
   result['domain-agent.md'] += securityGuardrails;
   result['backend-agent.md'] += securityGuardrails;
   result['qa-agent.md'] += securityGuardrails;

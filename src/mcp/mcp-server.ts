@@ -113,6 +113,32 @@ function handleJsonRpcMessage(message: any): void {
               },
               required: ['gherkinText']
             }
+          },
+          {
+            name: 'ghk_init_enterprise',
+            description: 'Initialize project with enterprise constitution guardrails (.gherkin-ai/constitution.yaml).',
+            inputSchema: { type: 'object', properties: {} }
+          },
+          {
+            name: 'ghk_verify',
+            description: 'Run closed-loop verification test harness. Useful to execute tests and trigger AI self-healing.',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                autoFix: { type: 'boolean', description: 'Enable auto-fix agent loop.' },
+                command: { type: 'string', description: 'Custom test command.' }
+              }
+            }
+          },
+          {
+            name: 'ghk_quality',
+            description: 'Calculate feature quality score index and enterprise gate compliance.',
+            inputSchema: { type: 'object', properties: {} }
+          },
+          {
+            name: 'ghk_sbom',
+            description: 'Generate Software Bill of Materials (CycloneDX cyclonedx.json).',
+            inputSchema: { type: 'object', properties: {} }
           }
         ]
       });
@@ -177,6 +203,41 @@ function handleToolCall(id: number | string, name: string, args: any): void {
         content: [{ type: 'text', text: JSON.stringify(scorecard, null, 2) }]
       });
     } 
+    else if (name === 'ghk_init_enterprise') {
+      const { execSync } = require('child_process');
+      const out = execSync('node ' + require('path').join(__dirname, '../../bin/gherkin-ai.js') + ' init --enterprise', { encoding: 'utf8' });
+      sendJsonRpcResponse(id, { content: [{ type: 'text', text: out }] });
+    }
+    else if (name === 'ghk_verify') {
+      const { execSync } = require('child_process');
+      let cmd = 'node ' + require('path').join(__dirname, '../../bin/gherkin-ai.js') + ' verify';
+      if (args.autoFix) cmd += ' --auto-fix';
+      if (args.command) cmd += ` --command "${args.command}"`;
+      try {
+        const out = execSync(cmd, { encoding: 'utf8' });
+        sendJsonRpcResponse(id, { content: [{ type: 'text', text: out }] });
+      } catch (e: any) {
+        sendJsonRpcResponse(id, { content: [{ type: 'text', text: (e.stdout || '') + '\n' + (e.stderr || '') + '\n' + e.message }] });
+      }
+    }
+    else if (name === 'ghk_quality') {
+      const { execSync } = require('child_process');
+      try {
+        const out = execSync('node ' + require('path').join(__dirname, '../../bin/gherkin-ai.js') + ' quality', { encoding: 'utf8' });
+        sendJsonRpcResponse(id, { content: [{ type: 'text', text: out }] });
+      } catch (e: any) {
+        sendJsonRpcResponse(id, { content: [{ type: 'text', text: (e.stdout || '') + '\n' + (e.stderr || '') + '\n' + e.message }] });
+      }
+    }
+    else if (name === 'ghk_sbom') {
+      const { execSync } = require('child_process');
+      try {
+        const out = execSync('node ' + require('path').join(__dirname, '../../bin/gherkin-ai.js') + ' sbom', { encoding: 'utf8' });
+        sendJsonRpcResponse(id, { content: [{ type: 'text', text: out }] });
+      } catch (e: any) {
+        sendJsonRpcResponse(id, { content: [{ type: 'text', text: (e.stdout || '') + '\n' + (e.stderr || '') + '\n' + e.message }] });
+      }
+    }
     else {
       sendJsonRpcResponse(id, null, {
         code: -32601,

@@ -49,12 +49,8 @@ export async function handleAutopilotCommand(options: AutopilotOptions = {}): Pr
   console.log(chalk.blue(`1. Analyzing repository & building context package...`));
   const context = buildProjectContext();
 
-  const config: LLMConfig = {
-    provider: (process.env.LLM_PROVIDER as any) || 'ide_delegate',
-    model: process.env.LLM_MODEL,
-    apiKey: process.env.OPENAI_API_KEY || process.env.ANTHROPIC_API_KEY || process.env.LLM_API_KEY,
-    baseUrl: process.env.LLM_BASE_URL
-  };
+  const { resolveLLMConfig } = require('../core/agent-adapter');
+  const config: LLMConfig = resolveLLMConfig();
   const agent = new RealAgentProvider(config);
 
   console.log(chalk.blue(`2. Invoking Spec Agent -> Generating Gherkin AST...`));
@@ -89,9 +85,23 @@ export async function handleAutopilotCommand(options: AutopilotOptions = {}): Pr
         p = path.join(specDirPath, p);
       }
       const fullPath = path.resolve(p);
-      fs.mkdirSync(path.dirname(fullPath), { recursive: true });
-      fs.writeFileSync(fullPath, mod.content);
-      console.log(chalk.green(`   ✓ Wrote specification to ${p}`));
+      
+      if (process.env.GHK_DRY_RUN === 'true') {
+        if (process.env.GHK_STDOUT === 'true') {
+          console.log(chalk.yellow(`   [DRY RUN] Proposed spec for ${p}:\n${mod.content}`));
+        } else {
+          const patchDir = path.resolve('.ghe', 'patches');
+          fs.mkdirSync(patchDir, { recursive: true });
+          const patchPath = path.join(patchDir, path.basename(p) + '.proposed');
+          fs.writeFileSync(patchPath, mod.content, 'utf8');
+          console.log(chalk.yellow(`   [DRY RUN] Saved proposed spec to ${patchPath}`));
+        }
+      } else {
+        fs.mkdirSync(path.dirname(fullPath), { recursive: true });
+        fs.writeFileSync(fullPath, mod.content);
+        console.log(chalk.green(`   ✓ Wrote specification to ${p}`));
+      }
+      
       if (mod.filePath.endsWith('.feature')) {
         specContent = mod.content;
       }
@@ -126,9 +136,22 @@ export async function handleAutopilotCommand(options: AutopilotOptions = {}): Pr
         continue;
       }
       const fullPath = path.resolve(mod.filePath);
-      fs.mkdirSync(path.dirname(fullPath), { recursive: true });
-      fs.writeFileSync(fullPath, mod.content);
-      console.log(chalk.green(`   ✓ Wrote bindings to ${mod.filePath}`));
+      
+      if (process.env.GHK_DRY_RUN === 'true') {
+        if (process.env.GHK_STDOUT === 'true') {
+          console.log(chalk.yellow(`   [DRY RUN] Proposed bindings for ${mod.filePath}:\n${mod.content}`));
+        } else {
+          const patchDir = path.resolve('.ghe', 'patches');
+          fs.mkdirSync(patchDir, { recursive: true });
+          const patchPath = path.join(patchDir, path.basename(mod.filePath) + '.proposed');
+          fs.writeFileSync(patchPath, mod.content, 'utf8');
+          console.log(chalk.yellow(`   [DRY RUN] Saved proposed bindings to ${patchPath}`));
+        }
+      } else {
+        fs.mkdirSync(path.dirname(fullPath), { recursive: true });
+        fs.writeFileSync(fullPath, mod.content);
+        console.log(chalk.green(`   ✓ Wrote bindings to ${mod.filePath}`));
+      }
     }
   } else {
     console.log(chalk.red(`\n✖ Scaffolding Agent failed to generate valid code blocks.`));

@@ -40,14 +40,17 @@ program
   .option('--create', 'Alias for create command')
   .option('--generate', 'Alias for generate command')
   .option('--validate', 'Alias for validate command')
-  .option('--detect', 'Alias for detect command');
+  .option('--detect', 'Alias for detect command')
+  .option('--dry-run', 'Simulate changes without modifying filesystem (generates .patch by default)')
+  .option('--stdout', 'Print dry-run patches or modifications to stdout instead of files');
 
 program
   .command('init')
   .alias('i')
   .description('Initialize interactive gherkin-ai project configuration (gherkin-ai.config.json)')
-  .action(async () => {
-    await handleInitCommand();
+  .option('--enterprise', 'Initialize with enterprise constitution guardrails')
+  .action(async (options) => {
+    await handleInitCommand(options);
   });
 
 program
@@ -182,7 +185,16 @@ program
   .alias('s')
   .description('Configure Gherkin AI as a native tool/skill for AI IDEs like Cursor and Windsurf')
   .action(async () => {
+    const { handleSkillCommand } = await import('./commands/skill');
     await handleSkillCommand();
+  });
+
+program
+  .command('sbom')
+  .description('Generate Software Bill of Materials (CycloneDX)')
+  .action(async () => {
+    const { handleSbomCommand } = await import('./commands/sbom');
+    await handleSbomCommand();
   });
 
 program
@@ -241,6 +253,9 @@ async function bootstrap() {
 
   const isVerbose = argv.includes('--verbose');
   const isJson = argv.includes('--json');
+  if (argv.includes('--dry-run')) process.env.GHK_DRY_RUN = 'true';
+  if (argv.includes('--stdout')) process.env.GHK_STDOUT = 'true';
+
   const { logger } = await import('./utils/logger');
   logger.configure({ verbose: isVerbose, json: isJson });
 

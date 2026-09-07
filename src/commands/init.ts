@@ -4,11 +4,17 @@
 
 import inquirer from 'inquirer';
 import { defaultConfig, saveConfig, GherkinAIConfig } from '../core/config';
+import { generateConstitution } from '../core/constitution';
 import { logger } from '../utils/logger';
 
-export async function handleInitCommand(): Promise<void> {
+export async function handleInitCommand(options?: { enterprise?: boolean }): Promise<void> {
   logger.banner();
   logger.info('Initializing new gherkin-ai project configuration...');
+  
+  if (options?.enterprise) {
+    logger.info('Enterprise mode active: Generating .gherkin-ai/constitution.yaml');
+    generateConstitution();
+  }
 
   let answers: any = {};
 

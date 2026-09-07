@@ -28,6 +28,27 @@ export interface LLMConfig {
   baseUrl?: string;
 }
 
+export function resolveLLMConfig(): LLMConfig {
+  const apiKey = process.env.OPENAI_API_KEY || process.env.ANTHROPIC_API_KEY || process.env.LLM_API_KEY;
+  let provider = process.env.LLM_PROVIDER as 'openai' | 'anthropic' | 'ollama' | 'ide_delegate';
+  
+  if (!provider) {
+    if (apiKey) {
+      provider = process.env.ANTHROPIC_API_KEY ? 'anthropic' : 'openai';
+    } else {
+      provider = 'ollama';
+      console.log('\n[INFO] No LLM API keys detected. Defaulting to local Ollama (Air-Gapped mode).\n');
+    }
+  }
+
+  return {
+    provider,
+    model: process.env.LLM_MODEL,
+    apiKey,
+    baseUrl: process.env.LLM_BASE_URL
+  };
+}
+
 export class DefaultCliAgentProvider implements AgentProvider {
   name = 'IDE/MCP Delegate Agent';
 

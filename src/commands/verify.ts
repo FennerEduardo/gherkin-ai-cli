@@ -82,12 +82,8 @@ export async function handleVerifyCommand(options: VerifyCommandOptions = {}): P
     }
 
     console.log(chalk.cyan(`\n🤖 Invoking Agent Repair Loop (Attempt ${iteration})...`));
-    const config: LLMConfig = {
-      provider: (process.env.LLM_PROVIDER as any) || 'ide_delegate',
-      model: process.env.LLM_MODEL,
-      apiKey: process.env.OPENAI_API_KEY || process.env.ANTHROPIC_API_KEY || process.env.LLM_API_KEY,
-      baseUrl: process.env.LLM_BASE_URL
-    };
+    const { resolveLLMConfig } = require('../core/agent-adapter');
+    const config: LLMConfig = resolveLLMConfig();
     const agent = new RealAgentProvider(config);
     const repairResult = await agent.executeTask({
       id: `fix-${iteration}`,
@@ -114,6 +110,24 @@ export async function handleVerifyCommand(options: VerifyCommandOptions = {}): P
             continue;
           }
 
+          if (process.env.GHK_DRY_RUN === 'true') {
+            if (process.env.GHK_STDOUT === 'true') {
+              console.log(chalk.yellow(`     [DRY RUN] Proposed changes for ${mod.filePath}:\n${mod.content}`));
+            } else {
+              const fs = require('fs');
+              const path = require('path');
+              const patchDir = path.resolve('.ghe', 'patches');
+              fs.mkdirSync(patchDir, { recursive: true });
+              
+              // We'll just save the proposed file for now instead of a real git patch
+              // as this is safer and doesn't require git/diff CLI
+              const patchPath = path.join(patchDir, path.basename(mod.filePath) + '.proposed');
+              fs.writeFileSync(patchPath, mod.content, 'utf8');
+              console.log(chalk.yellow(`     [DRY RUN] Saved proposed file to ${patchPath}`));
+            }
+            continue;
+          }
+
           const fullPath = path.resolve(mod.filePath);
           
           if (!fileBackups[fullPath] && fs.existsSync(fullPath)) {
@@ -129,7 +143,7 @@ export async function handleVerifyCommand(options: VerifyCommandOptions = {}): P
           fs.writeFileSync(fullPath, mod.content, 'utf8');
           console.log(chalk.green(`     ✓ ${mod.filePath} updated.`));
         } catch (e: any) {
-          console.log(chalk.red(`     ✖ Failed to write ${mod.filePath}: ${e.message}`));
+          console.log(chalk.red(`     ✖ Failed to process ${mod.filePath}: ${e.message}`));
         }
       }
     }
