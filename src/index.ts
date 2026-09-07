@@ -20,6 +20,8 @@ import { handleDiffCommand } from './commands/diff';
 import { handleSkillCommand } from './commands/skill';
 import { handleWebCommand } from './commands/web';
 import { handleEvaluateCommand } from './commands/evaluate';
+import { handleLintCommand } from './commands/lint';
+import { handleConvergeCommand } from './commands/converge';
 
 // Dynamic version from package.json
 const pkg = require('../package.json');
@@ -215,6 +217,25 @@ program
   .option('--max-class-lines <number>', 'Maximum lines allowed per class (default: 200)')
   .action(async (files, options) => {
     await handleEvaluateCommand(files, options);
+  });
+
+program
+  .command('lint')
+  .description('Lint Gherkin specifications against 14+ quality and enterprise compliance rules')
+  .option('-f, --feature <file>', 'Specific feature file to lint')
+  .option('--json', 'Output report as JSON')
+  .action(async (options) => {
+    await handleLintCommand(options);
+  });
+
+program
+  .command('converge')
+  .alias('conv')
+  .description('Measure Specification-to-Implementation alignment across 6 architectural dimensions')
+  .option('-f, --feature <file>', 'Specific feature file to evaluate')
+  .option('--strict', 'Fail if overall convergence is below 80%')
+  .action(async (options) => {
+    await handleConvergeCommand(options);
   });
 
 // Action fallback for root flags (--init, --create, --generate, --validate, --detect)

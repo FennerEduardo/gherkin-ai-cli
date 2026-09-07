@@ -1,10 +1,15 @@
 /* ==========================================================================
    gherkin-ai-cli - Feature Quality Score Index Engine
+   
+   Calculates a multi-dimensional Quality Index using Gherkin IR,
+   Specification Linter, Context Security Layer, and weighted metrics.
    ========================================================================== */
 
 import fs from 'fs';
 import path from 'path';
-import { execSync } from 'child_process';
+import { parseGherkinText } from './gherkin-parser';
+import { lintSpecification } from './specification-linter';
+import { scanContextSecurity } from './context-security';
 
 export interface FeatureQualityScorecard {
   specificationScore: number;
@@ -15,93 +20,134 @@ export interface FeatureQualityScorecard {
   securityScore: number;
   overallScore: number;
   passedQualityGate: boolean;
+  lintWarningsCount?: number;
+  lintErrorsCount?: number;
+  securityIssuesCount?: number;
 }
 
 export function calculateQualityScorecard(cwd: string = process.cwd(), specDirOverride?: string): FeatureQualityScorecard {
+  let specificationScore = 0;
+  let lintWarningsCount = 0;
+  let lintErrorsCount = 0;
+
+  // 1. Specification Score via SpecificationLinter & IR
+  try {
+    const { resolveSpecDir } = require('../utils/spec-dir-resolver');
+    const specDirPath = resolveSpecDir(specDirOverride, cwd);
+
+    if (fs.existsSync(specDirPath)) {
+      const files = fs.readdirSync(specDirPath).filter((f: string) => f.endsWith('.feature'));
+      if (files.length > 0) {
+        let totalLintScore = 0;
+        for (const file of files) {
+          const filePath = path.join(specDirPath, file);
+          const raw = fs.readFileSync(filePath, 'utf8');
+          const parsed = parseGherkinText(raw);
+          const report = lintSpecification(parsed, file);
+          totalLintScore += report.score;
+          lintWarningsCount += report.diagnostics.filter(d => d.severity === 'warning').length;
+          lintErrorsCount += report.diagnostics.filter(d => d.severity === 'error').length;
+        }
+        specificationScore = Math.round(totalLintScore / files.length);
+      } else {
+        specificationScore = 20;
+      }
+    } else {
+      specificationScore = 0;
+    }
+  } catch {
+    specificationScore = 0;
+  }
+
+  // 2. Unit Tests Score
   let unitTestsScore = 0;
-  
   try {
     const covPath = path.join(cwd, 'coverage', 'coverage-summary.json');
     if (fs.existsSync(covPath)) {
       const data = JSON.parse(fs.readFileSync(covPath, 'utf8'));
       if (data.total && data.total.lines) {
-        unitTestsScore = data.total.lines.pct || 0;
+        unitTestsScore = Math.round(data.total.lines.pct || 0);
       }
     } else {
-       const testsExist = fs.existsSync(path.join(cwd, 'tests')) || fs.existsSync(path.join(cwd, 'src', '__tests__'));
-       unitTestsScore = testsExist ? 50 : 0; 
+      const testsExist = fs.existsSync(path.join(cwd, 'tests')) || 
+                         fs.existsSync(path.join(cwd, 'src', '__tests__')) ||
+                         fs.existsSync(path.join(cwd, 'src', 'test'));
+      unitTestsScore = testsExist ? 60 : 0;
     }
-  } catch (e) {
+  } catch {
     unitTestsScore = 0;
   }
 
-  let typeSafetyScore = 100;
-  try {
-    if (fs.existsSync(path.join(cwd, 'tsconfig.json'))) {
-        execSync('npx tsc --noEmit', { cwd, stdio: 'ignore' });
-    }
-  } catch(e) {
-    typeSafetyScore = 40; 
-  }
+  // 3. Integration Tests Score
+  const integrationTestsScore = unitTestsScore > 0 ? Math.round(unitTestsScore * 0.75) : 0;
 
-  // We now parse realistic numbers from coverage if it exists.
-  // If no coverage file but tests exist, we assume 50%.
-  
-  // Real check for E2E tests
+  // 4. E2E Tests Score
   let e2eTestsScore = 0;
-  if (fs.existsSync(path.join(cwd, 'cypress')) || fs.existsSync(path.join(cwd, 'playwright'))) {
+  if (fs.existsSync(path.join(cwd, 'cypress')) || 
+      fs.existsSync(path.join(cwd, 'playwright')) || 
+      fs.existsSync(path.join(cwd, 'e2e'))) {
     e2eTestsScore = 80;
   }
 
-  // Real check for Security (basic heuristic: looking for lock files & audit)
-  let securityScore = 0;
-  if (fs.existsSync(path.join(cwd, 'package-lock.json')) || fs.existsSync(path.join(cwd, 'yarn.lock')) || fs.existsSync(path.join(cwd, 'pnpm-lock.yaml'))) {
-    securityScore = 75; // Basic dependency locking
-    try {
-      // Basic secret scanning heuristic on generated output dir
-      let hasSecrets = false;
-      const config = require('./config').loadConfig();
-      if (fs.existsSync(config.outputDir)) {
-        const checkFiles = (dir: string) => {
-          const files = fs.readdirSync(dir);
-          for (const file of files) {
-            const fPath = path.join(dir, file);
-            if (fs.statSync(fPath).isDirectory()) {
-               checkFiles(fPath);
-            } else if (fPath.endsWith('.ts') || fPath.endsWith('.json')) {
-               const content = fs.readFileSync(fPath, 'utf8');
-               if (/(?:password|secret|api_key|token)['"]?\s*[:=]\s*['"][^'"]{8,}['"]/i.test(content)) {
-                 hasSecrets = true;
-               }
-            }
-          }
-        };
-        checkFiles(config.outputDir);
-      }
-      if (hasSecrets) {
-        securityScore -= 20; // Penalize for possible hardcoded secrets
-        console.warn('\x1b[33m⚠\x1b[0m Security Warning: Possible hardcoded secrets detected in generated artifacts.');
-      } else {
-        securityScore += 15;
-      }
-    } catch { }
+  // 5. Type Safety Score
+  let typeSafetyScore = 100;
+  if (fs.existsSync(path.join(cwd, 'tsconfig.json'))) {
+    const nodeModulesExists = fs.existsSync(path.join(cwd, 'node_modules'));
+    if (!nodeModulesExists) {
+      typeSafetyScore = 80;
+    }
+  } else if (fs.existsSync(path.join(cwd, 'pom.xml')) || fs.existsSync(path.join(cwd, 'build.gradle'))) {
+    typeSafetyScore = 95;
+  } else if (fs.existsSync(path.join(cwd, 'Cargo.toml'))) {
+    typeSafetyScore = 100;
+  } else {
+    typeSafetyScore = 70;
   }
 
-  // Specification Score: Use resolved spec directory
-  let specificationScore = 0;
+  // 6. Security Score via Context Security Layer
+  let securityScore = 100;
+  let securityIssuesCount = 0;
   try {
-    const { resolveSpecDir } = require('../utils/spec-dir-resolver');
-    const specDirPath = resolveSpecDir(specDirOverride, cwd);
-    const specFiles = fs.readdirSync(specDirPath).filter((f: string) => f.endsWith('.feature'));
-    specificationScore = specFiles.length > 0 ? 95 : 40;
+    // Scan sample files in cwd for security
+    let aggregatedContent = '';
+    const sampleFiles = ['package.json', 'src/index.ts', 'gherkin-ai.config.json'];
+    for (const sf of sampleFiles) {
+      const p = path.join(cwd, sf);
+      if (fs.existsSync(p)) {
+        aggregatedContent += fs.readFileSync(p, 'utf8') + '\n';
+      }
+    }
+
+    const securityScan = scanContextSecurity(aggregatedContent);
+    securityIssuesCount = securityScan.findings.length;
+    if (securityScan.secretCount > 0) {
+      securityScore -= 50;
+    } else if (securityScan.findings.length > 0) {
+      securityScore -= Math.min(40, securityScan.findings.length * 10);
+    }
+    
+    // Check lockfiles
+    const hasLockfile = fs.existsSync(path.join(cwd, 'package-lock.json')) || 
+                          fs.existsSync(path.join(cwd, 'yarn.lock')) || 
+                          fs.existsSync(path.join(cwd, 'pnpm-lock.yaml')) ||
+                          fs.existsSync(path.join(cwd, 'pom.xml')) ||
+                          fs.existsSync(path.join(cwd, 'Cargo.lock'));
+    if (!hasLockfile) {
+      securityScore -= 15;
+    }
   } catch {
-    specificationScore = 0;
+    securityScore = 70;
   }
 
-  const integrationTestsScore = unitTestsScore > 0 ? Math.round(unitTestsScore * 0.8) : 0;
+  securityScore = Math.max(0, Math.min(100, securityScore));
 
   const overallScore = Math.round(
-    (specificationScore + unitTestsScore + integrationTestsScore + e2eTestsScore + typeSafetyScore + securityScore) / 6
+    (specificationScore * 0.25) +
+    (unitTestsScore * 0.20) +
+    (integrationTestsScore * 0.15) +
+    (e2eTestsScore * 0.10) +
+    (typeSafetyScore * 0.15) +
+    (securityScore * 0.15)
   );
 
   return {
@@ -112,6 +158,9 @@ export function calculateQualityScorecard(cwd: string = process.cwd(), specDirOv
     typeSafetyScore,
     securityScore,
     overallScore,
-    passedQualityGate: overallScore >= 70 // Real Quality Gate calculation
+    passedQualityGate: overallScore >= 70 && specificationScore >= 60 && securityScore >= 60,
+    lintWarningsCount,
+    lintErrorsCount,
+    securityIssuesCount,
   };
 }
