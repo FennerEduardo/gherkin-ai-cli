@@ -63,8 +63,8 @@
     "test:coverage": "vitest run --coverage",
     "test:e2e": "playwright test",
     "prepublishOnly": "npm run build",
-    "publish:beta": "npm run build && npm publish --tag beta --provenance",
-    "publish:prod": "npm run build && npm publish --provenance"
+    "publish:beta": "npm run build && npm publish --tag beta",
+    "publish:prod": "npm run build && npm publish"
   },
   "engines": {
     "node": ">=20.12.0"
