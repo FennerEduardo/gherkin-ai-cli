@@ -33,6 +33,7 @@ program
   .option('--project <dir>', 'Target project directory (skip interactive selector)')
   .option('--yes', 'Accept all defaults without prompting (non-interactive mode)')
   .option('--non-interactive', 'Alias for --yes')
+  .option('--spec-dir <dir>', 'Target specification directory (overrides config)')
   .option('--init', 'Alias for init command')
   .option('--create', 'Alias for create command')
   .option('--generate', 'Alias for generate command')
@@ -87,6 +88,7 @@ program
   .alias('auto')
   .description('Run autonomous multi-agent delivery workflow from product requirement to PR')
   .option('-r, --requirement <file>', 'Path to feature requirement file')
+  .option('-c, --command <cmd>', 'Custom test execution command (overrides config)')
   .action(async (options) => {
     await handleAutopilotCommand(options);
   });
@@ -226,6 +228,14 @@ async function bootstrap() {
   const projectIdx = argv.findIndex(arg => arg === '--project');
   const project = projectIdx > -1 ? argv[projectIdx + 1] : undefined;
   const nonInteractive = argv.includes('--yes') || argv.includes('--non-interactive');
+  if (nonInteractive) {
+    process.env.GHK_NON_INTERACTIVE = 'true';
+  }
+  
+  const specDirIdx = argv.findIndex(arg => arg === '--spec-dir');
+  if (specDirIdx > -1 && argv[specDirIdx + 1]) {
+    process.env.GHK_SPEC_DIR = argv[specDirIdx + 1];
+  }
 
   await resolveWorkspaceDirectory({ project, nonInteractive });
   program.parse(process.argv);

@@ -23,11 +23,20 @@ export function validateRequirement(content: string): RequirementValidation {
   }
 
   // Detect vague requirements
-  if (content.length < 100) {
+  if (content.trim().length < 200) {
     issues.push({
       type: 'too_broad',
       message: 'Requirement is too short to generate meaningful specs',
-      suggestion: 'Provide detailed functional requirements with specific behaviors and edge cases'
+      suggestion: 'Provide detailed functional requirements with specific behaviors and edge cases (minimum 200 characters)'
+    });
+  }
+
+  // Detect missing actionable blocks
+  if (!content.match(/(?:user|system|api|endpoint|field|data|property|action|role|permission)/i)) {
+    issues.push({
+      type: 'no_actionable_blocks',
+      message: 'Requirement lacks specific business domain entities or actors',
+      suggestion: 'Describe specific users, actions, data fields, or API endpoints.'
     });
   }
   

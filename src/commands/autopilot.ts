@@ -16,6 +16,7 @@ import { validateRequirement } from '../core/requirement-validator';
 export interface AutopilotOptions {
   requirement?: string;
   autonomous?: boolean;
+  command?: string;
 }
 
 export async function handleAutopilotCommand(options: AutopilotOptions = {}): Promise<void> {
@@ -57,20 +58,27 @@ export async function handleAutopilotCommand(options: AutopilotOptions = {}): Pr
   const agent = new RealAgentProvider(config);
 
   console.log(chalk.blue(`2. Invoking Spec Agent -> Generating Gherkin AST...`));
-  const specRes = await agent.executeTask({
-    id: 'auto-spec',
-    type: 'spec_generation',
-    prompt: `Generate a Gherkin .feature file for the following requirement:\n\n${reqContent}\n\nWrap the code in \`\`\`gherkin ... \`\`\` blocks.`,
-    contextFiles: ['.ghe/conventions.md']
-  });
+  let specRes;
+  try {
+    specRes = await agent.executeTask({
+      id: 'auto-spec',
+      type: 'spec_generation',
+      prompt: `Generate a Gherkin .feature file for the following requirement:\n\n${reqContent}\n\nWrap the code in \`\`\`gherkin ... \`\`\` blocks.`,
+      contextFiles: ['.ghe/conventions.md']
+    });
+  } catch (error: any) {
+    console.log(chalk.red(`\n✖ Spec Agent execution crashed: ${error.message}`));
+    process.exitCode = 1;
+    return;
+  }
 
-  let specContent = 'Feature: Auto-generated feature...';
-  if (specRes.codeModifications && specRes.codeModifications.length > 0) {
-    let specDirPath = 'specs';
+  let specContent = '';
+  if (specRes.success && specRes.codeModifications && specRes.codeModifications.length > 0) {
+    let specDirPath = process.env.GHK_SPEC_DIR || configInstance.specDir || 'specs';
     try {
       specDirPath = resolveSpecDir(configInstance.specDir);
     } catch {
-      // Use fallback if none found
+      // Use fallback if none found (specDirPath retains the fallback value)
     }
 
     for (const mod of specRes.codeModifications) {
@@ -89,18 +97,28 @@ export async function handleAutopilotCommand(options: AutopilotOptions = {}): Pr
       }
     }
   } else {
-    console.log(chalk.yellow(`   ⚠️ Agent didn't return proper code blocks. Using fallback.`));
+    console.log(chalk.red(`\n✖ Spec Agent failed to generate valid code blocks.`));
+    console.log(chalk.yellow(`  Response from Agent:\n${specRes.agentResponse.substring(0, 500)}...\n`));
+    process.exitCode = 1;
+    return;
   }
 
   console.log(chalk.blue(`3. Invoking Scaffolding Agent -> Generating Bindings...`));
-  const scaffoldRes = await agent.executeTask({
-    id: 'auto-scaffold',
-    type: 'scaffold_binding',
-    prompt: `Generate step definitions for the following spec:\n\n${specContent}\n\nWrap code in \`\`\`ts ... \`\`\``,
-    contextFiles: []
-  });
+  let scaffoldRes;
+  try {
+    scaffoldRes = await agent.executeTask({
+      id: 'auto-scaffold',
+      type: 'scaffold_binding',
+      prompt: `Generate step definitions for the following spec:\n\n${specContent}\n\nWrap code in \`\`\`ts ... \`\`\``,
+      contextFiles: []
+    });
+  } catch (error: any) {
+    console.log(chalk.red(`\n✖ Scaffolding Agent execution crashed: ${error.message}`));
+    process.exitCode = 1;
+    return;
+  }
 
-  if (scaffoldRes.codeModifications && scaffoldRes.codeModifications.length > 0) {
+  if (scaffoldRes.success && scaffoldRes.codeModifications && scaffoldRes.codeModifications.length > 0) {
     const { validateTypeScriptSyntax } = require('../core/syntax-validator');
     for (const mod of scaffoldRes.codeModifications) {
       if (!validateTypeScriptSyntax(mod.filePath, mod.content)) {
@@ -112,10 +130,15 @@ export async function handleAutopilotCommand(options: AutopilotOptions = {}): Pr
       fs.writeFileSync(fullPath, mod.content);
       console.log(chalk.green(`   ✓ Wrote bindings to ${mod.filePath}`));
     }
+  } else {
+    console.log(chalk.red(`\n✖ Scaffolding Agent failed to generate valid code blocks.`));
+    console.log(chalk.yellow(`  Response from Agent:\n${scaffoldRes.agentResponse.substring(0, 500)}...\n`));
+    process.exitCode = 1;
+    return;
   }
 
   console.log(chalk.blue(`4. Invoking Verification Agent & Closed-Loop Repair...`));
-  await handleVerifyCommand({ autoFix: true, maxRetries: 2 });
+  await handleVerifyCommand({ autoFix: true, maxRetries: 2, command: options.command });
 
   console.log(chalk.blue(`5. Evaluating Enterprise Quality Score Gate...`));
   const scorecard = calculateQualityScorecard(process.cwd(), configInstance.specDir);

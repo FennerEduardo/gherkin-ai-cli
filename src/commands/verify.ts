@@ -60,13 +60,19 @@ export async function handleVerifyCommand(options: VerifyCommandOptions = {}): P
       console.log(chalk.bold.red(`\n✖ Auto-fix retry limit reached (${maxRetries} attempts). Initiating rollback...\n`));
       
       const fs = require('fs');
-      for (const [filePath, oldContent] of Object.entries(fileBackups)) {
-        try {
-          fs.writeFileSync(filePath, oldContent, 'utf8');
-          console.log(chalk.yellow(`   ↺ Rolled back: ${filePath}`));
-        } catch (e: any) {
-          console.log(chalk.red(`   ✖ Failed to rollback ${filePath}: ${e.message}`));
+      const backupKeys = Object.keys(fileBackups);
+      if (backupKeys.length > 0) {
+        console.log(chalk.yellow(`   The agent failed to fix the tests. The following ${backupKeys.length} files were modified and will be reverted:`));
+        for (const [filePath, oldContent] of Object.entries(fileBackups)) {
+          try {
+            fs.writeFileSync(filePath, oldContent, 'utf8');
+            console.log(chalk.yellow(`   ↺ Rolled back: ${filePath}`));
+          } catch (e: any) {
+            console.log(chalk.red(`   ✖ Failed to rollback ${filePath}: ${e.message}`));
+          }
         }
+      } else {
+        console.log(chalk.gray(`   No files were modified during the attempts. Nothing to rollback.`));
       }
       
       process.exitCode = result.exitCode;

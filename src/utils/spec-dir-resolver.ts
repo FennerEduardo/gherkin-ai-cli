@@ -6,11 +6,13 @@ import path from 'path';
  * Prioridad: config.specDir > features/ > specs/ > error
  */
 export function resolveSpecDir(configSpecDir?: string, cwd: string = process.cwd()): string {
-  if (configSpecDir) {
-    const resolved = path.resolve(cwd, configSpecDir);
+  const targetDir = process.env.GHK_SPEC_DIR || configSpecDir;
+  
+  if (targetDir) {
+    const resolved = path.resolve(cwd, targetDir);
     if (!fs.existsSync(resolved)) {
       throw new Error(
-        `Spec directory "${configSpecDir}" not found at ${resolved}.\n` +
+        `Spec directory "${targetDir}" not found at ${resolved}.\n` +
         `  → Fix: Create the directory or update "specDir" in gherkin-ai.config.json`
       );
     }
