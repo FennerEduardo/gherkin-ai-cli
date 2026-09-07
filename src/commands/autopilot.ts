@@ -116,8 +116,11 @@ export async function handleAutopilotCommand(options: AutopilotOptions = {}): Pr
       }
     }
   } else {
+    const { saveFailedAttemptLog } = require('../core/agent-adapter');
+    const logPath = saveFailedAttemptLog('auto-spec', reqContent, specRes?.agentResponse || 'No response', 'Failed to extract valid code modifications');
     console.log(chalk.red(`\n✖ Spec Agent failed to generate valid code blocks.`));
-    console.log(chalk.yellow(`  Response from Agent:\n${specRes.agentResponse.substring(0, 500)}...\n`));
+    console.log(chalk.yellow(`  Response from Agent:\n${specRes.agentResponse.substring(0, 300)}...\n`));
+    console.log(chalk.cyan(`  → Diagnostics log saved to: ${logPath}\n`));
     process.exitCode = 1;
     return;
   }
@@ -163,8 +166,11 @@ export async function handleAutopilotCommand(options: AutopilotOptions = {}): Pr
       }
     }
   } else {
+    const { saveFailedAttemptLog } = require('../core/agent-adapter');
+    const logPath = saveFailedAttemptLog('auto-scaffold', specContent, scaffoldRes?.agentResponse || 'No response', 'Failed to extract valid code modifications');
     console.log(chalk.red(`\n✖ Scaffolding Agent failed to generate valid code blocks.`));
-    console.log(chalk.yellow(`  Response from Agent:\n${scaffoldRes.agentResponse.substring(0, 500)}...\n`));
+    console.log(chalk.yellow(`  Response from Agent:\n${scaffoldRes.agentResponse.substring(0, 300)}...\n`));
+    console.log(chalk.cyan(`  → Diagnostics log saved to: ${logPath}\n`));
     process.exitCode = 1;
     return;
   }

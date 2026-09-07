@@ -48,22 +48,22 @@ export const logger = {
 
   info(message: string): void {
     this._logToFile('INFO', message);
-    if (!this.jsonMode) console.log(`\x1b[36mℹ\x1b[0m ${message}`);
+    if (!this.jsonMode && process.env.LOG_LEVEL !== 'silent') console.log(`\x1b[36mℹ\x1b[0m ${message}`);
   },
   
   success(message: string): void {
     this._logToFile('SUCCESS', message);
-    if (!this.jsonMode) console.log(`\x1b[32m✔\x1b[0m ${message}`);
+    if (!this.jsonMode && process.env.LOG_LEVEL !== 'silent') console.log(`\x1b[32m✔\x1b[0m ${message}`);
   },
   
   warn(message: string): void {
     this._logToFile('WARN', message);
-    if (!this.jsonMode) console.warn(`\x1b[33m⚠\x1b[0m ${message}`);
+    if (!this.jsonMode && process.env.LOG_LEVEL !== 'silent') console.warn(`\x1b[33m⚠\x1b[0m ${message}`);
   },
   
   error(message: string): void {
     this._logToFile('ERROR', message);
-    if (!this.jsonMode) console.error(`\x1b[31m✖\x1b[0m ${message}`);
+    if (!this.jsonMode && process.env.LOG_LEVEL !== 'silent') console.error(`\x1b[31m✖\x1b[0m ${message}`);
   },
 
   banner(): void {

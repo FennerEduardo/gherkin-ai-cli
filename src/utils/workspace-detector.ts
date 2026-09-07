@@ -2,8 +2,9 @@ import fs from 'fs';
 import path from 'path';
 import inquirer from 'inquirer';
 import { getGlobalUserLocale } from './i18n-cli';
-
 export async function resolveWorkspaceDirectory(opts?: { project?: string; nonInteractive?: boolean }): Promise<void> {
+  const isNonInteractive = opts?.nonInteractive || process.env.CI === 'true' || process.env.GHK_NON_INTERACTIVE === 'true';
+
   // If --project is provided, skip interactive selector and switch directly
   if (opts?.project) {
     const target = path.resolve(process.cwd(), opts.project);
@@ -14,15 +15,10 @@ export async function resolveWorkspaceDirectory(opts?: { project?: string; nonIn
     return;
   }
 
-  // If non-interactive mode or CI, don't show prompts
-  if (opts?.nonInteractive || process.env.CI === 'true') {
-    return;
-  }
-
   const cwd = process.cwd();
   const subProjects: { name: string, value: string }[] = [];
 
-  // Look for subdirectories with .git
+  // Look for subdirectories with .git or package.json
   const entries = fs.readdirSync(cwd, { withFileTypes: true });
   for (const entry of entries) {
     if (entry.isDirectory() && entry.name !== 'node_modules' && entry.name !== '.git') {
@@ -34,6 +30,18 @@ export async function resolveWorkspaceDirectory(opts?: { project?: string; nonIn
         });
       }
     }
+  }
+
+  if (isNonInteractive) {
+    // In non-interactive/CI mode, auto-detect/suggest directory without prompt
+    if (fs.existsSync(path.join(cwd, 'gherkin-ai.config.json')) || fs.existsSync(path.join(cwd, 'package.json'))) {
+      return; // CWD is already a valid project
+    }
+    if (subProjects.length > 0) {
+      // Pick first detected subproject
+      process.chdir(subProjects[0].value);
+    }
+    return;
   }
 
   // Also check if current directory has a workspace definition (package.json workspaces, nx.json, lerna.json)

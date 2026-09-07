@@ -10,23 +10,13 @@ export function generateNodeNestJsPreset(parsed: ParsedFeature): { filename: str
 
   const stepDefCode = `// cucumber-js Step Definitions for NestJS - ${parsed.featureName}
 import { Given, When, Then, Before, After } from '@cucumber/cucumber';
-import { Test, TestingModule } from '@nestjs/testing';
-import { INestApplication } from '@nestjs/common';
 import * as request from 'supertest';
-// import { AppModule } from '../../src/app.module';
 
-let app: INestApplication;
-let res: request.Response;
+let app: any;
+let res: any;
 
 Before(async () => {
-  /*
-  const moduleFixture: TestingModule = await Test.createTestingModule({
-    imports: [AppModule],
-  }).compile();
-
-  app = moduleFixture.createNestApplication();
-  await app.init();
-  */
+  // Setup test HTTP application harness
 });
 
 After(async () => {

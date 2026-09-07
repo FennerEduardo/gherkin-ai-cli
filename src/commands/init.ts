@@ -7,7 +7,7 @@ import { defaultConfig, saveConfig, GherkinAIConfig } from '../core/config';
 import { generateConstitution } from '../core/constitution';
 import { logger } from '../utils/logger';
 
-export async function handleInitCommand(options?: { enterprise?: boolean }): Promise<void> {
+export async function handleInitCommand(options?: { enterprise?: boolean; yes?: boolean; nonInteractive?: boolean }): Promise<void> {
   logger.banner();
   logger.info('Initializing new gherkin-ai project configuration...');
   
@@ -17,8 +17,9 @@ export async function handleInitCommand(options?: { enterprise?: boolean }): Pro
   }
 
   let answers: any = {};
+  const isNonInteractive = options?.yes || options?.nonInteractive || process.env.GHK_NON_INTERACTIVE === 'true' || process.env.CI === 'true';
 
-  if (process.env.GHK_NON_INTERACTIVE === 'true') {
+  if (isNonInteractive) {
     logger.info('Running in non-interactive mode. Using default configuration.');
     answers = {
       projectName: defaultConfig.projectName,

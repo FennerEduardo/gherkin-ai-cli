@@ -230,7 +230,6 @@ Diagnosis: ${task.diagnosis ? JSON.stringify(task.diagnosis, null, 2) : 'None'}`
     
     // Attempt JSON parsing first
     try {
-      // Find the first { or [ in case the agent prepends markdown like ```json
       const jsonStart = text.indexOf('{');
       const jsonEnd = text.lastIndexOf('}');
       if (jsonStart !== -1 && jsonEnd !== -1) {
@@ -247,28 +246,67 @@ Diagnosis: ${task.diagnosis ? JSON.stringify(task.diagnosis, null, 2) : 'None'}`
       // Fallback to Markdown regex if JSON fails
     }
 
-    // Regex looks for "**File:** `path/to/file`" followed by a code block
+    // Pattern 1: "**File:** `path/to/file`" followed by a code block
     const blockRegex = /\*\*File:\*\*\s*`([^`]+)`[\s\S]*?```[\w]*\n([\s\S]*?)```/g;
     let match;
-    let found = false;
 
     while ((match = blockRegex.exec(text)) !== null) {
-      found = true;
       mods.push({ filePath: match[1].trim(), content: match[2].trim() });
     }
+    if (mods.length > 0) return mods;
 
-    // Fallback: if no **File:** markers were found, use the old naive extraction
-    if (!found) {
-      const fallbackRegex = /```[\w]*\n([\s\S]*?)```/g;
-      let i = 0;
-      while ((match = fallbackRegex.exec(text)) !== null) {
-        if (contextFiles[i]) {
-          mods.push({ filePath: contextFiles[i], content: match[1].trim() });
-        }
-        i++;
+    // Pattern 2: ```lang:path/to/file.ts or ```lang filepath=path/to/file.ts
+    const fenceHeaderRegex = /```[\w]*[:\s]+(?:filepath=|filename=)?`?([^\s\n`]+)`?\n([\s\S]*?)```/g;
+    while ((match = fenceHeaderRegex.exec(text)) !== null) {
+      const pathCandidate = match[1].trim();
+      if (pathCandidate.includes('.') || pathCandidate.includes('/')) {
+        mods.push({ filePath: pathCandidate, content: match[2].trim() });
       }
+    }
+    if (mods.length > 0) return mods;
+
+    // Pattern 3: Code block with "// File: path/to/file.ts" or "# File: path/to/file" on first line
+    const firstLineRegex = /```[\w]*\n(?:\/\/#?|\/\/|#)\s*(?:File|Path):\s*([^\n]+)\n([\s\S]*?)```/gi;
+    while ((match = firstLineRegex.exec(text)) !== null) {
+      mods.push({ filePath: match[1].trim(), content: match[2].trim() });
+    }
+    if (mods.length > 0) return mods;
+
+    // Pattern 4: Fallback - match standard code block with context files
+    const fallbackRegex = /```[\w]*\n([\s\S]*?)```/g;
+    let i = 0;
+    while ((match = fallbackRegex.exec(text)) !== null) {
+      const codeContent = match[1].trim();
+      if (contextFiles[i]) {
+        mods.push({ filePath: contextFiles[i], content: codeContent });
+      } else if (codeContent.includes('Feature:')) {
+        // Auto-detect Gherkin feature file content
+        mods.push({ filePath: 'features/generated.feature', content: codeContent });
+      }
+      i++;
     }
 
     return mods;
   }
+}
+
+export function saveFailedAttemptLog(taskId: string, prompt: string, response: string, parseError?: string): string {
+  const fs = require('fs');
+  const path = require('path');
+  const logDir = path.resolve('.gherkin-ai', 'logs', 'autopilot');
+  fs.mkdirSync(logDir, { recursive: true });
+  const filename = `attempt-${taskId}-${Date.now()}.log`;
+  const filePath = path.join(logDir, filename);
+  const content = `=== TASK ID: ${taskId} ===
+Timestamp: ${new Date().toISOString()}
+Parse Error: ${parseError || 'None / Empty Code Modifications'}
+
+=== PROMPT ===
+${prompt}
+
+=== RAW AGENT RESPONSE ===
+${response}
+`;
+  fs.writeFileSync(filePath, content, 'utf8');
+  return filePath;
 }
