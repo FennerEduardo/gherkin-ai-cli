@@ -239,6 +239,16 @@ program
     await handleConvergeCommand(options);
   });
 
+program
+  .command('impact')
+  .description('Analyze blast radius of specification changes')
+  .option('-f, --feature <file>', 'Feature file to analyze')
+  .option('--json', 'Output as JSON')
+  .action(async (options) => {
+    const { handleImpactCommand } = await import('./commands/impact');
+    await handleImpactCommand(options);
+  });
+
 // Action fallback for root flags (--init, --create, --generate, --validate, --detect)
 program.action(async (options) => {
   if (options.init) {

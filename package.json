@@ -58,6 +58,7 @@
     "build": "npx tsc && node -e \"require('fs').cpSync('src/ui/public', 'dist/ui/public', {recursive: true})\"",
     "start": "node ./bin/gherkin-ai.js",
     "dev": "npx tsc --watch",
+    "eval": "npx ts-node evals/runner.ts",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:e2e": "playwright test",

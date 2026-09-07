@@ -87,7 +87,8 @@ export const ${featurePascal}CommandSchema = z.object({
   payload: z.object({
 ${parsed.domainAnalysis.fields.map(f => {
   let zType = f.type === 'number' ? 'z.number()' : 'z.string()';
-  f.validations.forEach(v => {
+  f.validations.forEach((v: any) => {
+    if (typeof v !== 'string') return;
     if (v === '@validate:email') zType += '.email()';
     if (v.startsWith('@range(')) {
        const match = v.match(/@range\((\d+),(\d+)\)/);

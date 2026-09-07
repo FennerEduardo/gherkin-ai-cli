@@ -188,8 +188,7 @@ const LINT_RULES: LintRule[] = [
     severity: 'error',
     check: (parsed) => {
       const diags: LintDiagnostic[] = [];
-      // Detect scenarios where Given states contradict Then states
-      const statePattern = /(?:status|estado|state)\s*"([^"]+)"/i;
+      const statePattern = /(?:status|estado|state)(?:\s+(?:is|to|es))?\s*"([^"]+)"/i;
 
       for (let i = 0; i < parsed.scenarios.length; i++) {
         for (let j = i + 1; j < parsed.scenarios.length; j++) {

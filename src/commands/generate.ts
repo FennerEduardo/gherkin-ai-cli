@@ -5,10 +5,9 @@
 import path from 'path';
 import { loadConfig } from '../core/config';
 import { parseGherkinText } from '../core/gherkin-parser';
-import { generateContracts } from '../generators/contracts';
-import { generateFixtures } from '../generators/fixtures';
-import { generatePrompts } from '../generators/prompts';
-import { generateInfra } from '../generators/infra';
+import { buildIR } from '../core/ir-builder';
+import { pluginRegistry } from '../core/plugin-system';
+import { registerCorePlugins } from '../plugins/core-generators-plugin';
 import { fileExistsSync, readFileSync, writeFileSync } from '../utils/file-system';
 import { logger } from '../utils/logger';
 import inquirer from 'inquirer';
@@ -63,36 +62,18 @@ export async function handleGenerateCommand(options: { feature?: string; config?
   logger.info('Parsing Gherkin specification and extracting domain AST...');
   const parsed = parseGherkinText(gherkinText);
 
+  logger.info('Building Semantic IR...');
+  const ir = buildIR(parsed, options.feature || 'sample.feature');
+
   logger.info(`Target Output Directory: ${config.outputDir}`);
 
-  // 1. Generate Contracts, ADR & OpenAPI
-  const { contractsTs, adrMd, openApiJson } = generateContracts(parsed, config);
-  writeFileSync(path.join(config.outputDir, 'contracts.ts'), contractsTs);
-  writeFileSync(path.join(config.outputDir, 'ADR-001-architecture-decisions.md'), adrMd);
-  writeFileSync(path.join(config.outputDir, 'openapi.json'), openApiJson);
-  logger.success('Generated contracts.ts, ADR-001-architecture-decisions.md and openapi.json');
-
-  // 2. Generate Test Fixtures & Seeds
-  const { fixturesTs, seedSql } = generateFixtures(parsed, config);
-  writeFileSync(path.join(config.outputDir, 'fixtures.ts'), fixturesTs);
-  writeFileSync(path.join(config.outputDir, 'seed.sql'), seedSql);
-  logger.success('Generated fixtures.ts and seed.sql');
-
-  // 2.5 Generate Boilerplate Presets (Step Definitions)
-  const { generatePresets } = require('../generators/presets');
-  const presets = generatePresets(parsed, config);
-  presets.forEach((preset: { filename: string; content: string }) => {
-    writeFileSync(path.join(config.outputDir, preset.filename), preset.content);
-    logger.success(`Generated boilerplate preset: ${preset.filename}`);
-  });
-
-  // 2.8 Generate Prisma Stack (if applicable)
-  const { generatePrismaStack } = require('../generators/prisma-stack');
-  const prismaArtifacts = generatePrismaStack(parsed, config);
-  prismaArtifacts.forEach((artifact: { filename: string; content: string }) => {
-    writeFileSync(path.join(config.outputDir, artifact.filename), artifact.content);
-    logger.success(`Generated Prisma stack artifact: ${artifact.filename}`);
-  });
+  // Initialize Plugin Architecture
+  pluginRegistry.initialize({ config, constitution: null, projectDir: process.cwd() });
+  
+  // Only register core plugins if not already registered (to prevent duplicate throws)
+  if (pluginRegistry.getPlugins().length === 0) {
+    registerCorePlugins(pluginRegistry);
+  }
 
   console.log(chalk.bold.cyan('\n🔍 Context Confirmation for AI Agents:'));
   console.log(`- Architecture: ${config.architecture}`);
@@ -141,30 +122,33 @@ export async function handleGenerateCommand(options: { feature?: string; config?
     selectedAgents = answer.selectedAgents;
   }
 
-  if (selectedAgents.length > 0) {
-    // 3. Generate Agent Prompts
-    const prompts = generatePrompts(parsed, config);
-    selectedAgents.forEach((filename: string) => {
-      if (prompts[filename]) {
-        writeFileSync(path.join(config.outputDir, 'prompts', filename), prompts[filename]);
-      }
-    });
-    logger.success(`Generated selected prompts in prompts/: ${selectedAgents.join(', ')}`);
-  } else {
-    logger.warn('No agents selected. Skipping prompt generation.');
+  if (selectedAgents.length === 0) {
+    logger.warn('No agents selected. Filtering out prompt generation.');
   }
 
-  // 4. Generate Infrastructure Config
-  const { dockerComposeYaml, serverlessYml, envExample } = generateInfra(config);
-  if (config.architecture === 'serverless') {
-    writeFileSync(path.join(config.outputDir, 'serverless.yml'), serverlessYml);
-    logger.success('Generated serverless.yml (AWS Lambda FaaS)');
-  } else {
-    writeFileSync(path.join(config.outputDir, 'docker-compose.yml'), dockerComposeYaml);
-    logger.success('Generated docker-compose.yml');
-  }
-  writeFileSync(path.join(config.outputDir, '.env.example'), envExample);
-  logger.success('Generated .env.example');
+  // Generate all artifacts via Plugin System
+  logger.info('Running Generation Plugins...');
+  const artifacts = pluginRegistry.runGeneration(ir, config);
+
+  // Filter out unselected prompts
+  const filteredArtifacts = artifacts.filter(a => {
+    if (a.type === 'prompt') {
+      const filename = path.basename(a.filePath);
+      return selectedAgents.includes(filename);
+    }
+    return true;
+  });
+
+  const fs = require('fs');
+  filteredArtifacts.forEach(artifact => {
+    const fullPath = path.join(config.outputDir, artifact.filePath);
+    const dir = path.dirname(fullPath);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    writeFileSync(fullPath, artifact.content);
+    logger.success(`[Plugin ${artifact.type}] Generated: ${artifact.filePath}`);
+  });
 
   logger.banner();
   logger.success(`All artifacts successfully generated under ${config.outputDir}!`);
