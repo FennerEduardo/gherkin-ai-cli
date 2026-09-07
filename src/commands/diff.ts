@@ -57,6 +57,7 @@ export async function handleDiffCommand(options: DiffCommandOptions = {}): Promi
   console.log(chalk.blue(`Checking synchronization for ${fields.length} semantic fields...\n`));
 
   let targetProperties: string[] = [];
+  let targetDecorators: string[] = [];
   if (options.target.endsWith('.ts')) {
     try {
       const { Project } = require('ts-morph');
@@ -71,6 +72,16 @@ export async function handleDiffCommand(options: DiffCommandOptions = {}): Promi
       }
       for (const cls of classes) {
         targetProperties.push(...cls.getProperties().map((p: any) => p.getName()));
+        
+        // Extract HTTP methods/endpoints via Decorators (NestJS)
+        for (const method of cls.getMethods()) {
+          const decorators = method.getDecorators();
+          for (const dec of decorators) {
+            targetDecorators.push(dec.getName());
+            const args = dec.getArguments();
+            args.forEach((a: any) => targetDecorators.push(a.getText().replace(/['"]/g, '')));
+          }
+        }
       }
     } catch (e: any) {
        console.log(chalk.yellow(`⚠ Could not parse AST of target file: ${e.message}. Falling back to string match.`));
@@ -104,7 +115,12 @@ export async function handleDiffCommand(options: DiffCommandOptions = {}): Promi
 
   const endpoints = featureContent.match(/(?:\/api\/[\w/-]+)/gi) || [];
   for (const endpoint of endpoints) {
-    if (!targetContent.includes(endpoint)) {
+    // AST Check for endpoints (checking if path is part of any decorator argument)
+    const isEndpointFound = targetDecorators.length > 0 
+      ? targetDecorators.some(d => endpoint.includes(d) || d.includes(endpoint)) || targetDecorators.includes('Controller')
+      : targetContent.includes(endpoint);
+
+    if (!isEndpointFound && !targetContent.includes(endpoint)) {
       console.log(chalk.red(`  ✖ Drift Detected! Endpoint ${endpoint} from feature is not explicitly found in ${options.target}`));
       driftFound = true;
     } else {

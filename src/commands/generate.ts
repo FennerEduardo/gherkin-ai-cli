@@ -77,6 +77,14 @@ export async function handleGenerateCommand(options: { feature?: string; config?
     logger.success(`Generated boilerplate preset: ${preset.filename}`);
   });
 
+  // 2.8 Generate Prisma Stack (if applicable)
+  const { generatePrismaStack } = require('../generators/prisma-stack');
+  const prismaArtifacts = generatePrismaStack(parsed, config);
+  prismaArtifacts.forEach((artifact: { filename: string; content: string }) => {
+    writeFileSync(path.join(config.outputDir, artifact.filename), artifact.content);
+    logger.success(`Generated Prisma stack artifact: ${artifact.filename}`);
+  });
+
   console.log(chalk.bold.cyan('\n🔍 Context Confirmation for AI Agents:'));
   console.log(`- Architecture: ${config.architecture}`);
   console.log(`- Stack: ${config.stack.language} + ${config.stack.framework}`);
@@ -86,8 +94,9 @@ export async function handleGenerateCommand(options: { feature?: string; config?
     console.log(`- AI Tools: ${config.stack.aiEngine}`);
   }
 
+  const isNonInteractive = options.yes || process.env.GHK_NON_INTERACTIVE === 'true' || !!process.env.CI;
   let confirmContext = true;
-  if (!options.yes && !process.env.CI) {
+  if (!isNonInteractive) {
     const answer = await inquirer.prompt([{
       type: 'confirm',
       name: 'confirmContext',
@@ -113,7 +122,7 @@ export async function handleGenerateCommand(options: { feature?: string; config?
   }
 
   let selectedAgents = agentChoices.map(c => c.value);
-  if (!options.yes && !process.env.CI) {
+  if (!isNonInteractive) {
     const answer = await inquirer.prompt([{
       type: 'checkbox',
       name: 'selectedAgents',

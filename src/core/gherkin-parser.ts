@@ -36,6 +36,7 @@ export interface ParsedFeature {
     events: string[];
     fixtures: string[];
     fields: DomainField[];
+    httpCodes: string[];
   };
 }
 
@@ -117,6 +118,8 @@ export function parseGherkinText(gherkinText: string): ParsedFeature {
     if (/as a|as an|como/i.test(line)) actors.add(line);
   });
 
+  const httpCodes = new Set<string>();
+
   scenarios.forEach(sc => {
     sc.steps.forEach(st => {
       if (st.keyword === 'Given') {
@@ -128,6 +131,10 @@ export function parseGherkinText(gherkinText: string): ParsedFeature {
           events.push(st.text);
         } else {
           queries.push(st.text);
+        }
+        const httpCodeMatch = st.text.match(/HTTP (?:status )?(\d{3})/i);
+        if (httpCodeMatch) {
+          httpCodes.add(httpCodeMatch[1]);
         }
       }
 
@@ -172,6 +179,11 @@ export function parseGherkinText(gherkinText: string): ParsedFeature {
     });
   });
 
+  // Ensure default success response if none found
+  if (httpCodes.size === 0) {
+    httpCodes.add('200');
+  }
+
   return {
     featureName,
     descriptionLines,
@@ -183,7 +195,8 @@ export function parseGherkinText(gherkinText: string): ParsedFeature {
       queries,
       events,
       fixtures,
-      fields: Array.from(fieldsMap.values())
+      fields: Array.from(fieldsMap.values()),
+      httpCodes: Array.from(httpCodes)
     }
   };
 }

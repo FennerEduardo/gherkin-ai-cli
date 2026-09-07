@@ -15,27 +15,51 @@ export const logger = {
     this.jsonMode = opts.json || false;
   },
 
+  _logToFile(level: string, message: string) {
+    try {
+      const fs = require('fs');
+      const path = require('path');
+      const logDir = path.resolve(process.cwd(), '.ghe', 'logs');
+      fs.mkdirSync(logDir, { recursive: true });
+      const logFile = path.join(logDir, 'execution.log.jsonl');
+      const logEntry = JSON.stringify({
+        timestamp: new Date().toISOString(),
+        level,
+        message
+      });
+      fs.appendFileSync(logFile, logEntry + '\n');
+    } catch (e) {
+      // Silently fail if cannot log to file
+    }
+  },
+
   verbose(message: string): void {
+    this._logToFile('VERBOSE', message);
     if (this.verboseMode && !this.jsonMode) console.log(`\x1b[90m[VERBOSE] ${message}\x1b[0m`);
   },
 
   debug(message: string): void {
+    this._logToFile('DEBUG', message);
     if (this.debugMode && !this.jsonMode) console.log(`\x1b[90m[DEBUG] ${message}\x1b[0m`);
   },
 
   info(message: string): void {
+    this._logToFile('INFO', message);
     if (!this.jsonMode) console.log(`\x1b[36mℹ\x1b[0m ${message}`);
   },
   
   success(message: string): void {
+    this._logToFile('SUCCESS', message);
     if (!this.jsonMode) console.log(`\x1b[32m✔\x1b[0m ${message}`);
   },
   
   warn(message: string): void {
+    this._logToFile('WARN', message);
     if (!this.jsonMode) console.warn(`\x1b[33m⚠\x1b[0m ${message}`);
   },
   
   error(message: string): void {
+    this._logToFile('ERROR', message);
     if (!this.jsonMode) console.error(`\x1b[31m✖\x1b[0m ${message}`);
   },
 

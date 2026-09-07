@@ -48,13 +48,19 @@ export class RealAgentProvider implements AgentProvider {
       return new DefaultCliAgentProvider().executeTask(task);
     }
 
+    const useJsonFormat = this.config.provider === 'openai' || this.config.provider === 'anthropic';
     const systemPrompt = `You are a Senior Software Engineer AI Agent. Your task is to perform: ${task.type}.
-If you are fixing or writing code, output the code in Markdown blocks.
+${useJsonFormat ? `Output your response STRICTLY as a JSON object with this schema:
+{
+  "files": [
+    { "filePath": "path/to/file.ts", "content": "// source code here" }
+  ]
+}` : `If you are fixing or writing code, output the code in Markdown blocks.
 IMPORTANT: Precede each markdown block with the exact file path like this:
 **File:** \`path/to/file.ts\`
 \`\`\`typescript
 // code
-\`\`\``;
+\`\`\``}`;
 
     const userPrompt = `Task: ${task.prompt}
 Context Files: ${task.contextFiles?.join(', ') || 'None'}
@@ -160,6 +166,25 @@ Diagnosis: ${task.diagnosis ? JSON.stringify(task.diagnosis, null, 2) : 'None'}`
   private extractCodeModifications(text: string, contextFiles: string[]): { filePath: string; content: string }[] {
     const mods: { filePath: string; content: string }[] = [];
     
+    // Attempt JSON parsing first
+    try {
+      // Find the first { or [ in case the agent prepends markdown like ```json
+      const jsonStart = text.indexOf('{');
+      const jsonEnd = text.lastIndexOf('}');
+      if (jsonStart !== -1 && jsonEnd !== -1) {
+        const jsonStr = text.substring(jsonStart, jsonEnd + 1);
+        const parsed = JSON.parse(jsonStr);
+        if (parsed.files && Array.isArray(parsed.files)) {
+          return parsed.files.map((f: any) => ({
+            filePath: f.filePath || f.path || f.name,
+            content: f.content
+          })).filter((f: any) => f.filePath && f.content);
+        }
+      }
+    } catch (e) {
+      // Fallback to Markdown regex if JSON fails
+    }
+
     // Regex looks for "**File:** `path/to/file`" followed by a code block
     const blockRegex = /\*\*File:\*\*\s*`([^`]+)`[\s\S]*?```[\w]*\n([\s\S]*?)```/g;
     let match;

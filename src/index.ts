@@ -34,6 +34,8 @@ program
   .option('--yes', 'Accept all defaults without prompting (non-interactive mode)')
   .option('--non-interactive', 'Alias for --yes')
   .option('--spec-dir <dir>', 'Target specification directory (overrides config)')
+  .option('--verbose', 'Enable verbose logging')
+  .option('--json', 'Enable JSON output format for CI')
   .option('--init', 'Alias for init command')
   .option('--create', 'Alias for create command')
   .option('--generate', 'Alias for generate command')
@@ -236,6 +238,11 @@ async function bootstrap() {
   if (specDirIdx > -1 && argv[specDirIdx + 1]) {
     process.env.GHK_SPEC_DIR = argv[specDirIdx + 1];
   }
+
+  const isVerbose = argv.includes('--verbose');
+  const isJson = argv.includes('--json');
+  const { logger } = await import('./utils/logger');
+  logger.configure({ verbose: isVerbose, json: isJson });
 
   await resolveWorkspaceDirectory({ project, nonInteractive });
   program.parse(process.argv);

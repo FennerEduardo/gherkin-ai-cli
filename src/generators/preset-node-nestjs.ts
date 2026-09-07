@@ -35,12 +35,43 @@ After(async () => {
 
 ${parsed.scenarios.map(sc => `
 // Scenario: ${sc.name}
-${sc.steps.map(st => `
-${st.keyword.trim()}('${st.text.replace(/'/g, "\\'")}', async function () {
-  // TODO: Implement step
-  return 'pending';
+${sc.steps.map(st => {
+  let stepBody = '';
+  
+  // Basic heuristics for step implementation
+  if (st.keyword.trim() === 'Given') {
+    stepBody = "  // Set up preconditions\\n  // this.context = { ... };";
+  } else if (st.keyword.trim() === 'When') {
+    const isPost = /post|create|send/i.test(st.text);
+    const method = isPost ? 'post' : 'get';
+    const endpointMatch = st.text.match(/(?:\/api\/[\w/-]+)/i);
+    const endpoint = endpointMatch ? endpointMatch[0] : '/api/v1/' + moduleName;
+    
+    stepBody = "  this.res = await request(app.getHttpServer())\\n    ." + method + "('" + endpoint + "')\\n    .send(this.payload || {});";
+  } else if (st.keyword.trim() === 'Then') {
+    const httpCodeMatch = st.text.match(/HTTP (?:status )?(\d{3})/i);
+    if (httpCodeMatch) {
+      stepBody = "  expect(this.res.status).toBe(" + httpCodeMatch[1] + ");";
+    } else {
+      stepBody = "  // Verify post-conditions\\n  expect(this.res.body).toBeDefined();";
+    }
+  } else {
+    stepBody = "  // Additional context or assertions";
+  }
+
+  // Convert DataTable to variable if present
+  let dataTableArg = '';
+  if (st.text.includes('|')) {
+    dataTableArg = 'dataTable: any';
+    stepBody = "  const data = dataTable.hashes();\\n" + stepBody;
+  }
+
+  return `
+${st.keyword.trim()}('${st.text.replace(/\n\|.*/g, '').replace(/'/g, "\\'")}'${dataTableArg ? ', async function (dataTable)' : ', async function ()'} {
+${stepBody}
 });
-`).join('')}
+`;
+}).join('')}
 `).join('')}
 `;
 

@@ -58,8 +58,32 @@ export function calculateQualityScorecard(cwd: string = process.cwd(), specDirOv
   if (fs.existsSync(path.join(cwd, 'package-lock.json')) || fs.existsSync(path.join(cwd, 'yarn.lock')) || fs.existsSync(path.join(cwd, 'pnpm-lock.yaml'))) {
     securityScore = 75; // Basic dependency locking
     try {
-      // Very light check: if they have a tool like npm audit (we won't run it to block, just check if they are an npm project)
-      securityScore += 15;
+      // Basic secret scanning heuristic on generated output dir
+      let hasSecrets = false;
+      const config = require('./config').loadConfig();
+      if (fs.existsSync(config.outputDir)) {
+        const checkFiles = (dir: string) => {
+          const files = fs.readdirSync(dir);
+          for (const file of files) {
+            const fPath = path.join(dir, file);
+            if (fs.statSync(fPath).isDirectory()) {
+               checkFiles(fPath);
+            } else if (fPath.endsWith('.ts') || fPath.endsWith('.json')) {
+               const content = fs.readFileSync(fPath, 'utf8');
+               if (/(?:password|secret|api_key|token)['"]?\s*[:=]\s*['"][^'"]{8,}['"]/i.test(content)) {
+                 hasSecrets = true;
+               }
+            }
+          }
+        };
+        checkFiles(config.outputDir);
+      }
+      if (hasSecrets) {
+        securityScore -= 20; // Penalize for possible hardcoded secrets
+        console.warn('\x1b[33m⚠\x1b[0m Security Warning: Possible hardcoded secrets detected in generated artifacts.');
+      } else {
+        securityScore += 15;
+      }
     } catch { }
   }
 

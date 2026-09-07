@@ -175,11 +175,10 @@ ${arch.prohibitedImports.map(p => `- \`${p}\``).join('\n')}
               }
             }
           },
-          responses: {
-            '200': { description: 'Successful execution' },
-            '400': { description: 'Validation error' },
-            '401': { description: 'Unauthorized' }
-          }
+          responses: parsed.domainAnalysis.httpCodes.reduce((acc, code) => {
+            acc[code] = { description: code === '200' || code === '201' ? 'Successful execution' : (code === '400' ? 'Validation error' : (code === '401' ? 'Unauthorized' : (code === '404' ? 'Not found' : 'Response'))) };
+            return acc;
+          }, {} as Record<string, any>)
         }
       }
     }

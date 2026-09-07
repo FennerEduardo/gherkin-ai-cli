@@ -63,10 +63,12 @@ export async function handleVerifyCommand(options: VerifyCommandOptions = {}): P
       const backupKeys = Object.keys(fileBackups);
       if (backupKeys.length > 0) {
         console.log(chalk.yellow(`   The agent failed to fix the tests. The following ${backupKeys.length} files were modified and will be reverted:`));
-        for (const [filePath, oldContent] of Object.entries(fileBackups)) {
+        for (const [filePath, backupPath] of Object.entries(fileBackups)) {
           try {
-            fs.writeFileSync(filePath, oldContent, 'utf8');
-            console.log(chalk.yellow(`   ↺ Rolled back: ${filePath}`));
+            if (fs.existsSync(backupPath)) {
+              fs.copyFileSync(backupPath, filePath);
+              console.log(chalk.yellow(`   ↺ Rolled back: ${filePath}`));
+            }
           } catch (e: any) {
             console.log(chalk.red(`   ✖ Failed to rollback ${filePath}: ${e.message}`));
           }
@@ -104,6 +106,7 @@ export async function handleVerifyCommand(options: VerifyCommandOptions = {}): P
         try {
           const fs = require('fs');
           const path = require('path');
+          const crypto = require('crypto');
           const { validateTypeScriptSyntax } = require('../core/syntax-validator');
           
           if (!validateTypeScriptSyntax(mod.filePath, mod.content)) {
@@ -114,7 +117,12 @@ export async function handleVerifyCommand(options: VerifyCommandOptions = {}): P
           const fullPath = path.resolve(mod.filePath);
           
           if (!fileBackups[fullPath] && fs.existsSync(fullPath)) {
-             fileBackups[fullPath] = fs.readFileSync(fullPath, 'utf8');
+             const backupDir = path.resolve('.ghe', 'backups');
+             fs.mkdirSync(backupDir, { recursive: true });
+             const hash = crypto.createHash('md5').update(fullPath).digest('hex');
+             const backupPath = path.join(backupDir, `${path.basename(fullPath)}.${hash}.bak`);
+             fs.copyFileSync(fullPath, backupPath);
+             fileBackups[fullPath] = backupPath;
           }
           
           fs.mkdirSync(path.dirname(fullPath), { recursive: true });
