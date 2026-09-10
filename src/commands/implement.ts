@@ -1,5 +1,5 @@
 /* ==========================================================================
-   gherkin-ai-cli - 'implement' Command Handler (AI Agent Orchestration)
+   gherkin-ai-cli - 'implement' Command Handler (AI Agent Orchestration & Audit)
    ========================================================================== */
 
 import path from 'path';
@@ -11,9 +11,18 @@ import { fileExistsSync, readFileSync, writeFileSync } from '../utils/file-syste
 import { logger } from '../utils/logger';
 import { resolveSpecDir } from '../utils/spec-dir-resolver';
 import { getStackDockerDetails } from '../generators/infra';
+import { getAuthorDetails, calculateHash, InventoryManager } from '../core/inventory';
 
-export async function handleImplementCommand(options: { feature?: string; yes?: boolean; docker?: boolean }): Promise<void> {
+export async function handleImplementCommand(options: { feature?: string; yes?: boolean; docker?: boolean; inventory?: boolean }): Promise<void> {
   logger.banner();
+
+  if (options.inventory) {
+    const manager = new InventoryManager();
+    const records = manager.getInventory(options.feature);
+    console.log(manager.formatCLIReport(records));
+    return;
+  }
+
   logger.info('Preparing AI Agent Implementation Package & Master Prompt...');
 
   const config = loadConfig();
@@ -46,8 +55,12 @@ export async function handleImplementCommand(options: { feature?: string; yes?: 
   const outDir = config.outputDir || './generated-specs';
   const dockerDetails = getStackDockerDetails(config);
 
-  // Locate associated contracts and governance files
+  // Calculate audit hashes and author details
+  const author = getAuthorDetails();
+  const featureVersionHash = calculateHash(gherkinText);
   const relativeFeature = path.relative(process.cwd(), featurePath);
+
+  // Locate associated contracts and governance files
   const govPath = fileExistsSync(path.join(process.cwd(), '.ghkgovernance.yaml'))
     ? '.ghkgovernance.yaml'
     : undefined;
@@ -79,7 +92,7 @@ export async function handleImplementCommand(options: { feature?: string; yes?: 
     ? path.relative(process.cwd(), path.join(outDir, 'docker-compose.yml'))
     : (fileExistsSync('docker-compose.yml') ? 'docker-compose.yml' : undefined);
 
-  // Build Master Orchestration Prompt
+  // Context file references
   const refFiles: string[] = [];
   if (govPath) refFiles.push(`@${govPath}`);
   refFiles.push(`@${relativeFeature}`);
@@ -88,10 +101,8 @@ export async function handleImplementCommand(options: { feature?: string; yes?: 
   if (openApiPath) refFiles.push(`@${openApiPath}`);
   if (dockerComposePath) refFiles.push(`@${dockerComposePath}`);
 
-  const masterPromptContent = `# 🚀 AI AGENT MASTER IMPLEMENTATION PROMPT
-## Feature: ${featureName}
-## Architecture: ${config.architecture.toUpperCase()} | Stack: ${config.stack.language.toUpperCase()} (${config.stack.framework})
-
+  // Draft prompt content for hash calculation
+  const promptBody = `
 ### 📌 Context Files to Read & Follow:
 ${refFiles.map(f => `- ${f}`).join('\n')}
 
@@ -132,6 +143,37 @@ ${refFiles.map(f => `- ${f}`).join('\n')}
 4. Ensure 100% scenario pass rate.
 `;
 
+  const promptVersionHash = `prt_${calculateHash(promptBody)}`;
+
+  // Record inventory execution
+  const inventoryManager = new InventoryManager();
+  const record = inventoryManager.recordExecution({
+    featureName,
+    featurePath: relativeFeature,
+    featureVersionHash,
+    promptVersionHash,
+    author,
+    command: 'ghk implement',
+    stack: {
+      language: config.stack.language,
+      framework: config.stack.framework,
+      architecture: config.architecture,
+      testing: config.stack.testing
+    },
+    dockerSandbox: true,
+    dockerImage: dockerDetails.image,
+    status: 'PROMPT_GENERATED'
+  });
+
+  const masterPromptContent = `# 🚀 AI AGENT MASTER IMPLEMENTATION PROMPT
+## Feature: ${featureName} (Spec Hash: ${featureVersionHash})
+## Architecture: ${config.architecture.toUpperCase()} | Stack: ${config.stack.language.toUpperCase()} (${config.stack.framework})
+## Prompt Version / Audit Hash: ${promptVersionHash}
+## Author / Developer: ${author.name} <${author.email}> (source: ${author.source})
+## Executed At: ${record.timestamp}
+## Audit Record ID: ${record.recordId}
+${promptBody}`;
+
   // Write Master Prompt file
   const promptFile = path.join(outDir, 'prompts', 'implement-master-prompt.md');
   const promptDir = path.dirname(promptFile);
@@ -145,12 +187,14 @@ ${refFiles.map(f => `- ${f}`).join('\n')}
   console.log(chalk.bold.cyan(`🤖 AI AGENT IMPLEMENTATION PACKAGE GENERATED`));
   console.log(chalk.bold.green('============================================================\n'));
 
-  console.log(chalk.bold('📋 Target Feature: ') + chalk.yellow(featureName));
+  console.log(chalk.bold('📋 Target Feature: ') + chalk.yellow(featureName) + chalk.gray(` (Hash: ${featureVersionHash})`));
   console.log(chalk.bold('📂 Feature File:   ') + chalk.white(relativeFeature));
+  console.log(chalk.bold('👤 Author / Dev:    ') + chalk.cyan(`${author.name} <${author.email}>`) + chalk.gray(` [via ${author.source}]`));
   console.log(chalk.bold('📜 Domain Contract: ') + chalk.white(nativeContractPath || 'N/A'));
   console.log(chalk.bold('🔒 Agent Policy:    ') + chalk.white(govPath || 'N/A'));
   console.log(chalk.bold('🐳 Docker Sandbox: ') + chalk.cyan(`Supported (${dockerDetails.image})`));
-  console.log(chalk.bold('📄 Master Prompt:   ') + chalk.white(promptFile));
+  console.log(chalk.bold('📄 Master Prompt:   ') + chalk.white(promptFile) + chalk.gray(` (Hash: ${promptVersionHash})`));
+  console.log(chalk.bold('🆔 Audit Record:   ') + chalk.green(record.recordId));
 
   console.log(chalk.bold.cyan('\n------------------------------------------------------------'));
   console.log(chalk.bold.yellow('💬 COPY-PASTE THIS PROMPT DIRECTLY TO YOUR AI AGENT:'));
@@ -166,6 +210,7 @@ Implement the feature "${featureName}" defined in ${relativeFeature}:
 3. Implement Domain Entities, Infrastructure Repositories (${config.stack.orm}/${config.stack.database}), and MVC Controllers (${config.stack.language}).
 4. Implement ${config.stack.testing.toUpperCase()} test suite matching all feature scenarios.
 5. DOCKER SANDBOX: If host OS lacks ${config.stack.language.toUpperCase()} SDK, run tests in container: \`docker compose run --rm app ${dockerDetails.testCmd}\`.
+6. AUDIT REGISTRY RECORD: ${record.recordId} (Spec Hash: ${featureVersionHash}, Author: ${author.name} <${author.email}>).
 `;
 
   console.log(chalk.green(quickPrompt));
