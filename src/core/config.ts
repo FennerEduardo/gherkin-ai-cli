@@ -20,6 +20,12 @@ export interface GherkinAIConfig {
     testing: string;
     aiEngine?: string;
   };
+  frontendStack?: {
+    framework: string;
+    language: string;
+    bundler?: string;
+    testing?: string;
+  };
   rules: {
     bcryptCostFactor?: number;
     jwtTtlSeconds?: number;

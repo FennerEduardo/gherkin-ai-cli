@@ -6,6 +6,76 @@ import { defaultConfig, saveConfig, GherkinAIConfig } from '../core/config';
 import { generateConstitution } from '../core/constitution';
 import { logger } from '../utils/logger';
 
+const FRAMEWORKS_BY_LANG: Record<string, { name: string; value: string }[]> = {
+  php: [
+    { name: 'PHP 8.3 Native (No framework, pure PDO/MVC)', value: 'native-php' },
+    { name: 'Laravel Framework', value: 'laravel' },
+    { name: 'Symfony Framework', value: 'symfony' }
+  ],
+  typescript: [
+    { name: 'NestJS (Modular DDD)', value: 'nestjs' },
+    { name: 'Express.js', value: 'express' },
+    { name: 'Fastify', value: 'fastify' }
+  ],
+  javascript: [
+    { name: 'Express.js', value: 'express' },
+    { name: 'Fastify', value: 'fastify' },
+    { name: 'Node.js Native HTTP', value: 'node-native' }
+  ],
+  python: [
+    { name: 'FastAPI (Async REST)', value: 'fastapi' },
+    { name: 'Django Framework', value: 'django' },
+    { name: 'Flask', value: 'flask' }
+  ],
+  java: [
+    { name: 'Spring Boot', value: 'spring-boot' },
+    { name: 'Quarkus', value: 'quarkus' }
+  ],
+  csharp: [
+    { name: 'ASP.NET Core', value: 'dotnet-aspnetcore' }
+  ],
+  go: [
+    { name: 'Gin Web Framework', value: 'gin' },
+    { name: 'Fiber', value: 'fiber' },
+    { name: 'Echo', value: 'echo' }
+  ],
+  ruby: [
+    { name: 'Ruby on Rails', value: 'rails' },
+    { name: 'Sinatra', value: 'sinatra' }
+  ]
+};
+
+const ORMS_BY_LANG: Record<string, { name: string; value: string }[]> = {
+  php: [
+    { name: 'PDO Native (Prepared Statements)', value: 'pdo' },
+    { name: 'Eloquent ORM', value: 'eloquent' },
+    { name: 'Doctrine ORM', value: 'doctrine' }
+  ],
+  typescript: [
+    { name: 'Prisma ORM', value: 'prisma' },
+    { name: 'Drizzle ORM', value: 'drizzle' },
+    { name: 'TypeORM', value: 'typeorm' }
+  ],
+  python: [
+    { name: 'SQLAlchemy', value: 'sqlalchemy' },
+    { name: 'Django ORM', value: 'django-orm' }
+  ],
+  java: [
+    { name: 'Hibernate / JPA', value: 'hibernate' }
+  ],
+  csharp: [
+    { name: 'Entity Framework Core', value: 'entity-framework-core' },
+    { name: 'Dapper', value: 'dapper' }
+  ],
+  go: [
+    { name: 'GORM', value: 'gorm' },
+    { name: 'sqlx', value: 'sqlx' }
+  ],
+  ruby: [
+    { name: 'ActiveRecord', value: 'active-record' }
+  ]
+};
+
 export function generateGovernanceConfig(config: GherkinAIConfig, workspaceDir: string = process.cwd()): string {
   const lang = (config.stack.language || '').toLowerCase();
   const framework = (config.stack.framework || '').toLowerCase();
@@ -14,52 +84,49 @@ export function generateGovernanceConfig(config: GherkinAIConfig, workspaceDir: 
   const allowedPaths: string[] = ['specs/**', 'tests/**', 'generated-specs/**'];
   const requireHumanApprovalOn: string[] = ['docker-compose.yml'];
 
-  // 1. Frontend Stacks (React, Next, Vue, Angular, Svelte, Ionic)
-  if (framework.includes('react') || framework.includes('next') || framework.includes('vue') || framework.includes('angular') || framework.includes('svelte')) {
-    allowedPaths.push('src/**', 'public/**', 'components/**', 'pages/**', 'app/**', 'views/**');
-    prohibitedImports['javascript'] = ['express', 'pg', 'mysql2', 'prisma', 'child_process', 'fs'];
-    requireHumanApprovalOn.push('package.json', 'vite.config.ts', 'next.config.js', 'angular.json');
-  } 
-  // 2. Mobile Stacks (Flutter, Swift, Kotlin, React Native)
-  else if (framework.includes('flutter') || framework.includes('react-native') || framework.includes('ios') || framework.includes('android')) {
-    allowedPaths.push('lib/**', 'src/**', 'App/**', 'ios/Runner/**', 'android/app/**');
-    prohibitedImports[lang || 'mobile'] = ['child_process', 'raw_system_exec'];
-    requireHumanApprovalOn.push('pubspec.yaml', 'AndroidManifest.xml', 'Info.plist', 'build.gradle');
-  } 
-  // 3. Backend / Enterprise Monolith Stacks (Java, C#, Python, Go, Ruby, PHP, Node)
-  else {
-    allowedPaths.push('src/**', 'app/**', 'public/**', 'views/**', 'controllers/**', 'domain/**');
+  // Backend / Service Paths & Imports
+  allowedPaths.push('src/**', 'app/**', 'public/**', 'views/**', 'controllers/**', 'domain/**');
 
-    if (lang === 'java' || framework.includes('spring')) {
-      prohibitedImports['java'] = ['org.springframework.beans.factory.annotation.Autowired on fields (use constructor injection)', 'java.sql.Statement without PreparedStatement'];
-      requireHumanApprovalOn.push('pom.xml', 'build.gradle', 'application.yml', 'schema.sql');
-    } else if (lang === 'csharp' || framework.includes('aspnet') || framework.includes('dotnet')) {
-      prohibitedImports['csharp'] = ['System.Data.SqlClient unparameterized queries', 'Direct HttpContext coupling in domain layer'];
-      requireHumanApprovalOn.push('*.csproj', 'appsettings.json', 'Program.cs', 'migrations/**');
-    } else if (lang === 'python' || framework.includes('django') || framework.includes('fastapi')) {
-      prohibitedImports['python'] = ['eval()', 'exec()', 'os.system() with untrusted input'];
-      requireHumanApprovalOn.push('requirements.txt', 'pyproject.toml', 'manage.py');
-    } else if (lang === 'ruby' || framework.includes('rails')) {
-      prohibitedImports['ruby'] = ['where() raw string interpolation'];
-      requireHumanApprovalOn.push('Gemfile', 'config/database.yml', 'db/migrate/**');
-    } else if (lang === 'go' || framework.includes('gin') || framework.includes('fiber')) {
-      prohibitedImports['go'] = ['ignored_err_check (_ = err)'];
-      requireHumanApprovalOn.push('go.mod', 'go.sum');
-    } else if (framework === 'native-php' || lang === 'php') {
-      prohibitedImports['php'] = ['laravel/framework', 'symfony/symfony', 'illuminate/*'];
-      requireHumanApprovalOn.push('schema.sql', 'migrations/**');
-    } else if (lang === 'typescript' || lang === 'javascript') {
-      if (framework === 'nestjs') {
-        prohibitedImports['typescript'] = ['express (use NestJS abstractions)', 'typeorm inside controllers'];
-      }
-      requireHumanApprovalOn.push('schema.prisma', 'ormconfig.json', 'package.json');
+  if (lang === 'java' || framework.includes('spring')) {
+    prohibitedImports['java'] = ['org.springframework.beans.factory.annotation.Autowired on fields (use constructor injection)', 'java.sql.Statement without PreparedStatement'];
+    requireHumanApprovalOn.push('pom.xml', 'build.gradle', 'application.yml', 'schema.sql');
+  } else if (lang === 'csharp' || framework.includes('aspnet') || framework.includes('dotnet')) {
+    prohibitedImports['csharp'] = ['System.Data.SqlClient unparameterized queries', 'Direct HttpContext coupling in domain layer'];
+    requireHumanApprovalOn.push('*.csproj', 'appsettings.json', 'Program.cs', 'migrations/**');
+  } else if (lang === 'python' || framework.includes('django') || framework.includes('fastapi')) {
+    prohibitedImports['python'] = ['eval()', 'exec()', 'os.system() with untrusted input'];
+    requireHumanApprovalOn.push('requirements.txt', 'pyproject.toml', 'manage.py');
+  } else if (lang === 'ruby' || framework.includes('rails')) {
+    prohibitedImports['ruby'] = ['where() raw string interpolation'];
+    requireHumanApprovalOn.push('Gemfile', 'config/database.yml', 'db/migrate/**');
+  } else if (lang === 'go' || framework.includes('gin') || framework.includes('fiber')) {
+    prohibitedImports['go'] = ['ignored_err_check (_ = err)'];
+    requireHumanApprovalOn.push('go.mod', 'go.sum');
+  } else if (framework === 'native-php' || lang === 'php') {
+    prohibitedImports['php'] = ['laravel/framework', 'symfony/symfony', 'illuminate/*'];
+    requireHumanApprovalOn.push('schema.sql', 'migrations/**');
+  } else if (lang === 'typescript' || lang === 'javascript') {
+    if (framework === 'nestjs') {
+      prohibitedImports['typescript'] = ['express (use NestJS abstractions)', 'typeorm inside controllers'];
     }
+    requireHumanApprovalOn.push('schema.prisma', 'ormconfig.json', 'package.json');
+  }
+
+  // Frontend Independent Stack Guardrails (if configured)
+  if (config.frontendStack && config.frontendStack.framework !== 'none') {
+    const feLang = config.frontendStack.language || 'javascript';
+    allowedPaths.push('frontend/**', 'src/components/**', 'src/views/**', 'public/**');
+    prohibitedImports[feLang] = [
+      ...(prohibitedImports[feLang] || []),
+      'express', 'pg', 'mysql2', 'prisma', 'child_process', 'fs'
+    ];
+    requireHumanApprovalOn.push('package.json', 'vite.config.ts', 'webpack.config.js');
   }
 
   const governanceYaml = YAML.stringify({
     version: '1.0',
     projectName: config.projectName,
-    allowedPaths,
+    allowedPaths: Array.from(new Set(allowedPaths)),
     protectedPaths: [
       '.env*',
       'docker-compose.yml',
@@ -70,7 +137,7 @@ export function generateGovernanceConfig(config: GherkinAIConfig, workspaceDir: 
     ],
     maxFilesPerTask: 12,
     prohibitedImports,
-    requireHumanApprovalOn
+    requireHumanApprovalOn: Array.from(new Set(requireHumanApprovalOn))
   });
 
   const targetPath = path.join(workspaceDir, '.ghkgovernance.yaml');
@@ -101,16 +168,16 @@ export async function handleInitCommand(options?: {
     generateConstitution();
   }
 
-  let answers: any = {};
   const isNonInteractive = options?.yes || options?.nonInteractive || process.env.GHK_NON_INTERACTIVE === 'true' || process.env.CI === 'true';
 
-  const { promptOrFallback } = require('../utils/i18n-cli');
-  
   if (isNonInteractive) {
     logger.info('Running in non-interactive mode. Using default configuration.');
   }
 
-  answers = await promptOrFallback([
+  const { promptOrFallback } = require('../utils/i18n-cli');
+
+  // Step 1: Core Project Identity & Architecture
+  const step1 = await promptOrFallback([
     {
       type: 'input',
       name: 'projectName',
@@ -122,65 +189,148 @@ export async function handleInitCommand(options?: {
       name: 'architecture',
       message: 'Select primary software architecture:',
       choices: [
+        { name: 'Monolith Architecture (MVC / Fullstack Monolithic)', value: 'monolith' },
         { name: 'Hexagonal Architecture (Ports & Adapters)', value: 'hexagonal' },
         { name: 'Domain-Driven Design (DDD)', value: 'ddd' },
         { name: 'Clean Architecture', value: 'clean' },
         { name: 'CQRS + Event Sourcing', value: 'cqrs' },
-        { name: 'Microservices Architecture', value: 'microservices' },
-        { name: 'Monolith Architecture (MVC / Monolithic)', value: 'monolith' },
-        { name: 'API REST Architecture (Stateless Service)', value: 'api-rest' }
+        { name: 'API REST Architecture (Stateless Service)', value: 'api-rest' },
+        { name: 'Microservices Architecture', value: 'microservices' }
       ],
-      default: options?.architecture || 'hexagonal'
+      default: options?.architecture || 'monolith'
     },
     {
       type: 'list',
       name: 'language',
-      message: 'Select programming language / runtime:',
-      choices: ['typescript', 'javascript', 'python', 'java', 'csharp', 'go', 'php', 'ruby', 'rust', 'swift', 'dart'],
-      default: options?.language || 'typescript'
-    },
+      message: 'Select Backend programming language / runtime:',
+      choices: [
+        { name: 'PHP (PHP 8.3+)', value: 'php' },
+        { name: 'TypeScript (Node.js)', value: 'typescript' },
+        { name: 'JavaScript (Node.js)', value: 'javascript' },
+        { name: 'Python (Python 3.11+)', value: 'python' },
+        { name: 'Java (Java 17/21)', value: 'java' },
+        { name: 'C# (.NET 8+)', value: 'csharp' },
+        { name: 'Go (Golang)', value: 'go' },
+        { name: 'Ruby (Ruby 3+)', value: 'ruby' }
+      ],
+      default: options?.language || 'php'
+    }
+  ], options);
+
+  const backendLang = step1.language || options?.language || 'php';
+
+  // Step 2: Contextual Framework & ORM Choices based on Backend Language
+  const availableFrameworks = FRAMEWORKS_BY_LANG[backendLang] || [
+    { name: `${backendLang} Default Framework`, value: `${backendLang}-default` }
+  ];
+  const availableOrms = ORMS_BY_LANG[backendLang] || [
+    { name: `${backendLang} Default Persistence`, value: `${backendLang}-orm` }
+  ];
+
+  const step2 = await promptOrFallback([
     {
       type: 'list',
       name: 'framework',
-      message: 'Select primary framework:',
-      choices: ['nestjs', 'express', 'fastify', 'spring-boot', 'fastapi', 'aspnet', 'native-php', 'laravel', 'rails', 'gin', 'django'],
-      default: options?.framework || 'nestjs'
+      message: `Select primary Backend framework for ${backendLang.toUpperCase()}:`,
+      choices: availableFrameworks,
+      default: options?.framework || availableFrameworks[0].value
     },
     {
       type: 'list',
       name: 'orm',
-      message: 'Select database ORM / persistence:',
-      choices: ['prisma', 'drizzle', 'typeorm', 'sqlalchemy', 'pdo', 'eloquent', 'gorm', 'active-record'],
-      default: options?.orm || 'prisma'
+      message: `Select Backend database ORM / persistence for ${backendLang.toUpperCase()}:`,
+      choices: availableOrms,
+      default: options?.orm || availableOrms[0].value
     },
     {
       type: 'list',
       name: 'database',
       message: 'Select primary database engine:',
-      choices: ['postgresql', 'mysql', 'mongodb', 'redis', 'sqlite'],
-      default: options?.database || 'postgresql'
+      choices: ['mysql', 'postgresql', 'mongodb', 'sqlite', 'redis'],
+      default: options?.database || 'mysql'
     },
     {
       type: 'list',
       name: 'validation',
-      message: 'Select validation library:',
-      choices: ['zod', 'native-php-filter', 'valitron', 'pydantic', 'jakarta-validation', 'custom'],
-      default: options?.validation || (options?.language === 'php' ? 'native-php-filter' : 'zod')
+      message: 'Select Backend validation library:',
+      choices: ['native-php-filter', 'valitron', 'zod', 'pydantic', 'jakarta-validation', 'custom'],
+      default: options?.validation || (backendLang === 'php' ? 'native-php-filter' : 'zod')
     },
     {
       type: 'list',
       name: 'messaging',
       message: 'Select event broker / messaging:',
       choices: ['none', 'native-events', 'rabbitmq', 'kafka', 'sqs', 'redis-pubsub'],
-      default: options?.messaging || (options?.architecture === 'monolith' ? 'none' : 'rabbitmq')
+      default: options?.messaging || (step1.architecture === 'monolith' ? 'none' : 'rabbitmq')
     },
     {
       type: 'list',
       name: 'testing',
-      message: 'Select testing framework:',
-      choices: ['vitest', 'jest', 'phpunit', 'pytest', 'junit', 'xunit'],
-      default: options?.testing || 'vitest'
-    },
+      message: 'Select Backend testing framework:',
+      choices: ['vitest', 'phpunit', 'pytest', 'jest', 'junit', 'xunit'],
+      default: options?.testing || (backendLang === 'php' ? 'phpunit' : 'vitest')
+    }
+  ], options);
+
+  // Step 3: Independent Frontend Stack Configuration (for Monolith / Dual-Stack)
+  const isMonolith = step1.architecture === 'monolith';
+  let frontendAnswers: any = { framework: 'none', language: 'javascript' };
+
+  if (!isNonInteractive) {
+    const askFrontend = await promptOrFallback([
+      {
+        type: 'confirm',
+        name: 'hasFrontend',
+        message: 'Do you want to configure an independent Frontend Stack (Modular Vanilla / SPA)?',
+        default: true
+      }
+    ], options);
+
+    if (askFrontend.hasFrontend) {
+      frontendAnswers = await promptOrFallback([
+        {
+          type: 'list',
+          name: 'framework',
+          message: 'Select Frontend Framework / Library:',
+          choices: [
+            { name: 'Vanilla Modular JavaScript (Native ES Modules)', value: 'vanilla-js' },
+            { name: 'React (SPA / Modern UI)', value: 'react' },
+            { name: 'Vue.js (Composition API)', value: 'vue' },
+            { name: 'Angular (TypeScript Framework)', value: 'angular' },
+            { name: 'Svelte', value: 'svelte' }
+          ],
+          default: 'vanilla-js'
+        },
+        {
+          type: 'list',
+          name: 'language',
+          message: 'Select Frontend Language (Crucial for Guardrails):',
+          choices: [
+            { name: 'TypeScript (Strict Type Safety)', value: 'typescript' },
+            { name: 'JavaScript (Native ES Modules)', value: 'javascript' }
+          ],
+          default: 'typescript'
+        },
+        {
+          type: 'list',
+          name: 'bundler',
+          message: 'Select Frontend Bundler:',
+          choices: ['vite', 'webpack', 'esbuild', 'none'],
+          default: 'vite'
+        },
+        {
+          type: 'list',
+          name: 'testing',
+          message: 'Select Frontend Testing Framework:',
+          choices: ['vitest', 'cypress', 'playwright', 'jest'],
+          default: 'vitest'
+        }
+      ], options);
+    }
+  }
+
+  // Step 4: Governance & Output Directory Options
+  const step4 = await promptOrFallback([
     {
       type: 'confirm',
       name: 'enableGovernance',
@@ -196,26 +346,32 @@ export async function handleInitCommand(options?: {
   ], options);
 
   const newConfig: GherkinAIConfig = {
-    projectName: options?.projectName || answers.projectName,
-    architecture: options?.architecture || answers.architecture,
+    projectName: options?.projectName || step1.projectName,
+    architecture: options?.architecture || step1.architecture,
     stack: {
-      language: options?.language || answers.language,
-      framework: options?.framework || answers.framework,
-      orm: options?.orm || answers.orm,
-      database: options?.database || answers.database,
-      validation: options?.validation || answers.validation || 'zod',
+      language: options?.language || step1.language,
+      framework: options?.framework || step2.framework,
+      orm: options?.orm || step2.orm,
+      database: options?.database || step2.database,
+      validation: options?.validation || step2.validation,
       auth: 'jwt-bcrypt',
-      messaging: options?.messaging || answers.messaging || 'none',
-      testing: options?.testing || answers.testing || 'vitest'
+      messaging: options?.messaging || step2.messaging,
+      testing: options?.testing || step2.testing
     },
+    frontendStack: frontendAnswers.framework !== 'none' ? {
+      framework: frontendAnswers.framework,
+      language: frontendAnswers.language,
+      bundler: frontendAnswers.bundler,
+      testing: frontendAnswers.testing
+    } : undefined,
     rules: defaultConfig.rules,
-    outputDir: options?.outputDir || answers.outputDir
+    outputDir: options?.outputDir || step4.outputDir
   };
 
   saveConfig(newConfig);
   logger.success('Successfully created gherkin-ai.config.json');
 
-  if (answers.enableGovernance || options?.enterprise || isNonInteractive) {
+  if (step4.enableGovernance || options?.enterprise || isNonInteractive) {
     const govPath = generateGovernanceConfig(newConfig);
     logger.success(`Successfully created Agent Governance Policy: ${govPath}`);
   }
