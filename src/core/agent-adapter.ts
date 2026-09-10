@@ -184,60 +184,92 @@ Diagnosis: ${task.diagnosis ? JSON.stringify(task.diagnosis, null, 2) : 'None'}`
   }
 
   private async callOpenAI(system: string, user: string): Promise<{ text: string; telemetry: AgentResult['telemetry'] }> {
-    const url = this.config.baseUrl || 'https://api.openai.com/v1/chat/completions';
-    const model = this.config.model || 'gpt-4o';
-    const res = await this.fetchWithRetry(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${this.config.apiKey}`
-      },
-      body: JSON.stringify({
-        model,
-        messages: [
-          { role: 'system', content: system },
-          { role: 'user', content: user }
-        ],
-        response_format: { type: "json_object" }
-      })
+    const { OpenAI } = require('openai');
+    const openai = new OpenAI({
+      apiKey: this.config.apiKey,
+      baseURL: this.config.baseUrl
     });
-    const data: any = await res.json();
-    return {
-      text: data.choices[0].message.content,
-      telemetry: {
-        inputTokens: data.usage?.prompt_tokens || 0,
-        outputTokens: data.usage?.completion_tokens || 0,
-        modelUsed: data.model || model
+    
+    const model = this.config.model || 'gpt-4o';
+    
+    let attempt = 1;
+    while (attempt <= 3) {
+      try {
+        const response = await openai.chat.completions.create({
+          model,
+          messages: [
+            { role: 'system', content: system },
+            { role: 'user', content: user }
+          ],
+          response_format: { type: "json_object" }
+        });
+        
+        return {
+          text: response.choices[0].message.content || '',
+          telemetry: {
+            inputTokens: response.usage?.prompt_tokens || 0,
+            outputTokens: response.usage?.completion_tokens || 0,
+            modelUsed: response.model || model
+          }
+        };
+      } catch (err: any) {
+        if (err.status === 429 || err.status >= 500) {
+          if (attempt === 3) throw err;
+          const delay = Math.pow(2, attempt) * 1000;
+          console.log(`\n   ⚠️ OpenAI API error (${err.status}). Retrying in ${delay/1000}s...`);
+          await new Promise(r => setTimeout(r, delay));
+          attempt++;
+        } else {
+          throw err;
+        }
       }
-    };
+    }
+    throw new Error('Unreachable');
   }
 
   private async callAnthropic(system: string, user: string): Promise<{ text: string; telemetry: AgentResult['telemetry'] }> {
-    const url = this.config.baseUrl || 'https://api.anthropic.com/v1/messages';
-    const model = this.config.model || 'claude-3-opus-20240229';
-    const res = await this.fetchWithRetry(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': this.config.apiKey || '',
-        'anthropic-version': '2023-06-01'
-      },
-      body: JSON.stringify({
-        model,
-        system,
-        max_tokens: 4000,
-        messages: [{ role: 'user', content: user }]
-      })
+    const { Anthropic } = require('@anthropic-ai/sdk');
+    const anthropic = new Anthropic({
+      apiKey: this.config.apiKey,
+      baseURL: this.config.baseUrl
     });
-    const data: any = await res.json();
-    return {
-      text: data.content[0].text,
-      telemetry: {
-        inputTokens: data.usage?.input_tokens || 0,
-        outputTokens: data.usage?.output_tokens || 0,
-        modelUsed: data.model || model
+    
+    const model = this.config.model || 'claude-3-opus-20240229';
+    
+    let attempt = 1;
+    while (attempt <= 3) {
+      try {
+        const response = await anthropic.messages.create({
+          model,
+          system,
+          max_tokens: 4000,
+          messages: [{ role: 'user', content: user }]
+        });
+        
+        // Ensure text is extracted correctly from Anthropic response blocks
+        const textContent = response.content.find((block: any) => block.type === 'text');
+        
+        return {
+          text: textContent ? textContent.text : '',
+          telemetry: {
+            inputTokens: response.usage?.input_tokens || 0,
+            outputTokens: response.usage?.output_tokens || 0,
+            modelUsed: response.model || model
+          }
+        };
+      } catch (err: any) {
+        if (err.status === 429 || err.status >= 500) {
+          if (attempt === 3) throw err;
+          const delay = Math.pow(2, attempt) * 1000;
+          console.log(`\n   ⚠️ Anthropic API error (${err.status}). Retrying in ${delay/1000}s...`);
+          await new Promise(r => setTimeout(r, delay));
+          attempt++;
+        } else {
+          throw err;
+        }
       }
-    };
+    }
+    throw new Error('Unreachable');
   }
 
   private extractCodeModifications(text: string, contextFiles: string[]): { filePath: string; content: string }[] {

@@ -6,6 +6,11 @@ import { startWebServer } from '../ui/server';
 import inquirer from 'inquirer';
 
 export async function handleWebCommand(options: any): Promise<void> {
+  if (process.env.CI === 'true') {
+    console.error('❌ Web Studio is disabled in CI environments for security reasons.');
+    process.exit(1);
+  }
+
   let port = options.port;
   
   if (!port) {

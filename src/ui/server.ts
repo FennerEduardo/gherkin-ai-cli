@@ -18,7 +18,8 @@ import { exec } from 'child_process';
 export function startWebServer(port: number): void {
   const app = express();
   
-  app.use(cors());
+  // Strict CORS for local Web Studio
+  app.use(cors({ origin: [`http://localhost:${port}`, `http://127.0.0.1:${port}`] }));
   app.use(express.json());
   
   // Static files for frontend
@@ -214,14 +215,26 @@ export function startWebServer(port: number): void {
   app.post('/api/execute', (req, res) => {
     try {
       const { command } = req.body;
-      if (!command) {
-        return res.status(400).json({ success: false, error: 'Command is required' });
+      if (!command || typeof command !== 'string') {
+        return res.status(400).json({ success: false, error: 'Command is required and must be a string' });
       }
 
-      // Ensure it's a ghk command
+      // Security: Strict validation against OS command injection
       let safeCmd = command.trim();
       if (safeCmd.startsWith('ghk ')) {
-        safeCmd = safeCmd.replace('ghk ', '');
+        safeCmd = safeCmd.substring(4).trim();
+      }
+
+      // Regex to detect shell metacharacters: &, |, ;, $, >, <, `
+      if (/[&|;$><`]/.test(safeCmd)) {
+        return res.status(403).json({ success: false, error: 'Command contains illegal characters' });
+      }
+
+      // Allowed CLI root commands
+      const allowedCommands = ['autopilot', 'verify', 'diff', 'generate', 'add', 'lint'];
+      const baseCmd = safeCmd.split(' ')[0];
+      if (!allowedCommands.includes(baseCmd)) {
+        return res.status(403).json({ success: false, error: `Command '${baseCmd}' is not allowed via Web Studio RCE` });
       }
       
       const cliPath = path.resolve(__dirname, '../../dist/index.js');
@@ -240,9 +253,9 @@ export function startWebServer(port: number): void {
     }
   });
 
-  app.listen(port, () => {
-    console.log(chalk.cyan(`\n🚀 Gherkin AI Web UI is running!`));
-    console.log(chalk.white(`Navigate to: `) + chalk.green.bold(`http://localhost:${port}`));
+  app.listen(port, '127.0.0.1', () => {
+    console.log(chalk.cyan(`\n🚀 Gherkin AI Web UI is running (Bound to 127.0.0.1)`));
+    console.log(chalk.white(`Navigate to: `) + chalk.green.bold(`http://127.0.0.1:${port}`));
     console.log(chalk.gray(`Press Ctrl+C to stop the server.`));
   });
 }
