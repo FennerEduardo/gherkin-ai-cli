@@ -13,6 +13,7 @@ import { resolveSpecDir } from '../utils/spec-dir-resolver';
 import { getStackDockerDetails } from '../generators/infra';
 import { getAuthorDetails, calculateHash, InventoryManager } from '../core/inventory';
 import { estimateTokens } from '../utils/token-estimator';
+import { t, getGlobalUserLocale } from '../utils/i18n-cli';
 
 export async function handleImplementCommand(options: { 
   feature?: string; 
@@ -35,7 +36,7 @@ export async function handleImplementCommand(options: {
     return;
   }
 
-  logger.info('Preparing AI Agent Implementation Package & Master Prompt...');
+  logger.info(t('implementPreparing'));
 
   const config = loadConfig();
   const isCompact = options.compact || process.argv.includes('--compact');
@@ -204,25 +205,27 @@ ${refFiles.map(f => `- ${f}`).join('\n')}
 
   // Terminal Output Presentation
   console.log(chalk.bold.green('\n============================================================'));
-  console.log(chalk.bold.cyan(`🤖 AI AGENT IMPLEMENTATION PACKAGE GENERATED`));
+  console.log(chalk.bold.cyan(`🤖 ${t('implementGenerated')}`));
   console.log(chalk.bold.green('============================================================\n'));
 
-  console.log(chalk.bold('📋 Target Feature: ') + chalk.yellow(featureName) + chalk.gray(` (Hash: ${featureVersionHash})`));
-  console.log(chalk.bold('📂 Feature File:   ') + chalk.white(relativeFeature));
-  console.log(chalk.bold('👤 Author / Dev:    ') + chalk.cyan(`${author.name} <${author.email}>`) + chalk.gray(` [via ${author.source}]`));
-  console.log(chalk.bold('📜 Domain Contract: ') + chalk.white(nativeContractPath || 'N/A'));
-  console.log(chalk.bold('🔒 Agent Policy:    ') + chalk.white(govPath || 'N/A'));
-  console.log(chalk.bold('🐳 Docker Sandbox: ') + chalk.cyan(`Supported (${dockerDetails.image})`));
-  console.log(chalk.bold('📊 Token Efficiency:') + chalk.green(` ~${tokenStats.estimatedTokens} tokens `) + chalk.gray(`(Optimized ${tokenStats.tokenSavingsPercentage}% via @ pointers & feature slicing)`));
-  console.log(chalk.bold('📄 Master Prompt:   ') + chalk.white(promptFile) + chalk.gray(` (Hash: ${promptVersionHash})`));
+  console.log(chalk.bold(`📋 ${t('targetFeature')} `) + chalk.yellow(featureName) + chalk.gray(` (Hash: ${featureVersionHash})`));
+  console.log(chalk.bold(`📂 ${t('featureFile')}   `) + chalk.white(relativeFeature));
+  console.log(chalk.bold(`👤 ${t('authorDev')}    `) + chalk.cyan(`${author.name} <${author.email}>`) + chalk.gray(` [via ${author.source}]`));
+  console.log(chalk.bold(`📜 ${t('domainContract')} `) + chalk.white(nativeContractPath || 'N/A'));
+  console.log(chalk.bold(`🔒 ${t('agentPolicy')}    `) + chalk.white(govPath || 'N/A'));
+  console.log(chalk.bold(`🐳 ${t('dockerSandbox')} `) + chalk.cyan(`Supported (${dockerDetails.image})`));
+  console.log(chalk.bold(`📊 ${t('tokenEfficiency')}`) + chalk.green(` ~${tokenStats.estimatedTokens} tokens `) + chalk.gray(`(Optimized ${tokenStats.tokenSavingsPercentage}% via @ pointers & feature slicing)`));
+  console.log(chalk.bold(`📄 ${t('masterPrompt')}   `) + chalk.white(promptFile) + chalk.gray(` (Hash: ${promptVersionHash})`));
   if (record) {
-    console.log(chalk.bold('🆔 Audit Record:   ') + chalk.green(record.recordId));
+    console.log(chalk.bold(`🆔 ${t('auditRecord')}   `) + chalk.green(record.recordId));
   } else {
-    console.log(chalk.bold('🆔 Audit Record:   ') + chalk.gray('Disabled (no-audit)'));
+    console.log(chalk.bold(`🆔 ${t('auditRecord')}   `) + chalk.gray('Disabled (no-audit)'));
   }
 
+  console.log(chalk.italic.yellow(`\n${t('promptLanguageNotice')}`));
+
   console.log(chalk.bold.cyan('\n------------------------------------------------------------'));
-  console.log(chalk.bold.yellow(isCompact ? '💬 COMPACT AI AGENT PROMPT (ULTRA LOW TOKEN COST):' : '💬 COPY-PASTE THIS PROMPT DIRECTLY TO YOUR AI AGENT:'));
+  console.log(chalk.bold.yellow(isCompact ? `💬 ${t('compactPromptNotice')}` : `💬 ${t('copyPromptNotice')}`));
   console.log(chalk.bold.cyan('------------------------------------------------------------\n'));
 
   let quickPrompt = '';

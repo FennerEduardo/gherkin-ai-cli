@@ -1,10 +1,10 @@
-# 📖 `gherkin-ai` CLI & Verification Guide (`v2.6.0` Stable)
+# 📖 `gherkin-ai` CLI & Verification Guide (`v2.6.1` Stable)
 
-Comprehensive reference guide for using `gherkin-ai` closed-loop verification, context engineering, quality gates, and multi-agent workflows.
+Comprehensive reference guide for using `gherkin-ai` AI agent implementation orchestrator, Docker sandbox isolation, audit trail history, context engineering, quality gates, and multi-agent workflows.
 
 ---
 
-## 📥 Installation & Execution Guide (`v2.6.0`)
+## 📥 Installation & Execution Guide (`v2.6.1`)
 
 ### 1. Global Installation via `npm`
 ```bash
@@ -27,6 +27,8 @@ npm install --save-dev gherkin-ai
 
 | Command | Alias | Description |
 | :--- | :--- | :--- |
+| `ghk implement` | `impl` | Compiles AI Master Implementation Prompt & context package for a feature. |
+| `ghk audit` | `inventory`, `inv` | View developer audit trail history and SHA-256 spec/prompt versions (`--json` export). |
 | `ghk mcp install` | - | Auto-configures MCP server in Cursor and Claude Desktop. |
 | `ghk verify` | `v-loop` | Runs test harness with closed-loop verification and auto-fix. |
 | `ghk context build` | - | Packages project context and rules into `.ghe/`. |
@@ -39,6 +41,36 @@ npm install --save-dev gherkin-ai
 | `ghk create` | `c`, `new` | Interactive terminal wizard to write Gherkin specs. |
 | `ghk detect` | `d` | Auto-detects tech stack and architecture in workspace. |
 | `ghk generate` | `g` | Generates contracts, DTOs, fixtures, and agent prompt packages. |
+
+---
+
+## 🤖 AI Agent Implementation Package (`ghk implement`)
+
+```bash
+# Generate Master Agent Implementation Prompt
+ghk implement --feature ./features/01-customer-management.feature
+
+# Ultra-Compact Low-Cost Prompt Mode (~90 tokens)
+ghk implement --feature ./features/01-customer-management.feature --compact
+
+# Include Docker Sandbox instructions
+ghk implement --feature ./features/01-customer-management.feature --docker
+```
+
+---
+
+## 📋 Feature Inventory & Developer Audit Trail (`ghk audit`)
+
+```bash
+# View audit history in CLI terminal table
+ghk audit
+
+# Export audit trail as raw JSON for CI/CD compliance
+ghk audit --json
+
+# Clear/purge audit history
+ghk audit --clear
+```
 
 ---
 

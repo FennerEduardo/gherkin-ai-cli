@@ -4,77 +4,33 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 > **The Closed-Loop Agentic Testing & Orchestration Engine for Enterprise Full-Stack Applications.**
-> Turn product requirements into verifiable Gherkin specifications, execute dual-stack implementations (React + Java Spring Boot), and run self-healing agent loops with zero regressions.
+> Turn product requirements into verifiable Gherkin specifications, execute dual-stack implementations (React + Java / PHP / .NET / Python), and run self-healing agent loops with zero regressions.
 
 ---
 
-## 🌟 Strategic Capabilities (`v2.6.1` Stable Patch Release)
+## 🌟 Strategic Capabilities (`v2.6.1` Stable Release)
 
-While basic AI spec tools only generate text prompts, `gherkin-ai` acts as an **executable contract and verification harness** between Product Intent, AI Agents (Cursor, Claude Code, Windsurf, Antigravity), Code Implementation, and CI/CD Quality Gates:
+While basic AI spec tools only generate text prompts, `gherkin-ai` acts as an **executable contract and verification harness** between Product Intent, AI Agents (Cursor, Antigravity, Claude Code, Windsurf, Copilot), Code Implementation, and CI/CD Quality Gates:
 
-- 🤖 **True Agentic Engine & Self-Healing (`ghk verify --auto-fix` & `ghk autopilot`)**: Natively connects with LLMs (OpenAI, Anthropic, Ollama). It doesn't just log output; it actively writes and modifies your source code, intercepts test failures, and recursively applies repairs in a true **Closed-Loop**.
+- 🤖 **AI Agent Implementation Orchestration (`ghk implement`)**: Compiles `.ghkgovernance.yaml`, domain contracts (`*.contract.php`, `.ts`, `.py`, `.java`), ADRs, and Gherkin features into a copy-pasteable Master Agent Implementation Prompt.
+- 🐳 **Docker Container Sandbox & Host Protection (`--docker`)**: Generates stack-specific dev container environments (`mcr.microsoft.com/dotnet/sdk:8.0`, `eclipse-temurin:21-jdk-alpine`, `php:8.3-cli-alpine`, `python:3.11-slim`, `node:20-alpine`, `golang:1.22-alpine`, `ruby:3.3-alpine`) so AI agents run tests inside isolated Docker containers without polluting host OS.
+- 📋 **Feature Inventory & Developer Audit Trail (`ghk audit`)**: Auto-detects developer identity (`git config user.name`/`email`), SHA-256 spec & prompt hashes, timestamps, and execution records stored in `.ghe/inventory.json` with LRU retention limit (`maxEntries: 50`) and `--json` export for CI/CD audit pipelines.
+- ⚡ **Token Efficiency & Ultra-Compact Mode (`-C, --compact`)**: Uses direct `@` file pointers for on-demand context resolution (70–85% token savings vs code dumping) and provides a dense ~90-token compact prompt mode for cost-sensitive LLMs.
+- 🌐 **Multilingual CLI & English Prompt Rationale (`ghk lang`)**: Full interactive CLI support in Spanish (`es`) and English (`en`). Master AI Prompts are intentionally generated in **English** for maximum BPE token density (~30% cheaper) and LLM reasoning accuracy.
+- 🤖 **True Agentic Engine & Self-Healing (`ghk verify --auto-fix` & `ghk autopilot`)**: Connects natively with LLMs (OpenAI, Anthropic, Ollama), modifies source code, intercepts test failures, and recursively applies repairs in a true **Closed-Loop**.
 - 🌐 **Web Studio UI (`ghk web`)**: Launch a premium local graphical interface to interactively generate your Gherkin specifications, detect your stack, and orchestrate agent prompts visually.
-- 🌳 **Official Cucumber AST Parser**: 100% compliant with the Gherkin standard using the official `@cucumber/gherkin` package. Flawlessly parses DataTables, DocStrings, and advanced scenarios for semantic extraction.
-- 🔗 **AST Step Definitions Indexer**: Prevents AI hallucinations by statically analyzing your E2E project (Cypress/Playwright/Cucumber-JS) via `ts-morph`, extracting existing `Given/When/Then` steps, and forcing the LLM to reuse them.
-- 🛡️ **Semantically Typed Contracts**: Extracts variables straight from your Gherkin data tables (like `@validate:email`) and outputs strictly typed Zod DTOs instead of generic objects.
-- ⚙️ **Headless CI/CD Mode**: Fully decoupled non-interactive mode (`--yes`, `--non-interactive`, `--project <dir>`) designed for frictionless integration into GitHub Actions, Azure DevOps, and automated pipelines.
-- 📋 **Pre-flight Requirement Validation**: Built-in semantic validator inside `ghk autopilot` that analyzes requirements before triggering LLM agents, preventing token waste on vague features.
-- 🔌 **Native MCP Server & Cursor Skills (`ghk mcp install` & `ghk skill`)**: Zero-config Model Context Protocol (MCP) server. The new `ghk skill` command injects native Cursor and Windsurf `.cursorrules` to let your IDE automatically invoke Gherkin AI as an internal skill.
-- 📦 **Context Engineering & Guardrails Engine (`ghk context`)**: Structurally packages project architecture, conventions, and security policies into `.ghe/`, enforcing strict path protection and agent change limits.
-- 🏗️ **DOM & Data Model Anchor**: Automatically extracts `schema.prisma` models and Page Object Model (POM) `data-test` selectors, injecting them into the agent's context to ensure generated tests are grounded in technical reality.
-- 🏆 **Dynamic Quality Gate Index (`ghk quality`)**: Measures spec coverage, unit tests, E2E, type safety, and security dynamically by parsing your real test coverage (`coverage-summary.json`) and linter outputs.
-- ☕ **Enterprise Java, React, Rust & Go Templates**: Extensive boilerplate support. Scaffolds Spring Boot, Next.js, Rust Axum, Go Fiber, and mobile (Flutter/React Native) architectures out-of-the-box.
-- 🕵️ **Interactive Stack & Pattern Detection (`ghk detect`)**: Auto-detects existing brownfield architectures and intelligently injects industry-standard design patterns (e.g., Hooks, CQRS, MVC) into Agent prompts.
-- 📡 **Event-Driven & AsyncAPI Support**: Automatically extracts domain events from Gherkin and scaffolds standard `asyncapi.json` contracts.
-- 🔍 **Deep AST Drift Detection (`ghk diff`)**: Validates in CI/CD pipelines if the implemented DTOs and code have drifted from the `.feature` file. Now cross-references semantic fields, HTTP status codes, and API Endpoints.
+- 🌳 **Official Cucumber AST Parser**: 100% compliant with the Gherkin standard using the official `@cucumber/gherkin` package.
 
 ---
 
-## 📥 Installation & Execution (`v2.6.1`)
+## 📥 Installation & Execution
 
-You can use `gherkin-ai` via global `npm` installation, on-demand zero-install `npx`, or as a project local dev dependency:
-
-### Option 1: Global Installation (`npm`)
 ```bash
+# Global Installation
 npm install -g gherkin-ai
-```
-Once installed globally, you can use `ghk` or `gherkin-ai` CLI commands directly:
-```bash
-ghk mcp install
-ghk verify --auto-fix
-ghk context build
-ghk quality
-```
 
-### Option 2: Zero-Install On-Demand (`npx`)
-Run any `gherkin-ai` command instantly without global installation:
-```bash
-# Auto-install MCP server for Cursor & Claude Desktop
-npx -y gherkin-ai mcp install
-
-# Run closed-loop verification test harness
-npx -y gherkin-ai verify --auto-fix
-
-# Build project context & guardrails (.ghe/)
-npx -y gherkin-ai context build
-
-# Calculate feature quality score index
-npx -y gherkin-ai quality
-```
-
-### Option 3: Local Project Dev Dependency
-Add to your project's `devDependencies`:
-```bash
-npm install --save-dev gherkin-ai
-```
-Then invoke via `npx` or add scripts to your `package.json`:
-```json
-{
-  "scripts": {
-    "test:verify": "ghk verify --auto-fix",
-    "quality:check": "ghk quality"
-  }
-}
+# Or Zero-Install On-Demand
+npx -y gherkin-ai implement --feature ./features/01-customer-management.feature
 ```
 
 ---
@@ -82,20 +38,23 @@ Then invoke via `npx` or add scripts to your `package.json`:
 ## 🚀 Quick Start Commands
 
 ```bash
-# 1. Setup MCP Server for Cursor & Claude Desktop
-ghk mcp install   # (or: npx -y gherkin-ai mcp install)
+# 1. Generate Master AI Agent Implementation Prompt & Context Package
+ghk implement --feature ./features/01-customer-management.feature
 
-# 2. Closed-Loop Test Verification with Auto-Fix Loop
+# 2. Generate Ultra-Compact Prompt for Low-Cost LLMs (~90 tokens)
+ghk implement --feature ./features/01-customer-management.feature --compact
+
+# 3. View Feature Inventory & Developer Audit Trail History
+ghk audit
+
+# 4. Export Audit History as JSON for CI/CD Compliance Pipelines
+ghk audit --json
+
+# 5. Configure CLI Language (English or Spanish)
+ghk lang --set es
+
+# 6. Run Closed-Loop Test Verification with Auto-Fix Loop
 ghk verify --auto-fix
-
-# 3. Create a feature using Caveman Mode (skip wizard)
-ghk create --caveman
-
-# 4. Auto-detect project stack & suggest design patterns
-ghk detect
-
-# 5. Build Project Context & Policy Engine (.ghe/)
-ghk context build
 ```
 
 ---

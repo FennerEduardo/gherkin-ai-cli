@@ -37,7 +37,26 @@ const messages = {
     stackDetected: 'Existing Project Stack & Architecture Detected:',
     savedConfig: 'Saved project configuration to:',
     injectingContracts: 'Injecting contracts & AI prompts into:',
-    contractsInjected: 'Contracts & AI prompts injected into existing project at'
+    contractsInjected: 'Contracts & AI prompts injected into existing project at',
+    
+    // New commands & audit i18n keys
+    implementPreparing: 'Preparing AI Agent Implementation Package & Master Prompt...',
+    implementGenerated: 'AI AGENT IMPLEMENTATION PACKAGE GENERATED',
+    targetFeature: 'Target Feature:',
+    featureFile: 'Feature File:',
+    authorDev: 'Author / Dev:',
+    domainContract: 'Domain Contract:',
+    agentPolicy: 'Agent Policy:',
+    dockerSandbox: 'Docker Sandbox:',
+    tokenEfficiency: 'Token Efficiency:',
+    masterPrompt: 'Master Prompt:',
+    auditRecord: 'Audit Record:',
+    copyPromptNotice: 'COPY-PASTE THIS PROMPT DIRECTLY TO YOUR AI AGENT:',
+    compactPromptNotice: 'COMPACT AI AGENT PROMPT (ULTRA LOW TOKEN COST):',
+    promptLanguageNotice: 'ℹ Note: Master Prompts are intentionally generated in English for optimal LLM BPE token density and agent reasoning precision.',
+    auditHeader: 'FEATURE IMPLEMENTATION & PROMPT EXECUTION INVENTORY AUDIT',
+    auditCleared: 'Feature audit trail inventory cleared successfully.',
+    auditDisabled: 'Audit tracking is disabled in configuration.'
   },
   es: {
     selectLanguagePrompt: 'Selecciona el idioma preferido para la CLI / Select preferred CLI interaction language:',
@@ -59,7 +78,26 @@ const messages = {
     stackDetected: 'Stack y Arquitectura del Proyecto Detectados:',
     savedConfig: 'Configuración guardada exitosamente en:',
     injectingContracts: 'Inyectando contratos y prompts para Agentes de IA en:',
-    contractsInjected: 'Contratos y prompts inyectados exitosamente en el proyecto en'
+    contractsInjected: 'Contratos y prompts inyectados exitosamente en el proyecto en',
+
+    // New commands & audit i18n keys
+    implementPreparing: 'Preparando el Paquete de Implementación y Prompt Maestro para el Agente IA...',
+    implementGenerated: 'PAQUETE DE IMPLEMENTACIÓN DE AGENTE IA GENERADO',
+    targetFeature: 'Feature Objetivo:',
+    featureFile: 'Archivo de Feature:',
+    authorDev: 'Autor / Desarrollador:',
+    domainContract: 'Contrato de Dominio:',
+    agentPolicy: 'Política de Gobernanza:',
+    dockerSandbox: 'Entorno Sandbox Docker:',
+    tokenEfficiency: 'Eficiencia de Tokens:',
+    masterPrompt: 'Prompt Maestro:',
+    auditRecord: 'Registro de Auditoría:',
+    copyPromptNotice: 'COPIA Y PEGA ESTE PROMPT DIRECTAMENTE EN TU AGENTE DE IA:',
+    compactPromptNotice: 'PROMPT COMPACTO PARA AGENTE DE IA (COSTO ULTRA BAJO EN TOKENS):',
+    promptLanguageNotice: 'ℹ Nota de Eficiencia: El CLI interactúa en Español, pero las definiciones del Prompt Maestro se generan en Inglés para maximizar la densidad de tokens (~30% más económico) y la precisión de razonamiento del agente de IA.',
+    auditHeader: 'AUDITORÍA DE INVENTARIO DE FEATURES Y EJECUCIÓN DE PROMPTS',
+    auditCleared: 'Inventario de auditoría de ejecuciones vaciado exitosamente.',
+    auditDisabled: 'El seguimiento de auditoría está desactivado en la configuración.'
   }
 };
 
