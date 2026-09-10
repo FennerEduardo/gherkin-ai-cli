@@ -3,6 +3,7 @@
    ========================================================================== */
 
 import path from 'path';
+import fs from 'fs';
 import { loadConfig } from '../core/config';
 import { parseGherkinText } from '../core/gherkin-parser';
 import { buildIR } from '../core/ir-builder';
@@ -44,7 +45,13 @@ export async function handleGenerateCommand(options: { feature?: string; config?
       gherkinText = readFileSync(featurePath);
       logger.info(`Loaded feature specification from: ${featurePath}`);
     } else {
-      logger.warn(`Feature file not found at ${featurePath}. Using default sample feature.`);
+      logger.warn(`Feature file not found at ${featurePath}. Creating default sample feature spec at that path.`);
+      const specsDir = path.dirname(featurePath);
+      if (!fs.existsSync(specsDir)) {
+        fs.mkdirSync(specsDir, { recursive: true });
+      }
+      writeFileSync(featurePath, DEFAULT_SAMPLE_GHERKIN);
+      logger.success(`Created sample feature file: ${featurePath}`);
     }
   } else {
     logger.info('No feature file specified. Using built-in sample feature spec.');
@@ -139,7 +146,6 @@ export async function handleGenerateCommand(options: { feature?: string; config?
     return true;
   });
 
-  const fs = require('fs');
   filteredArtifacts.forEach(artifact => {
     const fullPath = path.join(config.outputDir, artifact.filePath);
     const dir = path.dirname(fullPath);
