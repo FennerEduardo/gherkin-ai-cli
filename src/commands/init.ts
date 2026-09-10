@@ -7,44 +7,70 @@ import { generateConstitution } from '../core/constitution';
 import { logger } from '../utils/logger';
 
 export function generateGovernanceConfig(config: GherkinAIConfig, workspaceDir: string = process.cwd()): string {
-  const isPhp = config.stack.language === 'php';
-  const isNativePhp = config.stack.framework === 'native-php';
-  const isTs = config.stack.language === 'typescript';
+  const lang = (config.stack.language || '').toLowerCase();
+  const framework = (config.stack.framework || '').toLowerCase();
 
   const prohibitedImports: Record<string, string[]> = {};
-  if (isNativePhp || isPhp) {
-    prohibitedImports['php'] = ['laravel/framework', 'symfony/symfony', 'illuminate/*'];
-  }
-  if (isTs) {
-    prohibitedImports['typescript'] = ['@nestjs/core', 'express'];
+  const allowedPaths: string[] = ['specs/**', 'tests/**', 'generated-specs/**'];
+  const requireHumanApprovalOn: string[] = ['docker-compose.yml'];
+
+  // 1. Frontend Stacks (React, Next, Vue, Angular, Svelte, Ionic)
+  if (framework.includes('react') || framework.includes('next') || framework.includes('vue') || framework.includes('angular') || framework.includes('svelte')) {
+    allowedPaths.push('src/**', 'public/**', 'components/**', 'pages/**', 'app/**', 'views/**');
+    prohibitedImports['javascript'] = ['express', 'pg', 'mysql2', 'prisma', 'child_process', 'fs'];
+    requireHumanApprovalOn.push('package.json', 'vite.config.ts', 'next.config.js', 'angular.json');
+  } 
+  // 2. Mobile Stacks (Flutter, Swift, Kotlin, React Native)
+  else if (framework.includes('flutter') || framework.includes('react-native') || framework.includes('ios') || framework.includes('android')) {
+    allowedPaths.push('lib/**', 'src/**', 'App/**', 'ios/Runner/**', 'android/app/**');
+    prohibitedImports[lang || 'mobile'] = ['child_process', 'raw_system_exec'];
+    requireHumanApprovalOn.push('pubspec.yaml', 'AndroidManifest.xml', 'Info.plist', 'build.gradle');
+  } 
+  // 3. Backend / Enterprise Monolith Stacks (Java, C#, Python, Go, Ruby, PHP, Node)
+  else {
+    allowedPaths.push('src/**', 'app/**', 'public/**', 'views/**', 'controllers/**', 'domain/**');
+
+    if (lang === 'java' || framework.includes('spring')) {
+      prohibitedImports['java'] = ['org.springframework.beans.factory.annotation.Autowired on fields (use constructor injection)', 'java.sql.Statement without PreparedStatement'];
+      requireHumanApprovalOn.push('pom.xml', 'build.gradle', 'application.yml', 'schema.sql');
+    } else if (lang === 'csharp' || framework.includes('aspnet') || framework.includes('dotnet')) {
+      prohibitedImports['csharp'] = ['System.Data.SqlClient unparameterized queries', 'Direct HttpContext coupling in domain layer'];
+      requireHumanApprovalOn.push('*.csproj', 'appsettings.json', 'Program.cs', 'migrations/**');
+    } else if (lang === 'python' || framework.includes('django') || framework.includes('fastapi')) {
+      prohibitedImports['python'] = ['eval()', 'exec()', 'os.system() with untrusted input'];
+      requireHumanApprovalOn.push('requirements.txt', 'pyproject.toml', 'manage.py');
+    } else if (lang === 'ruby' || framework.includes('rails')) {
+      prohibitedImports['ruby'] = ['where() raw string interpolation'];
+      requireHumanApprovalOn.push('Gemfile', 'config/database.yml', 'db/migrate/**');
+    } else if (lang === 'go' || framework.includes('gin') || framework.includes('fiber')) {
+      prohibitedImports['go'] = ['ignored_err_check (_ = err)'];
+      requireHumanApprovalOn.push('go.mod', 'go.sum');
+    } else if (framework === 'native-php' || lang === 'php') {
+      prohibitedImports['php'] = ['laravel/framework', 'symfony/symfony', 'illuminate/*'];
+      requireHumanApprovalOn.push('schema.sql', 'migrations/**');
+    } else if (lang === 'typescript' || lang === 'javascript') {
+      if (framework === 'nestjs') {
+        prohibitedImports['typescript'] = ['express (use NestJS abstractions)', 'typeorm inside controllers'];
+      }
+      requireHumanApprovalOn.push('schema.prisma', 'ormconfig.json', 'package.json');
+    }
   }
 
   const governanceYaml = YAML.stringify({
     version: '1.0',
     projectName: config.projectName,
-    allowedPaths: [
-      'public/**',
-      'src/**',
-      'app/**',
-      'specs/**',
-      'tests/**',
-      'generated-specs/**'
-    ],
+    allowedPaths,
     protectedPaths: [
       '.env*',
       'docker-compose.yml',
       '**/secrets.*',
       'node_modules/**',
-      'vendor/**'
+      'vendor/**',
+      '.git/**'
     ],
-    maxFilesPerTask: 10,
+    maxFilesPerTask: 12,
     prohibitedImports,
-    requireHumanApprovalOn: [
-      'schema.sql',
-      'schema.prisma',
-      'migrations/**',
-      'docker-compose.yml'
-    ]
+    requireHumanApprovalOn
   });
 
   const targetPath = path.join(workspaceDir, '.ghkgovernance.yaml');
