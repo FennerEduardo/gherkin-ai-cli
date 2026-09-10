@@ -4,6 +4,7 @@ import { generateContracts } from '../src/generators/contracts';
 import { parseGherkinText } from '../src/core/gherkin-parser';
 import { buildIR } from '../src/core/ir-builder';
 import { loadConfig, GherkinAIConfig } from '../src/core/config';
+import { generateInfra, getStackDockerDetails } from '../src/generators/infra';
 import fs from 'fs';
 import path from 'path';
 import YAML from 'yaml';
@@ -248,5 +249,99 @@ Feature: Customer Management
     expect(output.nativeContract).toBeDefined();
     expect(output.nativeContract?.filename).toBe('customermanagement.contract.php');
     expect(output.nativeContract?.content).toContain('namespace App\\Domain\\Contracts');
+  });
+
+  // --------------------------------------------------------------------------
+  // 4. Docker Container Sandbox & Infrastructure Generator Validation Matrix
+  // --------------------------------------------------------------------------
+  const dockerMatrix = [
+    {
+      lang: 'php',
+      testing: 'phpunit',
+      database: 'mysql',
+      expectedImage: 'php:8.3-cli-alpine',
+      expectedTestCmd: 'vendor/bin/phpunit',
+      expectedDbImage: 'mysql:8.0'
+    },
+    {
+      lang: 'csharp',
+      testing: 'xunit',
+      database: 'postgresql',
+      expectedImage: 'mcr.microsoft.com/dotnet/sdk:8.0',
+      expectedTestCmd: 'dotnet test',
+      expectedDbImage: 'postgres:16-alpine'
+    },
+    {
+      lang: 'java',
+      testing: 'junit',
+      database: 'postgresql',
+      expectedImage: 'eclipse-temurin:21-jdk-alpine',
+      expectedTestCmd: './gradlew test',
+      expectedDbImage: 'postgres:16-alpine'
+    },
+    {
+      lang: 'python',
+      testing: 'pytest',
+      database: 'postgresql',
+      expectedImage: 'python:3.11-slim',
+      expectedTestCmd: 'pytest',
+      expectedDbImage: 'postgres:16-alpine'
+    },
+    {
+      lang: 'go',
+      testing: 'testing',
+      database: 'mongodb',
+      expectedImage: 'golang:1.22-alpine',
+      expectedTestCmd: 'go test ./...',
+      expectedDbImage: 'mongo:7.0'
+    },
+    {
+      lang: 'ruby',
+      testing: 'rspec',
+      database: 'postgresql',
+      expectedImage: 'ruby:3.3-alpine',
+      expectedTestCmd: 'bundle exec rspec',
+      expectedDbImage: 'postgres:16-alpine'
+    },
+    {
+      lang: 'typescript',
+      testing: 'vitest',
+      database: 'postgresql',
+      expectedImage: 'node:20-alpine',
+      expectedTestCmd: 'npx vitest run',
+      expectedDbImage: 'postgres:16-alpine'
+    }
+  ];
+
+  dockerMatrix.forEach((item) => {
+    it(`should generate valid Docker compose configuration & sandbox details for ${item.lang.toUpperCase()} stack`, () => {
+      const config: GherkinAIConfig = {
+        projectName: `test-${item.lang}-app`,
+        architecture: 'monolith',
+        stack: {
+          language: item.lang,
+          framework: 'default',
+          orm: 'default',
+          database: item.database,
+          validation: 'default',
+          testing: item.testing
+        },
+        rules: {},
+        outputDir: './generated-specs'
+      };
+
+      // 1. Verify getStackDockerDetails helper
+      const dockerDetails = getStackDockerDetails(config);
+      expect(dockerDetails.image).toBe(item.expectedImage);
+      expect(dockerDetails.testCmd).toBe(item.expectedTestCmd);
+
+      // 2. Verify generateInfra docker-compose.yml output
+      const infra = generateInfra(config);
+      expect(infra.dockerComposeYaml).toContain(`image: ${item.expectedImage}`);
+      expect(infra.dockerComposeYaml).toContain(`container_name: test-${item.lang}-app-app`);
+      expect(infra.dockerComposeYaml).toContain('volumes:\n      - .:/app');
+      expect(infra.dockerComposeYaml).toContain('working_dir: /app');
+      expect(infra.dockerComposeYaml).toContain(`image: ${item.expectedDbImage}`);
+    });
   });
 });
