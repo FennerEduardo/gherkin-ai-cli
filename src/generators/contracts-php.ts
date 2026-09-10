@@ -4,8 +4,9 @@
 
 import { ParsedFeature } from '../core/gherkin-parser';
 import { GherkinAIConfig } from '../core/config';
+import { SpecificationIR } from '../core/semantic-ir';
 
-export function generatePhpContracts(parsed: ParsedFeature, config: GherkinAIConfig): string {
+export function generatePhpContracts(parsed: ParsedFeature, ir: SpecificationIR, config: GherkinAIConfig): string {
   const featurePascal = parsed.featureName.replace(/[^a-zA-Z0-9]/g, '');
 
   return `<?php
@@ -33,8 +34,10 @@ interface IDomainEvent
     public function getEventType(): string;
 }
 
-${parsed.domainAnalysis.events.map((ev, i) => `readonly class Event${i + 1} implements IDomainEvent
+${ir.events.map((ev, i) => `readonly class Event${i + 1} implements IDomainEvent
 {
+    public string $eventType = '${ev.name.replace(/[^a-zA-Z0-9]/g, '')}';
+
     public function __construct(
         public string $eventId,
         public DateTimeImmutable $occurredOn,
@@ -43,7 +46,10 @@ ${parsed.domainAnalysis.events.map((ev, i) => `readonly class Event${i + 1} impl
 
     public function getEventId(): string { return $this->eventId; }
     public function getOccurredOn(): DateTimeImmutable { return $this->occurredOn; }
-    public function getEventType(): string { return '${ev.replace(/[^a-zA-Z0-9]/g, '')}'; }
+    public function getEventType(): string
+    {
+        return '${ev.name.replace(/[^a-zA-Z0-9]/g, '')}';
+    }
 }`).join('\n\n')}
 
 // --------------------------------------------------------------------------

@@ -11,10 +11,10 @@ import { generateContracts } from '../generators/contracts';
 import { detectExistingStack } from '../core/stack-detector';
 import { getArchRule } from '../core/arch-rules';
 import { loadConfig } from '../core/config';
-import { buildIR } from '../core/ir-builder';
+import { buildIR, buildSpecificationIR } from '../core/ir-builder';
 import { lintSpecification } from '../core/specification-linter';
 import { calculateConvergence } from '../core/convergence-engine';
-import { calculateQualityScorecard } from '../core/quality-score';
+import { calculateDeliveryRisk } from '../core/risk-engine';
 import { generateConstitution, loadConstitution, getConstraintsByLevel } from '../core/constitution';
 import { scanContextSecurity, detectPromptInjection } from '../core/context-security';
 import { exec } from 'child_process';
@@ -356,7 +356,8 @@ async function handleToolCall(id: number | string, name: string, args: any): Pro
         if (args.language) config.stack.language = args.language;
         if (args.architecture) config.architecture = args.architecture;
         const parsed = parseGherkinText(args.gherkinText || '');
-        const output = generateContracts(parsed, config);
+        const ir = buildSpecificationIR(parsed, args.featureFile as string);
+        const output = generateContracts(parsed, ir, config);
         sendJsonRpcResponse(id, {
           content: [{ type: 'text', text: JSON.stringify(output, null, 2) }]
         });
@@ -463,9 +464,14 @@ async function handleToolCall(id: number | string, name: string, args: any): Pro
       }
 
       case 'calculate_quality': {
-        const scorecard = calculateQualityScorecard();
+        const riskCard = calculateDeliveryRisk();
         sendJsonRpcResponse(id, {
-          content: [{ type: 'text', text: JSON.stringify(scorecard, null, 2) }]
+          content: [
+            {
+              type: 'text',
+              text: `=== Deployment Risk Assessment ===\nRisk Level: ${riskCard.riskLevel}\nRisk Score: ${riskCard.overallRiskScore}\nBlast Radius: ${riskCard.blastRadius}\nTest Strength: ${riskCard.testStrength}\nSecurity Sensitivity: ${riskCard.securitySensitivity}\nRequires Human Approval: ${riskCard.requiresHumanApproval}\n\nFactors:\n${riskCard.factors.join('\n')}`
+            }
+          ]
         });
         break;
       }

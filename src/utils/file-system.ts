@@ -5,6 +5,16 @@
 import fs from 'fs';
 import path from 'path';
 
+export function resolveSafePath(base: string, target: string): string {
+  const resolvedBase = path.resolve(base);
+  const resolvedTarget = path.resolve(base, target);
+  
+  if (!resolvedTarget.startsWith(resolvedBase)) {
+    throw new Error(`Security Violation: Path traversal attempt blocked. Target '${target}' resolves outside of base directory '${resolvedBase}'`);
+  }
+  return resolvedTarget;
+}
+
 export function ensureDirSync(dirPath: string): void {
   if (!fs.existsSync(dirPath)) {
     fs.mkdirSync(dirPath, { recursive: true });

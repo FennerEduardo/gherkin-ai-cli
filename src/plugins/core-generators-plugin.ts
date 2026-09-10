@@ -43,7 +43,7 @@ export class CoreContractsPlugin implements GherkinAIPlugin {
 
   generate(ir: SpecificationIR, config: GherkinAIConfig): GeneratedArtifact[] {
     const parsed = irToParsedFeature(ir);
-    const result = generateContracts(parsed, config);
+    const result = generateContracts(parsed, ir, config);
     
     const artifacts: GeneratedArtifact[] = [
       { filePath: 'contracts.ts', content: result.contractsTs, type: 'contract' },

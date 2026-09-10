@@ -4,8 +4,9 @@
 
 import { ParsedFeature } from '../core/gherkin-parser';
 import { GherkinAIConfig } from '../core/config';
+import { SpecificationIR } from '../core/semantic-ir';
 
-export function generatePythonContracts(parsed: ParsedFeature, config: GherkinAIConfig): string {
+export function generatePythonContracts(parsed: ParsedFeature, ir: SpecificationIR, config: GherkinAIConfig): string {
   const featurePascal = parsed.featureName.replace(/[^a-zA-Z0-9]/g, '');
 
   return `# ==========================================================================
@@ -27,8 +28,8 @@ class IDomainEvent(BaseModel):
     occurred_on: datetime = Field(default_factory=datetime.utcnow)
     event_type: str
 
-${parsed.domainAnalysis.events.map((ev, i) => `class Event${i + 1}(IDomainEvent):
-    event_type: str = "${ev.replace(/[^a-zA-Z0-9]/g, '')}"
+${ir.events.map((ev, i) => `class Event${i + 1}(IDomainEvent):
+    event_type: str = "${ev.name.replace(/[^a-zA-Z0-9]/g, '')}"
     payload: Dict[str, Any]`).join('\n\n')}
 
 # --------------------------------------------------------------------------

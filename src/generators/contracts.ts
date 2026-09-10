@@ -22,7 +22,9 @@ export interface GeneratedContractsOutput {
   };
 }
 
-export function generateContracts(parsed: ParsedFeature, config: GherkinAIConfig): GeneratedContractsOutput {
+import { SpecificationIR } from '../core/semantic-ir';
+
+export function generateContracts(parsed: ParsedFeature, ir: SpecificationIR, config: GherkinAIConfig): GeneratedContractsOutput {
   const arch = getArchRule(config.architecture);
   const spec = getStackSpec(config.stack);
   const isCqrs = config.architecture === 'cqrs';
@@ -71,10 +73,10 @@ export interface IDomainEvent {
   eventType: string;
 }
 
-${parsed.domainAnalysis.events.map((ev, i) => `export interface Event${i + 1} extends IDomainEvent {
-  eventType: '${ev.replace(/[^a-zA-Z0-9]/g, '')}';
+${ir.events.map((ev, i) => `export interface Event${i + 1} extends IDomainEvent {
+  eventType: '${ev.name.replace(/[^a-zA-Z0-9]/g, '')}';
   payload: {
-${parsed.domainAnalysis.fields.map(f => `    ${f.name}: ${f.type};`).join('\n')}
+${ir.fields.map(f => `    ${f.name}: ${f.type};`).join('\n')}
   };
 }`).join('\n\n')}
 
@@ -85,15 +87,11 @@ export const ${featurePascal}CommandSchema = z.object({
   requestId: z.string().uuid(),
   timestamp: z.string().datetime(),
   payload: z.object({
-${parsed.domainAnalysis.fields.map(f => {
+${ir.fields.map(f => {
   let zType = f.type === 'number' ? 'z.number()' : 'z.string()';
   f.validations.forEach((v: any) => {
-    if (typeof v !== 'string') return;
-    if (v === '@validate:email') zType += '.email()';
-    if (v.startsWith('@range(')) {
-       const match = v.match(/@range\((\d+),(\d+)\)/);
-       if (match) zType += `.min(${match[1]}).max(${match[2]})`;
-    }
+    if (v.type === 'email') zType += '.email()';
+    if (v.type === 'range' && v.params) zType += `.min(${v.params.min || 0}).max(${v.params.max || 100})`;
   });
   return `    ${f.name}: ${zType}`;
 }).join(',\n')}
@@ -148,38 +146,50 @@ ${arch.prohibitedImports.map(p => `- \`${p}\``).join('\n')}
       version: '1.0.0',
       description: `Auto-generated OpenAPI specification for ${parsed.featureName} from Gherkin feature spec.`
     },
-    paths: {
-      [`/api/v1/${featurePascal.toLowerCase()}`]: {
-        post: {
-          summary: `Execute ${parsed.featureName} Command`,
-          operationId: `execute${featurePascal}`,
-          requestBody: {
-            required: true,
-            content: {
-              'application/json': {
-                schema: {
-                  type: 'object',
-                  properties: {
-                    requestId: { type: 'string', format: 'uuid' },
-                    timestamp: { type: 'string', format: 'date-time' },
-                    payload: { 
-                      type: 'object',
-                      properties: parsed.domainAnalysis.fields.reduce((acc, f) => {
-                        acc[f.name] = { type: f.type === 'number' ? 'number' : 'string' };
-                        return acc;
-                      }, {} as Record<string, any>),
-                      required: parsed.domainAnalysis.fields.map(f => f.name)
-                    }
-                  },
-                  required: ['requestId', 'timestamp', 'payload']
-                }
+    paths: ir.apiEndpoints.reduce((acc, ep) => {
+      if (!acc[ep.path]) acc[ep.path] = {};
+      
+      acc[ep.path][ep.method.toLowerCase()] = {
+        summary: `${ep.method} ${ep.path}`,
+        operationId: ep.operationId,
+        security: ep.authRequired ? [{ bearerAuth: [] }] : [],
+        requestBody: ep.method !== 'GET' ? {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                properties: {
+                  requestId: { type: 'string', format: 'uuid' },
+                  timestamp: { type: 'string', format: 'date-time' },
+                  payload: { 
+                    type: 'object',
+                    properties: ep.requestFields.reduce((fAcc, f) => {
+                      fAcc[f.name] = { type: f.type === 'number' ? 'number' : 'string' };
+                      return fAcc;
+                    }, {} as Record<string, any>),
+                    required: ep.requestFields.filter(f => f.required).map(f => f.name)
+                  }
+                },
+                required: ['requestId', 'timestamp', 'payload']
               }
             }
-          },
-          responses: parsed.domainAnalysis.httpCodes.reduce((acc, code) => {
-            acc[code] = { description: code === '200' || code === '201' ? 'Successful execution' : (code === '400' ? 'Validation error' : (code === '401' ? 'Unauthorized' : (code === '404' ? 'Not found' : 'Response'))) };
-            return acc;
-          }, {} as Record<string, any>)
+          }
+        } : undefined,
+        responses: ep.httpCodes.reduce((resAcc, code) => {
+          resAcc[code.code] = { description: code.description };
+          return resAcc;
+        }, {} as Record<string, any>)
+      };
+      
+      return acc;
+    }, {} as Record<string, any>),
+    components: {
+      securitySchemes: {
+        bearerAuth: {
+          type: 'http',
+          scheme: 'bearer',
+          bearerFormat: 'JWT'
         }
       }
     }
@@ -192,8 +202,8 @@ ${arch.prohibitedImports.map(p => `- \`${p}\``).join('\n')}
       version: '1.0.0',
       description: `Auto-generated AsyncAPI events for ${parsed.featureName} from Gherkin feature spec.`
     },
-    channels: parsed.domainAnalysis.events.reduce((acc, ev) => {
-      const eventName = ev.replace(/[^a-zA-Z0-9]/g, '');
+    channels: ir.events.reduce((acc, ev) => {
+      const eventName = ev.name;
       acc[`${featurePascal.toLowerCase()}/events/${eventName.toLowerCase()}`] = {
         publish: {
           summary: `Publish ${eventName} event`,
@@ -207,11 +217,11 @@ ${arch.prohibitedImports.map(p => `- \`${p}\``).join('\n')}
                 eventType: { type: 'string', enum: [eventName] },
                 payload: { 
                   type: 'object',
-                  properties: parsed.domainAnalysis.fields.reduce((acc, f) => {
-                    acc[f.name] = { type: f.type === 'number' ? 'number' : 'string' };
-                    return acc;
+                  properties: ir.fields.reduce((fAcc, f) => {
+                    fAcc[f.name] = { type: f.type === 'number' ? 'number' : 'string' };
+                    return fAcc;
                   }, {} as Record<string, any>),
-                  required: parsed.domainAnalysis.fields.map(f => f.name)
+                  required: ir.fields.filter(f => f.required).map(f => f.name)
                 }
               }
             }
@@ -228,22 +238,22 @@ ${arch.prohibitedImports.map(p => `- \`${p}\``).join('\n')}
   if (config.stack.language === 'python') {
     nativeContract = {
       filename: `${featurePascal.toLowerCase()}.contract.py`,
-      content: generatePythonContracts(parsed, config)
+      content: generatePythonContracts(parsed, ir, config)
     };
   } else if (config.stack.language === 'php') {
     nativeContract = {
       filename: `${featurePascal.toLowerCase()}.contract.php`,
-      content: generatePhpContracts(parsed, config)
+      content: generatePhpContracts(parsed, ir, config)
     };
   } else if (config.stack.language === 'go') {
     nativeContract = {
       filename: `${featurePascal.toLowerCase()}.contract.go`,
-      content: generateGoContracts(parsed, config)
+      content: generateGoContracts(parsed, ir, config)
     };
   } else if (config.stack.language === 'csharp') {
     nativeContract = {
       filename: `${featurePascal.toLowerCase()}.contract.cs`,
-      content: generateCsharpContracts(parsed, config)
+      content: generateCsharpContracts(parsed, ir, config)
     };
   }
 

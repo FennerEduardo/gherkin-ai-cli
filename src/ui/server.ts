@@ -11,7 +11,9 @@ import { detectExistingStack } from '../core/stack-detector';
 import { generateContracts } from '../generators/contracts';
 import { generatePrompts } from '../generators/prompts';
 import { parseGherkinText } from '../core/gherkin-parser';
+import { handleQualityCommand } from '../commands/quality';
 import { loadConfig, saveConfig } from '../core/config';
+import { buildSpecificationIR } from '../core/ir-builder';
 import { RealAgentProvider, LLMConfig } from '../core/agent-adapter';
 import { exec } from 'child_process';
 
@@ -62,7 +64,8 @@ export function startWebServer(port: number): void {
       saveConfig(config);
 
       const parsed = parseGherkinText(gherkinText);
-      const generatedContracts = generateContracts(parsed, config);
+      const ir = buildSpecificationIR(parsed, req.body.file);
+      const generatedContracts = generateContracts(parsed, ir, config);
       const generatedPrompts = generatePrompts(parsed, config);
 
       // Save contracts & prompts

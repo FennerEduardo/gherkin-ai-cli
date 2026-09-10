@@ -6,7 +6,7 @@ import chalk from 'chalk';
 import fs from 'fs';
 import path from 'path';
 import { buildProjectContext } from '../core/context-builder';
-import { calculateQualityScorecard } from '../core/quality-score';
+import { calculateDeliveryRisk } from '../core/risk-engine';
 import { RealAgentProvider, LLMConfig } from '../core/agent-adapter';
 import { handleVerifyCommand } from './verify';
 import { loadConfig } from '../core/config';
@@ -93,7 +93,8 @@ export async function handleAutopilotCommand(options: AutopilotOptions = {}): Pr
       } else if (!p.includes('/') && !p.includes('\\')) {
         p = path.join(specDirPath, p);
       }
-      const fullPath = path.resolve(p);
+      const { resolveSafePath } = require('../utils/file-system');
+      const fullPath = resolveSafePath(process.cwd(), p);
       
       if (process.env.GHK_DRY_RUN === 'true') {
         if (process.env.GHK_STDOUT === 'true') {
@@ -147,7 +148,23 @@ export async function handleAutopilotCommand(options: AutopilotOptions = {}): Pr
         console.log(chalk.yellow(`     ✖ Skipped writing ${mod.filePath} due to syntax errors.`));
         continue;
       }
-      const fullPath = path.resolve(mod.filePath);
+      
+      const { validateGuardrails } = require('../core/guardrails');
+      const guardrailValidation = validateGuardrails({
+        action: 'generate_code',
+        targetFiles: [mod.filePath]
+      }, process.cwd());
+      
+      if (!guardrailValidation.allowed) {
+        console.log(chalk.red(`     ✖ GUARDRAIL VIOLATION: Agent changes rejected for ${mod.filePath}.`));
+        for (const v of guardrailValidation.violations) {
+          console.log(chalk.red(`       - ${v}`));
+        }
+        continue;
+      }
+
+      const { resolveSafePath } = require('../utils/file-system');
+      const fullPath = resolveSafePath(process.cwd(), mod.filePath);
       
       if (process.env.GHK_DRY_RUN === 'true') {
         if (process.env.GHK_STDOUT === 'true') {
@@ -179,7 +196,18 @@ export async function handleAutopilotCommand(options: AutopilotOptions = {}): Pr
   await handleVerifyCommand({ autoFix: true, maxRetries: 2, command: options.command });
 
   console.log(chalk.blue(`5. Evaluating Enterprise Quality Score Gate...`));
-  const scorecard = calculateQualityScorecard(process.cwd(), configInstance.specDir);
-  console.log(chalk.bold.green(`\n✅ Autopilot Execution Complete! Quality Score: ${scorecard.overallScore}%`));
-  console.log(chalk.bold.cyan(`   Ready for PR Review & Human Approval.\n`));
+  const riskCard = calculateDeliveryRisk(process.cwd(), configInstance.specDir);
+  console.log('\n======================================================');
+  console.log(chalk.bold('  Autopilot Deployment Risk Assessment'));
+  console.log('======================================================');
+  const riskColor = riskCard.riskLevel === 'CRITICAL' || riskCard.riskLevel === 'HIGH' ? chalk.red : 
+                    riskCard.riskLevel === 'MEDIUM' ? chalk.yellow : chalk.green;
+
+  console.log(chalk.bold(`Risk Level:   ${riskColor(riskCard.riskLevel)} (Score: ${riskCard.overallRiskScore})`));
+  if (riskCard.requiresHumanApproval) {
+    console.log(chalk.red('⚠ This change is highly risky and requires human approval.'));
+  } else {
+    console.log(chalk.green('✅ This change is considered safe for autonomous delivery.'));
+  }
+  console.log('\nRun `ghk quality` to see a detailed risk breakdown.\n');
 }

@@ -4,8 +4,9 @@
 
 import { ParsedFeature } from '../core/gherkin-parser';
 import { GherkinAIConfig } from '../core/config';
+import { SpecificationIR } from '../core/semantic-ir';
 
-export function generateCsharpContracts(parsed: ParsedFeature, config: GherkinAIConfig): string {
+export function generateCsharpContracts(parsed: ParsedFeature, ir: SpecificationIR, config: GherkinAIConfig): string {
   const featurePascal = parsed.featureName.replace(/[^a-zA-Z0-9]/g, '');
 
   return `/* ==========================================================================
@@ -31,14 +32,11 @@ public interface IDomainEvent
     string EventType { get; }
 }
 
-${parsed.domainAnalysis.events.map((ev, i) => `public record Event${i + 1}(
+${ir.events.map((ev, i) => `public record Event${i + 1}(
     Guid EventId,
     DateTime OccurredOn,
     Dictionary<string, object> Payload
-) : IDomainEvent
-{
-    public string EventType => "${ev.replace(/[^a-zA-Z0-9]/g, '')}";
-}`).join('\n\n')}
+) : IDomainEvent { public string EventType => "${ev.name.replace(/[^a-zA-Z0-9]/g, '')}"; }`).join('\n\n')}
 
 // --------------------------------------------------------------------------
 // 2. Command DTO Record

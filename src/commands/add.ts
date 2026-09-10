@@ -9,6 +9,7 @@ import { detectExistingStack } from '../core/stack-detector';
 import { parseGherkinText } from '../core/gherkin-parser';
 import { generateContracts } from '../generators/contracts';
 import { generatePrompts } from '../generators/prompts';
+import { buildSpecificationIR } from '../core/ir-builder';
 import { handleCreateCommand } from './create';
 import { fileExistsSync, readFileSync, writeFileSync, ensureDirSync } from '../utils/file-system';
 import { logger } from '../utils/logger';
@@ -66,7 +67,8 @@ export async function handleAddCommand(options: { feature?: string; target?: str
   logger.info(`Injecting contracts & AI prompts into: ${targetDir}`);
 
   // 1. Generate Contracts, OpenAPI, AsyncAPI & Native Language Contract
-  const { contractsTs, adrMd, openApiJson, asyncApiJson, nativeContract } = generateContracts(parsed, config);
+  const ir = buildSpecificationIR(parsed, featurePath);
+  const { contractsTs, adrMd, openApiJson, asyncApiJson, nativeContract } = generateContracts(parsed, ir, config);
   const contractFileName = `${featurePascal.toLowerCase()}.contract.ts`;
   
   writeFileSync(path.join(targetDir, contractFileName), contractsTs);
