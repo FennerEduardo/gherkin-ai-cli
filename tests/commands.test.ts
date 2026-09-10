@@ -69,6 +69,6 @@ describe('CLI Commands Integration', () => {
     await handleQualityCommand();
     
     expect(existsSpy).toHaveBeenCalled();
-    expect(console.log).toHaveBeenCalledWith(expect.stringContaining('FAIL:'));
+    expect(console.log).toHaveBeenCalledWith(expect.stringContaining('Risk Level:'));
   });
 });
