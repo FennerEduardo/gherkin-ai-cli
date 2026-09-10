@@ -124,6 +124,20 @@ ${cqrsSection}`;
 - **Frontend Unit Testing**: ${config.frontendStack.unitTesting || 'none'}
 - **Frontend E2E Testing**: ${config.frontendStack.e2eTesting || 'none'}` : '';
 
+  const langProhibited: Record<string, string[]> = {
+    php: ['laravel/framework', 'symfony/symfony', 'illuminate/*'],
+    python: ['django', 'fastapi', 'flask', 'eval()'],
+    java: ['org.springframework.*', 'java.sql.Statement without PreparedStatement'],
+    csharp: ['Microsoft.AspNetCore.*', 'System.Data.SqlClient unparameterized queries'],
+    typescript: ['express', '@nestjs/common', 'prisma', 'typeorm'],
+    javascript: ['express', 'pg', 'mysql2']
+  };
+
+  const effectiveProhibited = Array.from(new Set([
+    ...arch.prohibitedImports,
+    ...(langProhibited[config.stack.language?.toLowerCase() || ''] || [])
+  ]));
+
   const adrMd = `# ADR 001: Architecture Decisions for ${parsed.featureName}
 
 ## Status
@@ -143,7 +157,7 @@ Project requiring structured implementation matching Gherkin specification.
 
 ## Prohibited Layer Dependencies
 Domain core must NOT import:
-${arch.prohibitedImports.map(p => `- \`${p}\``).join('\n')}
+${effectiveProhibited.map(p => `- \`${p}\``).join('\n')}
 `;
 
   const openApiJson = JSON.stringify({

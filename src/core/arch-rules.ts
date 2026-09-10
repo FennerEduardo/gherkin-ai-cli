@@ -12,6 +12,32 @@ export interface ArchRuleSpec {
 }
 
 export const ARCH_RULES: Record<string, ArchRuleSpec> = {
+  monolith: {
+    id: 'monolith',
+    name: 'Monolith Architecture (MVC / Monolithic)',
+    description: 'Unified application architecture with Model-View-Controller (MVC) layers and decoupled domain logic.',
+    patterns: ['Model (Domain/Entity)', 'View (Templates/UI)', 'Controller (Request Handler)', 'Service Layer', 'Repository Port'],
+    folderStructure: `app/
+  ├── Controllers/
+  ├── Models/
+  ├── Views/
+  ├── Services/
+  └── Repositories/`,
+    prohibitedImports: ['direct SQL string interpolation', 'global state mutation']
+  },
+  'api-rest': {
+    id: 'api-rest',
+    name: 'API REST Architecture (Stateless Service)',
+    description: 'Stateless REST API service structured around Resources, DTOs, Controllers, and Service Ports.',
+    patterns: ['REST Controller', 'Request DTO', 'Response DTO', 'Resource Serializer', 'Service Port'],
+    folderStructure: `src/
+  ├── controllers/
+  ├── dtos/
+  ├── services/
+  ├── models/
+  └── middleware/`,
+    prohibitedImports: ['stateful session storage', 'direct DB coupling in controllers']
+  },
   ddd: {
     id: 'ddd',
     name: 'Domain-Driven Design (DDD)',
@@ -93,5 +119,5 @@ export const ARCH_RULES: Record<string, ArchRuleSpec> = {
 };
 
 export function getArchRule(archId: string): ArchRuleSpec {
-  return ARCH_RULES[archId] || ARCH_RULES['hexagonal'];
+  return ARCH_RULES[archId] || ARCH_RULES['monolith'];
 }
