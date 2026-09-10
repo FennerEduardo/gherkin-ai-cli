@@ -17,6 +17,9 @@ import { calculateConvergence } from '../core/convergence-engine';
 import { calculateDeliveryRisk } from '../core/risk-engine';
 import { generateConstitution, loadConstitution, getConstraintsByLevel } from '../core/constitution';
 import { scanContextSecurity, detectPromptInjection } from '../core/context-security';
+import { SpecHashBaseline } from '../core/governance/spec-hash-baseline';
+import { AgentPolicyEngine } from '../core/governance/agent-policy-engine';
+import { CrossServiceImpactAnalyzer } from '../core/analysis/cross-service-impact';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 
@@ -276,6 +279,28 @@ function getToolDefinitions() {
         properties: {}
       }
     },
+    {
+      name: 'ghk_governance_check',
+      description: 'Evaluate target files against agent policy boundaries and verify SHA-256 specification baselines for drift.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          files: { type: 'array', items: { type: 'string' }, description: 'Paths of files the agent intends to create or modify.' }
+        },
+        required: ['files']
+      }
+    },
+    {
+      name: 'ghk_impact_analysis',
+      description: 'Calculate multi-service Blast Radius across OpenAPI endpoints, AsyncAPI events, DTOs and DB schemas.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          gherkinText: { type: 'string', description: 'Optional Gherkin feature text.' },
+          changedFiles: { type: 'array', items: { type: 'string' }, description: 'List of changed or target files.' }
+        }
+      }
+    }
   ];
 }
 
@@ -512,6 +537,33 @@ async function handleToolCall(id: number | string, name: string, args: any): Pro
         const constitution = loadConstitution();
         sendJsonRpcResponse(id, {
           content: [{ type: 'text', text: JSON.stringify(constitution || { error: 'No constitution found. Run init_enterprise to create one.' }, null, 2) }]
+        });
+        break;
+      }
+
+      case 'ghk_governance_check': {
+        const policyEngine = new AgentPolicyEngine(process.cwd());
+        const hashBaseline = new SpecHashBaseline(process.cwd());
+        const files = args.files || [];
+        const policyEval = policyEngine.evaluateFileModifications(files);
+        const driftEval = hashBaseline.verifyDrift(files);
+
+        sendJsonRpcResponse(id, {
+          content: [{ type: 'text', text: JSON.stringify({
+            policy: policyEval,
+            baselineDrift: driftEval
+          }, null, 2) }]
+        });
+        break;
+      }
+
+      case 'ghk_impact_analysis': {
+        const analyzer = new CrossServiceImpactAnalyzer();
+        let ir = buildIR(parseGherkinText(args.gherkinText || 'Feature: Impact Analysis'), 'input.feature');
+        const result = analyzer.analyzeImpact(ir, args.changedFiles || []);
+
+        sendJsonRpcResponse(id, {
+          content: [{ type: 'text', text: JSON.stringify(result, null, 2) }]
         });
         break;
       }

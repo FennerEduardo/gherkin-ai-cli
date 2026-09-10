@@ -67,7 +67,7 @@
     "publish:prod": "npm run build && npm publish"
   },
   "engines": {
-    "node": ">=20.12.0"
+    "node": ">=24.0.0"
   },
   "dependencies": {
     "@cucumber/gherkin": "^42.0.1",
@@ -75,7 +75,6 @@
     "@modelcontextprotocol/sdk": "^1.30.0",
     "chalk": "^4.1.2",
     "commander": "^12.1.0",
-    "cors": "^2.8.6",
     "express": "^5.2.1",
     "inquirer": "^8.2.6",
     "openai": "^4.0.0",
@@ -85,7 +84,6 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.62.1",
-    "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
     "@types/inquirer": "^8.2.10",
     "@types/node": "^20.14.0",

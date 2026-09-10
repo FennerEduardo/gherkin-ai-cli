@@ -33,7 +33,7 @@ export function executeSandbox(options: SandboxExecutionOptions = {}): SandboxRe
   let commandToRun = options.command || options.configCommand || detectDefaultTestCommand(cwd);
 
   if (options.docker) {
-    const imageName = options.dockerImage || 'node:20-alpine';
+    const imageName = options.dockerImage || 'node:24-alpine';
     commandToRun = `docker run --rm -v "${cwd}:/app" -w /app ${imageName} ${commandToRun}`;
   }
 

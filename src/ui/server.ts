@@ -3,7 +3,6 @@
    ========================================================================== */
 
 import express from 'express';
-import cors from 'cors';
 import path from 'path';
 import fs from 'fs';
 import chalk from 'chalk';
@@ -20,8 +19,14 @@ import { exec } from 'child_process';
 export function startWebServer(port: number): void {
   const app = express();
   
-  // Strict CORS for local Web Studio
-  app.use(cors({ origin: [`http://localhost:${port}`, `http://127.0.0.1:${port}`] }));
+  // Localhost-only security check (no cors dependency required)
+  app.use((req, res, next) => {
+    const host = req.headers.host || '';
+    if (!host.includes('localhost') && !host.includes('127.0.0.1')) {
+      return res.status(403).json({ success: false, error: 'Access denied: Local connections only.' });
+    }
+    next();
+  });
   app.use(express.json());
   
   // Static files for frontend

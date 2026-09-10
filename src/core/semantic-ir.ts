@@ -258,8 +258,10 @@ export interface SpecificationIR {
   stateMachines: StateMachine[];
   invariants: Invariant[];
 
-  // Contract Hints
+  // Contract Hints & Entities
   apiEndpoints: APIEndpointHint[];
+  contracts?: { type: 'REST' | 'EVENT' | 'GRAPHQL' | 'NATIVE'; method?: string; endpoint?: string; entity: string }[];
+  entities?: { name: string; fields: FieldSpec[] }[];
   
   // Governance
   constraints: Constraint[];
