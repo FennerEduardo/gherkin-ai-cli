@@ -11,6 +11,7 @@ import { pluginRegistry } from '../core/plugin-system';
 import { registerCorePlugins } from '../plugins/core-generators-plugin';
 import { fileExistsSync, readFileSync, writeFileSync } from '../utils/file-system';
 import { logger } from '../utils/logger';
+import { ensureGitignore } from '../utils/gitignore-manager';
 import inquirer from 'inquirer';
 import chalk from 'chalk';
 
@@ -220,6 +221,7 @@ Objective: Write detailed Gherkin feature scenarios for ${title}.
   });
 
   logger.banner();
+  ensureGitignore(process.cwd());
   logger.success(`All artifacts successfully generated under ${config.outputDir}!`);
   logger.info('Ready for AI Agents (Claude Code, Cursor, Antigravity, Copilot).');
 }

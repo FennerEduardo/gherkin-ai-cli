@@ -6,6 +6,7 @@ import { defaultConfig, saveConfig, GherkinAIConfig } from '../core/config';
 import { generateConstitution } from '../core/constitution';
 import { logger } from '../utils/logger';
 import { promptOrFallback } from '../utils/i18n-cli';
+import { ensureGitignore } from '../utils/gitignore-manager';
 
 const FRAMEWORKS_BY_LANG: Record<string, { name: string; value: string }[]> = {
   php: [
@@ -500,6 +501,8 @@ export async function handleInitCommand(options?: {
     const govPath = generateGovernanceConfig(newConfig);
     logger.success(`Successfully created Agent Governance Policy: ${govPath}`);
   }
+
+  ensureGitignore(process.cwd());
 
   logger.info('Next step: Run "ghk generate --feature ./your-feature.feature"');
 }

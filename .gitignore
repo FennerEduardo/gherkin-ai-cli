@@ -8,7 +8,6 @@ dist/
 *.tsbuildinfo
 
 # Generated specs & CLI test outputs
-generated-specs/
 agent-bundle.md
 agent-bundle.json
 
@@ -50,3 +49,6 @@ coverage/
 .nyc_output/
 playwright-report/
 test-results/
+
+# gherkin-ai CLI
+.ghe/
