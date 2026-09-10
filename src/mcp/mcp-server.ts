@@ -17,6 +17,10 @@ import { calculateConvergence } from '../core/convergence-engine';
 import { calculateQualityScorecard } from '../core/quality-score';
 import { generateConstitution, loadConstitution, getConstraintsByLevel } from '../core/constitution';
 import { scanContextSecurity, detectPromptInjection } from '../core/context-security';
+import { exec } from 'child_process';
+import { promisify } from 'util';
+
+const execAsync = promisify(exec);
 
 export function startMcpServer(): void {
   process.stdin.setEncoding('utf8');
@@ -98,6 +102,40 @@ function handleJsonRpcMessage(message: any): void {
 
 function getToolDefinitions() {
   return [
+    {
+      name: 'run_cli_diff',
+      description: 'Run the ghk diff command to detect drift between a Gherkin feature file and a target source code file.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          feature: { type: 'string', description: 'Path to the .feature file.' },
+          target: { type: 'string', description: 'Path to the target source code file.' }
+        },
+        required: ['feature', 'target']
+      }
+    },
+    {
+      name: 'run_cli_verify',
+      description: 'Run the ghk verify command to execute closed-loop testing.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          autoFix: { type: 'boolean', description: 'Enable auto-fix with agent repair loop if tests fail.' },
+          command: { type: 'string', description: 'Custom test command to run.' }
+        }
+      }
+    },
+    {
+      name: 'run_cli_autopilot',
+      description: 'Run the ghk autopilot command to generate and scaffold features autonomously.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          requirement: { type: 'string', description: 'Path to the requirement markdown file.' }
+        },
+        required: ['requirement']
+      }
+    },
     {
       name: 'parse_gherkin',
       description: 'Parse Gherkin .feature specification text into domain AST (commands, queries, events, actors).',
@@ -245,9 +283,55 @@ function getToolDefinitions() {
 // Tool Call Handlers
 // ---------------------------------------------------------------------------
 
-function handleToolCall(id: number | string, name: string, args: any): void {
+async function handleToolCall(id: number | string, name: string, args: any): Promise<void> {
   try {
     switch (name) {
+      case 'run_cli_diff': {
+        const { feature, target } = args;
+        try {
+          const { stdout, stderr } = await execAsync(`node bin/gherkin-ai.js diff --feature ${feature} --target ${target}`);
+          sendJsonRpcResponse(id, {
+            content: [{ type: 'text', text: stdout || stderr }]
+          });
+        } catch (e: any) {
+          sendJsonRpcResponse(id, {
+            content: [{ type: 'text', text: e.stdout || e.stderr || e.message }]
+          });
+        }
+        break;
+      }
+
+      case 'run_cli_verify': {
+        const autoFixFlag = args.autoFix ? '--auto-fix' : '';
+        const commandFlag = args.command ? `--command "${args.command}"` : '';
+        try {
+          const { stdout, stderr } = await execAsync(`node bin/gherkin-ai.js verify ${autoFixFlag} ${commandFlag}`);
+          sendJsonRpcResponse(id, {
+            content: [{ type: 'text', text: stdout || stderr }]
+          });
+        } catch (e: any) {
+          sendJsonRpcResponse(id, {
+            content: [{ type: 'text', text: e.stdout || e.stderr || e.message }]
+          });
+        }
+        break;
+      }
+
+      case 'run_cli_autopilot': {
+        const requirement = args.requirement;
+        try {
+          const { stdout, stderr } = await execAsync(`node bin/gherkin-ai.js autopilot --requirement ${requirement}`);
+          sendJsonRpcResponse(id, {
+            content: [{ type: 'text', text: stdout || stderr }]
+          });
+        } catch (e: any) {
+          sendJsonRpcResponse(id, {
+            content: [{ type: 'text', text: e.stdout || e.stderr || e.message }]
+          });
+        }
+        break;
+      }
+
       case 'parse_gherkin': {
         const parsed = parseGherkinText(args.gherkinText || '');
         sendJsonRpcResponse(id, {

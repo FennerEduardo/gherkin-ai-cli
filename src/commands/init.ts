@@ -19,74 +19,67 @@ export async function handleInitCommand(options?: { enterprise?: boolean; yes?: 
   let answers: any = {};
   const isNonInteractive = options?.yes || options?.nonInteractive || process.env.GHK_NON_INTERACTIVE === 'true' || process.env.CI === 'true';
 
+  const { promptOrFallback } = require('../utils/i18n-cli');
+  
   if (isNonInteractive) {
     logger.info('Running in non-interactive mode. Using default configuration.');
-    answers = {
-      projectName: defaultConfig.projectName,
-      architecture: defaultConfig.architecture,
-      language: defaultConfig.stack.language,
-      framework: defaultConfig.stack.framework,
-      orm: defaultConfig.stack.orm,
-      database: defaultConfig.stack.database,
-      outputDir: defaultConfig.outputDir
-    };
-  } else {
-    answers = await inquirer.prompt([
-      {
-        type: 'input',
-        name: 'projectName',
-        message: 'What is your project name?',
-        default: defaultConfig.projectName
-      },
-      {
-        type: 'list',
-        name: 'architecture',
-        message: 'Select primary software architecture:',
-        choices: [
-          { name: 'Hexagonal Architecture (Ports & Adapters)', value: 'hexagonal' },
-          { name: 'Domain-Driven Design (DDD)', value: 'ddd' },
-          { name: 'Clean Architecture', value: 'clean' },
-          { name: 'CQRS + Event Sourcing', value: 'cqrs' },
-          { name: 'Microservices Architecture', value: 'microservices' }
-        ],
-        default: 'hexagonal'
-      },
-      {
-        type: 'list',
-        name: 'language',
-        message: 'Select programming language / runtime:',
-        choices: ['typescript', 'javascript', 'python', 'java', 'csharp', 'go'],
-        default: 'typescript'
-      },
-      {
-        type: 'list',
-        name: 'framework',
-        message: 'Select primary framework:',
-        choices: ['nestjs', 'express', 'fastify', 'spring-boot', 'fastapi', 'aspnet'],
-        default: 'nestjs'
-      },
-      {
-        type: 'list',
-        name: 'orm',
-        message: 'Select database ORM / persistence:',
-        choices: ['prisma', 'drizzle', 'typeorm', 'sqlalchemy'],
-        default: 'prisma'
-      },
-      {
-        type: 'list',
-        name: 'database',
-        message: 'Select primary database engine:',
-        choices: ['postgresql', 'mysql', 'mongodb', 'redis'],
-        default: 'postgresql'
-      },
-      {
-        type: 'input',
-        name: 'outputDir',
-        message: 'Specify directory for generated contracts and prompts:',
-        default: './generated-specs'
-      }
-    ]);
   }
+
+  answers = await promptOrFallback([
+    {
+      type: 'input',
+      name: 'projectName',
+      message: 'What is your project name?',
+      default: defaultConfig.projectName
+    },
+    {
+      type: 'list',
+      name: 'architecture',
+      message: 'Select primary software architecture:',
+      choices: [
+        { name: 'Hexagonal Architecture (Ports & Adapters)', value: 'hexagonal' },
+        { name: 'Domain-Driven Design (DDD)', value: 'ddd' },
+        { name: 'Clean Architecture', value: 'clean' },
+        { name: 'CQRS + Event Sourcing', value: 'cqrs' },
+        { name: 'Microservices Architecture', value: 'microservices' }
+      ],
+      default: 'hexagonal'
+    },
+    {
+      type: 'list',
+      name: 'language',
+      message: 'Select programming language / runtime:',
+      choices: ['typescript', 'javascript', 'python', 'java', 'csharp', 'go'],
+      default: 'typescript'
+    },
+    {
+      type: 'list',
+      name: 'framework',
+      message: 'Select primary framework:',
+      choices: ['nestjs', 'express', 'fastify', 'spring-boot', 'fastapi', 'aspnet'],
+      default: 'nestjs'
+    },
+    {
+      type: 'list',
+      name: 'orm',
+      message: 'Select database ORM / persistence:',
+      choices: ['prisma', 'drizzle', 'typeorm', 'sqlalchemy'],
+      default: 'prisma'
+    },
+    {
+      type: 'list',
+      name: 'database',
+      message: 'Select primary database engine:',
+      choices: ['postgresql', 'mysql', 'mongodb', 'redis'],
+      default: 'postgresql'
+    },
+    {
+      type: 'input',
+      name: 'outputDir',
+      message: 'Specify directory for generated contracts and prompts:',
+      default: './generated-specs'
+    }
+  ], options);
 
   const newConfig: GherkinAIConfig = {
     projectName: answers.projectName,

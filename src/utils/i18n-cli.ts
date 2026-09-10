@@ -91,6 +91,18 @@ export function saveGlobalUserLocale(locale: SupportedLocale): void {
   cachedLocale = locale;
 }
 
+export async function promptOrFallback(questions: any[], options?: { yes?: boolean; nonInteractive?: boolean }): Promise<any> {
+  const isNonInteractive = options?.yes || options?.nonInteractive || process.env.CI === 'true' || process.env.GHK_NON_INTERACTIVE === 'true';
+  if (isNonInteractive) {
+    const answers: any = {};
+    for (const q of questions) {
+      answers[q.name] = q.default !== undefined ? q.default : (q.type === 'confirm' ? true : '');
+    }
+    return answers;
+  }
+  return await inquirer.prompt(questions);
+}
+
 export async function ensureCliLanguage(requestedLang?: string): Promise<SupportedLocale> {
   if (requestedLang === 'en' || requestedLang === 'es') {
     saveGlobalUserLocale(requestedLang);

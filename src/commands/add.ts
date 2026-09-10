@@ -13,12 +13,14 @@ import { handleCreateCommand } from './create';
 import { fileExistsSync, readFileSync, writeFileSync, ensureDirSync } from '../utils/file-system';
 import { logger } from '../utils/logger';
 
-export async function handleAddCommand(options: { feature?: string; target?: string; config?: string }): Promise<void> {
+export async function handleAddCommand(options: { feature?: string; target?: string; config?: string; yes?: boolean; nonInteractive?: boolean }): Promise<void> {
   logger.banner();
+
+  const { promptOrFallback } = require('../utils/i18n-cli');
 
   if (!options.feature) {
     logger.info('No --feature file specified. Launching interactive spec wizard...');
-    await handleCreateCommand({ target: options.target });
+    await handleCreateCommand({ target: options.target, yes: options.yes, nonInteractive: options.nonInteractive });
     return;
   }
 
@@ -27,17 +29,17 @@ export async function handleAddCommand(options: { feature?: string; target?: str
   if (!fileExistsSync(featurePath)) {
     logger.warn(`Feature file not found at: ${featurePath}`);
     
-    const answer = await inquirer.prompt([
+    const answer = await promptOrFallback([
       {
         type: 'confirm',
         name: 'createNow',
         message: '¿Deseas crear la especificación Gherkin paso a paso ahora (wizard interactivo)?',
         default: true
       }
-    ]);
+    ], options);
 
     if (answer.createNow) {
-      await handleCreateCommand({ output: options.feature, target: options.target });
+      await handleCreateCommand({ output: options.feature, target: options.target, yes: options.yes, nonInteractive: options.nonInteractive });
       return;
     } else {
       process.exit(1);

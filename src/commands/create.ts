@@ -9,9 +9,10 @@ import { ensureCliLanguage, t } from '../utils/i18n-cli';
 import { fileExistsSync, writeFileSync } from '../utils/file-system';
 import { logger } from '../utils/logger';
 
-export async function handleCreateCommand(options: { output?: string; target?: string; lang?: string; caveman?: boolean; headless?: boolean; config?: string }): Promise<void> {
+export async function handleCreateCommand(options: { output?: string; target?: string; lang?: string; caveman?: boolean; headless?: boolean; config?: string; yes?: boolean; nonInteractive?: boolean }): Promise<void> {
   logger.banner();
 
+  const { promptOrFallback } = require('../utils/i18n-cli');
   const locale = await ensureCliLanguage(options.lang);
   const isEs = locale === 'es';
 
@@ -71,12 +72,13 @@ export async function handleCreateCommand(options: { output?: string; target?: s
 
   if (options.caveman) {
     logger.info(isEs ? 'Modo Caveman Activado - Ingreso Rápido' : 'Caveman Mode Activated - Quick Input');
-    const { quickDesc } = await inquirer.prompt([{
+    const { quickDesc } = await promptOrFallback([{
       type: 'input',
       name: 'quickDesc',
       message: isEs ? 'Describe lo que quieres construir con tus propias palabras:' : 'Describe what you want to build in your own words:',
+      default: 'Generic caveman requirement',
       validate: (input: string) => input.trim().length > 0 || 'Description cannot be empty.'
-    }]);
+    }], options);
 
     const featureKw = isEs ? 'Característica:' : 'Feature:';
     const scKw = isEs ? 'Escenario:' : 'Scenario:';
@@ -98,14 +100,14 @@ export async function handleCreateCommand(options: { output?: string; target?: s
     console.log(gherkinContent);
     console.log('------------------------------------------------------------\n');
 
-    const injectAnswer = await inquirer.prompt([
+    const injectAnswer = await promptOrFallback([
       {
         type: 'confirm',
         name: 'inject',
         message: t('injectPrompt', locale),
         default: true
       }
-    ]);
+    ], options);
 
     if (injectAnswer.inject) {
       await handleAddCommand({
@@ -116,7 +118,7 @@ export async function handleCreateCommand(options: { output?: string; target?: s
     return;
   }
 
-  const answers = await inquirer.prompt([
+  const answers = await promptOrFallback([
     {
       type: 'input',
       name: 'featureName',
@@ -148,7 +150,7 @@ export async function handleCreateCommand(options: { output?: string; target?: s
       message: t('scenarioNamePrompt', locale),
       default: isEs ? 'Habilitar y verificar código 2FA exitosamente' : 'Enable and verify 2FA code successfully'
     }
-  ]);
+  ], options);
 
   const steps: Array<{ keyword: string; text: string }> = [];
 
@@ -161,7 +163,7 @@ export async function handleCreateCommand(options: { output?: string; target?: s
   const choicesEs = ['Dado', 'Cuando', 'Entonces', 'Y', 'Pero'];
 
   while (addMore) {
-    const stepAnswers = await inquirer.prompt([
+    const stepAnswers = await promptOrFallback([
       {
         type: 'list',
         name: 'keyword',
@@ -179,9 +181,9 @@ export async function handleCreateCommand(options: { output?: string; target?: s
         type: 'confirm',
         name: 'next',
         message: t('addAnotherStepPrompt', locale),
-        default: true
+        default: false // Prevent infinite loop in non-interactive
       }
-    ]);
+    ], options);
 
     steps.push({ keyword: stepAnswers.keyword, text: stepAnswers.text });
 
@@ -222,14 +224,14 @@ export async function handleCreateCommand(options: { output?: string; target?: s
   console.log('------------------------------------------------------------\n');
 
   // Prompt to immediately inject contracts into project
-  const injectAnswer = await inquirer.prompt([
+  const injectAnswer = await promptOrFallback([
     {
       type: 'confirm',
       name: 'inject',
       message: t('injectPrompt', locale),
       default: true
     }
-  ]);
+  ], options);
 
   if (injectAnswer.inject) {
     await handleAddCommand({

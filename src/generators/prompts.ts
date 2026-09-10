@@ -64,6 +64,19 @@ export function generatePrompts(parsed: ParsedFeature, config: GherkinAIConfig):
   result['backend-agent.md'] += securityGuardrails;
   result['qa-agent.md'] += securityGuardrails;
 
+  // Inject Execution & Architectural "What and How" Rules
+  let strictExecutionGuardrails = `\n## [MANDATORY] AI Agent Execution Instructions (The "What" and "How")\n`;
+  strictExecutionGuardrails += `1. **WHAT TO DO**: Read the Gherkin feature file and the domain models provided. You MUST implement exactly what is specified in the feature file. Do NOT invent new features, do NOT add speculative functionality, and do NOT leave placeholder comments (e.g. "// TODO: implement").\n`;
+  strictExecutionGuardrails += `2. **HOW TO DO IT**: Follow the specified architecture strictly (\`${config.architecture}\`). Respect layer boundaries:\n`;
+  strictExecutionGuardrails += `   - Domain Layer must have NO dependencies on infrastructure or external libraries.\n`;
+  strictExecutionGuardrails += `   - Application Layer (Use Cases) orchestrates domain entities but does not contain business logic.\n`;
+  strictExecutionGuardrails += `   - Infrastructure Layer implements persistence, external APIs, and framework-specific code.\n`;
+  strictExecutionGuardrails += `3. **OUTPUT FORMAT**: You MUST output your response strictly as valid JSON. Do not include markdown codeblocks (like \`\`\`json). The JSON must be an object with a "files" array: { "files": [{ "filePath": "...", "content": "..." }] }. Any deviation will cause a pipeline failure.\n`;
+
+  result['domain-agent.md'] += strictExecutionGuardrails;
+  result['backend-agent.md'] += strictExecutionGuardrails;
+  result['qa-agent.md'] += strictExecutionGuardrails;
+
 
   // Inject DOM and Data Models to Backend/QA/Domain agents
   let contextDict = '';
