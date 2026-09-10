@@ -57,8 +57,9 @@ describe('Feature Inventory & Audit Trail Engine', () => {
       status: 'PROMPT_GENERATED'
     });
 
-    expect(record.recordId).toBeDefined();
-    expect(record.recordId).toContain('rec_');
+    expect(record).not.toBeNull();
+    expect(record?.recordId).toBeDefined();
+    expect(record?.recordId).toContain('rec_');
 
     const gheFile = path.join(workspaceDir, '.ghe', 'inventory.json');
     expect(fs.existsSync(gheFile)).toBe(true);
@@ -111,5 +112,62 @@ describe('Feature Inventory & Audit Trail Engine', () => {
     const billingOnly = manager.getInventory('02-billing');
     expect(billingOnly).toHaveLength(1);
     expect(billingOnly[0].featureName).toBe('Billing Management');
+  });
+
+  it('should respect maxEntries retention limit to prevent file bloating at enterprise scale', () => {
+    const customConfig = {
+      projectName: 'enterprise-app',
+      architecture: 'monolith' as const,
+      stack: { language: 'php', framework: 'native-php', orm: 'pdo', database: 'mysql', validation: 'filter', auth: 'jwt', testing: 'phpunit' },
+      audit: { enabled: true, maxEntries: 3, persistInGit: false },
+      outputDir: './generated-specs'
+    };
+
+    const manager = new InventoryManager(workspaceDir, customConfig);
+
+    for (let i = 1; i <= 6; i++) {
+      manager.recordExecution({
+        featureName: `Feature ${i}`,
+        featurePath: `features/0${i}-feature.feature`,
+        featureVersionHash: `hash000${i}`,
+        promptVersionHash: `prt_000${i}`,
+        author: { name: 'Dev', email: 'dev@test.com', source: 'git' },
+        command: 'ghk implement',
+        stack: { language: 'php', framework: 'native-php', architecture: 'monolith', testing: 'phpunit' },
+        dockerSandbox: true,
+        status: 'PROMPT_GENERATED'
+      });
+    }
+
+    const records = manager.getInventory();
+    expect(records).toHaveLength(3);
+    expect(records[0].featureName).toBe('Feature 6');
+    expect(records[2].featureName).toBe('Feature 4');
+  });
+
+  it('should skip recording when audit is disabled in config', () => {
+    const disabledConfig = {
+      projectName: 'silent-app',
+      architecture: 'monolith' as const,
+      stack: { language: 'php', framework: 'native-php', orm: 'pdo', database: 'mysql', validation: 'filter', auth: 'jwt', testing: 'phpunit' },
+      audit: { enabled: false },
+      outputDir: './generated-specs'
+    };
+
+    const manager = new InventoryManager(workspaceDir, disabledConfig);
+    const res = manager.recordExecution({
+      featureName: 'Silent Feature',
+      featurePath: 'features/silent.feature',
+      featureVersionHash: '00000000',
+      promptVersionHash: 'prt_0000',
+      author: { name: 'Dev', email: 'dev@test.com', source: 'git' },
+      command: 'ghk implement',
+      stack: { language: 'php', framework: 'native-php', architecture: 'monolith', testing: 'phpunit' },
+      dockerSandbox: false,
+      status: 'PROMPT_GENERATED'
+    });
+
+    expect(res).toBeNull();
+    expect(manager.getInventory()).toHaveLength(0);
   });
 });

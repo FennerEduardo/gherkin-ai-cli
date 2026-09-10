@@ -259,6 +259,7 @@ program
   .option('--docker', 'Include Docker container sandbox execution instructions in master prompt')
   .option('--inventory', 'Display feature implementation & prompt execution audit trail history')
   .option('--history', 'Alias for --inventory')
+  .option('--no-audit', 'Disable feature execution audit trail tracking for this run')
   .action(async (options) => {
     await handleImplementCommand(options);
   });
@@ -271,6 +272,7 @@ program
   .description('View feature implementation & prompt execution audit trail inventory')
   .option('-f, --feature <file>', 'Filter audit trail by feature spec or name')
   .option('--json', 'Output audit records as JSON for CI/CD pipelines')
+  .option('--clear', 'Clear/purge audit trail history')
   .action(async (options) => {
     await handleAuditCommand(options);
   });

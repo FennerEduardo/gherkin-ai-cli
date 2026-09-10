@@ -13,7 +13,11 @@ import { resolveSpecDir } from '../utils/spec-dir-resolver';
 import { getStackDockerDetails } from '../generators/infra';
 import { getAuthorDetails, calculateHash, InventoryManager } from '../core/inventory';
 
-export async function handleImplementCommand(options: { feature?: string; yes?: boolean; docker?: boolean; inventory?: boolean }): Promise<void> {
+export async function handleImplementCommand(options: { feature?: string; yes?: boolean; docker?: boolean; inventory?: boolean; audit?: boolean }): Promise<void> {
+  if (options.audit === false || process.argv.includes('--no-audit')) {
+    process.env.GHK_AUDIT_ENABLED = 'false';
+  }
+
   logger.banner();
 
   if (options.inventory) {
@@ -145,7 +149,7 @@ ${refFiles.map(f => `- ${f}`).join('\n')}
 
   const promptVersionHash = `prt_${calculateHash(promptBody)}`;
 
-  // Record inventory execution
+  // Record inventory execution if audit is enabled
   const inventoryManager = new InventoryManager();
   const record = inventoryManager.recordExecution({
     featureName,
@@ -165,14 +169,17 @@ ${refFiles.map(f => `- ${f}`).join('\n')}
     status: 'PROMPT_GENERATED'
   });
 
-  const masterPromptContent = `# 🚀 AI AGENT MASTER IMPLEMENTATION PROMPT
+  let masterPromptContent = `# 🚀 AI AGENT MASTER IMPLEMENTATION PROMPT
 ## Feature: ${featureName} (Spec Hash: ${featureVersionHash})
 ## Architecture: ${config.architecture.toUpperCase()} | Stack: ${config.stack.language.toUpperCase()} (${config.stack.framework})
 ## Prompt Version / Audit Hash: ${promptVersionHash}
 ## Author / Developer: ${author.name} <${author.email}> (source: ${author.source})
-## Executed At: ${record.timestamp}
-## Audit Record ID: ${record.recordId}
-${promptBody}`;
+`;
+
+  if (record) {
+    masterPromptContent += `## Executed At: ${record.timestamp}\n## Audit Record ID: ${record.recordId}\n`;
+  }
+  masterPromptContent += promptBody;
 
   // Write Master Prompt file
   const promptFile = path.join(outDir, 'prompts', 'implement-master-prompt.md');
@@ -194,7 +201,11 @@ ${promptBody}`;
   console.log(chalk.bold('🔒 Agent Policy:    ') + chalk.white(govPath || 'N/A'));
   console.log(chalk.bold('🐳 Docker Sandbox: ') + chalk.cyan(`Supported (${dockerDetails.image})`));
   console.log(chalk.bold('📄 Master Prompt:   ') + chalk.white(promptFile) + chalk.gray(` (Hash: ${promptVersionHash})`));
-  console.log(chalk.bold('🆔 Audit Record:   ') + chalk.green(record.recordId));
+  if (record) {
+    console.log(chalk.bold('🆔 Audit Record:   ') + chalk.green(record.recordId));
+  } else {
+    console.log(chalk.bold('🆔 Audit Record:   ') + chalk.gray('Disabled (no-audit)'));
+  }
 
   console.log(chalk.bold.cyan('\n------------------------------------------------------------'));
   console.log(chalk.bold.yellow('💬 COPY-PASTE THIS PROMPT DIRECTLY TO YOUR AI AGENT:'));
@@ -210,7 +221,7 @@ Implement the feature "${featureName}" defined in ${relativeFeature}:
 3. Implement Domain Entities, Infrastructure Repositories (${config.stack.orm}/${config.stack.database}), and MVC Controllers (${config.stack.language}).
 4. Implement ${config.stack.testing.toUpperCase()} test suite matching all feature scenarios.
 5. DOCKER SANDBOX: If host OS lacks ${config.stack.language.toUpperCase()} SDK, run tests in container: \`docker compose run --rm app ${dockerDetails.testCmd}\`.
-6. AUDIT REGISTRY RECORD: ${record.recordId} (Spec Hash: ${featureVersionHash}, Author: ${author.name} <${author.email}>).
+${record ? `6. AUDIT REGISTRY RECORD: ${record.recordId} (Spec Hash: ${featureVersionHash}, Author: ${author.name} <${author.email}>).` : ''}
 `;
 
   console.log(chalk.green(quickPrompt));

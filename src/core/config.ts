@@ -33,6 +33,11 @@ export interface GherkinAIConfig {
     strictLayerBoundaries?: boolean;
     coverageTarget?: number;
   };
+  audit?: {
+    enabled?: boolean;
+    maxEntries?: number;
+    persistInGit?: boolean;
+  };
   designPatterns?: string[];
   codingRules?: string[];
   outputDir: string;
@@ -60,6 +65,11 @@ export const defaultConfig: GherkinAIConfig = {
     strictLayerBoundaries: true,
     coverageTarget: 85
   },
+  audit: {
+    enabled: true,
+    maxEntries: 50,
+    persistInGit: false
+  },
   designPatterns: [],
   codingRules: [],
   outputDir: './generated-specs',
@@ -77,7 +87,12 @@ export function loadConfig(configPath?: string): GherkinAIConfig {
   try {
     const raw = readFileSync(targetPath);
     const parsed = JSON.parse(raw);
-    return { ...defaultConfig, ...parsed, stack: { ...defaultConfig.stack, ...(parsed.stack || {}) } };
+    return {
+      ...defaultConfig,
+      ...parsed,
+      stack: { ...defaultConfig.stack, ...(parsed.stack || {}) },
+      audit: { ...defaultConfig.audit, ...(parsed.audit || {}) }
+    };
   } catch (err) {
     throw new Error(`Failed to parse config file at ${targetPath}: ${(err as Error).message}`);
   }

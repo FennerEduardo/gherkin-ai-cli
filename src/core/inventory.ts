@@ -7,6 +7,8 @@ import path from 'path';
 import crypto from 'crypto';
 import { execSync } from 'child_process';
 import chalk from 'chalk';
+import { loadConfig, GherkinAIConfig } from './config';
+import { logger } from '../utils/logger';
 
 export interface AuthorDetails {
   name: string;
@@ -72,10 +74,17 @@ export function calculateHash(content: string): string {
 export class InventoryManager {
   private gheInventoryPath: string;
   private specsInventoryPath: string;
+  private config: GherkinAIConfig;
 
-  constructor(workspaceDir: string = process.cwd()) {
+  constructor(workspaceDir: string = process.cwd(), customConfig?: GherkinAIConfig) {
     this.gheInventoryPath = path.join(workspaceDir, '.ghe', 'inventory.json');
     this.specsInventoryPath = path.join(workspaceDir, 'generated-specs', 'inventory.json');
+    this.config = customConfig || loadConfig(path.join(workspaceDir, 'gherkin-ai.config.json'));
+  }
+
+  public isAuditEnabled(): boolean {
+    if (process.env.GHK_AUDIT_ENABLED === 'false') return false;
+    return this.config.audit?.enabled !== false;
   }
 
   public getInventory(filterFeaturePath?: string): InventoryRecord[] {
@@ -104,7 +113,12 @@ export class InventoryManager {
     return records;
   }
 
-  public recordExecution(entry: Omit<InventoryRecord, 'recordId' | 'timestamp'>): InventoryRecord {
+  public recordExecution(entry: Omit<InventoryRecord, 'recordId' | 'timestamp'>): InventoryRecord | null {
+    if (!this.isAuditEnabled()) {
+      logger.info('ℹ Feature audit tracking is disabled in configuration.');
+      return null;
+    }
+
     const timestamp = new Date().toISOString();
     const recordId = `rec_${Date.now()}_${calculateHash(entry.featurePath + timestamp)}`;
     
@@ -114,36 +128,55 @@ export class InventoryManager {
       ...entry
     };
 
+    const maxEntries = this.config.audit?.maxEntries || 50;
     const existing = this.getInventory();
-    const updated = [record, ...existing];
+    
+    // Retention rotation: cap entries at maxEntries to prevent file bloating
+    const updated = [record, ...existing].slice(0, maxEntries);
 
     this.saveInventory(updated);
     return record;
   }
 
+  public clearInventory(): void {
+    if (fs.existsSync(this.gheInventoryPath)) {
+      try { fs.unlinkSync(this.gheInventoryPath); } catch {}
+    }
+    if (fs.existsSync(this.specsInventoryPath)) {
+      try { fs.unlinkSync(this.specsInventoryPath); } catch {}
+    }
+  }
+
   private saveInventory(records: InventoryRecord[]): void {
     const content = JSON.stringify(records, null, 2);
 
-    // Save to .ghe/inventory.json
+    // Save internally in .ghe/inventory.json (keeps root clean)
     const gheDir = path.dirname(this.gheInventoryPath);
     if (!fs.existsSync(gheDir)) {
       try { fs.mkdirSync(gheDir, { recursive: true }); } catch {}
     }
     try { fs.writeFileSync(this.gheInventoryPath, content, 'utf8'); } catch {}
 
-    // Save to generated-specs/inventory.json (tracked in git)
-    const specsDir = path.dirname(this.specsInventoryPath);
-    if (fs.existsSync(specsDir)) {
-      try { fs.writeFileSync(this.specsInventoryPath, content, 'utf8'); } catch {}
+    // Only mirror to generated-specs/inventory.json if explicitly configured
+    if (this.config.audit?.persistInGit === true) {
+      const specsDir = path.dirname(this.specsInventoryPath);
+      if (fs.existsSync(specsDir)) {
+        try { fs.writeFileSync(this.specsInventoryPath, content, 'utf8'); } catch {}
+      }
     }
   }
 
   public formatCLIReport(records: InventoryRecord[]): string {
+    if (!this.isAuditEnabled()) {
+      return chalk.yellow('\nℹ Audit tracking is disabled in gherkin-ai.config.json ("audit": { "enabled": false }).\n');
+    }
+
     if (records.length === 0) {
       return chalk.yellow('\nℹ No feature implementation audit records found in inventory.\n');
     }
 
-    let output = chalk.bold.cyan('\n📋 FEATURE IMPLEMENTATION & PROMPT EXECUTION INVENTORY AUDIT\n');
+    const maxEntries = this.config.audit?.maxEntries || 50;
+    let output = chalk.bold.cyan(`\n📋 FEATURE IMPLEMENTATION & PROMPT EXECUTION INVENTORY AUDIT (Max Retention: ${maxEntries})\n`);
     output += chalk.gray('========================================================================================\n');
 
     records.forEach((r, idx) => {
