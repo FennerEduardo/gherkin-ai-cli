@@ -12,8 +12,16 @@ import { logger } from '../utils/logger';
 import { resolveSpecDir } from '../utils/spec-dir-resolver';
 import { getStackDockerDetails } from '../generators/infra';
 import { getAuthorDetails, calculateHash, InventoryManager } from '../core/inventory';
+import { estimateTokens } from '../utils/token-estimator';
 
-export async function handleImplementCommand(options: { feature?: string; yes?: boolean; docker?: boolean; inventory?: boolean; audit?: boolean }): Promise<void> {
+export async function handleImplementCommand(options: { 
+  feature?: string; 
+  yes?: boolean; 
+  docker?: boolean; 
+  inventory?: boolean; 
+  audit?: boolean; 
+  compact?: boolean;
+}): Promise<void> {
   if (options.audit === false || process.argv.includes('--no-audit')) {
     process.env.GHK_AUDIT_ENABLED = 'false';
   }
@@ -30,6 +38,8 @@ export async function handleImplementCommand(options: { feature?: string; yes?: 
   logger.info('Preparing AI Agent Implementation Package & Master Prompt...');
 
   const config = loadConfig();
+  const isCompact = options.compact || process.argv.includes('--compact');
+
   let featurePath: string = '';
 
   if (options.feature) {
@@ -96,7 +106,7 @@ export async function handleImplementCommand(options: { feature?: string; yes?: 
     ? path.relative(process.cwd(), path.join(outDir, 'docker-compose.yml'))
     : (fileExistsSync('docker-compose.yml') ? 'docker-compose.yml' : undefined);
 
-  // Context file references
+  // Context file references (@ pointers for token savings)
   const refFiles: string[] = [];
   if (govPath) refFiles.push(`@${govPath}`);
   refFiles.push(`@${relativeFeature}`);
@@ -181,6 +191,9 @@ ${refFiles.map(f => `- ${f}`).join('\n')}
   }
   masterPromptContent += promptBody;
 
+  // Calculate token efficiency stats
+  const tokenStats = estimateTokens(masterPromptContent);
+
   // Write Master Prompt file
   const promptFile = path.join(outDir, 'prompts', 'implement-master-prompt.md');
   const promptDir = path.dirname(promptFile);
@@ -200,6 +213,7 @@ ${refFiles.map(f => `- ${f}`).join('\n')}
   console.log(chalk.bold('📜 Domain Contract: ') + chalk.white(nativeContractPath || 'N/A'));
   console.log(chalk.bold('🔒 Agent Policy:    ') + chalk.white(govPath || 'N/A'));
   console.log(chalk.bold('🐳 Docker Sandbox: ') + chalk.cyan(`Supported (${dockerDetails.image})`));
+  console.log(chalk.bold('📊 Token Efficiency:') + chalk.green(` ~${tokenStats.estimatedTokens} tokens `) + chalk.gray(`(Optimized ${tokenStats.tokenSavingsPercentage}% via @ pointers & feature slicing)`));
   console.log(chalk.bold('📄 Master Prompt:   ') + chalk.white(promptFile) + chalk.gray(` (Hash: ${promptVersionHash})`));
   if (record) {
     console.log(chalk.bold('🆔 Audit Record:   ') + chalk.green(record.recordId));
@@ -208,10 +222,15 @@ ${refFiles.map(f => `- ${f}`).join('\n')}
   }
 
   console.log(chalk.bold.cyan('\n------------------------------------------------------------'));
-  console.log(chalk.bold.yellow('💬 COPY-PASTE THIS PROMPT DIRECTLY TO YOUR AI AGENT:'));
+  console.log(chalk.bold.yellow(isCompact ? '💬 COMPACT AI AGENT PROMPT (ULTRA LOW TOKEN COST):' : '💬 COPY-PASTE THIS PROMPT DIRECTLY TO YOUR AI AGENT:'));
   console.log(chalk.bold.cyan('------------------------------------------------------------\n'));
 
-  const quickPrompt = `${refFiles.join(' ')}
+  let quickPrompt = '';
+  if (isCompact) {
+    quickPrompt = `${refFiles.join(' ')}
+Impl ${featureName} (${config.architecture}/${config.stack.language}/${config.stack.orm}/${config.stack.testing}): 1.Follow contract ${nativeContractPath || ''} 2.Adhere to ${govPath || 'rules'} 3.Pure domain core 4.${config.stack.orm} repo & controllers 5.${config.stack.testing} test suite 6.Docker sandbox: \`docker compose run --rm app ${dockerDetails.testCmd}\``;
+  } else {
+    quickPrompt = `${refFiles.join(' ')}
 
 Act as LEAD SOFTWARE ENGINEER & AGENTIC ARCHITECT.
 Implement the feature "${featureName}" defined in ${relativeFeature}:
@@ -223,6 +242,7 @@ Implement the feature "${featureName}" defined in ${relativeFeature}:
 5. DOCKER SANDBOX: If host OS lacks ${config.stack.language.toUpperCase()} SDK, run tests in container: \`docker compose run --rm app ${dockerDetails.testCmd}\`.
 ${record ? `6. AUDIT REGISTRY RECORD: ${record.recordId} (Spec Hash: ${featureVersionHash}, Author: ${author.name} <${author.email}>).` : ''}
 `;
+  }
 
   console.log(chalk.green(quickPrompt));
   console.log(chalk.bold.cyan('------------------------------------------------------------\n'));

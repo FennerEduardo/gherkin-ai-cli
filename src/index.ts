@@ -260,6 +260,7 @@ program
   .option('--inventory', 'Display feature implementation & prompt execution audit trail history')
   .option('--history', 'Alias for --inventory')
   .option('--no-audit', 'Disable feature execution audit trail tracking for this run')
+  .option('-C, --compact', 'Generate ultra-compact prompt with minimal token footprint for low-cost models')
   .action(async (options) => {
     await handleImplementCommand(options);
   });
