@@ -10,8 +10,9 @@ import { parseGherkinText } from '../core/gherkin-parser';
 import { fileExistsSync, readFileSync, writeFileSync } from '../utils/file-system';
 import { logger } from '../utils/logger';
 import { resolveSpecDir } from '../utils/spec-dir-resolver';
+import { getStackDockerDetails } from '../generators/infra';
 
-export async function handleImplementCommand(options: { feature?: string; yes?: boolean }): Promise<void> {
+export async function handleImplementCommand(options: { feature?: string; yes?: boolean; docker?: boolean }): Promise<void> {
   logger.banner();
   logger.info('Preparing AI Agent Implementation Package & Master Prompt...');
 
@@ -42,8 +43,8 @@ export async function handleImplementCommand(options: { feature?: string; yes?: 
   const featureName = parsed.featureName || path.basename(featurePath, '.feature');
   const basePascal = featureName.replace(/[^a-zA-Z0-9]/g, '');
 
-  const lang = config.stack.language.toLowerCase();
   const outDir = config.outputDir || './generated-specs';
+  const dockerDetails = getStackDockerDetails(config);
 
   // Locate associated contracts and governance files
   const relativeFeature = path.relative(process.cwd(), featurePath);
@@ -74,6 +75,10 @@ export async function handleImplementCommand(options: { feature?: string; yes?: 
     ? path.relative(process.cwd(), path.join(outDir, 'openapi.json'))
     : undefined;
 
+  const dockerComposePath = fileExistsSync(path.join(outDir, 'docker-compose.yml'))
+    ? path.relative(process.cwd(), path.join(outDir, 'docker-compose.yml'))
+    : (fileExistsSync('docker-compose.yml') ? 'docker-compose.yml' : undefined);
+
   // Build Master Orchestration Prompt
   const refFiles: string[] = [];
   if (govPath) refFiles.push(`@${govPath}`);
@@ -81,6 +86,7 @@ export async function handleImplementCommand(options: { feature?: string; yes?: 
   if (nativeContractPath) refFiles.push(`@${nativeContractPath}`);
   if (adrPath) refFiles.push(`@${adrPath}`);
   if (openApiPath) refFiles.push(`@${openApiPath}`);
+  if (dockerComposePath) refFiles.push(`@${dockerComposePath}`);
 
   const masterPromptContent = `# 🚀 AI AGENT MASTER IMPLEMENTATION PROMPT
 ## Feature: ${featureName}
@@ -94,6 +100,18 @@ ${refFiles.map(f => `- ${f}`).join('\n')}
 - **Persistence**: ${config.stack.orm} + ${config.stack.database}
 - **Validation**: ${config.stack.validation}
 - **Testing Framework**: ${config.stack.testing}
+
+### 🐳 Docker Execution Sandbox & Host Isolation Guardrails:
+> **IMPORTANT**: If your host operating system lacks the native runtime SDK (${config.stack.language.toUpperCase()}), DO NOT install heavy packages directly on the host machine.
+> Execute all compilation, migrations, and test runs inside the isolated Docker container:
+> 
+> \`\`\`bash
+> # Start database and infrastructure services
+> docker compose up -d
+> 
+> # Execute test suite inside Docker sandbox container:
+> docker compose run --rm app ${dockerDetails.testCmd}
+> \`\`\`
 
 ### 🎯 Mandatory Step-by-Step Implementation Flow:
 
@@ -110,7 +128,8 @@ ${refFiles.map(f => `- ${f}`).join('\n')}
 #### Phase 3: Automated Unit & Feature Testing
 1. Implement automated test cases in ${config.stack.testing.toUpperCase()} matching all scenarios in \`${relativeFeature}\`.
 2. Assert HTTP response status codes, payload structures, and event emissions.
-3. Ensure 100% scenario pass rate.
+3. If host environment lacks SDK, run verification inside Docker sandbox (\`docker compose run --rm app ${dockerDetails.testCmd}\`).
+4. Ensure 100% scenario pass rate.
 `;
 
   // Write Master Prompt file
@@ -130,6 +149,7 @@ ${refFiles.map(f => `- ${f}`).join('\n')}
   console.log(chalk.bold('📂 Feature File:   ') + chalk.white(relativeFeature));
   console.log(chalk.bold('📜 Domain Contract: ') + chalk.white(nativeContractPath || 'N/A'));
   console.log(chalk.bold('🔒 Agent Policy:    ') + chalk.white(govPath || 'N/A'));
+  console.log(chalk.bold('🐳 Docker Sandbox: ') + chalk.cyan(`Supported (${dockerDetails.image})`));
   console.log(chalk.bold('📄 Master Prompt:   ') + chalk.white(promptFile));
 
   console.log(chalk.bold.cyan('\n------------------------------------------------------------'));
@@ -145,6 +165,7 @@ Implement the feature "${featureName}" defined in ${relativeFeature}:
 2. Adhere strictly to the architecture (${config.architecture}) and guardrails in ${govPath || '.ghkgovernance.yaml'}.
 3. Implement Domain Entities, Infrastructure Repositories (${config.stack.orm}/${config.stack.database}), and MVC Controllers (${config.stack.language}).
 4. Implement ${config.stack.testing.toUpperCase()} test suite matching all feature scenarios.
+5. DOCKER SANDBOX: If host OS lacks ${config.stack.language.toUpperCase()} SDK, run tests in container: \`docker compose run --rm app ${dockerDetails.testCmd}\`.
 `;
 
   console.log(chalk.green(quickPrompt));

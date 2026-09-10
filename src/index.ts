@@ -255,6 +255,7 @@ program
   .alias('impl')
   .description('Generate AI Agent Master Implementation Prompt & context package for a feature')
   .option('-f, --feature <file>', 'Path to Gherkin .feature file')
+  .option('--docker', 'Include Docker container sandbox execution instructions in master prompt')
   .action(async (options) => {
     await handleImplementCommand(options);
   });

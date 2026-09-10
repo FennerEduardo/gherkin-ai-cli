@@ -4,27 +4,124 @@
 
 import { GherkinAIConfig } from '../core/config';
 
+export interface StackDockerDetails {
+  image: string;
+  defaultCmd: string;
+  testCmd: string;
+}
+
+export function getStackDockerDetails(config: GherkinAIConfig): StackDockerDetails {
+  const lang = (config.stack.language || 'typescript').toLowerCase();
+  const testing = (config.stack.testing || '').toLowerCase();
+
+  switch (lang) {
+    case 'csharp':
+    case 'c#':
+    case '.net':
+    case 'dotnet':
+      return {
+        image: 'mcr.microsoft.com/dotnet/sdk:8.0',
+        defaultCmd: 'dotnet run',
+        testCmd: 'dotnet test'
+      };
+    case 'java':
+      return {
+        image: 'eclipse-temurin:21-jdk-alpine',
+        defaultCmd: './gradlew bootRun',
+        testCmd: './gradlew test'
+      };
+    case 'php':
+      return {
+        image: 'php:8.3-cli-alpine',
+        defaultCmd: 'php -S 0.0.0.0:8000',
+        testCmd: testing.includes('pest') ? 'vendor/bin/pest' : 'vendor/bin/phpunit'
+      };
+    case 'python':
+      return {
+        image: 'python:3.11-slim',
+        defaultCmd: 'python main.py',
+        testCmd: 'pytest'
+      };
+    case 'go':
+    case 'golang':
+      return {
+        image: 'golang:1.22-alpine',
+        defaultCmd: 'go run main.go',
+        testCmd: 'go test ./...'
+      };
+    case 'ruby':
+      return {
+        image: 'ruby:3.3-alpine',
+        defaultCmd: 'bundle exec rails s -b 0.0.0.0',
+        testCmd: 'bundle exec rspec'
+      };
+    case 'typescript':
+    case 'javascript':
+    default:
+      return {
+        image: 'node:20-alpine',
+        defaultCmd: 'npm start',
+        testCmd: testing.includes('vitest') ? 'npx vitest run' : 'npm test'
+      };
+  }
+}
+
 export function generateInfra(config: GherkinAIConfig): { dockerComposeYaml: string; serverlessYml: string; envExample: string } {
   const db = config.stack.database || 'postgresql';
   const messaging = config.stack.messaging || 'rabbitmq';
-  const isServerless = config.architecture === 'serverless';
+  const dockerDetails = getStackDockerDetails(config);
+
+  let dbImage = 'postgres:16-alpine';
+  let dbEnv = `
+      POSTGRES_DB: ${config.projectName}_db
+      POSTGRES_USER: dev_user
+      POSTGRES_PASSWORD: dev_password`;
+  let dbPort = '5432:5432';
+
+  if (db.includes('mysql') || db.includes('mariadb')) {
+    dbImage = 'mysql:8.0';
+    dbEnv = `
+      MYSQL_DATABASE: ${config.projectName}_db
+      MYSQL_ROOT_PASSWORD: root_password
+      MYSQL_USER: dev_user
+      MYSQL_PASSWORD: dev_password`;
+    dbPort = '3306:3306';
+  } else if (db.includes('mongo')) {
+    dbImage = 'mongo:7.0';
+    dbEnv = `
+      MONGO_INITDB_ROOT_USERNAME: dev_user
+      MONGO_INITDB_ROOT_PASSWORD: dev_password`;
+    dbPort = '27017:27017';
+  }
 
   const dockerComposeYaml = `version: '3.8'
 
 services:
-  # Database Service
+  # Host Environment SDK Isolation Sandbox
+  app:
+    image: ${dockerDetails.image}
+    container_name: ${config.projectName}-app
+    volumes:
+      - .:/app
+    working_dir: /app
+    environment:
+      - ENVIRONMENT=development
+      - DATABASE_URL=${db}://dev_user:dev_password@${db}:5432/${config.projectName}_db
+    ports:
+      - "8000:8000"
+    depends_on:
+      - ${db}
+
+  # Database Service (${db})
   ${db}:
-    image: postgres:16-alpine
+    image: ${dbImage}
     container_name: ${config.projectName}-db
     restart: always
-    environment:
-      POSTGRES_DB: ${config.projectName}_db
-      POSTGRES_USER: dev_user
-      POSTGRES_PASSWORD: dev_password
+    environment:${dbEnv}
     ports:
-      - "5432:5432"
+      - "${dbPort}"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - db_data:/var/lib/data
 
   # Message Broker
   ${messaging}:
@@ -43,7 +140,7 @@ services:
       - "6379:6379"
 
 volumes:
-  postgres_data:
+  db_data:
 `;
 
   const serverlessYml = `service: ${config.projectName}-faas
@@ -79,7 +176,7 @@ NODE_ENV=development
 PORT=3000
 
 # Database Connection
-DATABASE_URL=postgresql://dev_user:dev_password@localhost:5432/${config.projectName}_db?schema=public
+DATABASE_URL=${db}://dev_user:dev_password@localhost:5432/${config.projectName}_db?schema=public
 
 # Security & Authentication
 JWT_SECRET=super_secret_jwt_key_change_in_production
