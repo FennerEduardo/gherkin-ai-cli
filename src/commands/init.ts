@@ -5,6 +5,7 @@ import inquirer from 'inquirer';
 import { defaultConfig, saveConfig, GherkinAIConfig } from '../core/config';
 import { generateConstitution } from '../core/constitution';
 import { logger } from '../utils/logger';
+import { promptOrFallback } from '../utils/i18n-cli';
 
 const FRAMEWORKS_BY_LANG: Record<string, { name: string; value: string }[]> = {
   php: [
@@ -66,13 +67,89 @@ const ORMS_BY_LANG: Record<string, { name: string; value: string }[]> = {
   csharp: [
     { name: 'Entity Framework Core', value: 'entity-framework-core' },
     { name: 'Dapper', value: 'dapper' }
+  ]
+};
+
+const VALIDATIONS_BY_LANG: Record<string, { name: string; value: string }[]> = {
+  php: [
+    { name: 'Native PHP Filters (filter_var / filter_input)', value: 'native-php-filter' },
+    { name: 'Valitron (Simple PHP Validation)', value: 'valitron' },
+    { name: 'Respect\\Validation (Fluent PHP Validation)', value: 'respect-validation' },
+    { name: 'Symfony Validator', value: 'symfony-validator' },
+    { name: 'Custom Rules', value: 'custom' }
+  ],
+  typescript: [
+    { name: 'Zod (TypeScript-first schema validation)', value: 'zod' },
+    { name: 'Joi (Schema Description & Validator)', value: 'joi' },
+    { name: 'Yup', value: 'yup' },
+    { name: 'class-validator (Decorator-based validation)', value: 'class-validator' },
+    { name: 'Custom', value: 'custom' }
+  ],
+  javascript: [
+    { name: 'Zod (Schema validation)', value: 'zod' },
+    { name: 'Joi (Schema Description & Validator)', value: 'joi' },
+    { name: 'Yup', value: 'yup' },
+    { name: 'Custom', value: 'custom' }
+  ],
+  python: [
+    { name: 'Pydantic (Data validation using Python type hints)', value: 'pydantic' },
+    { name: 'Marshmallow', value: 'marshmallow' },
+    { name: 'Cerberus', value: 'cerberus' },
+    { name: 'Custom', value: 'custom' }
+  ],
+  java: [
+    { name: 'Jakarta Validation / Hibernate Validator', value: 'jakarta-validation' },
+    { name: 'Custom', value: 'custom' }
+  ],
+  csharp: [
+    { name: 'FluentValidation (.NET Validation Library)', value: 'fluent-validation' },
+    { name: 'System.ComponentModel.DataAnnotations', value: 'data-annotations' },
+    { name: 'Custom', value: 'custom' }
   ],
   go: [
-    { name: 'GORM', value: 'gorm' },
-    { name: 'sqlx', value: 'sqlx' }
+    { name: 'go-playground/validator', value: 'go-validator' },
+    { name: 'ozzo-validation', value: 'ozzo-validation' },
+    { name: 'Custom', value: 'custom' }
   ],
   ruby: [
-    { name: 'ActiveRecord', value: 'active-record' }
+    { name: 'ActiveModel::Validations', value: 'active-model' },
+    { name: 'Dry-Validation', value: 'dry-validation' },
+    { name: 'Custom', value: 'custom' }
+  ]
+};
+
+const TESTING_BY_LANG: Record<string, { name: string; value: string }[]> = {
+  php: [
+    { name: 'PHPUnit (Standard PHP Unit Testing)', value: 'phpunit' },
+    { name: 'Pest PHP (Elegant Testing Framework for PHP)', value: 'pest' }
+  ],
+  python: [
+    { name: 'PyTest (Modern Async & Fixture Testing)', value: 'pytest' },
+    { name: 'unittest (Standard Python Testing Library)', value: 'unittest' }
+  ],
+  java: [
+    { name: 'JUnit 5 (Modern Java Unit Testing)', value: 'junit' },
+    { name: 'TestNG', value: 'testng' }
+  ],
+  csharp: [
+    { name: 'xUnit.net (Modern .NET Unit Testing)', value: 'xunit' },
+    { name: 'NUnit', value: 'nunit' }
+  ],
+  go: [
+    { name: 'testing (Go Native Unit Testing)', value: 'testing' },
+    { name: 'Ginkgo (BDD Testing Framework for Go)', value: 'ginkgo' }
+  ],
+  ruby: [
+    { name: 'RSpec (BDD Testing for Ruby)', value: 'rspec' },
+    { name: 'Minitest', value: 'minitest' }
+  ],
+  typescript: [
+    { name: 'Vitest (Fast ESM Native Testing Framework)', value: 'vitest' },
+    { name: 'Jest', value: 'jest' }
+  ],
+  javascript: [
+    { name: 'Vitest (Fast ESM Native Testing Framework)', value: 'vitest' },
+    { name: 'Jest', value: 'jest' }
   ]
 };
 
@@ -115,12 +192,20 @@ export function generateGovernanceConfig(config: GherkinAIConfig, workspaceDir: 
   // Frontend Independent Stack Guardrails (if configured)
   if (config.frontendStack && config.frontendStack.framework !== 'none') {
     const feLang = config.frontendStack.language || 'javascript';
-    allowedPaths.push('frontend/**', 'src/components/**', 'src/views/**', 'public/**');
+    allowedPaths.push('frontend/**', 'src/components/**', 'src/views/**', 'public/**', 'cypress/**', 'e2e/**');
     prohibitedImports[feLang] = [
       ...(prohibitedImports[feLang] || []),
       'express', 'pg', 'mysql2', 'prisma', 'child_process', 'fs'
     ];
-    requireHumanApprovalOn.push('package.json', 'vite.config.ts', 'webpack.config.js');
+    requireHumanApprovalOn.push(
+      'package.json',
+      'vite.config.ts',
+      'webpack.config.js',
+      'cypress.config.js',
+      'cypress.config.ts',
+      'vitest.config.ts',
+      'playwright.config.ts'
+    );
   }
 
   const governanceYaml = YAML.stringify({
@@ -158,6 +243,11 @@ export async function handleInitCommand(options?: {
   validation?: string;
   messaging?: string;
   testing?: string;
+  frontendFramework?: string;
+  frontendLanguage?: string;
+  frontendBundler?: string;
+  frontendUnitTesting?: string;
+  frontendE2eTesting?: string;
   outputDir?: string;
 }): Promise<void> {
   logger.banner();
@@ -173,8 +263,6 @@ export async function handleInitCommand(options?: {
   if (isNonInteractive) {
     logger.info('Running in non-interactive mode. Using default configuration.');
   }
-
-  const { promptOrFallback } = require('../utils/i18n-cli');
 
   // Step 1: Core Project Identity & Architecture
   const step1 = await promptOrFallback([
@@ -219,13 +307,27 @@ export async function handleInitCommand(options?: {
 
   const backendLang = step1.language || options?.language || 'php';
 
-  // Step 2: Contextual Framework & ORM Choices based on Backend Language
+  // Step 2: Contextual Framework, ORM, Validation & Testing Choices based strictly on Backend Language
   const availableFrameworks = FRAMEWORKS_BY_LANG[backendLang] || [
     { name: `${backendLang} Default Framework`, value: `${backendLang}-default` }
   ];
   const availableOrms = ORMS_BY_LANG[backendLang] || [
     { name: `${backendLang} Default Persistence`, value: `${backendLang}-orm` }
   ];
+  const availableValidations = VALIDATIONS_BY_LANG[backendLang] || [
+    { name: `${backendLang} Default Validation`, value: `${backendLang}-val` }
+  ];
+  const availableTesting = TESTING_BY_LANG[backendLang] || [
+    { name: `${backendLang} Default Testing`, value: `${backendLang}-test` }
+  ];
+
+  const defaultValidation = availableValidations.some(v => v.value === options?.validation)
+    ? options?.validation
+    : availableValidations[0].value;
+
+  const defaultTesting = availableTesting.some(t => t.value === options?.testing)
+    ? options?.testing
+    : availableTesting[0].value;
 
   const step2 = await promptOrFallback([
     {
@@ -233,14 +335,14 @@ export async function handleInitCommand(options?: {
       name: 'framework',
       message: `Select primary Backend framework for ${backendLang.toUpperCase()}:`,
       choices: availableFrameworks,
-      default: options?.framework || availableFrameworks[0].value
+      default: availableFrameworks.some(f => f.value === options?.framework) ? options?.framework : availableFrameworks[0].value
     },
     {
       type: 'list',
       name: 'orm',
       message: `Select Backend database ORM / persistence for ${backendLang.toUpperCase()}:`,
       choices: availableOrms,
-      default: options?.orm || availableOrms[0].value
+      default: availableOrms.some(o => o.value === options?.orm) ? options?.orm : availableOrms[0].value
     },
     {
       type: 'list',
@@ -252,9 +354,9 @@ export async function handleInitCommand(options?: {
     {
       type: 'list',
       name: 'validation',
-      message: 'Select Backend validation library:',
-      choices: ['native-php-filter', 'valitron', 'zod', 'pydantic', 'jakarta-validation', 'custom'],
-      default: options?.validation || (backendLang === 'php' ? 'native-php-filter' : 'zod')
+      message: `Select Backend validation library for ${backendLang.toUpperCase()}:`,
+      choices: availableValidations,
+      default: defaultValidation
     },
     {
       type: 'list',
@@ -266,22 +368,21 @@ export async function handleInitCommand(options?: {
     {
       type: 'list',
       name: 'testing',
-      message: 'Select Backend testing framework:',
-      choices: ['vitest', 'phpunit', 'pytest', 'jest', 'junit', 'xunit'],
-      default: options?.testing || (backendLang === 'php' ? 'phpunit' : 'vitest')
+      message: `Select Backend testing framework for ${backendLang.toUpperCase()}:`,
+      choices: availableTesting,
+      default: defaultTesting
     }
   ], options);
 
   // Step 3: Independent Frontend Stack Configuration (for Monolith / Dual-Stack)
-  const isMonolith = step1.architecture === 'monolith';
-  let frontendAnswers: any = { framework: 'none', language: 'javascript' };
+  let frontendAnswers: any = { framework: 'none', language: 'javascript', bundler: 'vite', unitTesting: 'vitest', e2eTesting: 'cypress' };
 
   if (!isNonInteractive) {
     const askFrontend = await promptOrFallback([
       {
         type: 'confirm',
         name: 'hasFrontend',
-        message: 'Do you want to configure an independent Frontend Stack (Modular Vanilla / SPA)?',
+        message: 'Do you want to configure an independent Frontend / UI Stack?',
         default: true
       }
     ], options);
@@ -293,13 +394,13 @@ export async function handleInitCommand(options?: {
           name: 'framework',
           message: 'Select Frontend Framework / Library:',
           choices: [
-            { name: 'Vanilla Modular JavaScript (Native ES Modules)', value: 'vanilla-js' },
+            { name: 'Vanilla Modular JavaScript (Native ES Modules / Vite)', value: 'vanilla-js' },
             { name: 'React (SPA / Modern UI)', value: 'react' },
             { name: 'Vue.js (Composition API)', value: 'vue' },
             { name: 'Angular (TypeScript Framework)', value: 'angular' },
             { name: 'Svelte', value: 'svelte' }
           ],
-          default: 'vanilla-js'
+          default: options?.frontendFramework || 'vanilla-js'
         },
         {
           type: 'list',
@@ -309,24 +410,47 @@ export async function handleInitCommand(options?: {
             { name: 'TypeScript (Strict Type Safety)', value: 'typescript' },
             { name: 'JavaScript (Native ES Modules)', value: 'javascript' }
           ],
-          default: 'typescript'
+          default: options?.frontendLanguage || 'javascript'
         },
         {
           type: 'list',
           name: 'bundler',
           message: 'Select Frontend Bundler:',
           choices: ['vite', 'webpack', 'esbuild', 'none'],
-          default: 'vite'
+          default: options?.frontendBundler || 'vite'
         },
         {
           type: 'list',
-          name: 'testing',
-          message: 'Select Frontend Testing Framework:',
-          choices: ['vitest', 'cypress', 'playwright', 'jest'],
-          default: 'vitest'
+          name: 'unitTesting',
+          message: 'Select Frontend Unit / Component Testing Framework:',
+          choices: [
+            { name: 'Vitest (Fast ESM Native Unit Testing)', value: 'vitest' },
+            { name: 'Jest', value: 'jest' },
+            { name: 'None', value: 'none' }
+          ],
+          default: options?.frontendUnitTesting || 'vitest'
+        },
+        {
+          type: 'list',
+          name: 'e2eTesting',
+          message: 'Select Frontend E2E / Integration Testing Framework (Complementary):',
+          choices: [
+            { name: 'Cypress (E2E Test Runner)', value: 'cypress' },
+            { name: 'Playwright (Cross-Browser E2E Automation)', value: 'playwright' },
+            { name: 'None', value: 'none' }
+          ],
+          default: options?.frontendE2eTesting || 'cypress'
         }
       ], options);
     }
+  } else if (options?.frontendFramework) {
+    frontendAnswers = {
+      framework: options.frontendFramework,
+      language: options.frontendLanguage || 'javascript',
+      bundler: options.frontendBundler || 'vite',
+      unitTesting: options.frontendUnitTesting || 'vitest',
+      e2eTesting: options.frontendE2eTesting || 'cypress'
+    };
   }
 
   // Step 4: Governance & Output Directory Options
@@ -362,7 +486,8 @@ export async function handleInitCommand(options?: {
       framework: frontendAnswers.framework,
       language: frontendAnswers.language,
       bundler: frontendAnswers.bundler,
-      testing: frontendAnswers.testing
+      unitTesting: frontendAnswers.unitTesting,
+      e2eTesting: frontendAnswers.e2eTesting
     } : undefined,
     rules: defaultConfig.rules,
     outputDir: options?.outputDir || step4.outputDir

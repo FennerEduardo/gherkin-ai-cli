@@ -24,7 +24,8 @@ export interface GherkinAIConfig {
     framework: string;
     language: string;
     bundler?: string;
-    testing?: string;
+    unitTesting?: string;
+    e2eTesting?: string;
   };
   rules: {
     bcryptCostFactor?: number;
