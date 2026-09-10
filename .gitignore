@@ -52,3 +52,7 @@ test-results/
 
 # gherkin-ai CLI
 .ghe/
+
+# gherkin-ai CLI Logs, Telemetry & Secrets
+.gherkin-ai/
+telemetry.jsonl

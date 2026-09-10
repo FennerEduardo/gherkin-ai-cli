@@ -9,7 +9,10 @@ import { logger } from './logger';
 
 const GHK_DEFAULT_IGNORES = [
   '.ghe/',
+  '.gherkin-ai/',
   '*.log',
+  '*.jsonl',
+  'telemetry.jsonl',
   '.env',
   '.env.local'
 ];
@@ -18,9 +21,12 @@ export function ensureGitignore(workspaceDir: string = process.cwd()): string {
   const gitignorePath = path.join(workspaceDir, '.gitignore');
   
   if (!fileExistsSync(gitignorePath)) {
-    const content = `# gherkin-ai CLI Logs & Environment Secrets
+    const content = `# gherkin-ai CLI Logs, Telemetry & Secrets
 .ghe/
+.gherkin-ai/
 *.log
+*.jsonl
+telemetry.jsonl
 .env
 .env.local
 .env.*.local
@@ -56,7 +62,7 @@ Thumbs.db
   const missing = GHK_DEFAULT_IGNORES.filter(entry => !lines.includes(entry));
 
   if (missing.length > 0) {
-    let appendContent = '\n# gherkin-ai CLI Logs & Secrets\n';
+    let appendContent = '\n# gherkin-ai CLI Logs, Telemetry & Secrets\n';
     missing.forEach(m => {
       appendContent += `${m}\n`;
     });
