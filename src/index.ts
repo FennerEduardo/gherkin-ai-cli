@@ -22,6 +22,7 @@ import { handleWebCommand } from './commands/web';
 import { handleEvaluateCommand } from './commands/evaluate';
 import { handleLintCommand } from './commands/lint';
 import { handleConvergeCommand } from './commands/converge';
+import { handleImplementCommand } from './commands/implement';
 
 // Dynamic version from package.json
 const pkg = require('../package.json');
@@ -247,6 +248,15 @@ program
   .option('--strict', 'Fail if overall convergence is below 80%')
   .action(async (options) => {
     await handleConvergeCommand(options);
+  });
+
+program
+  .command('implement')
+  .alias('impl')
+  .description('Generate AI Agent Master Implementation Prompt & context package for a feature')
+  .option('-f, --feature <file>', 'Path to Gherkin .feature file')
+  .action(async (options) => {
+    await handleImplementCommand(options);
   });
 
 program
