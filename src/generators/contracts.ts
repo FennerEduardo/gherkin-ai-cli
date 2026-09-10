@@ -117,6 +117,13 @@ export interface IEventPublisher {
 }
 ${cqrsSection}`;
 
+  const feDecisions = (config.frontendStack && config.frontendStack.framework !== 'none') ? `
+- **Frontend Framework**: ${config.frontendStack.framework}
+- **Frontend Language**: ${config.frontendStack.language}
+- **Frontend Bundler**: ${config.frontendStack.bundler || 'none'}
+- **Frontend Unit Testing**: ${config.frontendStack.unitTesting || 'none'}
+- **Frontend E2E Testing**: ${config.frontendStack.e2eTesting || 'none'}` : '';
+
   const adrMd = `# ADR 001: Architecture Decisions for ${parsed.featureName}
 
 ## Status
@@ -127,12 +134,12 @@ Project requiring structured implementation matching Gherkin specification.
 
 ## Decisions
 - **Architecture Style**: ${arch.name} (${arch.id})
-- **Primary Language**: ${config.stack.language}
-- **Framework**: ${config.stack.framework} (${spec.frameworkVersion})
+- **Primary Backend Language**: ${config.stack.language}
+- **Backend Framework**: ${config.stack.framework} (${spec.frameworkVersion})
 - **ORM / Persistence**: ${config.stack.orm} (${spec.ormPackage})
 - **Validation**: ${config.stack.validation} (${spec.validationPackage})
 - **Authentication**: ${config.stack.auth} (bcrypt cost factor ${spec.bcryptCostFactor}, JWT TTL ${spec.jwtTtlSeconds}s)
-- **Testing Framework**: ${config.stack.testing} (${spec.testPackages.join(', ')})
+- **Backend Testing Framework**: ${config.stack.testing} (${spec.testPackages.join(', ')})${feDecisions}
 
 ## Prohibited Layer Dependencies
 Domain core must NOT import:
