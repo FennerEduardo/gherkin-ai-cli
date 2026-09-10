@@ -62,6 +62,11 @@ program
   .option('-v, --validation <lib>', 'Validation library')
   .option('-m, --messaging <broker>', 'Event broker / messaging')
   .option('-t, --testing <testing>', 'Testing framework')
+  .option('--frontendFramework <framework>', 'Frontend Framework / Library')
+  .option('--frontendLanguage <lang>', 'Frontend Language')
+  .option('--frontendBundler <bundler>', 'Frontend Bundler')
+  .option('--frontendUnitTesting <testing>', 'Frontend Unit Testing Framework')
+  .option('--frontendE2eTesting <testing>', 'Frontend E2E Testing Framework')
   .option('--outputDir <dir>', 'Output directory for generated contracts')
   .action(async (options) => {
     await handleInitCommand(options);
