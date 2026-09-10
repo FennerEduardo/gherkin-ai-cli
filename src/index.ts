@@ -57,6 +57,8 @@ program
   .option('-f, --framework <framework>', 'Primary framework')
   .option('-o, --orm <orm>', 'Database ORM / persistence')
   .option('-d, --database <db>', 'Database engine')
+  .option('-v, --validation <lib>', 'Validation library')
+  .option('-m, --messaging <broker>', 'Event broker / messaging')
   .option('-t, --testing <testing>', 'Testing framework')
   .option('--outputDir <dir>', 'Output directory for generated contracts')
   .action(async (options) => {

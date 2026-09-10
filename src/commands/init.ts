@@ -1,11 +1,56 @@
-/* ==========================================================================
-   gherkin-ai-cli - 'init' Command Handler (Interactive CLI Wizard)
-   ========================================================================== */
-
+import fs from 'fs';
+import path from 'path';
+import YAML from 'yaml';
 import inquirer from 'inquirer';
 import { defaultConfig, saveConfig, GherkinAIConfig } from '../core/config';
 import { generateConstitution } from '../core/constitution';
 import { logger } from '../utils/logger';
+
+export function generateGovernanceConfig(config: GherkinAIConfig, workspaceDir: string = process.cwd()): string {
+  const isPhp = config.stack.language === 'php';
+  const isNativePhp = config.stack.framework === 'native-php';
+  const isTs = config.stack.language === 'typescript';
+
+  const prohibitedImports: Record<string, string[]> = {};
+  if (isNativePhp || isPhp) {
+    prohibitedImports['php'] = ['laravel/framework', 'symfony/symfony', 'illuminate/*'];
+  }
+  if (isTs) {
+    prohibitedImports['typescript'] = ['@nestjs/core', 'express'];
+  }
+
+  const governanceYaml = YAML.stringify({
+    version: '1.0',
+    projectName: config.projectName,
+    allowedPaths: [
+      'public/**',
+      'src/**',
+      'app/**',
+      'specs/**',
+      'tests/**',
+      'generated-specs/**'
+    ],
+    protectedPaths: [
+      '.env*',
+      'docker-compose.yml',
+      '**/secrets.*',
+      'node_modules/**',
+      'vendor/**'
+    ],
+    maxFilesPerTask: 10,
+    prohibitedImports,
+    requireHumanApprovalOn: [
+      'schema.sql',
+      'schema.prisma',
+      'migrations/**',
+      'docker-compose.yml'
+    ]
+  });
+
+  const targetPath = path.join(workspaceDir, '.ghkgovernance.yaml');
+  fs.writeFileSync(targetPath, governanceYaml, 'utf8');
+  return targetPath;
+}
 
 export async function handleInitCommand(options?: {
   enterprise?: boolean;
@@ -17,6 +62,8 @@ export async function handleInitCommand(options?: {
   framework?: string;
   orm?: string;
   database?: string;
+  validation?: string;
+  messaging?: string;
   testing?: string;
   outputDir?: string;
 }): Promise<void> {
@@ -54,7 +101,8 @@ export async function handleInitCommand(options?: {
         { name: 'Clean Architecture', value: 'clean' },
         { name: 'CQRS + Event Sourcing', value: 'cqrs' },
         { name: 'Microservices Architecture', value: 'microservices' },
-        { name: 'Monolith Architecture', value: 'monolith' }
+        { name: 'Monolith Architecture (MVC / Monolithic)', value: 'monolith' },
+        { name: 'API REST Architecture (Stateless Service)', value: 'api-rest' }
       ],
       default: options?.architecture || 'hexagonal'
     },
@@ -87,6 +135,33 @@ export async function handleInitCommand(options?: {
       default: options?.database || 'postgresql'
     },
     {
+      type: 'list',
+      name: 'validation',
+      message: 'Select validation library:',
+      choices: ['zod', 'native-php-filter', 'valitron', 'pydantic', 'jakarta-validation', 'custom'],
+      default: options?.validation || (options?.language === 'php' ? 'native-php-filter' : 'zod')
+    },
+    {
+      type: 'list',
+      name: 'messaging',
+      message: 'Select event broker / messaging:',
+      choices: ['none', 'native-events', 'rabbitmq', 'kafka', 'sqs', 'redis-pubsub'],
+      default: options?.messaging || (options?.architecture === 'monolith' ? 'none' : 'rabbitmq')
+    },
+    {
+      type: 'list',
+      name: 'testing',
+      message: 'Select testing framework:',
+      choices: ['vitest', 'jest', 'phpunit', 'pytest', 'junit', 'xunit'],
+      default: options?.testing || 'vitest'
+    },
+    {
+      type: 'confirm',
+      name: 'enableGovernance',
+      message: 'Initialize Enterprise Agent Guardrails (.ghkgovernance.yaml)?',
+      default: true
+    },
+    {
       type: 'input',
       name: 'outputDir',
       message: 'Specify directory for generated contracts and prompts:',
@@ -102,9 +177,9 @@ export async function handleInitCommand(options?: {
       framework: options?.framework || answers.framework,
       orm: options?.orm || answers.orm,
       database: options?.database || answers.database,
-      validation: 'zod',
+      validation: options?.validation || answers.validation || 'zod',
       auth: 'jwt-bcrypt',
-      messaging: 'rabbitmq',
+      messaging: options?.messaging || answers.messaging || 'none',
       testing: options?.testing || answers.testing || 'vitest'
     },
     rules: defaultConfig.rules,
@@ -113,5 +188,11 @@ export async function handleInitCommand(options?: {
 
   saveConfig(newConfig);
   logger.success('Successfully created gherkin-ai.config.json');
-  logger.info('Next step: Run "npx gherkin-ai generate --feature ./your-feature.feature"');
+
+  if (answers.enableGovernance || options?.enterprise || isNonInteractive) {
+    const govPath = generateGovernanceConfig(newConfig);
+    logger.success(`Successfully created Agent Governance Policy: ${govPath}`);
+  }
+
+  logger.info('Next step: Run "ghk generate --feature ./your-feature.feature"');
 }
