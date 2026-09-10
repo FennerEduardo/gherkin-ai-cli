@@ -24,6 +24,7 @@ import { handleLintCommand } from './commands/lint';
 import { handleConvergeCommand } from './commands/converge';
 import { handleImplementCommand } from './commands/implement';
 import { handleAuditCommand } from './commands/audit';
+import { handleAgentLogCommand } from './commands/agent-log';
 
 // Dynamic version from package.json
 const pkg = require('../package.json');
@@ -281,6 +282,18 @@ program
   .option('--clear', 'Clear/purge audit trail history')
   .action(async (options) => {
     await handleAuditCommand(options);
+  });
+
+program
+  .command('agent-log')
+  .description('Record or view actions executed by AI Agents during feature implementation')
+  .option('-a, --action <string>', 'Describe the concrete action taken by the AI Agent')
+  .option('-f, --feature <string>', 'Link action to a specific feature name or hash')
+  .option('-l, --list', 'List all agent actions as a walkthrough')
+  .option('--json', 'Output agent logs as JSON')
+  .option('--clear', 'Clear agent action logs')
+  .action(async (options) => {
+    await handleAgentLogCommand(options);
   });
 
 program
