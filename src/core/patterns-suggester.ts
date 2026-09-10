@@ -30,6 +30,9 @@ export function suggestPatterns(stack: any, architecture: string) {
   } else if (framework.includes('nestjs')) {
     designPatterns.push('Module Pattern', 'Dependency Injection', 'Decorators');
     codingRules.push('Keep controllers thin, delegate logic to services', 'Use DTOs with validation pipes');
+  } else if (framework.includes('commander-cli') || framework.includes('cli')) {
+    designPatterns.push('Command Pattern', 'Plugin Architecture', 'Strategy Pattern');
+    codingRules.push('Keep CLI command handlers thin and delegate to core domain', 'Ensure graceful error handling with descriptive exit codes');
   } else if (framework.includes('laravel')) {
     designPatterns.push('MVC Pattern', 'Active Record (Eloquent)', 'Facade Pattern');
     codingRules.push('Use Form Requests for validation', 'Fat models, skinny controllers');
