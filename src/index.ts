@@ -51,6 +51,14 @@ program
   .alias('i')
   .description('Initialize interactive gherkin-ai project configuration (gherkin-ai.config.json)')
   .option('--enterprise', 'Initialize with enterprise constitution guardrails')
+  .option('-p, --projectName <name>', 'Project name')
+  .option('-a, --architecture <arch>', 'Primary software architecture')
+  .option('-l, --language <lang>', 'Programming language / runtime')
+  .option('-f, --framework <framework>', 'Primary framework')
+  .option('-o, --orm <orm>', 'Database ORM / persistence')
+  .option('-d, --database <db>', 'Database engine')
+  .option('-t, --testing <testing>', 'Testing framework')
+  .option('--outputDir <dir>', 'Output directory for generated contracts')
   .action(async (options) => {
     await handleInitCommand(options);
   });

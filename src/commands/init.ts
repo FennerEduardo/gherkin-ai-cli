@@ -7,7 +7,19 @@ import { defaultConfig, saveConfig, GherkinAIConfig } from '../core/config';
 import { generateConstitution } from '../core/constitution';
 import { logger } from '../utils/logger';
 
-export async function handleInitCommand(options?: { enterprise?: boolean; yes?: boolean; nonInteractive?: boolean }): Promise<void> {
+export async function handleInitCommand(options?: {
+  enterprise?: boolean;
+  yes?: boolean;
+  nonInteractive?: boolean;
+  projectName?: string;
+  architecture?: string;
+  language?: string;
+  framework?: string;
+  orm?: string;
+  database?: string;
+  testing?: string;
+  outputDir?: string;
+}): Promise<void> {
   logger.banner();
   logger.info('Initializing new gherkin-ai project configuration...');
   
@@ -30,7 +42,7 @@ export async function handleInitCommand(options?: { enterprise?: boolean; yes?: 
       type: 'input',
       name: 'projectName',
       message: 'What is your project name?',
-      default: defaultConfig.projectName
+      default: options?.projectName || defaultConfig.projectName
     },
     {
       type: 'list',
@@ -41,61 +53,62 @@ export async function handleInitCommand(options?: { enterprise?: boolean; yes?: 
         { name: 'Domain-Driven Design (DDD)', value: 'ddd' },
         { name: 'Clean Architecture', value: 'clean' },
         { name: 'CQRS + Event Sourcing', value: 'cqrs' },
-        { name: 'Microservices Architecture', value: 'microservices' }
+        { name: 'Microservices Architecture', value: 'microservices' },
+        { name: 'Monolith Architecture', value: 'monolith' }
       ],
-      default: 'hexagonal'
+      default: options?.architecture || 'hexagonal'
     },
     {
       type: 'list',
       name: 'language',
       message: 'Select programming language / runtime:',
-      choices: ['typescript', 'javascript', 'python', 'java', 'csharp', 'go'],
-      default: 'typescript'
+      choices: ['typescript', 'javascript', 'python', 'java', 'csharp', 'go', 'php', 'ruby', 'rust', 'swift', 'dart'],
+      default: options?.language || 'typescript'
     },
     {
       type: 'list',
       name: 'framework',
       message: 'Select primary framework:',
-      choices: ['nestjs', 'express', 'fastify', 'spring-boot', 'fastapi', 'aspnet'],
-      default: 'nestjs'
+      choices: ['nestjs', 'express', 'fastify', 'spring-boot', 'fastapi', 'aspnet', 'native-php', 'laravel', 'rails', 'gin', 'django'],
+      default: options?.framework || 'nestjs'
     },
     {
       type: 'list',
       name: 'orm',
       message: 'Select database ORM / persistence:',
-      choices: ['prisma', 'drizzle', 'typeorm', 'sqlalchemy'],
-      default: 'prisma'
+      choices: ['prisma', 'drizzle', 'typeorm', 'sqlalchemy', 'pdo', 'eloquent', 'gorm', 'active-record'],
+      default: options?.orm || 'prisma'
     },
     {
       type: 'list',
       name: 'database',
       message: 'Select primary database engine:',
-      choices: ['postgresql', 'mysql', 'mongodb', 'redis'],
-      default: 'postgresql'
+      choices: ['postgresql', 'mysql', 'mongodb', 'redis', 'sqlite'],
+      default: options?.database || 'postgresql'
     },
     {
       type: 'input',
       name: 'outputDir',
       message: 'Specify directory for generated contracts and prompts:',
-      default: './generated-specs'
+      default: options?.outputDir || './generated-specs'
     }
   ], options);
 
   const newConfig: GherkinAIConfig = {
-    projectName: answers.projectName,
-    architecture: answers.architecture,
+    projectName: options?.projectName || answers.projectName,
+    architecture: options?.architecture || answers.architecture,
     stack: {
-      language: answers.language,
-      framework: answers.framework,
-      orm: answers.orm,
-      database: answers.database,
+      language: options?.language || answers.language,
+      framework: options?.framework || answers.framework,
+      orm: options?.orm || answers.orm,
+      database: options?.database || answers.database,
       validation: 'zod',
       auth: 'jwt-bcrypt',
       messaging: 'rabbitmq',
-      testing: 'jest'
+      testing: options?.testing || answers.testing || 'vitest'
     },
     rules: defaultConfig.rules,
-    outputDir: answers.outputDir
+    outputDir: options?.outputDir || answers.outputDir
   };
 
   saveConfig(newConfig);

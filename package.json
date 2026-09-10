@@ -67,7 +67,7 @@
     "publish:prod": "npm run build && npm publish"
   },
   "engines": {
-    "node": ">=24.0.0"
+    "node": ">=20.12.0"
   },
   "dependencies": {
     "@cucumber/gherkin": "^42.0.1",

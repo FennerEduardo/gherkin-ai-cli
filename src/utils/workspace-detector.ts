@@ -7,10 +7,17 @@ export async function resolveWorkspaceDirectory(opts?: { project?: string; nonIn
 
   // If --project is provided, skip interactive selector and switch directly
   if (opts?.project) {
-    const target = path.resolve(process.cwd(), opts.project);
-    if (!fs.existsSync(target)) {
-      throw new Error(`Project directory not found: ${target}`);
+    const cwd = process.cwd();
+    let target = path.resolve(cwd, opts.project);
+
+    // If --project name matches current directory basename, target current working directory
+    if (opts.project === '.' || opts.project === path.basename(cwd)) {
+      target = cwd;
+    } else if (!fs.existsSync(target)) {
+      // Auto-create project directory if bootstrapping a new project
+      fs.mkdirSync(target, { recursive: true });
     }
+
     process.chdir(target);
     return;
   }
