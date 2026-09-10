@@ -220,8 +220,29 @@ export function detectExistingStack(rootDir: string = process.cwd()): GherkinAIC
         detected.stack.language = 'javascript';
       }
 
+      // Testing Framework Detection (Vitest, Jest, Mocha, Playwright)
+      let detectedTesting = allDeps['jest'] ? 'jest' : 'vitest';
+      if (allDeps['vitest']) detectedTesting = 'vitest';
+      else if (allDeps['mocha']) detectedTesting = 'mocha';
+
+      // ORM Detection
+      let detectedOrm = 'none';
+      if (allDeps['prisma'] || allDeps['@prisma/client']) detectedOrm = 'prisma';
+      else if (allDeps['typeorm']) detectedOrm = 'typeorm';
+      else if (allDeps['sequelize']) detectedOrm = 'sequelize';
+      else if (allDeps['drizzle-orm']) detectedOrm = 'drizzle';
+      else if (allDeps['mongoose']) detectedOrm = 'mongoose';
+
+      // CLI Tool Detection
+      if (pkg.bin || allDeps['commander'] || allDeps['yargs']) {
+        detected.stack.framework = 'commander-cli';
+        detected.stack.orm = detectedOrm;
+        detected.stack.validation = allDeps['zod'] ? 'zod' : 'custom';
+        detected.stack.testing = detectedTesting;
+        detected.architecture = 'modular';
+      }
       // Angular / Ionic Frontend Detection
-      if (fileExistsSync(angularJsonPath) || allDeps['@angular/core']) {
+      else if (fileExistsSync(angularJsonPath) || allDeps['@angular/core']) {
         if (allDeps['@ionic/angular']) {
           detected.stack.framework = 'ionic-angular';
         } else {
@@ -240,7 +261,7 @@ export function detectExistingStack(rootDir: string = process.cwd()): GherkinAIC
         detected.stack.orm = 'async-storage';
         detected.stack.database = 'sqlite-capacitor';
         detected.stack.validation = 'zod';
-        detected.stack.testing = 'jest';
+        detected.stack.testing = detectedTesting;
         detected.architecture = 'modular';
       }
       // Electron Desktop
@@ -251,10 +272,10 @@ export function detectExistingStack(rootDir: string = process.cwd()): GherkinAIC
       // React / Next.js Frontend
       else if (allDeps['react'] || allDeps['next']) {
         detected.stack.framework = allDeps['next'] ? 'nextjs' : 'react';
-        detected.stack.orm = allDeps['prisma'] ? 'prisma' : 'tanstack-query';
+        detected.stack.orm = detectedOrm !== 'none' ? detectedOrm : 'tanstack-query';
         detected.stack.database = 'postgresql';
         detected.stack.validation = 'zod';
-        detected.stack.testing = 'vitest';
+        detected.stack.testing = detectedTesting;
       }
       // Vue / Nuxt Frontend
       else if (allDeps['vue'] || allDeps['nuxt']) {
@@ -262,31 +283,31 @@ export function detectExistingStack(rootDir: string = process.cwd()): GherkinAIC
         detected.stack.orm = 'pinia-axios';
         detected.stack.database = 'localstorage';
         detected.stack.validation = 'vee-validate';
-        detected.stack.testing = 'vitest';
+        detected.stack.testing = detectedTesting;
       }
       // Svelte / Astro / Solid Frontend
       else if (allDeps['svelte'] || allDeps['astro'] || allDeps['solid-js']) {
         detected.stack.framework = allDeps['svelte'] ? 'svelte' : (allDeps['astro'] ? 'astro' : 'solid-js');
         detected.stack.orm = 'fetch-api';
         detected.stack.validation = 'zod';
-        detected.stack.testing = 'vitest';
+        detected.stack.testing = detectedTesting;
       }
       // Node.js Backend Frameworks (NestJS, Express, Fastify)
       else if (allDeps['@nestjs/core']) {
         detected.stack.framework = 'nestjs';
-        detected.stack.orm = allDeps['prisma'] ? 'prisma' : 'typeorm';
+        detected.stack.orm = detectedOrm !== 'none' ? detectedOrm : 'typeorm';
         detected.stack.validation = 'zod';
-        detected.stack.testing = 'jest';
+        detected.stack.testing = detectedTesting;
       } else if (allDeps['fastify']) {
         detected.stack.framework = 'fastify';
-        detected.stack.orm = allDeps['prisma'] ? 'prisma' : 'drizzle';
+        detected.stack.orm = detectedOrm !== 'none' ? detectedOrm : 'drizzle';
         detected.stack.validation = 'zod';
-        detected.stack.testing = 'vitest';
+        detected.stack.testing = detectedTesting;
       } else if (allDeps['express']) {
         detected.stack.framework = 'express';
-        detected.stack.orm = allDeps['prisma'] ? 'prisma' : 'sequelize';
+        detected.stack.orm = detectedOrm;
         detected.stack.validation = 'zod';
-        detected.stack.testing = 'jest';
+        detected.stack.testing = detectedTesting;
       }
 
     } catch {
