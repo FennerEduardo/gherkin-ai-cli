@@ -56,7 +56,7 @@ export async function handleCreateCommand(options: { output?: string; target?: s
     const defaultFileName = (configData.featureName || 'headless').toLowerCase().replace(/[^a-z0-9]/g, '_') + '.feature';
     const targetSpecPath = options.output
       ? path.resolve(process.cwd(), options.output)
-      : path.resolve(process.cwd(), 'specs', defaultFileName);
+      : path.resolve(process.cwd(), 'features', defaultFileName);
 
     writeFileSync(targetSpecPath, gherkinContent);
     logger.success(`${t('specCreated', locale)} ${targetSpecPath}`);
@@ -91,7 +91,7 @@ export async function handleCreateCommand(options: { output?: string; target?: s
     const defaultFileName = 'caveman_' + Date.now() + '.feature';
     const targetSpecPath = options.output
       ? path.resolve(process.cwd(), options.output)
-      : path.resolve(process.cwd(), 'specs', defaultFileName);
+      : path.resolve(process.cwd(), 'features', defaultFileName);
 
     writeFileSync(targetSpecPath, gherkinContent);
     logger.success(`${t('specCreated', locale)} ${targetSpecPath}`);
@@ -214,7 +214,7 @@ export async function handleCreateCommand(options: { output?: string; target?: s
   const defaultFileName = answers.featureName.toLowerCase().replace(/[^a-z0-9]/g, '_') + '.feature';
   const targetSpecPath = options.output
     ? path.resolve(process.cwd(), options.output)
-    : path.resolve(process.cwd(), 'specs', defaultFileName);
+    : path.resolve(process.cwd(), 'features', defaultFileName);
 
   writeFileSync(targetSpecPath, gherkinContent);
   logger.success(`${t('specCreated', locale)} ${targetSpecPath}`);

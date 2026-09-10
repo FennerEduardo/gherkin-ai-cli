@@ -14,44 +14,108 @@ import { logger } from '../utils/logger';
 import inquirer from 'inquirer';
 import chalk from 'chalk';
 
-const DEFAULT_SAMPLE_GHERKIN = `Feature: User Authentication & Token Issuance
-  As a registered user
-  I want to authenticate using valid credentials
-  So that I obtain a JWT token to access protected APIs
+function buildDynamicFeatureTemplate(rawName: string): string {
+  const baseName = path.basename(rawName, '.feature').replace(/^[0-9]+[-_]?/, '');
+  const words = baseName.split(/[-_]/).filter(Boolean);
+  const title = words.map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ') || 'Domain Feature';
+  const pascalName = words.map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join('');
 
-  Scenario: Successful login with valid credentials
-    Given a registered user exists with email "dev@example.com" and password "Pass123!"
-    When sending an authentication request with email "dev@example.com" and password "Pass123!"
+  return `Feature: ${title}
+  As a system user or business manager
+  I want to process and manage ${title.toLowerCase()} operations
+  So that data integrity and business rules are enforced across the application
+
+  Scenario: Process ${title.toLowerCase()} successfully
+    Given a valid ${title.toLowerCase()} request with required payload
+    When processing ${title.toLowerCase()} request
     Then the system responds with HTTP status 200 OK
-    And returns a short-lived access JWT token
-    And emits a "UserAuthenticated" domain event
+    And stores record in database
+    And emits a "${pascalName}Processed" domain event
 
-  Scenario: Rejected login with wrong password
-    Given a registered user exists with email "dev@example.com"
-    When sending an authentication request with wrong password "WrongPass"
-    Then the system responds with HTTP status 401 Unauthorized
-    And returns error message "Invalid credentials"
+  Scenario: Reject ${title.toLowerCase()} with invalid parameters
+    Given an invalid ${title.toLowerCase()} request with missing fields
+    When processing ${title.toLowerCase()} request
+    Then the system responds with HTTP status 400 Bad Request
+    And returns validation error details
 `;
+}
 
 export async function handleGenerateCommand(options: { feature?: string; config?: string; yes?: boolean }): Promise<void> {
   logger.banner();
 
   const config = loadConfig(options.config);
-  let gherkinText = DEFAULT_SAMPLE_GHERKIN;
+  let gherkinText = buildDynamicFeatureTemplate('sample-feature.feature');
+  const isNonInteractive = options.yes || process.env.GHK_NON_INTERACTIVE === 'true' || !!process.env.CI;
 
   if (options.feature) {
     const featurePath = path.resolve(process.cwd(), options.feature);
     if (fileExistsSync(featurePath)) {
       gherkinText = readFileSync(featurePath);
-      logger.info(`Loaded feature specification from: ${featurePath}`);
+      logger.info(`Loaded existing feature specification from: ${featurePath}`);
     } else {
-      logger.warn(`Feature file not found at ${featurePath}. Creating default sample feature spec at that path.`);
       const specsDir = path.dirname(featurePath);
       if (!fs.existsSync(specsDir)) {
         fs.mkdirSync(specsDir, { recursive: true });
       }
-      writeFileSync(featurePath, DEFAULT_SAMPLE_GHERKIN);
-      logger.success(`Created sample feature file: ${featurePath}`);
+
+      const baseName = path.basename(options.feature, '.feature').replace(/^[0-9]+[-_]?/, '');
+      const words = baseName.split(/[-_]/).filter(Boolean);
+      const title = words.map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ') || 'Domain Feature';
+
+      if (!isNonInteractive) {
+        logger.warn(`Feature file not found at ${featurePath}.`);
+        const { createMode } = await inquirer.prompt([{
+          type: 'list',
+          name: 'createMode',
+          message: `How would you like to create specification at ${options.feature}?`,
+          choices: [
+            { name: `1. Auto-generate Context Template based on "${title}"`, value: 'template' },
+            { name: '2. Interactive Terminal Wizard (Define Actor, Action & Scenarios)', value: 'wizard' },
+            { name: '3. AI Agent Assistant Mode (Generate prompt for Claude/Cursor/Antigravity to draft spec)', value: 'ai-assistant' }
+          ],
+          default: 'template'
+        }]);
+
+        if (createMode === 'wizard') {
+          const { handleCreateCommand } = require('./create');
+          await handleCreateCommand({ output: featurePath, yes: false });
+          gherkinText = readFileSync(featurePath);
+        } else if (createMode === 'ai-assistant') {
+          gherkinText = buildDynamicFeatureTemplate(options.feature);
+          writeFileSync(featurePath, gherkinText);
+          logger.success(`Created initial feature specification at: ${featurePath}`);
+          
+          const promptPath = path.join(config.outputDir, 'prompts', 'feature-spec-assistant.md');
+          const promptDir = path.dirname(promptPath);
+          if (!fs.existsSync(promptDir)) fs.mkdirSync(promptDir, { recursive: true });
+          
+          const assistantPrompt = `# 🤖 ROLE: GHERKIN SPECIFICATION ASSISTANT AGENT
+Objective: Write detailed Gherkin feature scenarios for ${title}.
+
+🛠️ Target Tech Stack:
+- Language: ${config.stack.language} (${config.stack.framework})
+- Architecture: ${config.architecture}
+- Persistence: ${config.stack.orm} + ${config.stack.database}
+
+📌 Target File: ${featurePath}
+
+🎯 Instructions for AI Agent:
+1. Open and edit ${featurePath}.
+2. Implement complete Given/When/Then BDD scenarios matching business requirements.
+3. Specify HTTP status codes, payload validations, and domain events.
+`;
+          writeFileSync(promptPath, assistantPrompt);
+          logger.success(`Generated AI Assistant Prompt for Feature Drafting: ${promptPath}`);
+        } else {
+          gherkinText = buildDynamicFeatureTemplate(options.feature);
+          writeFileSync(featurePath, gherkinText);
+          logger.success(`Created feature specification from domain template: ${featurePath}`);
+        }
+      } else {
+        gherkinText = buildDynamicFeatureTemplate(options.feature);
+        writeFileSync(featurePath, gherkinText);
+        logger.success(`Created feature specification from domain template: ${featurePath}`);
+      }
     }
   } else {
     logger.info('No feature file specified. Using built-in sample feature spec.');
@@ -91,7 +155,6 @@ export async function handleGenerateCommand(options: { feature?: string; config?
     console.log(`- AI Tools: ${config.stack.aiEngine}`);
   }
 
-  const isNonInteractive = options.yes || process.env.GHK_NON_INTERACTIVE === 'true' || !!process.env.CI;
   let confirmContext = true;
   if (!isNonInteractive) {
     const answer = await inquirer.prompt([{

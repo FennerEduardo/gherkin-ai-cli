@@ -57,9 +57,11 @@ export function startWebServer(port: number): void {
 
       // Save feature file
       const safeName = (featureName || 'feature').toLowerCase().replace(/\s+/g, '-');
-      const specsDir = path.join(process.cwd(), 'specs');
+      const specsDir = fs.existsSync(path.join(process.cwd(), 'features'))
+        ? path.join(process.cwd(), 'features')
+        : (fs.existsSync(path.join(process.cwd(), 'specs')) ? path.join(process.cwd(), 'specs') : path.join(process.cwd(), 'features'));
       if (!fs.existsSync(specsDir)) fs.mkdirSync(specsDir, { recursive: true });
-      
+
       const featurePath = path.join(specsDir, `${safeName}.feature`);
       fs.writeFileSync(featurePath, gherkinText, 'utf8');
 
@@ -110,11 +112,13 @@ export function startWebServer(port: number): void {
   // API: List Features
   app.get('/api/features', (req, res) => {
     try {
-      const specsDir = path.join(process.cwd(), 'specs');
-      if (!fs.existsSync(specsDir)) {
+      const targetDir = fs.existsSync(path.join(process.cwd(), 'features'))
+        ? path.join(process.cwd(), 'features')
+        : (fs.existsSync(path.join(process.cwd(), 'specs')) ? path.join(process.cwd(), 'specs') : path.join(process.cwd(), 'features'));
+      if (!fs.existsSync(targetDir)) {
         return res.json({ success: true, features: [] });
       }
-      const files = fs.readdirSync(specsDir).filter(f => f.endsWith('.feature'));
+      const files = fs.readdirSync(targetDir).filter(f => f.endsWith('.feature'));
       res.json({ success: true, features: files });
     } catch (err) {
       res.status(500).json({ success: false, error: (err as Error).message });
@@ -124,7 +128,10 @@ export function startWebServer(port: number): void {
   // API: Get Feature Content
   app.get('/api/features/:name', (req, res) => {
     try {
-      const featurePath = path.join(process.cwd(), 'specs', req.params.name);
+      const targetDir = fs.existsSync(path.join(process.cwd(), 'features'))
+        ? path.join(process.cwd(), 'features')
+        : path.join(process.cwd(), 'specs');
+      const featurePath = path.join(targetDir, req.params.name);
       if (!fs.existsSync(featurePath)) {
         return res.status(404).json({ success: false, error: 'Feature not found' });
       }
