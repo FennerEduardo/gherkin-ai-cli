@@ -223,13 +223,47 @@ ${effectiveProhibited.map(p => `- \`${p}\``).join('\n')}
       version: '1.0.0',
       description: `Auto-generated AsyncAPI events for ${parsed.featureName} from Gherkin feature spec.`
     },
+    defaultContentType: 'application/json',
     channels: ir.events.reduce((acc, ev) => {
       const eventName = ev.name;
       acc[`${featurePascal.toLowerCase()}/events/${eventName.toLowerCase()}`] = {
+        bindings: {
+          rabbitmq: {
+            is: 'routingKey',
+            queue: {
+              name: `${featurePascal.toLowerCase()}.${eventName.toLowerCase()}.queue`,
+              durable: true,
+              exclusive: false,
+              autoDelete: false
+            },
+            bindingVersion: '0.2.0'
+          },
+          kafka: {
+            topic: `${featurePascal.toLowerCase()}.${eventName.toLowerCase()}`,
+            partitions: 3,
+            replicas: 2,
+            bindingVersion: '0.3.0'
+          }
+        },
         publish: {
           summary: `Publish ${eventName} event`,
           message: {
             name: eventName,
+            correlationId: {
+              description: 'Correlation ID set in the header',
+              location: '$message.header#/correlationId'
+            },
+            headers: {
+              type: 'object',
+              properties: {
+                correlationId: { type: 'string', format: 'uuid', description: 'Correlation ID for distributed tracing' },
+                causationId: { type: 'string', format: 'uuid', description: 'ID of the event/command that caused this event' },
+                schemaVersion: { type: 'string', default: '1.0' },
+                retryCount: { type: 'integer', default: 0 },
+                dlqReason: { type: 'string', description: 'Reason for moving to DLQ (if applicable)' }
+              },
+              required: ['correlationId', 'schemaVersion']
+            },
             payload: {
               type: 'object',
               properties: {
@@ -244,7 +278,8 @@ ${effectiveProhibited.map(p => `- \`${p}\``).join('\n')}
                   }, {} as Record<string, any>),
                   required: ir.fields.filter(f => f.required).map(f => f.name)
                 }
-              }
+              },
+              required: ['eventId', 'occurredOn', 'eventType', 'payload']
             }
           }
         }

@@ -48,8 +48,8 @@ export function getStackSpec(stackConfig: Record<string, any>): StackSpec {
     validationPackage = 'jakarta.validation:jakarta.validation-api:3.0.2';
     testPackages = testing === 'junit' ? ['org.junit.jupiter:junit-jupiter:5.10.2'] : ['org.testng:testng:7.9.0'];
   } else if (lang === 'csharp') {
-    frameworkVersion = '.NET 8.0';
-    ormPackage = orm === 'entity-framework-core' ? 'Microsoft.EntityFrameworkCore 8.0' : 'Dapper 2.1';
+    frameworkVersion = stackConfig.frameworkVersion || '.NET 8.0 / 9.0 / 10.0';
+    ormPackage = orm === 'entity-framework-core' ? 'Microsoft.EntityFrameworkCore 8.0/9.0/10.0' : 'Dapper 2.1';
     validationPackage = 'FluentValidation 11.9';
     testPackages = testing === 'xunit' ? ['xunit 2.7.0'] : ['NUnit 4.1'];
   } else if (lang === 'go') {

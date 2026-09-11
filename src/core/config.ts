@@ -43,6 +43,7 @@ export interface GherkinAIConfig {
   outputDir: string;
   specDir?: string;       // Directorio de features/specs (default: auto-detect)
   testCommand?: string;   // Comando de pruebas personalizado para verify/autopilot
+  domainProfile?: string; // Perfil de dominio de negocio (ej. 'payments')
 }
 
 export const defaultConfig: GherkinAIConfig = {
