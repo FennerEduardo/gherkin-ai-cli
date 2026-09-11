@@ -10,6 +10,7 @@ import { fileExistsSync, readFileSync } from '../utils/file-system';
 import { logger } from '../utils/logger';
 import { Project } from 'ts-morph';
 import { validateOpenAPIAgainstIR, validateOpenAPISpec } from '../core/openapi-validator';
+import { runAllValidators, ValidatorContext } from '../core/validators';
 
 export async function handleValidateCommand(options: { feature?: string; config?: string; openapi?: string }): Promise<void> {
   logger.banner();
@@ -77,6 +78,36 @@ export async function handleValidateCommand(options: { feature?: string; config?
     if (!prohibitedFound) {
       logger.success(`Layer Boundary Check: ${sourceFiles.length} files scanned via AST. Core cleanly isolates domain from ${arch.prohibitedImports.join(', ')}.`);
     }
+
+    // Advanced Validators (CQRS, C4, Vue, Financial Gates, etc.)
+    const contextFiles = sourceFiles.map(sf => ({
+      path: sf.getFilePath(),
+      content: sf.getFullText()
+    }));
+    
+    // We pass any true boolean keys or string keys from rules as enabled rule strings
+    const enabledRules = Object.keys(config.rules).filter(k => config.rules[k] === true || typeof config.rules[k] === 'string');
+
+    const valContext: ValidatorContext = {
+      files: contextFiles,
+      rules: enabledRules
+    };
+
+    const advResult = runAllValidators(valContext);
+    if (!advResult.valid || advResult.errors.length > 0) {
+      logger.error('Advanced Distributed Systems Validators found issues:');
+      advResult.errors.forEach(e => logger.error(`  - ${e}`));
+      errorsCount += advResult.errors.length;
+    } else {
+      logger.success('Advanced Distributed Systems Validators PASSED.');
+    }
+    
+    if (advResult.warnings.length > 0) {
+      logger.warn('Advanced Validators raised warnings:');
+      advResult.warnings.forEach(w => logger.warn(`  - ${w}`));
+      warningsCount += advResult.warnings.length;
+    }
+
   } else {
     logger.warn(`No .ts files found under ${config.outputDir}. Run "npx gherkin-ai generate" first.`);
     warningsCount++;

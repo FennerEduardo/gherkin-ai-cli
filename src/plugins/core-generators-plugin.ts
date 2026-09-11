@@ -51,6 +51,10 @@ export class CoreContractsPlugin implements GherkinAIPlugin {
       { filePath: 'openapi.json', content: result.openApiJson, type: 'openapi' }
     ];
 
+    if (result.asyncApiJson) {
+      artifacts.push({ filePath: 'asyncapi.json', content: result.asyncApiJson, type: 'contract' });
+    }
+
     if (result.nativeContract) {
       artifacts.push({ filePath: result.nativeContract.filename, content: result.nativeContract.content, type: 'contract' });
     }

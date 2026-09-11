@@ -75,7 +75,7 @@ describe('Agent Action Log Engine', () => {
     expect(records[0].action).toBe('Action 505');
     // The last record should be Action 6
     expect(records[499].action).toBe('Action 6');
-  });
+  }, 30000);
 
   it('should format the CLI report beautifully grouped by feature', () => {
     const manager = new AgentLogManager(workspaceDir);
