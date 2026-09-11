@@ -18,6 +18,8 @@ export interface StackSpec {
   messagingPackage?: string;
   testing: string;
   testPackages: string[];
+  stateManagement?: string;
+  stateManagementPackage?: string;
 }
 
 export function getStackSpec(stackConfig: Record<string, any>): StackSpec {
@@ -43,7 +45,7 @@ export function getStackSpec(stackConfig: Record<string, any>): StackSpec {
     validationPackage = validation === 'pydantic' ? 'pydantic^2.6.0' : 'marshmallow^3.20.0';
     testPackages = testing === 'pytest' ? ['pytest^8.0.0', 'pytest-asyncio'] : ['unittest (standard library)'];
   } else if (lang === 'java') {
-    frameworkVersion = 'Java 17/21 (Spring Boot 3.2)';
+    frameworkVersion = 'Java 17/21/25 (Spring Boot 3.2+)';
     ormPackage = 'org.hibernate.orm:hibernate-core:6.4.4.Final';
     validationPackage = 'jakarta.validation:jakarta.validation-api:3.0.2';
     testPackages = testing === 'junit' ? ['org.junit.jupiter:junit-jupiter:5.10.2'] : ['org.testng:testng:7.9.0'];
@@ -67,6 +69,9 @@ export function getStackSpec(stackConfig: Record<string, any>): StackSpec {
     if (testing === 'vitest') {
       testPackages = ['vitest@^1.3.0', '@vitest/coverage-v8'];
     }
+    if (framework === 'vue' || framework === 'nuxtjs') {
+      frameworkVersion = framework === 'nuxtjs' ? 'Nuxt 3+' : 'Vue 3+';
+    }
   }
 
   return {
@@ -84,6 +89,8 @@ export function getStackSpec(stackConfig: Record<string, any>): StackSpec {
     messaging: stackConfig.messaging || 'none',
     messagingPackage: stackConfig.messaging === 'rabbitmq' ? 'amqplib@^0.10.3' : 'none',
     testing,
-    testPackages
+    testPackages,
+    stateManagement: stackConfig.stateManagement,
+    stateManagementPackage: stackConfig.stateManagement === 'pinia' ? 'pinia@^2.1.7' : undefined
   };
 }

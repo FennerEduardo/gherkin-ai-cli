@@ -241,73 +241,76 @@ export function detectExistingStack(rootDir: string = process.cwd()): GherkinAIC
         detected.stack.testing = detectedTesting;
         detected.architecture = 'modular';
       }
-      // Angular / Ionic Frontend Detection
-      else if (fileExistsSync(angularJsonPath) || allDeps['@angular/core']) {
-        if (allDeps['@ionic/angular']) {
-          detected.stack.framework = 'ionic-angular';
-        } else {
-          detected.stack.framework = 'angular';
-        }
-        detected.stack.orm = 'http-client-rxjs';
-        detected.stack.database = 'localstorage-indexeddb';
-        detected.stack.validation = 'angular-reactive-forms';
-        detected.stack.testing = 'jasmine-karma';
-        detected.architecture = 'modular';
-        detected.outputDir = './src/app';
-      }
-      // React Native Detection
-      else if (allDeps['react-native']) {
-        detected.stack.framework = 'react-native';
-        detected.stack.orm = 'async-storage';
-        detected.stack.database = 'sqlite-capacitor';
-        detected.stack.validation = 'zod';
-        detected.stack.testing = detectedTesting;
-        detected.architecture = 'modular';
-      }
-      // Electron Desktop
-      else if (allDeps['electron']) {
-        detected.stack.framework = 'electron';
-        detected.architecture = 'desktop';
-      }
-      // React / Next.js Frontend
-      else if (allDeps['react'] || allDeps['next']) {
-        detected.stack.framework = allDeps['next'] ? 'nextjs' : 'react';
-        detected.stack.orm = detectedOrm !== 'none' ? detectedOrm : 'tanstack-query';
-        detected.stack.database = 'postgresql';
-        detected.stack.validation = 'zod';
-        detected.stack.testing = detectedTesting;
-      }
-      // Vue / Nuxt Frontend
-      else if (allDeps['vue'] || allDeps['nuxt']) {
-        detected.stack.framework = allDeps['nuxt'] ? 'nuxtjs' : 'vue';
-        detected.stack.orm = 'pinia-axios';
-        detected.stack.database = 'localstorage';
-        detected.stack.validation = 'vee-validate';
-        detected.stack.testing = detectedTesting;
-      }
-      // Svelte / Astro / Solid Frontend
-      else if (allDeps['svelte'] || allDeps['astro'] || allDeps['solid-js']) {
-        detected.stack.framework = allDeps['svelte'] ? 'svelte' : (allDeps['astro'] ? 'astro' : 'solid-js');
-        detected.stack.orm = 'fetch-api';
-        detected.stack.validation = 'zod';
-        detected.stack.testing = detectedTesting;
-      }
+
+      let backendDetected = false;
+
       // Node.js Backend Frameworks (NestJS, Express, Fastify)
-      else if (allDeps['@nestjs/core']) {
+      if (allDeps['@nestjs/core']) {
         detected.stack.framework = 'nestjs';
         detected.stack.orm = detectedOrm !== 'none' ? detectedOrm : 'typeorm';
         detected.stack.validation = 'zod';
         detected.stack.testing = detectedTesting;
+        backendDetected = true;
       } else if (allDeps['fastify']) {
         detected.stack.framework = 'fastify';
         detected.stack.orm = detectedOrm !== 'none' ? detectedOrm : 'drizzle';
         detected.stack.validation = 'zod';
         detected.stack.testing = detectedTesting;
+        backendDetected = true;
       } else if (allDeps['express']) {
         detected.stack.framework = 'express';
         detected.stack.orm = detectedOrm;
         detected.stack.validation = 'zod';
         detected.stack.testing = detectedTesting;
+        backendDetected = true;
+      }
+
+      const setFrontend = (fw: string, orm: string, db: string, val: string, sm?: string) => {
+        detected.frontendStack = {
+          language: detected.stack.language,
+          framework: fw,
+          orm: orm,
+          database: db,
+          validation: val,
+          testing: detectedTesting,
+          stateManagement: sm
+        };
+        // If no backend was detected, make the frontend the primary framework
+        if (!backendDetected) {
+          detected.stack.framework = fw;
+          detected.stack.orm = orm;
+          detected.stack.database = db;
+          detected.stack.validation = val;
+          detected.stack.testing = detectedTesting;
+        }
+      };
+
+      // Angular / Ionic Frontend Detection
+      if (fileExistsSync(angularJsonPath) || allDeps['@angular/core']) {
+        setFrontend(allDeps['@ionic/angular'] ? 'ionic-angular' : 'angular', 'http-client-rxjs', 'localstorage-indexeddb', 'angular-reactive-forms', 'ngrx');
+      }
+      // React Native Detection
+      else if (allDeps['react-native']) {
+        setFrontend('react-native', 'async-storage', 'sqlite-capacitor', 'zod');
+        detected.architecture = 'modular';
+      }
+      // Electron Desktop
+      else if (allDeps['electron']) {
+        setFrontend('electron', 'localstorage', 'sqlite', 'zod');
+        detected.architecture = 'desktop';
+      }
+      // React / Next.js Frontend
+      else if (allDeps['react'] || allDeps['next']) {
+        setFrontend(allDeps['next'] ? 'nextjs' : 'react', detectedOrm !== 'none' ? detectedOrm : 'tanstack-query', 'postgresql', 'zod', 'redux');
+      }
+      // Vue / Nuxt Frontend
+      else if (allDeps['vue'] || allDeps['nuxt']) {
+        const sm = allDeps['pinia'] ? 'pinia' : (allDeps['vuex'] ? 'vuex' : undefined);
+        setFrontend(allDeps['nuxt'] ? 'nuxtjs' : 'vue', sm ? `${sm}-axios` : 'axios', 'localstorage', 'vee-validate', sm);
+      }
+      // Svelte / Astro / Solid Frontend
+      else if (allDeps['svelte'] || allDeps['astro'] || allDeps['solid-js']) {
+        setFrontend(allDeps['svelte'] ? 'svelte' : (allDeps['astro'] ? 'astro' : 'solid-js'), 'fetch-api', 'localstorage', 'zod');
       }
 
     } catch {

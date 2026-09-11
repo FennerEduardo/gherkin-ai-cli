@@ -24,6 +24,11 @@ export interface GherkinAIConfig {
     framework: string;
     language: string;
     bundler?: string;
+    stateManagement?: string;
+    orm?: string;
+    database?: string;
+    validation?: string;
+    testing?: string;
     unitTesting?: string;
     e2eTesting?: string;
   };
