@@ -14,14 +14,39 @@ import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { rxMethod } from '@ngrx/signals/rxjs-interop';
 import { pipe, switchMap, tap } from 'rxjs';
 
-export interface ${pascalName}Item {
+export enum TransactionStatus {
+  PENDING = 'PENDING',
+  EXECUTING = 'EXECUTING',
+  COMPLETED = 'COMPLETED',
+  FAILED = 'FAILED',
+  COMPENSATED = 'COMPENSATED'
+}
+
+export interface OriginAllocation {
+  originId: string;
+  amount: number;
+  currency: string;
+}
+
+export interface DestinationAllocation {
+  destinationId: string;
+  amount: number;
+}
+
+export interface ${pascalName}TransactionItem {
   id: string;
-  name: string;
-  status: string;
+  referenceCode: string;
+  status: TransactionStatus;
+  amount: number;
+  origins: OriginAllocation[];
+  destinations: DestinationAllocation[];
+  currentSagaStep: string;
+  createdAt: string;
 }
 
 export interface ${pascalName}State {
-  items: ${pascalName}Item[];
+  items: ${pascalName}TransactionItem[];
+  activeTransaction: ${pascalName}TransactionItem | null;
   loading: boolean;
   error: string | null;
   tenantId: string | null;
@@ -29,6 +54,7 @@ export interface ${pascalName}State {
 
 const initialState: ${pascalName}State = {
   items: [],
+  activeTransaction: null,
   loading: false,
   error: null,
   tenantId: null
@@ -38,18 +64,20 @@ export const ${pascalName}SignalStore = signalStore(
   { providedIn: 'root' },
   withState(initialState),
   withComputed((store) => ({
-    activeCount: computed(() => store.items().length),
+    totalCount: computed(() => store.items().length),
+    completedCount: computed(() => store.items().filter(i => i.status === TransactionStatus.COMPLETED).length),
+    executingCount: computed(() => store.items().filter(i => i.status === TransactionStatus.EXECUTING).length),
     isLoading: computed(() => store.loading()),
     hasError: computed(() => store.error() !== null)
   })),
   withMethods((store, http = inject(HttpClient)) => ({
-    loadItems: rxMethod<void>(
+    loadTransactions: rxMethod<void>(
       pipe(
         tap(() => patchState(store, { loading: true, error: null })),
         switchMap(() => {
           const tenant = store.tenantId();
           const headers = tenant ? new HttpHeaders().set('X-Tenant-ID', tenant) : undefined;
-          return http.get<${pascalName}Item[]>(\`/api/v1/${camelName}\`, { headers }).pipe(
+          return http.get<${pascalName}TransactionItem[]>(\`/api/v1/${camelName}\`, { headers }).pipe(
             tap({
               next: (items) => patchState(store, { items, loading: false }),
               error: (err) => patchState(store, { error: err.message, loading: false })
@@ -69,8 +97,16 @@ export const ${pascalName}SignalStore = signalStore(
         error: (err) => patchState(store, { error: err.message, loading: false })
       });
     },
-    onRealtimeEvent(eventPayload: ${pascalName}Item) {
-      patchState(store, { items: [eventPayload, ...store.items()] });
+    onRealtimeStatusUpdate(updatedItem: ${pascalName}TransactionItem) {
+      const current = store.items();
+      const idx = current.findIndex(i => i.id === updatedItem.id);
+      if (idx >= 0) {
+        const copy = [...current];
+        copy[idx] = updatedItem;
+        patchState(store, { items: copy, activeTransaction: updatedItem });
+      } else {
+        patchState(store, { items: [updatedItem, ...current] });
+      }
     }
   }))
 );
@@ -86,12 +122,12 @@ import { HttpClient } from '@angular/common/http';
 import { of } from 'rxjs';
 import { map, mergeMap, catchError } from 'rxjs/operators';
 
-// 1. Actions
+export enum TransactionStatus { PENDING = 'PENDING', COMPLETED = 'COMPLETED', FAILED = 'FAILED' }
+
 export const load${pascalName} = createAction('[${pascalName}] Load');
 export const load${pascalName}Success = createAction('[${pascalName}] Load Success', props<{ items: any[] }>());
 export const load${pascalName}Failure = createAction('[${pascalName}] Load Failure', props<{ error: string }>());
 
-// 2. State & Reducer
 export interface ${pascalName}State {
   items: any[];
   loading: boolean;
@@ -111,7 +147,6 @@ export const ${camelName}Reducer = createReducer(
   on(load${pascalName}Failure, (state, { error }) => ({ ...state, error, loading: false }))
 );
 
-// 3. Effects
 @Injectable()
 export class ${pascalName}Effects {
   private actions$ = inject(Actions);
@@ -126,7 +161,6 @@ export class ${pascalName}Effects {
   ));
 }
 
-// 4. Selectors
 export const select${pascalName}Feature = createFeatureSelector<${pascalName}State>('${camelName}');
 export const select${pascalName}Items = createSelector(select${pascalName}Feature, s => s.items);
 export const select${pascalName}Loading = createSelector(select${pascalName}Feature, s => s.loading);

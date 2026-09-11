@@ -18,6 +18,7 @@ import { generateFlutterPreset } from './preset-flutter';
 import { generateVuePiniaStore } from './frontend/vue-pinia-generator';
 import { generateReactReduxInfrastructure } from './frontend/react-generator';
 import { generateAngularStoreInfrastructure } from './frontend/angular-ngrx-generator';
+import { generateAngularSignalRService } from './frontend/angular-signalr-service';
 
 export function generatePresets(parsed: ParsedFeature, config: GherkinAIConfig): { filename: string; content: string }[] {
   const lang = config.stack.language.toLowerCase();
@@ -39,7 +40,7 @@ export function generatePresets(parsed: ParsedFeature, config: GherkinAIConfig):
   } else if (lang === 'php') {
     results.push(...generatePhpLaravelPreset(parsed));
   } else if (lang === 'csharp') {
-    results.push(...generateCsharpDotnetPreset(parsed));
+    results.push(...generateCsharpDotnetPreset(parsed, config));
   } else if (lang === 'typescript' || lang === 'javascript') {
     if (framework === 'nestjs') {
       results.push(...generateNodeNestJsPreset(parsed));
@@ -68,6 +69,10 @@ export function generatePresets(parsed: ParsedFeature, config: GherkinAIConfig):
       results.push({
         filename: `frontend/store/${featureName.toLowerCase()}.store.ts`,
         content: generateAngularStoreInfrastructure(featureName, mode)
+      });
+      results.push({
+        filename: `frontend/services/signalr-notification.service.ts`,
+        content: generateAngularSignalRService(featureName)
       });
     }
   }
