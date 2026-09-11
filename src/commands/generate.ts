@@ -135,7 +135,7 @@ Objective: Write detailed Gherkin feature scenarios for ${title}.
   const parsed = parseGherkinText(gherkinText);
 
   logger.info('Building Semantic IR...');
-  const ir = buildIR(parsed, options.feature || 'sample.feature');
+  const ir = buildIR(parsed, options.feature || 'sample.feature', { domainProfile: config.domainProfile });
 
   logger.info(`Target Output Directory: ${config.outputDir}`);
 

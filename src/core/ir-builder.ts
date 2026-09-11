@@ -30,6 +30,7 @@ import {
   SourceLocation
 } from './semantic-ir';
 import { loadConstitution, Constitution } from './constitution';
+import { resolveDomainProfile } from './profiles/profile-registry';
 
 // ---------------------------------------------------------------------------
 // Deterministic ID Generator
@@ -140,6 +141,95 @@ export function buildIR(
   const policies = extractPolicies(parsed, constitution, sourceFile);
   const assumptions = extractAssumptions(parsed, sourceFile);
   const risks = extractRisks(parsed, sourceFile);
+
+  // Automatic Domain Profile Enrichment (Option 2)
+  const activeProfileName = options.profileName || options.domainProfile;
+  const profile = resolveDomainProfile(activeProfileName);
+  if (profile) {
+    profile.commonEvents.forEach(pe => {
+      if (!events.some(e => e.name.toLowerCase() === pe.name.toLowerCase())) {
+        events.push({
+          id: generateId('EVT'),
+          name: pe.name,
+          eventType: pe.name,
+          payload: [],
+          triggeredBy: commands.length > 0 ? [commands[0].id] : [],
+          source: { file: sourceFile, line: 0 },
+          confidence: 1.0,
+          inferenceSource: 'deterministic'
+        });
+      }
+    });
+
+    profile.commonCommands.forEach(pc => {
+      if (!commands.some(c => c.name.toLowerCase() === pc.name.toLowerCase())) {
+        commands.push({
+          id: generateId('CMD'),
+          name: pc.name,
+          verb: pc.name.replace(/Payment$/, '').toLowerCase(),
+          subject: 'payment',
+          inputFields: [],
+          preconditions: [],
+          postconditions: [],
+          triggeredBy: actors[0]?.id || 'ACT-0001',
+          emittedEvents: [],
+          source: { file: sourceFile, line: 0 },
+          confidence: 1.0,
+          inferenceSource: 'deterministic'
+        });
+      }
+    });
+
+    if (profile.stateMachines) {
+      for (const [smName, states] of Object.entries(profile.stateMachines)) {
+        if (!stateMachines.some(sm => sm.entity === smName)) {
+          stateMachines.push({
+            entity: smName,
+            states: states.map(s => s.name),
+            initialState: states[0]?.name || 'Pending',
+            finalStates: states.filter(s => s.transitions.length === 0).map(s => s.name),
+            transitions: states.flatMap(s => s.transitions.map(t => ({
+              id: generateId('TRN'),
+              entity: smName,
+              fromState: s.name,
+              toState: t,
+              trigger: `On${t}`,
+              guards: [],
+              source: { file: sourceFile, line: 0 },
+              confidence: 1.0,
+              inferenceSource: 'deterministic'
+            })))
+          });
+        }
+      }
+    }
+
+    profile.getStandardRules().forEach(rule => {
+      constraints.push({
+        id: generateId('CST'),
+        level: 'must',
+        description: `Profile Requirement: ${rule}`,
+        category: 'compliance',
+        evidence: [profile.id],
+        source: { file: sourceFile, line: 0 },
+        confidence: 1.0,
+        inferenceSource: 'deterministic'
+      });
+    });
+
+    policies.push({
+      id: generateId('POL'),
+      name: `${profile.name} Governance Policy`,
+      type: 'security',
+      rules: [
+        `Domain Profile: ${profile.name} (${profile.id})`,
+        `Mandatory Rules: ${profile.getStandardRules().join(', ')}`
+      ],
+      source: { file: sourceFile, line: 0 },
+      confidence: 1.0,
+      inferenceSource: 'deterministic'
+    });
+  }
 
   const enrichedScenarios = enrichScenarios(
     parsed.scenarios, sourceFile, actors, commands, queries

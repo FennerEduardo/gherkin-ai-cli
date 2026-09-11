@@ -88,6 +88,9 @@ export async function handleValidateCommand(options: { feature?: string; config?
     // We pass any true boolean keys or string keys from rules as enabled rule strings
     const rulesRecord = config.rules as Record<string, any>;
     const enabledRules = Object.keys(config.rules).filter(k => rulesRecord[k] === true || typeof rulesRecord[k] === 'string');
+    if (config.domainProfile) {
+      enabledRules.push(config.domainProfile.toLowerCase());
+    }
 
     const valContext: ValidatorContext = {
       files: contextFiles,

@@ -287,9 +287,11 @@ export interface SpecificationIR {
 // ---------------------------------------------------------------------------
 
 export interface IRBuildOptions {
-  mode: 'deterministic' | 'hybrid';
+  mode?: 'deterministic' | 'hybrid';
   constitutionPath?: string;
   existingCodebase?: string;    // Path to scan for brownfield enrichment
   llmEnrichment?: boolean;
   traceabilityDepth?: 'shallow' | 'deep';
+  profileName?: string;
+  domainProfile?: string;
 }

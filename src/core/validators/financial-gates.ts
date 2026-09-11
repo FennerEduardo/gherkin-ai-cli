@@ -3,7 +3,7 @@ import { ValidatorContext, ValidationResult } from './index';
 export function validateFinancialGates(context: ValidatorContext): ValidationResult {
   const result: ValidationResult = { valid: true, errors: [], warnings: [] };
   
-  if (!context.rules.includes('pci-dss-compliance')) {
+  if (!context.rules.includes('pci-dss-compliance') && !context.rules.includes('payments') && !context.rules.includes('fintech')) {
     return result; // Skip if not in financial profile
   }
 
