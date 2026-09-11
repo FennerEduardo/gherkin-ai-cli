@@ -226,6 +226,88 @@ export function startWebServer(port: number): void {
     }
   });
 
+  // API: Get Inventory
+  app.get('/api/inventory', (req, res) => {
+    try {
+      const inventoryPath = path.join(process.cwd(), '.ghe', 'inventory.json');
+      if (!fs.existsSync(inventoryPath)) {
+        return res.json({ success: true, inventory: [] });
+      }
+      const data = fs.readFileSync(inventoryPath, 'utf8');
+      res.json({ success: true, inventory: JSON.parse(data) });
+    } catch (err) {
+      res.status(500).json({ success: false, error: (err as Error).message });
+    }
+  });
+
+  // API: Get Agent Logs
+  app.get('/api/agent-logs', (req, res) => {
+    try {
+      const logsPath = path.join(process.cwd(), '.ghe', 'agent_logs.json');
+      if (!fs.existsSync(logsPath)) {
+        return res.json({ success: true, logs: [] });
+      }
+      const data = fs.readFileSync(logsPath, 'utf8');
+      res.json({ success: true, logs: JSON.parse(data) });
+    } catch (err) {
+      res.status(500).json({ success: false, error: (err as Error).message });
+    }
+  });
+
+  // API: Get Prompts
+  app.get('/api/prompts', (req, res) => {
+    try {
+      const promptsDir = path.join(process.cwd(), 'generated-specs', 'prompts');
+      if (!fs.existsSync(promptsDir)) {
+        return res.json({ success: true, prompts: [] });
+      }
+      const files = fs.readdirSync(promptsDir).filter(f => f.endsWith('.md'));
+      
+      const prompts = files.map(file => {
+        const content = fs.readFileSync(path.join(promptsDir, file), 'utf8');
+        return { filename: file, content };
+      });
+      
+      res.json({ success: true, prompts });
+    } catch (err) {
+      res.status(500).json({ success: false, error: (err as Error).message });
+    }
+  });
+
+  // API: Get Contracts
+  app.get('/api/contracts', (req, res) => {
+    try {
+      const specsDir = path.join(process.cwd(), 'generated-specs');
+      if (!fs.existsSync(specsDir)) {
+        return res.json({ success: true, contracts: [] });
+      }
+      const files = fs.readdirSync(specsDir).filter(f => !fs.statSync(path.join(specsDir, f)).isDirectory());
+      
+      const contracts = files.map(file => {
+        const content = fs.readFileSync(path.join(specsDir, file), 'utf8');
+        return { filename: file, content };
+      });
+      
+      res.json({ success: true, contracts });
+    } catch (err) {
+      res.status(500).json({ success: false, error: (err as Error).message });
+    }
+  });
+
+  // API: Get Governance
+  app.get('/api/governance', (req, res) => {
+    try {
+      const govPath = path.join(process.cwd(), '.ghkgovernance.yaml');
+      if (!fs.existsSync(govPath)) {
+        return res.status(404).json({ success: false, error: 'Governance file not found' });
+      }
+      const content = fs.readFileSync(govPath, 'utf8');
+      res.json({ success: true, content });
+    } catch (err) {
+      res.status(500).json({ success: false, error: (err as Error).message });
+    }
+  });
+
   // API: Execute CLI Command
   app.post('/api/execute', (req, res) => {
     try {
