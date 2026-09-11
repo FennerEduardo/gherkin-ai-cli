@@ -146,13 +146,20 @@ export function startWebServer(port: number): void {
     }
   });
 
-  // API: Get Feature Content
-  app.get('/api/features/*', (req, res) => {
+  // API: Get Feature Content (Dynamic Paths)
+  app.use('/api/features', (req, res, next) => {
+    // If it's the base route /api/features, skip and let the app.get('/api/features') handle it
+    if (req.path === '/' || req.path === '') {
+      return next();
+    }
+    
     try {
       const targetDir = fs.existsSync(path.join(process.cwd(), 'features'))
         ? path.join(process.cwd(), 'features')
         : path.join(process.cwd(), 'specs');
-      const featureName = req.path.replace('/api/features/', '');
+      
+      // req.path will be e.g. '/backend/customer_crud.feature'
+      const featureName = decodeURIComponent(req.path.replace(/^\//, ''));
       const featurePath = path.join(targetDir, featureName);
       if (!fs.existsSync(featurePath)) {
         return res.status(404).json({ success: false, error: 'Feature not found' });
