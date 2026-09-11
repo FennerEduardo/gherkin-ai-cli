@@ -115,3 +115,39 @@ export function detectDefaultTestCommand(projectDir: string): string {
 
   return 'npm test';
 }
+
+export function validateStackCompilation(projectDir: string, stack: 'java' | 'dotnet' | 'node'): SandboxResult {
+  let hasLocalSdk = false;
+  let command = '';
+  let dockerImage = '';
+
+  if (stack === 'java') {
+    hasLocalSdk = isToolAvailable('mvn');
+    command = 'mvn compile';
+    dockerImage = 'maven:3.9-eclipse-temurin-21-alpine';
+  } else if (stack === 'dotnet') {
+    hasLocalSdk = isToolAvailable('dotnet');
+    command = 'dotnet build --no-restore';
+    dockerImage = 'mcr.microsoft.com/dotnet/sdk:8.0-alpine';
+  } else {
+    hasLocalSdk = isToolAvailable('npx');
+    command = 'npx tsc --noEmit';
+    dockerImage = 'node:24-alpine';
+  }
+
+  if (hasLocalSdk) {
+    return executeSandbox({ cwd: projectDir, command });
+  } else {
+    return executeSandbox({ cwd: projectDir, command, docker: true, dockerImage });
+  }
+}
+
+function isToolAvailable(toolName: string): boolean {
+  try {
+    const res = spawnSync(toolName, ['--version'], { encoding: 'utf8', shell: true });
+    return res.status === 0;
+  } catch {
+    return false;
+  }
+}
+

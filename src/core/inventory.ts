@@ -36,36 +36,46 @@ export interface InventoryRecord {
   status: 'PROMPT_GENERATED' | 'IMPLEMENTED' | 'VERIFIED';
 }
 
+let cachedAuthorDetails: AuthorDetails | null = null;
+
 export function getAuthorDetails(): AuthorDetails {
+  if (cachedAuthorDetails) {
+    return cachedAuthorDetails;
+  }
+
   if (process.env.GHK_AUTHOR_NAME || process.env.GHK_AUTHOR_EMAIL) {
-    return {
+    cachedAuthorDetails = {
       name: process.env.GHK_AUTHOR_NAME || 'Unknown Developer',
       email: process.env.GHK_AUTHOR_EMAIL || 'dev@local',
       source: 'env'
     };
+    return cachedAuthorDetails;
   }
 
   try {
     const name = execSync('git config user.name', { encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'] }).trim();
     const email = execSync('git config user.email', { encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'] }).trim();
     if (name || email) {
-      return {
+      cachedAuthorDetails = {
         name: name || 'Git Developer',
         email: email || 'git@local',
         source: 'git'
       };
+      return cachedAuthorDetails;
     }
   } catch {
     // Git command unavailable or non-git directory
   }
 
   const osUser = process.env.USER || process.env.USERNAME || process.env.LOGNAME || 'Developer';
-  return {
+  cachedAuthorDetails = {
     name: osUser,
     email: `${osUser.toLowerCase().replace(/[^a-z0-9]/g, '')}@localhost`,
     source: 'fallback'
   };
+  return cachedAuthorDetails;
 }
+
 
 export function calculateHash(content: string): string {
   return crypto.createHash('sha256').update(content).digest('hex').substring(0, 8);

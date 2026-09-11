@@ -16,14 +16,16 @@ export class ${camelName}InfrastructureStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
 
-    // 1. Mensajería: SNS Topic para Domain Events
+    // 1. Mensajería: SNS Topic FIFO para Domain Events
     // ---------------------------------------------------------
     const domainEventsTopic = new sns.Topic(this, 'DomainEventsTopic', {
-      topicName: \`\${id}-domain-events\`,
+      topicName: \`\${id}-domain-events.fifo\`,
       displayName: 'Global Domain Events Exchange',
+      fifo: true,
+      contentBasedDeduplication: true,
     });
 
-    // 2. Dead Letter Queue
+    // 2. Dead Letter Queue FIFO
     // ---------------------------------------------------------
     const dlq = new sqs.Queue(this, 'MainDeadLetterQueue', {
       queueName: \`\${id}-dlq.fifo\`,
@@ -31,11 +33,12 @@ export class ${camelName}InfrastructureStack extends cdk.Stack {
       retentionPeriod: cdk.Duration.days(14),
     });
 
-    // 3. Cola SQS para Consumidor (con Retry / DLQ)
+    // 3. Cola SQS FIFO para Consumidor (con Retry / DLQ)
     // ---------------------------------------------------------
     const consumerQueue = new sqs.Queue(this, 'ServiceConsumerQueue', {
       queueName: \`\${id}-service-queue.fifo\`,
       fifo: true,
+      contentBasedDeduplication: true,
       visibilityTimeout: cdk.Duration.seconds(30),
       deadLetterQueue: {
         maxReceiveCount: 3,
@@ -43,8 +46,10 @@ export class ${camelName}InfrastructureStack extends cdk.Stack {
       },
     });
 
-    // Suscripción SNS -> SQS
-    domainEventsTopic.addSubscription(new subscriptions.SqsSubscription(consumerQueue));
+    // Suscripción SNS FIFO -> SQS FIFO con rawMessageDelivery habilitado
+    domainEventsTopic.addSubscription(new subscriptions.SqsSubscription(consumerQueue, {
+      rawMessageDelivery: true,
+    }));
 
     // 4. Base de Datos DynamoDB (Read Models / Proyecciones)
     // ---------------------------------------------------------
@@ -58,7 +63,6 @@ export class ${camelName}InfrastructureStack extends cdk.Stack {
 
     // 5. Clúster EKS Básico (Infraestructura de Cómputo)
     // ---------------------------------------------------------
-    /* Descomentar para provisionar EKS:
     const vpc = new ec2.Vpc(this, 'EksVpc', { maxAzs: 2 });
     const cluster = new eks.Cluster(this, 'ServiceCluster', {
       clusterName: \`\${id}-cluster\`,
@@ -66,8 +70,8 @@ export class ${camelName}InfrastructureStack extends cdk.Stack {
       defaultCapacity: 2,
       version: eks.KubernetesVersion.V1_29,
     });
-    */
   }
 }
 `;
 }
+
