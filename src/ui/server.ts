@@ -118,7 +118,28 @@ export function startWebServer(port: number): void {
       if (!fs.existsSync(targetDir)) {
         return res.json({ success: true, features: [] });
       }
-      const files = fs.readdirSync(targetDir).filter(f => f.endsWith('.feature'));
+      
+      const getFilesRecursively = (dir: string): string[] => {
+        let results: string[] = [];
+        const list = fs.readdirSync(dir);
+        for (const file of list) {
+          const filePath = path.join(dir, file);
+          const stat = fs.statSync(filePath);
+          if (stat && stat.isDirectory()) {
+            results = results.concat(getFilesRecursively(filePath));
+          } else {
+            results.push(filePath);
+          }
+        }
+        return results;
+      };
+
+      const allFiles = getFilesRecursively(targetDir);
+      // Return relative paths so the UI just shows 'backend/customer_crud.feature'
+      const files = allFiles
+        .filter(f => f.endsWith('.feature'))
+        .map(f => path.relative(targetDir, f).replace(/\\/g, '/'));
+
       res.json({ success: true, features: files });
     } catch (err) {
       res.status(500).json({ success: false, error: (err as Error).message });
@@ -126,16 +147,34 @@ export function startWebServer(port: number): void {
   });
 
   // API: Get Feature Content
-  app.get('/api/features/:name', (req, res) => {
+  app.get('/api/features/*', (req, res) => {
     try {
       const targetDir = fs.existsSync(path.join(process.cwd(), 'features'))
         ? path.join(process.cwd(), 'features')
         : path.join(process.cwd(), 'specs');
-      const featurePath = path.join(targetDir, req.params.name);
+      const featureName = req.path.replace('/api/features/', '');
+      const featurePath = path.join(targetDir, featureName);
       if (!fs.existsSync(featurePath)) {
         return res.status(404).json({ success: false, error: 'Feature not found' });
       }
       const content = fs.readFileSync(featurePath, 'utf8');
+      res.json({ success: true, content });
+    } catch (err) {
+      res.status(500).json({ success: false, error: (err as Error).message });
+    }
+  });
+
+  // API: Read arbitrary file (for Explorer viewer)
+  app.get('/api/file', (req, res) => {
+    try {
+      const filePath = req.query.path as string;
+      if (!filePath) return res.status(400).json({ success: false, error: 'Path is required' });
+      const fullPath = path.join(process.cwd(), filePath);
+      if (!fullPath.startsWith(process.cwd())) {
+         return res.status(403).json({ success: false, error: 'Access denied' });
+      }
+      if (!fs.existsSync(fullPath)) return res.status(404).json({ success: false, error: 'File not found' });
+      const content = fs.readFileSync(fullPath, 'utf8');
       res.json({ success: true, content });
     } catch (err) {
       res.status(500).json({ success: false, error: (err as Error).message });

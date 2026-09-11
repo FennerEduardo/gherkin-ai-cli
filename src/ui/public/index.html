@@ -1,507 +1,634 @@
 <!DOCTYPE html>
-<html lang="en" class="dark">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gherkin AI - Observability Dashboard</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+    <title>Gherkin AI Studio</title>
+    <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
-        :root {
-            --bg-color: #0f172a;
-            --glass-bg: rgba(30, 41, 59, 0.7);
-            --glass-border: rgba(255, 255, 255, 0.1);
-            --primary: #3b82f6;
-            --primary-hover: #2563eb;
-            --text-main: #f8fafc;
-            --text-muted: #94a3b8;
-            --sidebar-width: 280px;
-            --accent: #10b981;
-            --danger: #ef4444;
-        }
-
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: 'Inter', sans-serif;
-            background-color: var(--bg-color);
-            background-image: 
-                radial-gradient(at 0% 0%, rgba(59, 130, 246, 0.15) 0px, transparent 50%),
-                radial-gradient(at 100% 100%, rgba(16, 185, 129, 0.1) 0px, transparent 50%);
-            background-attachment: fixed;
-            color: var(--text-main);
-            height: 100vh;
-            display: flex;
-            overflow: hidden;
-        }
-
-        /* Sidebar */
-        .sidebar {
-            width: var(--sidebar-width);
-            background: var(--glass-bg);
-            backdrop-filter: blur(12px);
-            -webkit-backdrop-filter: blur(12px);
-            border-right: 1px solid var(--glass-border);
-            display: flex;
-            flex-direction: column;
-            padding: 1.5rem 0;
-            z-index: 10;
-        }
-
-        .logo {
-            font-size: 1.25rem;
-            font-weight: 700;
-            padding: 0 1.5rem 2rem 1.5rem;
-            display: flex;
-            align-items: center;
-            gap: 0.75rem;
-            border-bottom: 1px solid var(--glass-border);
-            margin-bottom: 1rem;
-        }
-
-        .logo span {
-            background: linear-gradient(135deg, #3b82f6, #10b981);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-        }
-
-        .nav-item {
-            padding: 0.875rem 1.5rem;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            gap: 0.75rem;
-            color: var(--text-muted);
-            font-weight: 500;
-            transition: all 0.2s ease;
-            position: relative;
-        }
-
-        .nav-item:hover {
-            color: var(--text-main);
-            background: rgba(255, 255, 255, 0.05);
-        }
-
-        .nav-item.active {
-            color: var(--text-main);
-            background: rgba(59, 130, 246, 0.1);
-            border-right: 3px solid var(--primary);
-        }
-
-        /* Main Content */
-        .main-content {
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            overflow: hidden;
-            position: relative;
-        }
-
-        .header {
-            padding: 1.5rem 2rem;
-            background: var(--glass-bg);
-            backdrop-filter: blur(12px);
-            border-bottom: 1px solid var(--glass-border);
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        .header h1 {
-            font-size: 1.5rem;
-            font-weight: 600;
-        }
-
-        .content-area {
-            flex: 1;
-            padding: 2rem;
-            overflow-y: auto;
-        }
-
-        /* Views */
-        .view {
-            display: none;
-            animation: fadeIn 0.3s ease;
-        }
-        .view.active {
-            display: block;
-        }
-
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(10px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-
-        /* Cards and Lists */
-        .grid-container {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-            gap: 1.5rem;
-        }
-
-        .glass-card {
-            background: var(--glass-bg);
-            border: 1px solid var(--glass-border);
-            border-radius: 12px;
-            padding: 1.5rem;
-            backdrop-filter: blur(8px);
-            transition: transform 0.2s ease, box-shadow 0.2s ease;
-            cursor: pointer;
-        }
-
-        .glass-card:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5);
-            border-color: rgba(59, 130, 246, 0.5);
-        }
-
-        .glass-card h3 {
-            margin-bottom: 0.5rem;
-            font-size: 1.1rem;
-            color: var(--primary);
-        }
-
-        .glass-card p {
-            color: var(--text-muted);
-            font-size: 0.9rem;
-            line-height: 1.5;
-        }
-
-        /* Code Viewer */
-        .code-viewer-container {
-            display: flex;
-            flex-direction: column;
-            height: calc(100vh - 150px);
-            background: #0d1117;
-            border: 1px solid var(--glass-border);
-            border-radius: 12px;
-            overflow: hidden;
-        }
-
-        .code-viewer-header {
-            background: #161b22;
-            padding: 1rem 1.5rem;
-            border-bottom: 1px solid var(--glass-border);
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        .code-viewer-title {
-            font-family: 'Fira Code', monospace;
-            font-size: 0.9rem;
-            color: #8b949e;
-        }
-
-        .code-content {
-            flex: 1;
-            padding: 1.5rem;
-            overflow: auto;
-            font-family: 'Fira Code', monospace;
-            font-size: 0.875rem;
-            line-height: 1.6;
-            color: #c9d1d9;
-            white-space: pre-wrap;
-        }
-
-        .btn {
-            background: var(--primary);
-            color: white;
-            border: none;
-            padding: 0.5rem 1rem;
-            border-radius: 6px;
-            font-weight: 500;
-            cursor: pointer;
-            transition: background 0.2s ease;
-        }
-
-        .btn:hover { background: var(--primary-hover); }
-
-        /* Badges */
-        .badge {
-            display: inline-block;
-            padding: 0.25rem 0.5rem;
-            border-radius: 4px;
-            font-size: 0.75rem;
-            font-weight: 600;
-            background: rgba(59, 130, 246, 0.2);
-            color: #60a5fa;
-            margin-top: 0.5rem;
-        }
-
-        .log-entry {
-            background: var(--glass-bg);
-            border-left: 4px solid var(--primary);
-            padding: 1rem 1.5rem;
-            border-radius: 0 8px 8px 0;
-            margin-bottom: 1rem;
-        }
-
-        .log-meta {
-            font-size: 0.8rem;
-            color: var(--text-muted);
-            margin-bottom: 0.25rem;
-        }
-
-        .log-action {
-            font-size: 1.05rem;
-            color: var(--text-main);
-        }
-
-        .loader {
-            display: inline-block;
-            width: 24px;
-            height: 24px;
-            border: 3px solid rgba(255,255,255,0.1);
-            border-radius: 50%;
-            border-top-color: var(--primary);
-            animation: spin 1s ease-in-out infinite;
-        }
-        @keyframes spin { to { transform: rotate(360deg); } }
-
-        #codeViewerModal {
-            display: none;
-            position: fixed;
-            inset: 0;
-            background: rgba(0, 0, 0, 0.8);
-            backdrop-filter: blur(4px);
-            z-index: 50;
-            padding: 2rem;
-        }
-        #codeViewerModal.active { display: flex; }
+        body { font-family: 'Inter', sans-serif; background-color: #0f172a; color: #e2e8f0; }
+        .glass-panel { background: rgba(30, 41, 59, 0.7); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 12px; }
+        .code-bg { background-color: #1e293b; color: #38bdf8; font-family: monospace; }
+        .gradient-text { background: linear-gradient(to right, #38bdf8, #818cf8); -webkit-background-clip: text; color: transparent; }
+        .terminal-output { white-space: pre-wrap; font-family: monospace; font-size: 0.85rem; }
     </style>
 </head>
-<body>
-
-    <aside class="sidebar">
-        <div class="logo">
-            🥒 <span>Gherkin AI</span>
+<body class="h-screen flex flex-col p-4 overflow-hidden">
+    <!-- Header -->
+    <header class="flex justify-between items-center mb-4 glass-panel p-3 px-6 shadow-lg shrink-0">
+        <div class="flex items-center gap-4">
+            <h1 class="text-2xl font-bold gradient-text flex items-center gap-3">
+                <i class="fa-solid fa-robot"></i> <span data-i18n="title">Gherkin AI Studio</span>
+            </h1>
+            <div id="stack-badge" class="hidden items-center gap-2 px-3 py-1 bg-indigo-900/50 text-indigo-200 border border-indigo-700/50 rounded-full text-sm font-medium">
+                <i class="fa-solid fa-layer-group"></i> <span id="stack-name">Detecting...</span>
+            </div>
         </div>
-        <div class="nav-item active" onclick="switchView('features')">📝 Features</div>
-        <div class="nav-item" onclick="switchView('prompts')">🤖 Agents & Prompts</div>
-        <div class="nav-item" onclick="switchView('contracts')">📜 Contracts & Config</div>
-        <div class="nav-item" onclick="switchView('logs')">🕵️ Agent Logs</div>
-        <div class="nav-item" onclick="switchView('inventory')">📦 Audit Inventory</div>
-    </aside>
+        <div class="flex items-center gap-3">
+            <button id="lang-toggle" class="bg-slate-700 hover:bg-slate-600 px-3 py-1 rounded text-sm transition-colors border border-slate-500">
+                🌐 EN/ES
+            </button>
+        </div>
+    </header>
 
-    <main class="main-content">
-        <header class="header">
-            <h1 id="viewTitle">Observability Dashboard</h1>
-            <div id="statusIndicator">🟢 Connected</div>
-        </header>
-
-        <section class="content-area">
+    <div class="flex flex-1 gap-4 overflow-hidden mb-2">
+        <!-- Sidebar -->
+        <aside class="w-72 glass-panel flex flex-col shadow-xl overflow-hidden">
+            <div class="flex border-b border-slate-700 shrink-0">
+                <button id="tab-sidebar-features" class="flex-1 py-2 text-center text-sky-400 text-sm font-semibold border-b-2 border-sky-400 bg-slate-800/50" data-i18n="features">Features</button>
+                <button id="tab-sidebar-explorer" class="flex-1 py-2 text-center text-slate-400 text-sm font-semibold hover:text-slate-300" data-i18n="explorer">Explorer</button>
+            </div>
             
-            <!-- Features View -->
-            <div id="features" class="view active">
-                <div class="grid-container" id="featuresGrid">
-                    <div class="loader"></div>
+            <!-- Features List -->
+            <div id="sidebar-features-view" class="flex-1 flex flex-col overflow-hidden">
+                <div class="p-2 border-b border-slate-700 flex justify-end">
+                    <button id="new-feature-btn" class="text-sky-400 hover:text-sky-300 text-sm" title="New Feature">
+                        <i class="fa-solid fa-plus"></i> <span data-i18n="newBtn">New</span>
+                    </button>
                 </div>
+                <ul id="features-list" class="flex-1 overflow-y-auto p-2 space-y-1"></ul>
             </div>
 
-            <!-- Prompts View -->
-            <div id="prompts" class="view">
-                <div class="grid-container" id="promptsGrid"></div>
+            <!-- Explorer List -->
+            <div id="sidebar-explorer-view" class="hidden flex-1 flex flex-col overflow-y-auto p-2">
+                <ul id="explorer-tree" class="text-sm space-y-1 text-slate-300"></ul>
             </div>
+        </aside>
 
-            <!-- Contracts View -->
-            <div id="contracts" class="view">
-                <div class="grid-container" id="contractsGrid"></div>
-            </div>
+        <!-- Main Editor -->
+        <main class="flex-1 grid grid-cols-1 lg:grid-cols-2 gap-4 overflow-hidden">
+            <!-- Editor Section -->
+            <section class="glass-panel p-4 flex flex-col shadow-xl overflow-hidden">
+                <h2 class="text-xl font-semibold mb-3 text-sky-400 border-b border-slate-700 pb-2 flex justify-between items-center">
+                    <span><i class="fa-regular fa-file-code"></i> <span data-i18n="featureSpec">Feature Specification</span></span>
+                </h2>
+                
+                <div class="mb-3 shrink-0">
+                    <label class="block text-sm font-medium text-slate-400 mb-1" data-i18n="featureNameLabel">Feature Name</label>
+                    <input type="text" id="feature-name" placeholder="e.g. User Authentication" class="w-full bg-slate-800 border border-slate-600 rounded-md p-2 text-white focus:outline-none focus:ring-2 focus:ring-sky-500">
+                </div>
+                <div class="flex-1 flex flex-col min-h-0">
+                    <label class="block text-sm font-medium text-slate-400 mb-1" data-i18n="gherkinScenariosLabel">Gherkin Scenarios</label>
+                    <textarea id="gherkin-text" class="w-full flex-1 bg-slate-900 border border-slate-700 rounded-md p-3 text-sky-100 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-sky-500 resize-none" placeholder="Feature: Example Feature..."></textarea>
+                </div>
+                <button id="generate-btn" class="mt-4 shrink-0 w-full py-2 bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 text-white font-bold rounded-lg shadow-lg shadow-sky-500/20 transition-all flex justify-center items-center gap-2">
+                    <i class="fa-solid fa-cogs"></i> <span data-i18n="generateBtn">Generate Contracts</span>
+                </button>
+            </section>
 
-            <!-- Agent Logs View -->
-            <div id="logs" class="view">
-                <div id="logsList"></div>
-            </div>
+            <!-- Results, Terminal, Agent Section -->
+            <section class="glass-panel flex flex-col shadow-xl overflow-hidden">
+                
+                <!-- Tabs -->
+                <div class="flex border-b border-slate-700 shrink-0 text-sm">
+                    <button id="tab-results" class="flex-1 py-3 text-center text-sky-400 font-semibold border-b-2 border-sky-400 bg-slate-800/50" data-i18n="tabResults">Generation</button>
+                    <button id="tab-terminal" class="flex-1 py-3 text-center text-slate-400 font-semibold hover:text-slate-300" data-i18n="tabTerminal">Terminal</button>
+                    <button id="tab-agent" class="flex-1 py-3 text-center text-slate-400 font-semibold hover:text-slate-300" data-i18n="tabAgent">Agent</button>
+                    <button id="tab-observability" class="flex-1 py-3 text-center text-slate-400 font-semibold hover:text-slate-300">Observability</button>
+                </div>
 
-            <!-- Inventory View -->
-            <div id="inventory" class="view">
-                <div class="grid-container" id="inventoryGrid"></div>
-            </div>
+                <!-- Results Content -->
+                <div id="results-view" class="flex-1 p-4 flex flex-col overflow-y-auto">
+                    <div id="loading" class="hidden flex-1 flex-col justify-center items-center text-slate-400">
+                        <i class="fa-solid fa-circle-notch fa-spin text-4xl mb-4 text-sky-500"></i>
+                        <p data-i18n="loading">Orchestrating agents...</p>
+                    </div>
 
-        </section>
-    </main>
+                    <div id="results-empty" class="flex-1 flex flex-col justify-center items-center text-slate-500 text-center p-8">
+                        <i class="fa-regular fa-folder-open text-6xl mb-4 opacity-50"></i>
+                        <p data-i18n="resultsEmpty">Waiting for Gherkin specification.<br>Click Generate to see the results here.</p>
+                    </div>
+
+                    <div id="results-content" class="hidden flex-1 flex flex-col gap-4">
+                        <div class="bg-emerald-900/30 border border-emerald-700/50 text-emerald-200 p-4 rounded-lg flex items-start gap-3">
+                            <i class="fa-solid fa-check-circle mt-1"></i>
+                            <div>
+                                <p class="font-bold" data-i18n="genSuccess">Generation Successful!</p>
+                                <p class="text-sm opacity-80" id="success-path"></p>
+                            </div>
+                        </div>
+                        <h3 class="font-semibold text-slate-300 mt-2" data-i18n="generatedFiles">Generated Files:</h3>
+                        <div id="file-list" class="flex flex-col gap-2"></div>
+                    </div>
+                </div>
+
+                <!-- Terminal Content -->
+                <div id="terminal-view" class="hidden flex-1 p-2 flex flex-col bg-black overflow-hidden rounded-b-lg">
+                    <!-- Quick Actions -->
+                    <div class="flex flex-wrap gap-2 mb-2 shrink-0 p-1 border-b border-slate-800">
+                        <span class="text-slate-500 text-xs self-center mr-2 uppercase tracking-wide">Quick Run:</span>
+                        <button class="quick-cmd-btn bg-slate-800 hover:bg-slate-700 text-sky-400 border border-slate-700 px-2 py-1 rounded text-xs transition-colors" data-cmd="verify">verify</button>
+                        <button class="quick-cmd-btn bg-slate-800 hover:bg-slate-700 text-sky-400 border border-slate-700 px-2 py-1 rounded text-xs transition-colors" data-cmd="verify --auto-fix">verify --auto-fix</button>
+                        <button class="quick-cmd-btn bg-slate-800 hover:bg-slate-700 text-sky-400 border border-slate-700 px-2 py-1 rounded text-xs transition-colors" data-cmd="diff">diff</button>
+                        <button class="quick-cmd-btn bg-slate-800 hover:bg-slate-700 text-sky-400 border border-slate-700 px-2 py-1 rounded text-xs transition-colors" data-cmd="skill">skill</button>
+                        <button class="quick-cmd-btn bg-slate-800 hover:bg-slate-700 text-sky-400 border border-slate-700 px-2 py-1 rounded text-xs transition-colors" data-cmd="evaluate src/index.ts">evaluate</button>
+                    </div>
+                    <div id="terminal-output" class="flex-1 overflow-y-auto terminal-output text-slate-300 p-2 space-y-2">
+                        <div class="text-green-500">Gherkin AI CLI Terminal (Restricted to ghk commands)</div>
+                    </div>
+                    <div class="flex gap-2 shrink-0 p-2 border-t border-slate-800 items-center">
+                        <span class="text-green-500 font-bold">❯</span>
+                        <input type="text" id="terminal-input" placeholder="ghk --help" data-i18n-placeholder="terminalPlaceholder" class="flex-1 bg-transparent border-none text-white focus:outline-none font-mono text-sm">
+                    </div>
+                </div>
+
+                <!-- Agent Chat Content -->
+                <div id="agent-view" class="hidden flex-1 p-4 flex flex-col">
+                    <div id="chat-history" class="flex-1 overflow-y-auto space-y-4 mb-4">
+                        <div class="bg-indigo-900/30 border border-indigo-700/50 p-3 rounded-lg text-sm text-indigo-100" data-i18n="agentGreeting">
+                            Hi! I'm your Gherkin AI assistant. Ask me to suggest test scenarios, review your specs, or write step definitions!
+                        </div>
+                    </div>
+                    <div class="flex gap-2 shrink-0">
+                        <input type="text" id="agent-prompt" placeholder="Ask for suggestions..." data-i18n-placeholder="askAgentPlaceholder" class="flex-1 bg-slate-800 border border-slate-600 rounded-md p-2 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm">
+                        <button id="send-agent-btn" class="bg-indigo-600 hover:bg-indigo-500 text-white px-4 rounded-md transition-colors">
+                            <i class="fa-solid fa-paper-plane"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Observability Content -->
+                <div id="observability-view" class="hidden flex-1 p-4 flex-col bg-slate-900 rounded-b-lg overflow-y-auto">
+                    <div class="flex gap-2 mb-4 shrink-0">
+                        <button id="obs-tab-inventory" class="obs-tab-btn bg-slate-800 hover:bg-slate-700 text-white px-3 py-1 rounded text-sm transition-colors border border-sky-500">Inventory</button>
+                        <button id="obs-tab-logs" class="obs-tab-btn bg-slate-800 hover:bg-slate-700 text-slate-400 px-3 py-1 rounded text-sm transition-colors border border-transparent">Agent Logs</button>
+                        <button id="obs-tab-contracts" class="obs-tab-btn bg-slate-800 hover:bg-slate-700 text-slate-400 px-3 py-1 rounded text-sm transition-colors border border-transparent">Contracts</button>
+                        <button id="obs-tab-prompts" class="obs-tab-btn bg-slate-800 hover:bg-slate-700 text-slate-400 px-3 py-1 rounded text-sm transition-colors border border-transparent">Prompts</button>
+                    </div>
+                    <div id="obs-content" class="flex-1 overflow-y-auto grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <!-- Content goes here -->
+                    </div>
+                </div>
+
+            </section>
+        </main>
+    </div>
 
     <!-- Code Viewer Modal -->
-    <div id="codeViewerModal">
-        <div class="code-viewer-container" style="width: 100%; max-width: 1200px; margin: auto;">
-            <div class="code-viewer-header">
-                <div class="code-viewer-title" id="modalTitle">filename.ts</div>
-                <button class="btn" onclick="closeModal()">Close</button>
+    <div id="codeViewerModal" class="hidden fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex justify-center items-center p-8">
+        <div class="bg-slate-900 border border-slate-700 w-full max-w-4xl h-full max-h-[80vh] flex flex-col rounded-lg shadow-2xl">
+            <div class="flex justify-between items-center p-3 border-b border-slate-700 bg-slate-800 rounded-t-lg">
+                <h3 id="modalTitle" class="text-sky-400 font-mono text-sm font-semibold">filename.ts</h3>
+                <button onclick="document.getElementById('codeViewerModal').classList.add('hidden')" class="text-slate-400 hover:text-white px-2 py-1"><i class="fa-solid fa-xmark"></i></button>
             </div>
-            <div class="code-content" id="modalContent"></div>
+            <div class="flex-1 overflow-auto p-4">
+                <pre id="modalContent" class="text-slate-300 font-mono text-xs whitespace-pre-wrap leading-relaxed"></pre>
+            </div>
         </div>
     </div>
 
+    <footer class="text-center text-slate-500 text-sm py-2 shrink-0" data-i18n="footerHtml">
+        Created by <a href="https://fennereduardo.com" target="_blank" class="text-sky-400 hover:underline">fennereduardo.com</a>
+    </footer>
+
     <script>
-        const API = {
-            async fetch(endpoint) {
-                try {
-                    const res = await fetch(endpoint);
-                    if (!res.ok) throw new Error('Network error');
-                    return await res.json();
-                } catch (e) {
-                    console.error(e);
-                    return null;
-                }
+        // --- i18n logic ---
+        const dict = {
+            en: {
+                title: 'Gherkin AI Studio',
+                features: 'Features',
+                explorer: 'Explorer',
+                newBtn: 'New',
+                featureSpec: 'Feature Specification',
+                featureNameLabel: 'Feature Name',
+                gherkinScenariosLabel: 'Gherkin Scenarios',
+                generateBtn: 'Generate Contracts',
+                tabResults: 'Generation',
+                tabTerminal: 'Terminal',
+                tabAgent: 'Agent',
+                loading: 'Orchestrating agents...',
+                resultsEmpty: 'Waiting for Gherkin specification.<br>Click Generate to see the results here.',
+                genSuccess: 'Generation Successful!',
+                generatedFiles: 'Generated Files:',
+                agentGreeting: "Hi! I'm your Gherkin AI assistant. Ask me to suggest test scenarios, review your specs, or write step definitions!",
+                askAgentPlaceholder: 'Ask for suggestions...',
+                terminalPlaceholder: 'Type a ghk command and press Enter...',
+                footerHtml: 'Created by <a href="https://fennereduardo.com" target="_blank" class="text-sky-400 hover:underline">fennereduardo.com</a>'
+            },
+            es: {
+                title: 'Gherkin AI Studio',
+                features: 'Características',
+                explorer: 'Explorador',
+                newBtn: 'Nuevo',
+                featureSpec: 'Especificación del Feature',
+                featureNameLabel: 'Nombre del Feature',
+                gherkinScenariosLabel: 'Escenarios Gherkin',
+                generateBtn: 'Generar Contratos',
+                tabResults: 'Generación',
+                tabTerminal: 'Terminal',
+                tabAgent: 'Agente',
+                loading: 'Orquestando agentes...',
+                resultsEmpty: 'Esperando especificación Gherkin.<br>Haz clic en Generar para ver los resultados aquí.',
+                genSuccess: '¡Generación Exitosa!',
+                generatedFiles: 'Archivos Generados:',
+                agentGreeting: "¡Hola! Soy tu asistente de Gherkin AI. Pídeme que sugiera escenarios de prueba, revise tus specs o escriba definiciones de pasos.",
+                askAgentPlaceholder: 'Pide sugerencias...',
+                terminalPlaceholder: 'Escribe un comando ghk y presiona Enter...',
+                footerHtml: 'Creado por <a href="https://fennereduardo.com" target="_blank" class="text-sky-400 hover:underline">fennereduardo.com</a>'
             }
         };
 
-        // Navigation
-        function switchView(viewId) {
-            document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
-            event.currentTarget.classList.add('active');
-            
-            document.querySelectorAll('.view').forEach(el => el.classList.remove('active'));
-            document.getElementById(viewId).classList.add('active');
+        let currentLang = 'en';
 
-            const titles = {
-                'features': '📝 Feature Specifications',
-                'prompts': '🤖 Agent Master Prompts',
-                'contracts': '📜 Domain Contracts & Architecture',
-                'logs': '🕵️ AI Agent Action Walkthroughs',
-                'inventory': '📦 Execution Audit Inventory'
-            };
-            document.getElementById('viewTitle').innerText = titles[viewId];
-
-            loadDataForView(viewId);
+        function updateLang() {
+            document.querySelectorAll('[data-i18n]').forEach(el => {
+                const key = el.getAttribute('data-i18n');
+                if (dict[currentLang][key]) {
+                    el.innerHTML = dict[currentLang][key];
+                }
+            });
+            document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
+                const key = el.getAttribute('data-i18n-placeholder');
+                if (dict[currentLang][key]) {
+                    el.placeholder = dict[currentLang][key];
+                }
+            });
         }
 
-        // Modals
-        function openModal(title, content) {
-            document.getElementById('modalTitle').innerText = title;
-            document.getElementById('modalContent').textContent = content; // textContent for raw code
-            document.getElementById('codeViewerModal').classList.add('active');
-        }
-        function closeModal() {
-            document.getElementById('codeViewerModal').classList.remove('active');
-        }
+        document.getElementById('lang-toggle').addEventListener('click', () => {
+            currentLang = currentLang === 'en' ? 'es' : 'en';
+            updateLang();
+        });
 
-        // Data Loaders
-        async function loadDataForView(viewId) {
-            if (viewId === 'features') await loadFeatures();
-            if (viewId === 'prompts') await loadPrompts();
-            if (viewId === 'contracts') await loadContracts();
-            if (viewId === 'logs') await loadLogs();
-            if (viewId === 'inventory') await loadInventory();
-        }
+        document.addEventListener('DOMContentLoaded', async () => {
+            updateLang(); // Init text
 
-        async function loadFeatures() {
-            const data = await API.fetch('/api/features');
-            const grid = document.getElementById('featuresGrid');
-            if (!data || !data.features || data.features.length === 0) {
-                grid.innerHTML = '<p style="color:var(--text-muted)">No features found in the workspace.</p>';
-                return;
+            // Fetch Stack
+            try {
+                const res = await fetch('/api/stack');
+                const data = await res.json();
+                if (data.success) {
+                    const cfg = data.config;
+                    document.getElementById('stack-name').textContent = `${cfg.architecture.toUpperCase()} | ${cfg.stack.language} (${cfg.stack.framework})`;
+                    document.getElementById('stack-badge').classList.remove('hidden');
+                    document.getElementById('stack-badge').classList.add('flex');
+                }
+            } catch (err) {}
+
+            // Load Features List
+            async function loadFeatures() {
+                try {
+                    const res = await fetch('/api/features');
+                    const data = await res.json();
+                    if (data.success) {
+                        const list = document.getElementById('features-list');
+                        list.innerHTML = '';
+                        data.features.forEach(feat => {
+                            const li = document.createElement('li');
+                            li.className = 'p-2 text-sm text-slate-300 hover:bg-slate-800 hover:text-white rounded cursor-pointer truncate transition-colors';
+                            li.innerHTML = `<i class="fa-regular fa-file-lines mr-2 text-sky-500"></i> ${feat}`;
+                            li.onclick = () => loadFeatureContent(feat);
+                            list.appendChild(li);
+                        });
+                    }
+                } catch(e) {}
             }
             
-            grid.innerHTML = data.features.map(f => `
-                <div class="glass-card" onclick="viewFeature('${f}')">
-                    <h3>${f}</h3>
-                    <p>Behavior Driven Development Specification</p>
-                    <span class="badge">BDD</span>
-                </div>
-            `).join('');
-        }
-
-        async function viewFeature(name) {
-            const data = await API.fetch('/api/features/' + name);
-            if (data && data.content) {
-                openModal(name, data.content);
+            async function loadFeatureContent(feat) {
+                try {
+                    const res = await fetch(`/api/features/${feat}`);
+                    const data = await res.json();
+                    if (data.success) {
+                        document.getElementById('feature-name').value = feat.replace('.feature', '');
+                        document.getElementById('gherkin-text').value = data.content;
+                    }
+                } catch(e) {}
             }
-        }
 
-        async function loadPrompts() {
-            const data = await API.fetch('/api/prompts');
-            const grid = document.getElementById('promptsGrid');
-            if (!data || !data.prompts || data.prompts.length === 0) {
-                grid.innerHTML = '<p style="color:var(--text-muted)">No generated prompts found.</p>';
-                return;
+            document.getElementById('new-feature-btn').addEventListener('click', () => {
+                document.getElementById('feature-name').value = '';
+                document.getElementById('gherkin-text').value = '';
+            });
+
+            // Load Explorer Tree
+            async function loadTree() {
+                try {
+                    const res = await fetch('/api/tree');
+                    const data = await res.json();
+                    if (data.success) {
+                        const root = document.getElementById('explorer-tree');
+                        root.innerHTML = '';
+                        
+                        function renderNode(node, container, level = 0, relativePath = '') {
+                            const div = document.createElement('div');
+                            div.className = `flex items-center gap-2 py-1 hover:bg-slate-800 cursor-pointer px-2 rounded`;
+                            div.style.paddingLeft = `${level * 12 + 8}px`;
+                            
+                            const icon = node.type === 'dir' ? '<i class="fa-solid fa-folder text-amber-400"></i>' : '<i class="fa-regular fa-file text-sky-300"></i>';
+                            div.innerHTML = `${icon} <span class="truncate">${node.name}</span>`;
+                            container.appendChild(div);
+                            
+                            const currentPath = level === 0 ? '' : (relativePath ? `${relativePath}/${node.name}` : node.name);
+
+                            if (node.type === 'dir') {
+                                const sub = document.createElement('div');
+                                sub.className = 'hidden'; // collapsed by default
+                                container.appendChild(sub);
+                                
+                                div.onclick = () => {
+                                    sub.classList.toggle('hidden');
+                                };
+                                
+                                if (node.children && node.children.length > 0) {
+                                    node.children.sort((a,b) => {
+                                        if(a.type===b.type) return a.name.localeCompare(b.name);
+                                        return a.type === 'dir' ? -1 : 1;
+                                    }).forEach(child => renderNode(child, sub, level + 1, currentPath));
+                                }
+                            } else {
+                                // It's a file
+                                div.onclick = async () => {
+                                    try {
+                                        const res = await fetch(`/api/file?path=${encodeURIComponent(currentPath)}`);
+                                        const data = await res.json();
+                                        if (data.success) {
+                                            document.getElementById('modalTitle').innerText = currentPath;
+                                            document.getElementById('modalContent').textContent = data.content;
+                                            document.getElementById('codeViewerModal').classList.remove('hidden');
+                                        } else {
+                                            alert("Error reading file: " + data.error);
+                                        }
+                                    } catch (err) {
+                                        alert("Network error");
+                                    }
+                                };
+                            }
+                        }
+
+                        renderNode(data.tree, root);
+                    }
+                } catch (err) {}
             }
-            
-            grid.innerHTML = data.prompts.map((p, i) => `
-                <div class="glass-card" onclick="openModal('${p.filename}', promptsData[${i}].content)">
-                    <h3>${p.filename}</h3>
-                    <p>Agent Context & Instructions</p>
-                    <span class="badge">Markdown</span>
-                </div>
-            `).join('');
-            window.promptsData = data.prompts; // Store for modal access
-        }
 
-        async function loadContracts() {
-            const data = await API.fetch('/api/contracts');
-            const grid = document.getElementById('contractsGrid');
-            if (!data || !data.contracts || data.contracts.length === 0) {
-                grid.innerHTML = '<p style="color:var(--text-muted)">No contracts found.</p>';
-                return;
+            loadFeatures();
+            loadTree();
+
+            // Tabs Logic Sidebar
+            const tabFeat = document.getElementById('tab-sidebar-features');
+            const tabExp = document.getElementById('tab-sidebar-explorer');
+            const viewFeat = document.getElementById('sidebar-features-view');
+            const viewExp = document.getElementById('sidebar-explorer-view');
+
+            function switchSidebar(toExplorer) {
+                if (toExplorer) {
+                    tabExp.className = 'flex-1 py-2 text-center text-sky-400 text-sm font-semibold border-b-2 border-sky-400 bg-slate-800/50';
+                    tabFeat.className = 'flex-1 py-2 text-center text-slate-400 text-sm font-semibold hover:text-slate-300';
+                    viewExp.classList.remove('hidden'); viewExp.classList.add('flex');
+                    viewFeat.classList.add('hidden'); viewFeat.classList.remove('flex');
+                } else {
+                    tabFeat.className = 'flex-1 py-2 text-center text-sky-400 text-sm font-semibold border-b-2 border-sky-400 bg-slate-800/50';
+                    tabExp.className = 'flex-1 py-2 text-center text-slate-400 text-sm font-semibold hover:text-slate-300';
+                    viewFeat.classList.remove('hidden'); viewFeat.classList.add('flex');
+                    viewExp.classList.add('hidden'); viewExp.classList.remove('flex');
+                }
             }
-            
-            grid.innerHTML = data.contracts.map((c, i) => `
-                <div class="glass-card" onclick="openModal('${c.filename}', contractsData[${i}].content)">
-                    <h3>${c.filename}</h3>
-                    <p>Generated Architecture Artifact</p>
-                    <span class="badge">Contract</span>
-                </div>
-            `).join('');
-            window.contractsData = data.contracts;
 
-            // Load Governance too
-            const govData = await API.fetch('/api/governance');
-            if (govData && govData.content) {
-                grid.innerHTML += `
-                    <div class="glass-card" onclick="openModal('.ghkgovernance.yaml', \`${govData.content.replace(/`/g, '\\`')}\`)">
-                        <h3>.ghkgovernance.yaml</h3>
-                        <p>Agent Guardrails & Architecture Policy</p>
-                        <span class="badge" style="background:rgba(16,185,129,0.2);color:#10b981;">Governance</span>
-                    </div>
-                `;
+            tabFeat.addEventListener('click', () => switchSidebar(false));
+            tabExp.addEventListener('click', () => switchSidebar(true));
+
+            // Tabs Logic Main
+            const tabRes = document.getElementById('tab-results');
+            const tabTerm = document.getElementById('tab-terminal');
+            const tabAgt = document.getElementById('tab-agent');
+            const tabObs = document.getElementById('tab-observability');
+            const viewRes = document.getElementById('results-view');
+            const viewTerm = document.getElementById('terminal-view');
+            const viewAgt = document.getElementById('agent-view');
+            const viewObs = document.getElementById('observability-view');
+
+            function switchMainTab(tab) {
+                [tabRes, tabTerm, tabAgt, tabObs].forEach(t => t.className = 'flex-1 py-3 text-center text-slate-400 font-semibold hover:text-slate-300');
+                [viewRes, viewTerm, viewAgt, viewObs].forEach(v => { v.classList.add('hidden'); v.classList.remove('flex'); });
+
+                if (tab === 'results') {
+                    tabRes.className = 'flex-1 py-3 text-center text-sky-400 font-semibold border-b-2 border-sky-400 bg-slate-800/50';
+                    viewRes.classList.remove('hidden'); viewRes.classList.add('flex');
+                } else if (tab === 'terminal') {
+                    tabTerm.className = 'flex-1 py-3 text-center text-sky-400 font-semibold border-b-2 border-sky-400 bg-slate-800/50';
+                    viewTerm.classList.remove('hidden'); viewTerm.classList.add('flex');
+                    document.getElementById('terminal-input').focus();
+                } else if (tab === 'agent') {
+                    tabAgt.className = 'flex-1 py-3 text-center text-sky-400 font-semibold border-b-2 border-sky-400 bg-slate-800/50';
+                    viewAgt.classList.remove('hidden'); viewAgt.classList.add('flex');
+                } else {
+                    tabObs.className = 'flex-1 py-3 text-center text-sky-400 font-semibold border-b-2 border-sky-400 bg-slate-800/50';
+                    viewObs.classList.remove('hidden'); viewObs.classList.add('flex');
+                    loadObservability('inventory');
+                }
             }
-        }
 
-        async function loadLogs() {
-            const data = await API.fetch('/api/agent-logs');
-            const list = document.getElementById('logsList');
-            if (!data || !data.logs || data.logs.length === 0) {
-                list.innerHTML = '<p style="color:var(--text-muted)">No AI agent action logs found.</p>';
-                return;
+            tabRes.addEventListener('click', () => switchMainTab('results'));
+            tabTerm.addEventListener('click', () => switchMainTab('terminal'));
+            tabAgt.addEventListener('click', () => switchMainTab('agent'));
+            tabObs.addEventListener('click', () => switchMainTab('observability'));
+
+            // Observability Logic
+            document.querySelectorAll('.obs-tab-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    document.querySelectorAll('.obs-tab-btn').forEach(b => {
+                        b.classList.remove('text-white', 'border-sky-500');
+                        b.classList.add('text-slate-400', 'border-transparent');
+                    });
+                    e.target.classList.add('text-white', 'border-sky-500');
+                    e.target.classList.remove('text-slate-400', 'border-transparent');
+                    loadObservability(e.target.id.replace('obs-tab-', ''));
+                });
+            });
+
+            async function loadObservability(type) {
+                const out = document.getElementById('obs-content');
+                out.innerHTML = '<div class="col-span-2 text-center text-slate-500 py-10"><i class="fa-solid fa-spinner fa-spin text-2xl"></i></div>';
+                try {
+                    let endpoint = '/api/inventory';
+                    if (type === 'logs') endpoint = '/api/agent-logs';
+                    if (type === 'prompts') endpoint = '/api/prompts';
+                    if (type === 'contracts') endpoint = '/api/contracts';
+                    
+                    const res = await fetch(endpoint);
+                    const data = await res.json();
+                    
+                    out.innerHTML = '';
+                    
+                    if (type === 'inventory' && data.inventory) {
+                        if (data.inventory.length === 0) out.innerHTML = '<div class="col-span-2 text-slate-500">No inventory found</div>';
+                        data.inventory.forEach(inv => {
+                            out.innerHTML += `
+                                <div class="bg-slate-800 border border-slate-700 p-4 rounded-lg hover:border-sky-500 cursor-pointer" onclick="document.getElementById('modalTitle').innerText='Audit: '+this.dataset.id; document.getElementById('modalContent').textContent=this.dataset.json; document.getElementById('codeViewerModal').classList.remove('hidden');" data-id="${inv.recordId}" data-json='${JSON.stringify(inv, null, 2).replace(/'/g, "&#39;")}'>
+                                    <h4 class="text-sky-400 font-semibold">${inv.featureName}</h4>
+                                    <p class="text-xs font-mono text-slate-400 mt-1">ID: ${inv.recordId}</p>
+                                    <p class="text-sm mt-2 font-mono bg-slate-900 p-1 rounded">${inv.command}</p>
+                                </div>
+                            `;
+                        });
+                    } else if (type === 'logs' && data.logs) {
+                        if (data.logs.length === 0) out.innerHTML = '<div class="col-span-2 text-slate-500">No logs found</div>';
+                        data.logs.forEach(log => {
+                            out.innerHTML += `
+                                <div class="bg-slate-800 border border-slate-700 p-4 rounded-lg col-span-2 flex flex-col gap-2">
+                                    <div class="text-xs text-slate-400">${new Date(log.timestamp).toLocaleString()} • ${log.featureName} • ${log.agentId.name}</div>
+                                    <div class="text-indigo-300 font-mono text-sm">${log.action}</div>
+                                </div>
+                            `;
+                        });
+                    } else if (type === 'contracts' && data.contracts) {
+                        if (data.contracts.length === 0) out.innerHTML = '<div class="col-span-2 text-slate-500">No contracts found</div>';
+                        data.contracts.forEach(c => {
+                            out.innerHTML += `
+                                <div class="bg-slate-800 border border-slate-700 p-4 rounded-lg hover:border-amber-500 cursor-pointer" onclick="document.getElementById('modalTitle').innerText=this.dataset.title; document.getElementById('modalContent').textContent=this.dataset.content; document.getElementById('codeViewerModal').classList.remove('hidden');" data-title="${c.filename}" data-content="${c.content.replace(/"/g, '&quot;').replace(/'/g, "&#39;").replace(/\n/g, '&#10;')}">
+                                    <h4 class="text-amber-400 font-semibold">${c.filename}</h4>
+                                    <p class="text-xs text-slate-400 mt-1">Contract File</p>
+                                </div>
+                            `;
+                        });
+                    } else if (type === 'prompts' && data.prompts) {
+                        if (data.prompts.length === 0) out.innerHTML = '<div class="col-span-2 text-slate-500">No prompts found</div>';
+                        data.prompts.forEach(p => {
+                            out.innerHTML += `
+                                <div class="bg-slate-800 border border-slate-700 p-4 rounded-lg hover:border-purple-500 cursor-pointer" onclick="document.getElementById('modalTitle').innerText=this.dataset.title; document.getElementById('modalContent').textContent=this.dataset.content; document.getElementById('codeViewerModal').classList.remove('hidden');" data-title="${p.filename}" data-content="${p.content.replace(/"/g, '&quot;').replace(/'/g, "&#39;").replace(/\n/g, '&#10;')}">
+                                    <h4 class="text-purple-400 font-semibold">${p.filename}</h4>
+                                    <p class="text-xs text-slate-400 mt-1">Agent Prompt</p>
+                                </div>
+                            `;
+                        });
+                    }
+                } catch(e) {
+                    out.innerHTML = '<div class="col-span-2 text-red-500">Error loading data.</div>';
+                }
             }
-            
-            list.innerHTML = data.logs.map(log => `
-                <div class="log-entry">
-                    <div class="log-meta">${new Date(log.timestamp).toLocaleString()} • Feature: <b>${log.featureName}</b> • Agent: ${log.agentId.name}</div>
-                    <div class="log-action">↳ ${log.action}</div>
-                </div>
-            `).join('');
-        }
 
-        async function loadInventory() {
-            const data = await API.fetch('/api/inventory');
-            const grid = document.getElementById('inventoryGrid');
-            if (!data || !data.inventory || data.inventory.length === 0) {
-                grid.innerHTML = '<p style="color:var(--text-muted)">No execution audit inventory found.</p>';
-                return;
+            // Agent Suggestion
+            document.getElementById('send-agent-btn').addEventListener('click', async () => {
+                const prompt = document.getElementById('agent-prompt').value;
+                const context = document.getElementById('gherkin-text').value;
+                if (!prompt) return;
+
+                const chat = document.getElementById('chat-history');
+                chat.innerHTML += `<div class="bg-slate-800 border border-slate-600 p-3 rounded-lg text-sm text-white ml-8">${prompt}</div>`;
+                document.getElementById('agent-prompt').value = '';
+                chat.scrollTop = chat.scrollHeight;
+
+                try {
+                    const res = await fetch('/api/suggest', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ prompt, context })
+                    });
+                    const data = await res.json();
+                    if (data.success) {
+                        chat.innerHTML += `<div class="bg-indigo-900/30 border border-indigo-700/50 p-3 rounded-lg text-sm text-indigo-100 mr-8 whitespace-pre-wrap">${data.suggestion}</div>`;
+                    } else {
+                        chat.innerHTML += `<div class="text-red-400 text-sm">Error: ${data.error}</div>`;
+                    }
+                    chat.scrollTop = chat.scrollHeight;
+                } catch(e) {}
+            });
+
+            // Terminal Execution
+            async function executeTerminalCommand(command) {
+                if (!command) return;
+
+                const input = document.getElementById('terminal-input');
+                const out = document.getElementById('terminal-output');
+                
+                out.innerHTML += `<div><span class="text-green-500 font-bold">❯</span> <span class="text-white">${command}</span></div>`;
+                input.value = '';
+                input.disabled = true;
+
+                try {
+                    const res = await fetch('/api/execute', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ command })
+                    });
+                    const data = await res.json();
+                    
+                    if (data.output) {
+                        out.innerHTML += `<div class="text-slate-300 mt-1">${data.output.replace(/\\n/g, '<br>')}</div>`;
+                    }
+                    if (data.errorOutput) {
+                        out.innerHTML += `<div class="text-red-400 mt-1">${data.errorOutput.replace(/\\n/g, '<br>')}</div>`;
+                    }
+                    if (data.error) {
+                        out.innerHTML += `<div class="text-red-500 mt-1">[Error] ${data.error}</div>`;
+                    }
+                } catch(err) {
+                    out.innerHTML += `<div class="text-red-500 mt-1">Request failed: ${err.message}</div>`;
+                }
+                
+                input.disabled = false;
+                input.focus();
+                out.scrollTop = out.scrollHeight;
             }
-            
-            grid.innerHTML = data.inventory.map(inv => `
-                <div class="glass-card" onclick="openModal('Audit Record: ${inv.recordId}', JSON.stringify(inventoryData.find(i=>i.recordId==='${inv.recordId}'), null, 2))">
-                    <h3>${inv.featureName}</h3>
-                    <p style="font-family:'Fira Code',monospace; font-size:0.8rem; margin:0.5rem 0;">ID: ${inv.recordId}</p>
-                    <p>Cmd: <code>${inv.command}</code></p>
-                    <span class="badge">vHash: ${inv.featureVersionHash}</span>
-                </div>
-            `).join('');
-            window.inventoryData = data.inventory;
-        }
 
-        // Initialize
-        loadFeatures();
+            document.getElementById('terminal-input').addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    executeTerminalCommand(e.target.value);
+                }
+            });
 
-        // Close modal on outside click
-        document.getElementById('codeViewerModal').addEventListener('click', (e) => {
-            if (e.target.id === 'codeViewerModal') closeModal();
+            // Quick Command Buttons
+            document.querySelectorAll('.quick-cmd-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    executeTerminalCommand(btn.getAttribute('data-cmd'));
+                });
+            });
+
+            // Generate Button
+            document.getElementById('generate-btn').addEventListener('click', async () => {
+                const featureName = document.getElementById('feature-name').value;
+                const gherkinText = document.getElementById('gherkin-text').value;
+
+                if (!gherkinText.trim()) return alert("Please write some Gherkin scenarios first.");
+
+                switchMainTab('results');
+                document.getElementById('results-empty').classList.add('hidden');
+                document.getElementById('results-content').classList.add('hidden');
+                document.getElementById('loading').classList.remove('hidden');
+                document.getElementById('loading').classList.add('flex');
+                document.getElementById('generate-btn').disabled = true;
+
+                try {
+                    const res = await fetch('/api/generate', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ featureName, gherkinText })
+                    });
+                    const data = await res.json();
+
+                    document.getElementById('loading').classList.add('hidden');
+                    document.getElementById('loading').classList.remove('flex');
+
+                    if (data.success) {
+                        document.getElementById('results-content').classList.remove('hidden');
+                        document.getElementById('results-content').classList.add('flex');
+                        document.getElementById('success-path').textContent = `Saved to: ${data.outDir}`;
+
+                        const fileList = document.getElementById('file-list');
+                        fileList.innerHTML = '';
+                        Object.keys(data.files).forEach(filename => {
+                            const isMd = filename.endsWith('.md');
+                            fileList.innerHTML += `
+                                <div class="bg-slate-800 border border-slate-700 rounded p-3 text-sm flex justify-between items-center">
+                                    <div class="flex items-center gap-2">
+                                        <i class="fa-solid ${isMd ? 'fa-file-lines text-sky-400' : 'fa-code text-amber-400'}"></i>
+                                        <span class="font-mono">${filename}</span>
+                                    </div>
+                                </div>
+                            `;
+                        });
+                        loadFeatures();
+                        loadTree(); // Refresh tree after generation
+                    } else {
+                        alert("Error generating specs: " + data.error);
+                        document.getElementById('results-empty').classList.remove('hidden');
+                        document.getElementById('results-empty').classList.add('flex');
+                    }
+                } catch (err) {} finally {
+                    document.getElementById('generate-btn').disabled = false;
+                }
+            });
         });
     </script>
 </body>
