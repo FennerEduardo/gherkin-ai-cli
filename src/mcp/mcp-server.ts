@@ -19,11 +19,17 @@ import { generateConstitution, loadConstitution, getConstraintsByLevel } from '.
 import { scanContextSecurity, detectPromptInjection } from '../core/context-security';
 import { SpecHashBaseline } from '../core/governance/spec-hash-baseline';
 import { AgentPolicyEngine } from '../core/governance/agent-policy-engine';
-import { CrossServiceImpactAnalyzer } from '../core/analysis/cross-service-impact';
-import { exec } from 'child_process';
-import { promisify } from 'util';
+import { handleLoginCommand } from '../commands/login';
+import { handleInitCommand } from '../commands/init';
+import { handleGenerateCommand } from '../commands/generate';
+import { handleAddCommand } from '../commands/add';
+import { handleCreateCommand } from '../commands/create';
+import { handleAuditCommand } from '../commands/audit';
+import { handleAgentLogCommand } from '../commands/agent-log';
+import { handleImplementCommand } from '../commands/implement';
 
 const execAsync = promisify(exec);
+
 
 export function startMcpServer(): void {
   process.stdin.setEncoding('utf8');
@@ -300,9 +306,125 @@ function getToolDefinitions() {
           changedFiles: { type: 'array', items: { type: 'string' }, description: 'List of changed or target files.' }
         }
       }
+    },
+    {
+      name: 'run_cli_init',
+      description: 'Initialize project configuration non-interactively with dual-stack backend and frontend settings.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          projectName: { type: 'string', description: 'Project name.' },
+          architecture: { type: 'string', description: 'Software architecture (hexagonal, ddd, clean, cqrs, monolith, api-rest, microservices).' },
+          language: { type: 'string', description: 'Backend language (java, csharp, typescript, php, python, go, ruby).' },
+          framework: { type: 'string', description: 'Backend framework (spring-boot, dotnet-aspnetcore, nestjs, fastapi, laravel, etc.).' },
+          orm: { type: 'string', description: 'Database ORM / persistence.' },
+          database: { type: 'string', description: 'Database engine (postgresql, mysql, mongodb, sqlite, redis).' },
+          validation: { type: 'string', description: 'Validation library (jakarta-validation, fluent-validation, zod, etc.).' },
+          messaging: { type: 'string', description: 'Event broker (rabbitmq, kafka, sqs, redis-pubsub, native-events, none).' },
+          testing: { type: 'string', description: 'Testing framework (junit, xunit, vitest, jest, pytest, phpunit).' },
+          frontendFramework: { type: 'string', description: 'Frontend framework (angular, react, vue, vanilla-js, none).' },
+          frontendLanguage: { type: 'string', description: 'Frontend language (typescript, javascript).' },
+          frontendStateManagement: { type: 'string', description: 'Frontend state pattern (signals, classic, pinia, redux-toolkit).' },
+          enterprise: { type: 'boolean', description: 'Enable enterprise constitution guardrails.' }
+        }
+      }
+    },
+    {
+      name: 'run_cli_generate',
+      description: 'Generate contracts, DTO schemas, test fixtures, docker-compose, and agent prompts from Gherkin feature spec.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          feature: { type: 'string', description: 'Path to Gherkin .feature file.' },
+          config: { type: 'string', description: 'Optional path to gherkin-ai.config.json file.' }
+        },
+        required: ['feature']
+      }
+    },
+    {
+      name: 'run_cli_add',
+      description: 'Inject contracts & AI agent prompts into an existing brownfield project target directory.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          feature: { type: 'string', description: 'Path to Gherkin .feature file.' },
+          target: { type: 'string', description: 'Target directory inside existing project.' }
+        },
+        required: ['feature', 'target']
+      }
+    },
+    {
+      name: 'run_cli_create',
+      description: 'Create a Gherkin .feature specification non-interactively with feature name, actor, action, outcome, and scenarios.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          featureName: { type: 'string', description: 'Feature name/title.' },
+          actor: { type: 'string', description: 'Feature actor (As a...).' },
+          action: { type: 'string', description: 'Feature action (I want to...).' },
+          outcome: { type: 'string', description: 'Feature outcome (So that...).' },
+          scenarioName: { type: 'string', description: 'Main scenario title.' },
+          output: { type: 'string', description: 'Destination path for created .feature file.' },
+          target: { type: 'string', description: 'Optional target directory to auto-inject contracts.' }
+        },
+        required: ['featureName']
+      }
+    },
+    {
+      name: 'run_cli_login',
+      description: 'Configure API credentials, tokens, and AI providers (OpenAI, Anthropic, Gemini, Ollama, custom) non-interactively.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          token: { type: 'string', description: 'Platform or agent auth token.' },
+          user: { type: 'string', description: 'User or agent identifier/email.' },
+          apiKey: { type: 'string', description: 'LLM API key.' },
+          provider: { type: 'string', description: 'AI provider (openai, anthropic, gemini, ollama, azure-openai, custom).' },
+          endpoint: { type: 'string', description: 'AI or server API endpoint URL.' },
+          server: { type: 'string', description: 'Centralized audit or registry server URL.' }
+        }
+      }
+    },
+    {
+      name: 'run_cli_audit',
+      description: 'Query or clear feature execution audit trail inventory.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          feature: { type: 'string', description: 'Filter audit records by feature spec or name.' },
+          clear: { type: 'boolean', description: 'If true, clears audit trail history.' }
+        }
+      }
+    },
+    {
+      name: 'run_cli_agent_log',
+      description: 'Record or view actions executed by AI Agents during feature implementation.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          action: { type: 'string', description: 'Describe concrete action taken by AI Agent.' },
+          feature: { type: 'string', description: 'Feature name or spec path.' },
+          list: { type: 'boolean', description: 'If true, lists agent action walkthrough.' },
+          clear: { type: 'boolean', description: 'If true, clears agent action logs.' }
+        }
+      }
+    },
+    {
+      name: 'run_cli_implement',
+      description: 'Generate AI Agent Master Implementation Prompt and context package for a feature.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          feature: { type: 'string', description: 'Path to Gherkin .feature file.' },
+          docker: { type: 'boolean', description: 'Include Docker container sandbox instructions in master prompt.' },
+          compact: { type: 'boolean', description: 'Generate ultra-compact prompt for low-cost models.' }
+        },
+        required: ['feature']
+      }
     }
   ];
 }
+
 
 // ---------------------------------------------------------------------------
 // Tool Call Handlers
@@ -568,6 +690,98 @@ async function handleToolCall(id: number | string, name: string, args: any): Pro
         break;
       }
 
+      case 'run_cli_init': {
+        await handleInitCommand({
+          ...args,
+          nonInteractive: true,
+          yes: true
+        });
+        sendJsonRpcResponse(id, {
+          content: [{ type: 'text', text: JSON.stringify({ success: true, message: 'Project initialized via MCP', config: loadConfig() }, null, 2) }]
+        });
+        break;
+      }
+
+      case 'run_cli_generate': {
+        await handleGenerateCommand({
+          ...args,
+          nonInteractive: true,
+          yes: true
+        });
+        sendJsonRpcResponse(id, {
+          content: [{ type: 'text', text: JSON.stringify({ success: true, message: `Contracts generated for ${args.feature}` }, null, 2) }]
+        });
+        break;
+      }
+
+      case 'run_cli_add': {
+        await handleAddCommand({
+          ...args,
+          nonInteractive: true,
+          yes: true
+        });
+        sendJsonRpcResponse(id, {
+          content: [{ type: 'text', text: JSON.stringify({ success: true, message: `Contracts added to target ${args.target}` }, null, 2) }]
+        });
+        break;
+      }
+
+      case 'run_cli_create': {
+        await handleCreateCommand({
+          ...args,
+          nonInteractive: true,
+          yes: true
+        });
+        sendJsonRpcResponse(id, {
+          content: [{ type: 'text', text: JSON.stringify({ success: true, message: `Feature spec created: ${args.featureName}` }, null, 2) }]
+        });
+        break;
+      }
+
+      case 'run_cli_login': {
+        const authData = await handleLoginCommand({
+          ...args,
+          nonInteractive: true,
+          yes: true
+        });
+        sendJsonRpcResponse(id, {
+          content: [{ type: 'text', text: JSON.stringify({ success: true, message: 'Auth credentials saved', user: authData.user, provider: authData.provider }, null, 2) }]
+        });
+        break;
+      }
+
+      case 'run_cli_audit': {
+        await handleAuditCommand({
+          ...args,
+          json: true
+        });
+        sendJsonRpcResponse(id, {
+          content: [{ type: 'text', text: JSON.stringify({ success: true, message: 'Audit query executed' }, null, 2) }]
+        });
+        break;
+      }
+
+      case 'run_cli_agent_log': {
+        await handleAgentLogCommand({
+          ...args,
+          json: true
+        });
+        sendJsonRpcResponse(id, {
+          content: [{ type: 'text', text: JSON.stringify({ success: true, message: 'Agent log action executed' }, null, 2) }]
+        });
+        break;
+      }
+
+      case 'run_cli_implement': {
+        await handleImplementCommand({
+          ...args
+        });
+        sendJsonRpcResponse(id, {
+          content: [{ type: 'text', text: JSON.stringify({ success: true, message: `Master prompt generated for ${args.feature}` }, null, 2) }]
+        });
+        break;
+      }
+
       default:
         sendJsonRpcResponse(id, null, {
           code: -32601,
@@ -581,3 +795,4 @@ async function handleToolCall(id: number | string, name: string, args: any): Pro
     });
   }
 }
+

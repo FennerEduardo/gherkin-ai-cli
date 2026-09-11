@@ -25,6 +25,7 @@ import { handleConvergeCommand } from './commands/converge';
 import { handleImplementCommand } from './commands/implement';
 import { handleAuditCommand } from './commands/audit';
 import { handleAgentLogCommand } from './commands/agent-log';
+import { handleLoginCommand } from './commands/login';
 
 // Dynamic version from package.json
 const pkg = require('../package.json');
@@ -50,7 +51,22 @@ program
   .option('--stdout', 'Print dry-run patches or modifications to stdout instead of files');
 
 program
+  .command('login')
+  .alias('auth')
+  .description('Configure API credentials, tokens, and LLM providers for AI Agents non-interactively')
+  .option('--token <string>', 'Authentication token')
+  .option('--user <email>', 'User or Agent identifier')
+  .option('--apiKey <key>', 'LLM API key (OpenAI, Anthropic, Gemini, etc.)')
+  .option('--provider <name>', 'AI Provider (openai, anthropic, gemini, ollama, custom)', 'openai')
+  .option('--endpoint <url>', 'AI or server API endpoint URL')
+  .option('--server <url>', 'Centralized audit or registry server URL')
+  .action(async (options) => {
+    await handleLoginCommand(options);
+  });
+
+program
   .command('init')
+
   .alias('i')
   .description('Initialize interactive gherkin-ai project configuration (gherkin-ai.config.json)')
   .option('--enterprise', 'Initialize with enterprise constitution guardrails')
@@ -146,9 +162,14 @@ program
   .option('-C, --caveman', 'Enable simple prompt creation mode (skip step-by-step wizard)')
   .option('--headless', 'Run in headless non-interactive mode for CI/CD')
   .option('--config <file>', 'Path to JSON configuration file for headless mode')
+  .option('-n, --featureName <name>', 'Feature name')
+  .option('-a, --actor <actor>', 'Feature actor (As a...)')
+  .option('-A, --action <action>', 'Feature action (I want to...)')
+  .option('-S, --scenarioName <name>', 'Scenario name')
   .action(async (options) => {
     await handleCreateCommand(options);
   });
+
 
 program
   .command('detect')
