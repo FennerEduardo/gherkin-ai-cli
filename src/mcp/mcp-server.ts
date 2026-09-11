@@ -27,6 +27,9 @@ import { handleCreateCommand } from '../commands/create';
 import { handleAuditCommand } from '../commands/audit';
 import { handleAgentLogCommand } from '../commands/agent-log';
 import { handleImplementCommand } from '../commands/implement';
+import { promisify } from 'util';
+import { exec } from 'child_process';
+import { CrossServiceImpactAnalyzer } from '../core/analysis/cross-service-impact';
 
 const execAsync = promisify(exec);
 
