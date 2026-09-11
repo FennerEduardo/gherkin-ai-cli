@@ -12,9 +12,11 @@ export const use${storeName}Store = defineStore('${camelName}', () => {
   const data = ref<any[]>([]);
   const loading = ref(false);
   const error = ref<string | null>(null);
+  const tenantId = ref<string | null>(null);
 
   // Getters
   const hasData = computed(() => data.value.length > 0);
+  const activeCount = computed(() => data.value.length);
 
   // Actions
   async function fetchAll() {
@@ -24,18 +26,44 @@ export const use${storeName}Store = defineStore('${camelName}', () => {
       const response = await axios.get('/api/${camelName}');
       data.value = response.data;
     } catch (err: any) {
-      error.value = err.message || 'Error fetching data';
+      error.value = err.response?.data?.message || err.message || 'Error fetching data';
     } finally {
       loading.value = false;
     }
+  }
+
+  async function executeCommand(commandPayload: any, idempotencyKey?: string) {
+    loading.value = true;
+    error.value = null;
+    try {
+      const headers: Record<string, string> = {};
+      if (tenantId.value) headers['X-Tenant-ID'] = tenantId.value;
+      if (idempotencyKey) headers['X-Idempotency-Key'] = idempotencyKey;
+
+      const response = await axios.post('/api/${camelName}/commands', commandPayload, { headers });
+      return response.data;
+    } catch (err: any) {
+      error.value = err.response?.data?.message || 'Error en comando';
+      throw err;
+    } finally {
+      loading.value = false;
+    }
+  }
+
+  function handleRealtimeEvent(event: any) {
+    data.value.unshift(event);
   }
 
   return {
     data,
     loading,
     error,
+    tenantId,
     hasData,
-    fetchAll
+    activeCount,
+    fetchAll,
+    executeCommand,
+    handleRealtimeEvent
   };
 });
 `;
@@ -43,21 +71,44 @@ export const use${storeName}Store = defineStore('${camelName}', () => {
 
 export function generateVueComposable(composableName: string): string {
   const camelName = composableName.charAt(0).toLowerCase() + composableName.slice(1);
-  return `// --------------------------------------------------------------------------
-// Vue Composable (Reusabilidad Lógica / Logic Reusability)
-// --------------------------------------------------------------------------
-import { ref, onMounted } from 'vue';
+  const pascalName = composableName.charAt(0).toUpperCase() + composableName.slice(1);
 
-export function use${composableName}() {
-  const isReady = ref(false);
+  return `// --------------------------------------------------------------------------
+// Vue Composable (Realtime SSE / WebSocket Events)
+// --------------------------------------------------------------------------
+import { ref, onMounted, onUnmounted } from 'vue';
+
+export function use${pascalName}(channelName: string = '${camelName}', onEventCallback?: (data: any) => void) {
+  const isConnected = ref(false);
+  const error = ref<string | null>(null);
+  let eventSource: EventSource | null = null;
 
   onMounted(() => {
-    // Inicialización lógica / Logic initialization
-    isReady.value = true;
+    try {
+      eventSource = new EventSource(\`/api/v1/events/stream?channel=\${channelName}\`);
+      eventSource.onopen = () => { isConnected.value = true; };
+      eventSource.onmessage = (e) => {
+        const payload = JSON.parse(e.data);
+        if (onEventCallback) onEventCallback(payload);
+      };
+      eventSource.onerror = (err) => {
+        error.value = 'Conexión realtime interrumpiéndose...';
+        isConnected.value = false;
+      };
+    } catch (e: any) {
+      error.value = e.message;
+    }
+  });
+
+  onUnmounted(() => {
+    if (eventSource) {
+      eventSource.close();
+    }
   });
 
   return {
-    isReady
+    isConnected,
+    error
   };
 }
 `;

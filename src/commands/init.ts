@@ -415,6 +415,18 @@ export async function handleInitCommand(options?: {
         },
         {
           type: 'list',
+          name: 'stateManagement',
+          message: 'Select Frontend State Management Pattern:',
+          choices: [
+            { name: 'NgRx Signal Store / Signals (Angular 17+ Modern Default)', value: 'signals' },
+            { name: 'Classic Redux / NgRx (Actions, Effects, Reducer)', value: 'classic' },
+            { name: 'Pinia Store (Vue 3)', value: 'pinia' },
+            { name: 'Redux Toolkit / RTK Query (React)', value: 'redux-toolkit' }
+          ],
+          default: 'signals'
+        },
+        {
+          type: 'list',
           name: 'bundler',
           message: 'Select Frontend Bundler:',
           choices: ['vite', 'webpack', 'esbuild', 'none'],
@@ -449,10 +461,12 @@ export async function handleInitCommand(options?: {
       framework: options.frontendFramework,
       language: options.frontendLanguage || 'javascript',
       bundler: options.frontendBundler || 'vite',
+      stateManagement: 'signals',
       unitTesting: options.frontendUnitTesting || 'vitest',
       e2eTesting: options.frontendE2eTesting || 'cypress'
     };
   }
+
 
   // Step 4: Governance & Output Directory Options
   const step4 = await promptOrFallback([
