@@ -2,21 +2,11 @@
 // Transactional Outbox Pattern for Java 21 / Spring Boot 3.2+
 // --------------------------------------------------------------------------
 
-export function generateJavaOutboxInfrastructure(packageName: string): string {
-  return `package ${packageName}.infrastructure.outbox;
+export function generateJavaOutboxInfrastructure(packageName: string): { filename: string; content: string }[] {
+  const packageHeader = `package ${packageName}.infrastructure.outbox;\n\n`;
 
-import jakarta.persistence.*;
-import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.data.jpa.repository.Lock;
-import org.springframework.data.jpa.repository.Query;
-import org.springframework.stereotype.Repository;
-import org.springframework.stereotype.Service;
-import org.springframework.scheduling.annotation.Scheduled;
-import org.springframework.transaction.annotation.Transactional;
-import com.fasterxml.jackson.databind.ObjectMapper;
-
+  const outboxMessage = `${packageHeader}import jakarta.persistence.*;
 import java.time.Instant;
-import java.util.List;
 import java.util.UUID;
 
 @Entity
@@ -24,7 +14,6 @@ import java.util.UUID;
     @Index(name = "idx_outbox_status_occurred", columnList = "status, occurredOn")
 })
 public class OutboxMessage {
-
     @Id
     private UUID id = UUID.randomUUID();
 
@@ -45,13 +34,11 @@ public class OutboxMessage {
     private OutboxStatus status = OutboxStatus.PENDING;
 
     private int retryCount = 0;
-
     private String error;
 
     public enum OutboxStatus { PENDING, PROCESSING, PUBLISHED, FAILED }
 
     public OutboxMessage() {}
-
     public OutboxMessage(String eventType, String payload) {
         this.eventType = eventType;
         this.payload = payload;
@@ -81,17 +68,30 @@ public class OutboxMessage {
         }
     }
 }
+`;
+
+  const outboxRepository = `${packageHeader}import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.stereotype.Repository;
+import jakarta.persistence.LockModeType;
+import java.util.List;
+import java.util.UUID;
 
 @Repository
-interface OutboxRepository extends JpaRepository<OutboxMessage, UUID> {
+public interface OutboxRepository extends JpaRepository<OutboxMessage, UUID> {
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT o FROM OutboxMessage o WHERE o.status = 'PENDING' ORDER BY o.occurredOn ASC")
     List<OutboxMessage> findPendingForProcessing(org.springframework.data.domain.Pageable pageable);
 }
+`;
+
+  const outboxService = `${packageHeader}import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 @Service
 public class OutboxService {
-
     private final OutboxRepository repository;
     private final ObjectMapper objectMapper;
 
@@ -111,14 +111,20 @@ public class OutboxService {
         }
     }
 }
+`;
 
-public interface IMessageBrokerPublisher {
+  const iMessageBrokerPublisher = `${packageHeader}public interface IMessageBrokerPublisher {
     void publish(String eventType, String payload) throws Exception;
 }
+`;
+
+  const outboxPublisher = `${packageHeader}import org.springframework.stereotype.Service;
+import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.transaction.annotation.Transactional;
+import java.util.List;
 
 @Service
 public class OutboxPublisher {
-
     private final OutboxRepository repository;
     private final IMessageBrokerPublisher messageBroker;
 
@@ -145,4 +151,12 @@ public class OutboxPublisher {
     }
 }
 `;
+
+  return [
+    { filename: 'infrastructure/outbox/OutboxMessage.java', content: outboxMessage },
+    { filename: 'infrastructure/outbox/OutboxRepository.java', content: outboxRepository },
+    { filename: 'infrastructure/outbox/OutboxService.java', content: outboxService },
+    { filename: 'infrastructure/outbox/IMessageBrokerPublisher.java', content: iMessageBrokerPublisher },
+    { filename: 'infrastructure/outbox/OutboxPublisher.java', content: outboxPublisher }
+  ];
 }

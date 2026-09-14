@@ -2,30 +2,17 @@
 // Idempotency Pattern for Java 21 / Spring Boot 3
 // --------------------------------------------------------------------------
 
-export function generateJavaIdempotencyInfrastructure(packageName: string): string {
-  return `package ${packageName}.infrastructure.idempotency;
+export function generateJavaIdempotencyInfrastructure(packageName: string): { filename: string; content: string }[] {
+  const packageHeader = `package ${packageName}.infrastructure.idempotency;\n\n`;
 
-import jakarta.persistence.*;
-import jakarta.servlet.FilterChain;
-import jakarta.servlet.ServletException;
-import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpServletResponse;
-import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.stereotype.Component;
-import org.springframework.stereotype.Repository;
-import org.springframework.web.filter.OncePerRequestFilter;
-import org.springframework.web.util.ContentCachingResponseWrapper;
-
-import java.io.IOException;
+  const idempotencyKeyRecord = `${packageHeader}import jakarta.persistence.*;
 import java.time.Instant;
-import java.util.Optional;
 
 @Entity
 @Table(name = "idempotency_keys", indexes = {
     @Index(name = "uk_idempotency_key", columnList = "idempotencyKey", unique = true)
 })
 public class IdempotencyKeyRecord {
-
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -60,15 +47,30 @@ public class IdempotencyKeyRecord {
         this.responseBody = body;
     }
 }
+`;
+
+  const idempotencyKeyRepository = `${packageHeader}import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
+import java.util.Optional;
 
 @Repository
-interface IdempotencyKeyRepository extends JpaRepository<IdempotencyKeyRecord, Long> {
+public interface IdempotencyKeyRepository extends JpaRepository<IdempotencyKeyRecord, Long> {
     Optional<IdempotencyKeyRecord> findByIdempotencyKey(String idempotencyKey);
 }
+`;
+
+  const idempotencyFilter = `${packageHeader}import jakarta.servlet.FilterChain;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.stereotype.Component;
+import org.springframework.web.filter.OncePerRequestFilter;
+import org.springframework.web.util.ContentCachingResponseWrapper;
+import java.io.IOException;
+import java.util.Optional;
 
 @Component
 public class IdempotencyFilter extends OncePerRequestFilter {
-
     private final IdempotencyKeyRepository repository;
 
     public IdempotencyFilter(IdempotencyKeyRepository repository) {
@@ -116,4 +118,10 @@ public class IdempotencyFilter extends OncePerRequestFilter {
     }
 }
 `;
+
+  return [
+    { filename: 'infrastructure/idempotency/IdempotencyKeyRecord.java', content: idempotencyKeyRecord },
+    { filename: 'infrastructure/idempotency/IdempotencyKeyRepository.java', content: idempotencyKeyRepository },
+    { filename: 'infrastructure/idempotency/IdempotencyFilter.java', content: idempotencyFilter }
+  ];
 }

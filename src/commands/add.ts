@@ -59,9 +59,14 @@ export async function handleAddCommand(options: { feature?: string; target?: str
   const parsed = parseGherkinText(gherkinText);
 
   const featurePascal = parsed.featureName.replace(/[^a-zA-Z0-9]/g, '') || 'Feature';
-  const targetDir = options.target 
+  let targetDir = options.target 
     ? path.resolve(process.cwd(), options.target) 
     : path.resolve(process.cwd(), 'src', 'modules', featurePascal.toLowerCase());
+
+  if (!targetDir.startsWith(process.cwd())) {
+    logger.error(`Security Violation: Target path escapes the current workspace: ${targetDir}`);
+    process.exit(1);
+  }
 
   ensureDirSync(targetDir);
   logger.info(`Injecting contracts & AI prompts into: ${targetDir}`);

@@ -58,18 +58,9 @@ public class ${className} {
       filename: `${className}.java`,
       content: stepDefCode
     },
-    {
-      filename: `infrastructure/outbox/OutboxInfrastructure.java`,
-      content: generateJavaOutboxInfrastructure(packageName)
-    },
-    {
-      filename: `application/sagas/PaymentSagaOrchestrator.java`,
-      content: generateJavaSagaInfrastructure(packageName)
-    },
-    {
-      filename: `infrastructure/idempotency/IdempotencyInfrastructure.java`,
-      content: generateJavaIdempotencyInfrastructure(packageName)
-    },
+    ...generateJavaOutboxInfrastructure(packageName),
+    ...generateJavaSagaInfrastructure(packageName),
+    ...generateJavaIdempotencyInfrastructure(packageName),
     {
       filename: `infrastructure/telemetry/OpenTelemetryConfig.java`,
       content: generateJavaOpenTelemetryInfrastructure(packageName)

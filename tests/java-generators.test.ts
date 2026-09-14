@@ -10,7 +10,7 @@ import { generateJavaSpringPreset } from '../src/generators/preset-java-spring';
 describe('Java Distributed Generators & Spring Validator', () => {
 
   it('generateJavaOutboxInfrastructure creates valid JPA Outbox code', () => {
-    const code = generateJavaOutboxInfrastructure('com.example.app');
+    const code = generateJavaOutboxInfrastructure('com.example.app').map(f => f.content).join('\\n');
     expect(code).toContain('class OutboxMessage');
     expect(code).toContain('@Transactional');
     expect(code).toContain('OutboxStatus');
@@ -18,7 +18,7 @@ describe('Java Distributed Generators & Spring Validator', () => {
   });
 
   it('generateJavaSagaInfrastructure creates persisted Saga orchestrator code', () => {
-    const code = generateJavaSagaInfrastructure('com.example.app');
+    const code = generateJavaSagaInfrastructure('com.example.app').map(f => f.content).join('\\n');
     expect(code).toContain('class SagaInstance');
     expect(code).toContain('PaymentSagaOrchestrator');
     expect(code).toContain('SagaState.COMPENSATING');
@@ -26,7 +26,7 @@ describe('Java Distributed Generators & Spring Validator', () => {
   });
 
   it('generateJavaIdempotencyInfrastructure creates HTTP filter & JPA record', () => {
-    const code = generateJavaIdempotencyInfrastructure('com.example.app');
+    const code = generateJavaIdempotencyInfrastructure('com.example.app').map(f => f.content).join('\\n');
     expect(code).toContain('class IdempotencyFilter');
     expect(code).toContain('X-Idempotency-Key');
     expect(code).toContain('uk_idempotency_key');
@@ -52,8 +52,8 @@ describe('Java Distributed Generators & Spring Validator', () => {
     };
     // @ts-ignore
     const files = generateJavaSpringPreset(mockParsed);
-    expect(files.length).toBe(6);
-    expect(files.some(f => f.filename.includes('OutboxInfrastructure.java'))).toBe(true);
+    expect(files.length).toBe(15);
+    expect(files.some(f => f.filename.includes('OutboxService.java'))).toBe(true);
     expect(files.some(f => f.filename.includes('PaymentSagaOrchestrator.java'))).toBe(true);
   });
 

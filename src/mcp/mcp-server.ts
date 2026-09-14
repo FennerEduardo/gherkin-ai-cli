@@ -132,8 +132,7 @@ function getToolDefinitions() {
       inputSchema: {
         type: 'object',
         properties: {
-          autoFix: { type: 'boolean', description: 'Enable auto-fix with agent repair loop if tests fail.' },
-          command: { type: 'string', description: 'Custom test command to run.' }
+          autoFix: { type: 'boolean', description: 'Enable auto-fix with agent repair loop if tests fail.' }
         }
       }
     },
@@ -454,10 +453,6 @@ async function handleToolCall(id: number | string, name: string, args: any): Pro
       case 'run_cli_verify': {
         const commandArgs = ['bin/gherkin-ai.js', 'verify'];
         if (args.autoFix) commandArgs.push('--auto-fix');
-        if (args.command) {
-          commandArgs.push('--command');
-          commandArgs.push(args.command);
-        }
         try {
           const { stdout, stderr } = await execFileAsync('node', commandArgs, { shell: false });
           sendJsonRpcResponse(id, {

@@ -2,17 +2,10 @@
 // Saga Orchestration Pattern for Java 21 / Spring Boot 3
 // --------------------------------------------------------------------------
 
-export function generateJavaSagaInfrastructure(packageName: string): string {
-  return `package ${packageName}.application.sagas;
+export function generateJavaSagaInfrastructure(packageName: string): { filename: string; content: string }[] {
+  const packageHeader = `package ${packageName}.application.sagas;\n\n`;
 
-import jakarta.persistence.*;
-import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.stereotype.Repository;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-
-import java.math.BigDecimal;
-import java.time.Instant;
+  const paymentSagaContract = `${packageHeader}import java.math.BigDecimal;
 import java.util.UUID;
 
 // Event and Command Records (Java 21)
@@ -25,11 +18,16 @@ public class PaymentSagaContract {
     public record CapturePaymentCommand(UUID paymentId) {}
     public record CancelAuthorizationCommand(UUID paymentId, String reason) {}
 }
+`;
+
+  const sagaInstance = `${packageHeader}import jakarta.persistence.*;
+import java.math.BigDecimal;
+import java.time.Instant;
+import java.util.UUID;
 
 @Entity
 @Table(name = "saga_instances")
 public class SagaInstance {
-
     @Id
     private UUID correlationId;
 
@@ -65,13 +63,21 @@ public class SagaInstance {
     public String getFailureReason() { return failureReason; }
     public void setFailureReason(String reason) { this.failureReason = reason; }
 }
+`;
+
+  const sagaInstanceRepository = `${packageHeader}import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
+import java.util.UUID;
 
 @Repository
-interface SagaInstanceRepository extends JpaRepository<SagaInstance, UUID> {}
+public interface SagaInstanceRepository extends JpaRepository<SagaInstance, UUID> {}
+`;
+
+  const paymentSagaOrchestrator = `${packageHeader}import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class PaymentSagaOrchestrator {
-
     private final SagaInstanceRepository sagaRepository;
 
     public PaymentSagaOrchestrator(SagaInstanceRepository sagaRepository) {
@@ -116,4 +122,11 @@ public class PaymentSagaOrchestrator {
     }
 }
 `;
+
+  return [
+    { filename: 'application/sagas/PaymentSagaContract.java', content: paymentSagaContract },
+    { filename: 'application/sagas/SagaInstance.java', content: sagaInstance },
+    { filename: 'application/sagas/SagaInstanceRepository.java', content: sagaInstanceRepository },
+    { filename: 'application/sagas/PaymentSagaOrchestrator.java', content: paymentSagaOrchestrator }
+  ];
 }

@@ -19,28 +19,40 @@ export class IdempotencyInterceptor implements NestInterceptor {
       return next.handle();
     }
 
-    // Check if event was already processed
-    const existing = await this.prisma.processedEvent.findUnique({
-      where: { eventId: idempotencyKey }
-    });
-
-    if (existing) {
-      // Return previously saved response
-      return of(JSON.parse(existing.responseBody));
+    try {
+      // Atomic insertion to claim the idempotency key (status: PROCESSING)
+      await this.prisma.processedEvent.create({
+        data: {
+          eventId: idempotencyKey,
+          responseBody: '',
+          processedAt: new Date(),
+          status: 'PROCESSING'
+        }
+      });
+    } catch (err: any) {
+      // Unique constraint violation: Key already exists
+      const existing = await this.prisma.processedEvent.findUnique({
+        where: { eventId: idempotencyKey }
+      });
+      if (existing && existing.status === 'COMPLETED') {
+        return of(JSON.parse(existing.responseBody));
+      } else {
+        throw new HttpException('Request already in progress', HttpStatus.CONFLICT);
+      }
     }
 
     return next.handle().pipe(
       tap(async (response) => {
         try {
-          await this.prisma.processedEvent.create({
+          await this.prisma.processedEvent.update({
+            where: { eventId: idempotencyKey },
             data: {
-              eventId: idempotencyKey,
               responseBody: JSON.stringify(response),
-              processedAt: new Date()
+              status: 'COMPLETED'
             }
           });
         } catch (err) {
-          // Ignore uniqueness constraint violations if race condition occurred
+          // Ignore if updating fails for unforeseen reasons
         }
       })
     );
