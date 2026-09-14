@@ -3,6 +3,7 @@
    ========================================================================== */
 
 import path from 'path';
+import fs from 'fs';
 import { loadConfig } from '../core/config';
 import { getArchRule } from '../core/arch-rules';
 import { parseGherkinText } from '../core/gherkin-parser';
@@ -11,6 +12,32 @@ import { logger } from '../utils/logger';
 import { Project } from 'ts-morph';
 import { validateOpenAPIAgainstIR, validateOpenAPISpec } from '../core/openapi-validator';
 import { runAllValidators, ValidatorContext } from '../core/validators';
+
+function collectFilesRecursively(dir: string): { path: string; content: string }[] {
+  const results: { path: string; content: string }[] = [];
+  if (!fs.existsSync(dir)) return results;
+
+  try {
+    const entries = fs.readdirSync(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        results.push(...collectFilesRecursively(fullPath));
+      } else if (entry.isFile()) {
+        try {
+          const content = fs.readFileSync(fullPath, 'utf8');
+          results.push({ path: fullPath, content });
+        } catch {
+          // Ignore binary or unreadable files
+        }
+      }
+    }
+  } catch {
+    // Ignore invalid directories
+  }
+
+  return results;
+}
 
 export async function handleValidateCommand(options: { feature?: string; config?: string; openapi?: string }): Promise<void> {
   logger.banner();
@@ -53,7 +80,7 @@ export async function handleValidateCommand(options: { feature?: string; config?
     }
   }
 
-  // 2. Contracts & Layer Boundary Verification via AST (ts-morph)
+  // 2. Contracts & Layer Boundary Verification via AST (ts-morph) for TypeScript/JS
   const tsProject = new Project();
   const outputDirGlob = path.posix.join(config.outputDir.replace(/\\/g, '/'), '**/*.ts');
   const sourceFiles = tsProject.addSourceFilesAtPaths(outputDirGlob);
@@ -64,28 +91,34 @@ export async function handleValidateCommand(options: { feature?: string; config?
     for (const sourceFile of sourceFiles) {
       const imports = sourceFile.getImportDeclarations();
       for (const importDecl of imports) {
-        const moduleSpecifier = importDecl.getModuleSpecifierValue();
-        arch.prohibitedImports.forEach(imp => {
-          if (moduleSpecifier === imp || moduleSpecifier.startsWith(`${imp}/`)) {
-            logger.error(`Layer Boundary Violation: ${sourceFile.getBaseName()} imports prohibited library "${imp}"`);
-            errorsCount++;
-            prohibitedFound = true;
-          }
-        });
+        try {
+          if (!importDecl.getModuleSpecifier()) continue;
+          const moduleSpecifier = importDecl.getModuleSpecifierValue();
+          if (!moduleSpecifier) continue;
+          arch.prohibitedImports.forEach(imp => {
+            if (moduleSpecifier === imp || moduleSpecifier.startsWith(`${imp}/`)) {
+              logger.error(`Layer Boundary Violation: ${sourceFile.getBaseName()} imports prohibited library "${imp}"`);
+              errorsCount++;
+              prohibitedFound = true;
+            }
+          });
+        } catch {
+          // Ignore non-string literal specifiers safely
+        }
       }
     }
 
     if (!prohibitedFound) {
-      logger.success(`Layer Boundary Check: ${sourceFiles.length} files scanned via AST. Core cleanly isolates domain from ${arch.prohibitedImports.join(', ')}.`);
+      logger.success(`Layer Boundary Check: ${sourceFiles.length} TypeScript file(s) scanned via AST. Core cleanly isolates domain from ${arch.prohibitedImports.join(', ')}.`);
     }
+  }
 
-    // Advanced Validators (CQRS, C4, Vue, Financial Gates, etc.)
-    const contextFiles = sourceFiles.map(sf => ({
-      path: sf.getFilePath(),
-      content: sf.getFullText()
-    }));
-    
-    // We pass any true boolean keys or string keys from rules as enabled rule strings
+  // 3. Multi-Language Distributed Systems Validators (.cs, .java, .ts, .py, .php, .json)
+  const outputDirResolved = path.resolve(process.cwd(), config.outputDir);
+  const allScannedFiles = collectFilesRecursively(outputDirResolved);
+
+  if (allScannedFiles.length > 0) {
+    // Pass any true boolean keys or string keys from rules as enabled rule strings
     const rulesRecord = config.rules as Record<string, any>;
     const enabledRules = Object.keys(config.rules).filter(k => rulesRecord[k] === true || typeof rulesRecord[k] === 'string');
     if (config.domainProfile) {
@@ -93,7 +126,7 @@ export async function handleValidateCommand(options: { feature?: string; config?
     }
 
     const valContext: ValidatorContext = {
-      files: contextFiles,
+      files: allScannedFiles,
       rules: enabledRules
     };
 
@@ -103,7 +136,7 @@ export async function handleValidateCommand(options: { feature?: string; config?
       advResult.errors.forEach(e => logger.error(`  - ${e}`));
       errorsCount += advResult.errors.length;
     } else {
-      logger.success('Advanced Distributed Systems Validators PASSED.');
+      logger.success(`Advanced Distributed Systems Validators PASSED across ${allScannedFiles.length} generated artifact file(s).`);
     }
     
     if (advResult.warnings.length > 0) {
@@ -113,11 +146,11 @@ export async function handleValidateCommand(options: { feature?: string; config?
     }
 
   } else {
-    logger.warn(`No .ts files found under ${config.outputDir}. Run "npx gherkin-ai generate" first.`);
+    logger.warn(`No generated artifact files found under ${config.outputDir}. Run "ghk generate" first.`);
     warningsCount++;
   }
 
-  // 3. OpenAPI Specification Validation (Optional)
+  // 4. OpenAPI Specification Validation (Optional)
   if (options.openapi) {
     const openapiPath = path.resolve(process.cwd(), options.openapi);
     if (!fileExistsSync(openapiPath)) {
@@ -149,11 +182,12 @@ export async function handleValidateCommand(options: { feature?: string; config?
     }
   }
 
-  // 4. Final Validation Summary Scorecard
+  // 5. Final Validation Summary Scorecard
   console.log('\n------------------------------------------------------------');
   console.log('📊 Architectural Linter Summary Scorecard:');
   console.log(`- Architecture Style: ${arch.name}`);
   console.log(`- Prohibited Imports Guard: ${arch.prohibitedImports.length} rule(s) active`);
+  console.log(`- Scanned Artifact Files: ${allScannedFiles.length}`);
   console.log(`- Total Errors: ${errorsCount}`);
   console.log(`- Total Warnings: ${warningsCount}`);
   console.log('------------------------------------------------------------\n');
