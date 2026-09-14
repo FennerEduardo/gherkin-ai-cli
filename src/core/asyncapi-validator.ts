@@ -229,15 +229,27 @@ function validateBindings(bindings: any, channelName: string, channelPath: strin
         message: `RabbitMQ binding for "${channelName}" has routingKey type but no queue configuration`
       });
     }
+    if (rmq.queue && !rmq.queue.name) {
+      result.errors.push({
+        path: `${channelPath}.bindings.rabbitmq.queue`,
+        message: `RabbitMQ queue must have a "name" defined`
+      });
+    }
   }
 
   // Kafka bindings
   if (bindings.kafka) {
     const kafka = bindings.kafka;
-    if (!kafka.topic && !kafka.groupId) {
+    if (!kafka.topic) {
       result.warnings.push({
         path: `${channelPath}.bindings.kafka`,
-        message: `Kafka binding for "${channelName}" is missing "topic" or "groupId" (consumerGroup)`
+        message: `Kafka binding for "${channelName}" is missing "topic"`
+      });
+    }
+    if (!kafka.groupId) {
+      result.warnings.push({
+        path: `${channelPath}.bindings.kafka`,
+        message: `Kafka binding for "${channelName}" is missing "groupId" (consumerGroup) for reliable delivery`
       });
     }
     if (kafka.partitions && kafka.partitions < 1) {
@@ -245,6 +257,14 @@ function validateBindings(bindings: any, channelName: string, channelPath: strin
         path: `${channelPath}.bindings.kafka.partitions`,
         message: `Kafka partitions must be >= 1 for channel "${channelName}"`
       });
+    }
+    if (kafka.topicConfiguration) {
+      if (kafka.topicConfiguration['retention.ms'] === undefined && kafka.topicConfiguration['retention.bytes'] === undefined) {
+        result.warnings.push({
+          path: `${channelPath}.bindings.kafka.topicConfiguration`,
+          message: `Kafka topic configuration for "${channelName}" lacks retention policies (retention.ms or retention.bytes)`
+        });
+      }
     }
   }
 }

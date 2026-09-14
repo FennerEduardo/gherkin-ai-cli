@@ -5,6 +5,7 @@ import { generateContracts } from '../generators/contracts';
 import { generateFixtures } from '../generators/fixtures';
 import { generatePrompts } from '../generators/prompts';
 import { generateInfra } from '../generators/infra';
+import { generateAwsCdkInfrastructure } from '../generators/infrastructure/aws-cdk-generator';
 import { generatePresets } from '../generators/presets';
 import { generatePrismaStack } from '../generators/prisma-stack';
 import { ParsedFeature } from '../core/gherkin-parser';
@@ -131,6 +132,38 @@ export class CoreInfraPlugin implements GherkinAIPlugin {
       artifacts.push({ filePath: 'docker-compose.yml', content: result.dockerComposeYaml, type: 'config' });
     }
     artifacts.push({ filePath: '.env.example', content: result.envExample, type: 'config' });
+
+    // Ensure AWS CDK is connected to the central pipeline
+    // This addresses the gap reported in the Java+Spring+AWS scenario
+    const cdkStack = generateAwsCdkInfrastructure(config.projectName);
+    artifacts.push({ filePath: `infrastructure/lib/${config.projectName}-stack.ts`, content: cdkStack, type: 'config' });
+    
+    artifacts.push({
+      filePath: `infrastructure/cdk.json`,
+      content: JSON.stringify({ app: `npx ts-node bin/${config.projectName}.ts` }, null, 2),
+      type: 'config'
+    });
+    
+    artifacts.push({
+      filePath: `infrastructure/package.json`,
+      content: JSON.stringify({
+        name: `${config.projectName}-infra`,
+        version: "0.1.0",
+        dependencies: {
+          "aws-cdk-lib": "2.100.0",
+          "constructs": "10.0.0"
+        },
+        devDependencies: {
+          "aws-cdk": "2.100.0",
+          "ts-node": "^10.9.1",
+          "typescript": "~5.2.2"
+        },
+        scripts: {
+          "synth": "cdk synth"
+        }
+      }, null, 2),
+      type: 'config'
+    });
 
     return artifacts;
   }

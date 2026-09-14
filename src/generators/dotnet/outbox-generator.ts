@@ -68,14 +68,19 @@ namespace ${namespace}.Infrastructure.Outbox
         }
     }
 
+    public interface IMessageBrokerPublisher
+    {
+        Task PublishAsync(string eventType, string payload, CancellationToken cancellationToken);
+    }
+
     public class OutboxProcessorBackgroundService : BackgroundService
     {
-        private readonly DbContext _dbContext;
+        private readonly IServiceProvider _serviceProvider;
         private readonly ILogger<OutboxProcessorBackgroundService> _logger;
 
-        public OutboxProcessorBackgroundService(DbContext dbContext, ILogger<OutboxProcessorBackgroundService> logger)
+        public OutboxProcessorBackgroundService(IServiceProvider serviceProvider, ILogger<OutboxProcessorBackgroundService> logger)
         {
-            _dbContext = dbContext;
+            _serviceProvider = serviceProvider;
             _logger = logger;
         }
 
@@ -85,38 +90,43 @@ namespace ${namespace}.Infrastructure.Outbox
             {
                 try
                 {
+                    using var scope = _serviceProvider.CreateScope();
+                    var dbContext = scope.ServiceProvider.GetRequiredService<DbContext>();
+                    var messageBroker = scope.ServiceProvider.GetRequiredService<IMessageBrokerPublisher>();
+
                     var now = DateTime.UtcNow;
-                    var pendingMessages = await _dbContext.Set<OutboxMessage>()
+                    var pendingMessages = await dbContext.Set<OutboxMessage>()
                         .Where(m => m.Status == OutboxStatus.Pending && (m.LockUntil == null || m.LockUntil < now))
                         .Take(50)
                         .ToListAsync(stoppingToken);
 
-                    foreach (var msg in pendingMessages)
+                    if (pendingMessages.Any())
                     {
-                        msg.Status = OutboxStatus.Processing;
-                        msg.LockUntil = now.AddSeconds(30);
-                    }
-
-                    await _dbContext.SaveChangesAsync(stoppingToken);
-
-                    foreach (var msg in pendingMessages)
-                    {
-                        try
+                        foreach (var msg in pendingMessages)
                         {
-                            // Publish event to message broker (MassTransit, RabbitMQ, Kafka)
-                            msg.Status = OutboxStatus.Published;
-                            msg.ProcessedOn = DateTime.UtcNow;
+                            msg.Status = OutboxStatus.Processing;
+                            msg.LockUntil = now.AddSeconds(30);
                         }
-                        catch (Exception ex)
-                        {
-                            msg.RetryCount++;
-                            msg.Error = ex.Message;
-                            msg.Status = msg.RetryCount >= 5 ? OutboxStatus.Failed : OutboxStatus.Pending;
-                            _logger.LogError(ex, "Failed to publish Outbox message {Id}", msg.Id);
-                        }
-                    }
+                        await dbContext.SaveChangesAsync(stoppingToken);
 
-                    await _dbContext.SaveChangesAsync(stoppingToken);
+                        foreach (var msg in pendingMessages)
+                        {
+                            try
+                            {
+                                await messageBroker.PublishAsync(msg.EventType, msg.Payload, stoppingToken);
+                                msg.Status = OutboxStatus.Published;
+                                msg.ProcessedOn = DateTime.UtcNow;
+                            }
+                            catch (Exception ex)
+                            {
+                                msg.RetryCount++;
+                                msg.Error = ex.Message;
+                                msg.Status = msg.RetryCount >= 5 ? OutboxStatus.Failed : OutboxStatus.Pending;
+                                _logger.LogError(ex, "Failed to publish Outbox message {Id}", msg.Id);
+                            }
+                        }
+                        await dbContext.SaveChangesAsync(stoppingToken);
+                    }
                 }
                 catch (Exception ex)
                 {

@@ -3,6 +3,7 @@ export function generateNestJsOutboxInfrastructure(): string {
 // Transactional Outbox Pattern (NestJS + Prisma)
 // --------------------------------------------------------------------------
 import { Injectable } from '@nestjs/common';
+import { Cron, CronExpression } from '@nestjs/schedule';
 import { PrismaClient } from '@prisma/client';
 
 @Injectable()
@@ -33,6 +34,33 @@ export class OutboxService {
       where: { id },
       data: { processedOn: new Date() },
     });
+  }
+}
+
+export interface IMessageBrokerPublisher {
+  publish(eventType: string, payload: any): Promise<void>;
+}
+
+@Injectable()
+export class OutboxProcessor {
+  constructor(
+    private readonly outboxService: OutboxService,
+    private readonly messageBroker: IMessageBrokerPublisher,
+  ) {}
+
+  @Cron(CronExpression.EVERY_5_SECONDS)
+  async processOutboxMessages() {
+    const messages = await this.outboxService.getUnprocessedMessages();
+
+    for (const msg of messages) {
+      try {
+        await this.messageBroker.publish(msg.eventType, JSON.parse(msg.payload));
+        await this.outboxService.markAsProcessed(msg.id);
+      } catch (error) {
+        // Implement retry logic or dead-letter queue as necessary
+        console.error(\`Failed to process outbox message \${msg.id}\`, error);
+      }
+    }
   }
 }
 `;

@@ -112,13 +112,19 @@ public class OutboxService {
     }
 }
 
+public interface IMessageBrokerPublisher {
+    void publish(String eventType, String payload) throws Exception;
+}
+
 @Service
 public class OutboxPublisher {
 
     private final OutboxRepository repository;
+    private final IMessageBrokerPublisher messageBroker;
 
-    public OutboxPublisher(OutboxRepository repository) {
+    public OutboxPublisher(OutboxRepository repository, IMessageBrokerPublisher messageBroker) {
         this.repository = repository;
+        this.messageBroker = messageBroker;
     }
 
     @Scheduled(fixedDelay = 5000)
@@ -129,8 +135,7 @@ public class OutboxPublisher {
 
         for (OutboxMessage msg : pending) {
             try {
-                // Publish to message broker (Kafka, RabbitMQ, SQS)
-                // EventBroker.publish(msg.getEventType(), msg.getPayload());
+                messageBroker.publish(msg.getEventType(), msg.getPayload());
                 msg.markAsPublished();
             } catch (Exception e) {
                 msg.markAsFailed(e.getMessage());
