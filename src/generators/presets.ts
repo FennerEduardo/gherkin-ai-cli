@@ -20,6 +20,21 @@ import { generateReactReduxInfrastructure } from './frontend/react-generator';
 import { generateAngularStoreInfrastructure } from './frontend/angular-ngrx-generator';
 import { generateAngularSignalRService } from './frontend/angular-signalr-service';
 
+function toKebabCase(str: string): string {
+  return str
+    .replace(/([a-z])([A-Z])/g, '$1-$2')
+    .replace(/[\s_/\\]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .toLowerCase();
+}
+
+function toPascalCase(str: string): string {
+  const camel = str
+    .replace(/[\s_/\\]+(.)/g, (_, c) => c.toUpperCase())
+    .replace(/^[A-Z]/, (m) => m.toLowerCase());
+  return camel.charAt(0).toUpperCase() + camel.slice(1);
+}
+
 export function generatePresets(parsed: ParsedFeature, config: GherkinAIConfig): { filename: string; content: string }[] {
   const lang = config.stack.language.toLowerCase();
   const framework = config.stack.framework?.toLowerCase() || '';
@@ -52,27 +67,28 @@ export function generatePresets(parsed: ParsedFeature, config: GherkinAIConfig):
   // Complementary Frontend Dual-Stack Matrix Generation
   if (config.frontendStack && config.frontendStack.framework !== 'none') {
     const feFramework = config.frontendStack.framework.toLowerCase();
-    const featureName = parsed.featureName;
+    const safeFeatureName = toPascalCase(parsed.featureName);
+    const kebabFeatureName = toKebabCase(parsed.featureName);
 
     if (feFramework === 'vue') {
       results.push({
-        filename: `frontend/stores/${featureName.toLowerCase()}.store.ts`,
-        content: generateVuePiniaStore(featureName)
+        filename: `frontend/stores/${kebabFeatureName}.store.ts`,
+        content: generateVuePiniaStore(safeFeatureName)
       });
     } else if (feFramework === 'react') {
       results.push({
-        filename: `frontend/store/${featureName.toLowerCase()}Slice.ts`,
-        content: generateReactReduxInfrastructure(featureName)
+        filename: `frontend/store/${kebabFeatureName}Slice.ts`,
+        content: generateReactReduxInfrastructure(safeFeatureName)
       });
     } else if (feFramework === 'angular') {
       const mode = config.frontendStack.stateManagement === 'classic' ? 'classic' : 'signals';
       results.push({
-        filename: `frontend/store/${featureName.toLowerCase()}.store.ts`,
-        content: generateAngularStoreInfrastructure(featureName, mode)
+        filename: `frontend/store/${kebabFeatureName}.store.ts`,
+        content: generateAngularStoreInfrastructure(safeFeatureName, mode)
       });
       results.push({
         filename: `frontend/services/signalr-notification.service.ts`,
-        content: generateAngularSignalRService(featureName)
+        content: generateAngularSignalRService(safeFeatureName)
       });
     }
   }

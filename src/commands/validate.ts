@@ -41,7 +41,7 @@ function collectFilesRecursively(dir: string): { path: string; content: string }
   return results;
 }
 
-export async function handleValidateCommand(options: { feature?: string; config?: string; openapi?: string; asyncapi?: string }): Promise<void> {
+export async function handleValidateCommand(options: { feature?: string; config?: string; openapi?: string; asyncapi?: string; target?: string }): Promise<void> {
   logger.banner();
   logger.info('Validating project architecture, step coverage & layer boundaries...');
 
@@ -84,7 +84,8 @@ export async function handleValidateCommand(options: { feature?: string; config?
 
   // 2. Contracts & Layer Boundary Verification via AST (ts-morph) for TypeScript/JS
   const tsProject = new Project();
-  const outputDirGlob = path.posix.join(config.outputDir.replace(/\\/g, '/'), '**/*.ts');
+  const targetForGlob = options.target || config.outputDir;
+  const outputDirGlob = path.posix.join(targetForGlob.replace(/\\/g, '/'), '**/*.ts');
   const sourceFiles = tsProject.addSourceFilesAtPaths(outputDirGlob);
 
   if (sourceFiles.length > 0) {
@@ -116,7 +117,7 @@ export async function handleValidateCommand(options: { feature?: string; config?
   }
 
   // 3. Multi-Language Distributed Systems Validators (.cs, .java, .ts, .py, .php, .json)
-  const outputDirResolved = path.resolve(process.cwd(), config.outputDir);
+  const outputDirResolved = path.resolve(process.cwd(), options.target || config.outputDir);
   const allScannedFiles = collectFilesRecursively(outputDirResolved);
 
   if (allScannedFiles.length > 0) {
@@ -148,7 +149,7 @@ export async function handleValidateCommand(options: { feature?: string; config?
     }
 
   } else {
-    logger.warn(`No generated artifact files found under ${config.outputDir}. Run "ghk generate" first.`);
+    logger.warn(`No generated artifact files found under ${options.target || config.outputDir}. Run "ghk generate" or "ghk add" first.`);
     warningsCount++;
   }
 
@@ -242,5 +243,6 @@ export async function handleValidateCommand(options: { feature?: string; config?
     logger.success('Architectural validation PASSED with 0 errors.');
   } else {
     logger.error(`Validation completed with ${errorsCount} critical issue(s).`);
+    process.exitCode = 1;
   }
 }

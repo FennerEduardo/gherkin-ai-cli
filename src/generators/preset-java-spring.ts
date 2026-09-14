@@ -34,14 +34,22 @@ public class ${className} {
     @Container
     static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:15-alpine");
 
-    ${parsed.scenarios.map(sc => `
+    ${parsed.scenarios.map(sc => {
+        let lastKeyword = 'Given';
+        return `
     // Scenario: ${sc.name}
-    ${sc.steps.map(st => `
-    @${st.keyword.trim()}("${st.text.replace(/"/g, '\\"')}")
+    ${sc.steps.map(st => {
+        const kw = st.keyword.trim();
+        if (kw === 'Given' || kw === 'When' || kw === 'Then') {
+            lastKeyword = kw;
+        }
+        return `
+    @${lastKeyword}("${st.text.replace(/"/g, '\\"')}")
     public void step_${st.text.replace(/[^a-zA-Z0-9]/g, '_')}() {
         // TODO: Implement Step Binding for GraphQL / REST Service
-    }`).join('\n')}
-    `).join('\n')}
+    }`;
+    }).join('\n')}
+    `;}).join('\n')}
 }
 `;
 

@@ -98,7 +98,11 @@ export function loadConfig(configPath?: string): GherkinAIConfig {
       ...defaultConfig,
       ...parsed,
       stack: { ...defaultConfig.stack, ...(parsed.stack || {}) },
-      audit: { ...defaultConfig.audit, ...(parsed.audit || {}) }
+      audit: { ...defaultConfig.audit, ...(parsed.audit || {}) },
+      rules: { ...defaultConfig.rules, ...(parsed.rules || {}) },
+      frontendStack: parsed.frontendStack 
+        ? { ...(defaultConfig.frontendStack || {}), ...parsed.frontendStack }
+        : defaultConfig.frontendStack
     };
   } catch (err) {
     throw new Error(`Failed to parse config file at ${targetPath}: ${(err as Error).message}`);

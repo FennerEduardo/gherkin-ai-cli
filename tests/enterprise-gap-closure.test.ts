@@ -103,7 +103,7 @@ describe('Enterprise Gap Closure & Clean Architecture Suite (.NET + Angular Sign
   });
 
   it('generates strongly-typed Angular Signals Store with domain status enums', () => {
-    const storeFile = files.find(f => f.filename.includes('frontend/store/ordermanagement.store.ts'))!;
+    const storeFile = files.find(f => f.filename.includes('frontend/store/order-management.store.ts'))!;
     expect(storeFile).toBeDefined();
     expect(storeFile.content).toContain("export enum TransactionStatus");
     expect(storeFile.content).toContain("COMPLETED = 'COMPLETED'");

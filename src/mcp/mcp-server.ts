@@ -28,11 +28,11 @@ import { handleAuditCommand } from '../commands/audit';
 import { handleAgentLogCommand } from '../commands/agent-log';
 import { handleImplementCommand } from '../commands/implement';
 import { promisify } from 'util';
-import { exec } from 'child_process';
+import { exec, execFile } from 'child_process';
 import { CrossServiceImpactAnalyzer } from '../core/analysis/cross-service-impact';
 
 const execAsync = promisify(exec);
-
+const execFileAsync = promisify(execFile);
 
 export function startMcpServer(): void {
   process.stdin.setEncoding('utf8');
@@ -439,7 +439,7 @@ async function handleToolCall(id: number | string, name: string, args: any): Pro
       case 'run_cli_diff': {
         const { feature, target } = args;
         try {
-          const { stdout, stderr } = await execAsync(`node bin/gherkin-ai.js diff --feature ${feature} --target ${target}`);
+          const { stdout, stderr } = await execFileAsync('node', ['bin/gherkin-ai.js', 'diff', '--feature', feature, '--target', target], { shell: false });
           sendJsonRpcResponse(id, {
             content: [{ type: 'text', text: stdout || stderr }]
           });
@@ -452,10 +452,14 @@ async function handleToolCall(id: number | string, name: string, args: any): Pro
       }
 
       case 'run_cli_verify': {
-        const autoFixFlag = args.autoFix ? '--auto-fix' : '';
-        const commandFlag = args.command ? `--command "${args.command}"` : '';
+        const commandArgs = ['bin/gherkin-ai.js', 'verify'];
+        if (args.autoFix) commandArgs.push('--auto-fix');
+        if (args.command) {
+          commandArgs.push('--command');
+          commandArgs.push(args.command);
+        }
         try {
-          const { stdout, stderr } = await execAsync(`node bin/gherkin-ai.js verify ${autoFixFlag} ${commandFlag}`);
+          const { stdout, stderr } = await execFileAsync('node', commandArgs, { shell: false });
           sendJsonRpcResponse(id, {
             content: [{ type: 'text', text: stdout || stderr }]
           });
@@ -470,7 +474,7 @@ async function handleToolCall(id: number | string, name: string, args: any): Pro
       case 'run_cli_autopilot': {
         const requirement = args.requirement;
         try {
-          const { stdout, stderr } = await execAsync(`node bin/gherkin-ai.js autopilot --requirement ${requirement}`);
+          const { stdout, stderr } = await execFileAsync('node', ['bin/gherkin-ai.js', 'autopilot', '--requirement', requirement], { shell: false });
           sendJsonRpcResponse(id, {
             content: [{ type: 'text', text: stdout || stderr }]
           });

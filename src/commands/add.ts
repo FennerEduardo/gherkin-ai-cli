@@ -67,7 +67,7 @@ export async function handleAddCommand(options: { feature?: string; target?: str
   logger.info(`Injecting contracts & AI prompts into: ${targetDir}`);
 
   // 1. Generate Contracts, OpenAPI, AsyncAPI & Native Language Contract
-  const ir = buildSpecificationIR(parsed, featurePath);
+  const ir = buildSpecificationIR(parsed, featurePath, { domainProfile: config.domainProfile });
   const { contractsTs, adrMd, openApiJson, asyncApiJson, nativeContract } = generateContracts(parsed, ir, config);
   const contractFileName = `${featurePascal.toLowerCase()}.contract.ts`;
   
