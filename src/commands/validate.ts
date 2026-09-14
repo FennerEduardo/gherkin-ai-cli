@@ -11,6 +11,7 @@ import { fileExistsSync, readFileSync } from '../utils/file-system';
 import { logger } from '../utils/logger';
 import { Project } from 'ts-morph';
 import { validateOpenAPIAgainstIR, validateOpenAPISpec } from '../core/openapi-validator';
+import { validateAsyncAPIAgainstIR, validateAsyncAPISpec } from '../core/asyncapi-validator';
 import { runAllValidators, ValidatorContext } from '../core/validators';
 
 function collectFilesRecursively(dir: string): { path: string; content: string }[] {
@@ -39,7 +40,7 @@ function collectFilesRecursively(dir: string): { path: string; content: string }
   return results;
 }
 
-export async function handleValidateCommand(options: { feature?: string; config?: string; openapi?: string }): Promise<void> {
+export async function handleValidateCommand(options: { feature?: string; config?: string; openapi?: string; asyncapi?: string }): Promise<void> {
   logger.banner();
   logger.info('Validating project architecture, step coverage & layer boundaries...');
 
@@ -182,7 +183,51 @@ export async function handleValidateCommand(options: { feature?: string; config?
     }
   }
 
-  // 5. Final Validation Summary Scorecard
+  // 5. AsyncAPI Specification Validation (Optional or auto-detect)
+  let asyncapiPath = options.asyncapi ? path.resolve(process.cwd(), options.asyncapi) : null;
+
+  // Auto-detect AsyncAPI files in outputDir if not explicitly provided
+  if (!asyncapiPath && allScannedFiles.length > 0) {
+    const asyncapiFile = allScannedFiles.find(f =>
+      f.path.toLowerCase().includes('asyncapi') &&
+      (f.path.endsWith('.json') || f.path.endsWith('.yaml') || f.path.endsWith('.yml'))
+    );
+    if (asyncapiFile) {
+      asyncapiPath = asyncapiFile.path;
+      logger.info(`Auto-detected AsyncAPI specification: ${asyncapiPath}`);
+    }
+  }
+
+  if (asyncapiPath) {
+    if (!fileExistsSync(asyncapiPath)) {
+      logger.error(`AsyncAPI spec file not found at ${asyncapiPath}`);
+      errorsCount++;
+    } else {
+      logger.info(`Validating AsyncAPI specification: ${path.basename(asyncapiPath)}`);
+      let aaResult;
+
+      if (parsedFeatureIR) {
+        logger.info(`Cross-referencing AsyncAPI with Gherkin IR from ${options.feature}`);
+        aaResult = validateAsyncAPIAgainstIR(asyncapiPath, parsedFeatureIR);
+      } else {
+        aaResult = validateAsyncAPISpec(asyncapiPath);
+      }
+
+      if (!aaResult.valid) {
+        logger.error(`AsyncAPI validation failed (${aaResult.specVersion}):`);
+        aaResult.errors.forEach(e => logger.error(`  [${e.path}] ${e.message}`));
+        errorsCount += aaResult.errors.length;
+      } else {
+        logger.success(`AsyncAPI validation passed (${aaResult.specVersion}).`);
+      }
+
+      if (aaResult.warnings.length > 0) {
+        aaResult.warnings.forEach(w => logger.warn(`  [${w.path}] ${w.message}`));
+        warningsCount += aaResult.warnings.length;
+      }
+    }
+  }
+
   console.log('\n------------------------------------------------------------');
   console.log('📊 Architectural Linter Summary Scorecard:');
   console.log(`- Architecture Style: ${arch.name}`);

@@ -1,6 +1,4 @@
-// --------------------------------------------------------------------------
-// Generador de Pipelines de Resiliencia Polly v8 (Polly.Core) para .NET 8/9
-// --------------------------------------------------------------------------
+// Polly v8 (Polly.Core) Resilience Pipeline Generator for .NET 8/9
 
 export function generateResiliencePipelines(namespace: string): string {
   return `// --------------------------------------------------------------------------
@@ -37,7 +35,7 @@ namespace ${namespace}.Infrastructure.Resilience
                         UseJitter = true,
                         OnRetry = args =>
                         {
-                            logger.LogWarning("Reintento #{Attempt} tras error: {Message}", args.AttemptNumber, args.Outcome.Exception?.Message);
+                            logger.LogWarning("Retry #{Attempt} after error: {Message}", args.AttemptNumber, args.Outcome.Exception?.Message);
                             return ValueTask.CompletedTask;
                         }
                     })
@@ -51,12 +49,12 @@ namespace ${namespace}.Infrastructure.Resilience
                         BreakDuration = TimeSpan.FromSeconds(30),
                         OnOpened = args =>
                         {
-                            logger.LogError("Circuit Breaker ABIERTO por {Duration}s", args.BreakDuration.TotalSeconds);
+                            logger.LogError("Circuit Breaker OPEN for {Duration}s", args.BreakDuration.TotalSeconds);
                             return ValueTask.CompletedTask;
                         },
                         OnClosed = args =>
                         {
-                            logger.LogInformation("Circuit Breaker CERRADO / Operativo");
+                            logger.LogInformation("Circuit Breaker CLOSED / Operational");
                             return ValueTask.CompletedTask;
                         }
                     })

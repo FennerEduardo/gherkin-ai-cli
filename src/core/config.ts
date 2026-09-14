@@ -46,9 +46,10 @@ export interface GherkinAIConfig {
   designPatterns?: string[];
   codingRules?: string[];
   outputDir: string;
-  specDir?: string;       // Directorio de features/specs (default: auto-detect)
-  testCommand?: string;   // Comando de pruebas personalizado para verify/autopilot
-  domainProfile?: string; // Perfil de dominio de negocio (ej. 'payments')
+  specDir?: string;       // Feature/specs directory (default: auto-detect)
+  testCommand?: string;   // Custom test command for verify/autopilot
+  domainProfile?: string; // Business domain profile (e.g., 'payments')
+  channelMapping?: Record<string, string>; // Optional per-event channel name overrides (e.g., { PaymentInitiated: "payments.initiated" })
 }
 
 export const defaultConfig: GherkinAIConfig = {

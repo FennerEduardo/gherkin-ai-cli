@@ -1,6 +1,6 @@
 export function generateNestJsOpenTelemetry(): string {
   return `// --------------------------------------------------------------------------
-// OpenTelemetry para NestJS / OpenTelemetry Setup for NestJS
+// OpenTelemetry Setup for NestJS
 // --------------------------------------------------------------------------
 import { NodeSDK } from '@opentelemetry/sdk-node';
 import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentations-node';
@@ -26,7 +26,6 @@ export const otelSDK = new NodeSDK({
   ],
 });
 
-// Inicializar antes de cargar el módulo principal:
 // Initialize before loading the main module:
 // otelSDK.start();
 `;

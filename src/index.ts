@@ -207,6 +207,7 @@ program
   .option('-f, --feature <file>', 'Path to Gherkin .feature file')
   .option('-c, --config <file>', 'Path to custom gherkin-ai.config.json file')
   .option('--openapi <file>', 'Path to OpenAPI spec file to validate against IR')
+  .option('--asyncapi <file>', 'Path to AsyncAPI spec file to validate against IR')
   .action(async (options) => {
     await handleValidateCommand(options);
   });

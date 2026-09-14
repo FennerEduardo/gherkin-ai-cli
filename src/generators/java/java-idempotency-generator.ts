@@ -1,5 +1,5 @@
 // --------------------------------------------------------------------------
-// Patrón de Idempotencia para Java 21 / Spring Boot 3
+// Idempotency Pattern for Java 21 / Spring Boot 3
 // --------------------------------------------------------------------------
 
 export function generateJavaIdempotencyInfrastructure(packageName: string): string {
@@ -99,9 +99,9 @@ public class IdempotencyFilter extends OncePerRequestFilter {
         try {
             repository.save(newRecord);
         } catch (Exception e) {
-            // Conflicto de concurrencia: petición repetida procesándose simultáneamente
+            // Concurrency conflict: duplicate request being processed simultaneously
             response.setStatus(409);
-            response.getWriter().write("{\\"error\\": \\"Petición concurrente duplicada en proceso\\"}");
+            response.getWriter().write("{\\"error\\": \\"Duplicate concurrent request in progress\\"}");
             return;
         }
 

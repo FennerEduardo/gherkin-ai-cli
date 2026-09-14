@@ -1,5 +1,5 @@
 // --------------------------------------------------------------------------
-// Patrón Inbox Pattern / Inbox Consumer Deduplication (.NET 8/9)
+// Inbox Pattern / Inbox Consumer Deduplication (.NET 8/9)
 // --------------------------------------------------------------------------
 
 export function generateInboxInfrastructure(namespace: string): string {

@@ -1,6 +1,6 @@
 export function generateNestJsIdempotencyInterceptor(): string {
   return `// --------------------------------------------------------------------------
-// Consumidor Idempotente / Idempotent Consumer (NestJS Interceptor)
+// Idempotent Consumer (NestJS Interceptor)
 // --------------------------------------------------------------------------
 import { Injectable, NestInterceptor, ExecutionContext, CallHandler, HttpException, HttpStatus } from '@nestjs/common';
 import { Observable, of } from 'rxjs';
@@ -18,18 +18,17 @@ export class IdempotencyInterceptor implements NestInterceptor {
       return next.handle();
     }
 
-    // Verificar si el evento ya fue procesado / Check if event was already processed
+    // Check if event was already processed
     const existing = await this.prisma.processedEvent.findUnique({
       where: { eventId: idempotencyKey }
     });
 
     if (existing) {
-      // Retornar la respuesta guardada previamente / Return previously saved response
+      // Return previously saved response
       return of(JSON.parse(existing.responseBody));
     }
 
     return next.handle();
-    // Nota: El guardado del evento debe hacerse tras procesarse con éxito en el pipeline principal.
     // Note: The event must be saved after successful processing in the main pipeline.
   }
 }

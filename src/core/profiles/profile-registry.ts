@@ -7,7 +7,7 @@ import { PaymentProfile } from './payment-profile';
 
 const profilesRegistry: Map<string, DomainProfile> = new Map();
 
-// Registrar perfiles estándar
+// Register standard profiles
 const paymentProfile = new PaymentProfile();
 profilesRegistry.set('payments', paymentProfile);
 profilesRegistry.set('payment', paymentProfile);
@@ -15,7 +15,7 @@ profilesRegistry.set('fintech', paymentProfile);
 profilesRegistry.set('payment-platform', paymentProfile);
 
 /**
- * Resuelve el perfil de dominio correspondiente según la configuración o nombre provisto.
+ * Resolves the corresponding domain profile based on the configuration or provided name.
  */
 export function resolveDomainProfile(profileName?: string): DomainProfile | null {
   if (!profileName) return null;
@@ -24,7 +24,7 @@ export function resolveDomainProfile(profileName?: string): DomainProfile | null
 }
 
 /**
- * Devuelve todos los nombres de perfiles de dominio registrados.
+ * Returns all registered domain profile names.
  */
 export function getRegisteredProfileNames(): string[] {
   return Array.from(new Set(Array.from(profilesRegistry.keys())));

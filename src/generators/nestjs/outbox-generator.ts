@@ -1,6 +1,6 @@
 export function generateNestJsOutboxInfrastructure(): string {
   return `// --------------------------------------------------------------------------
-// Patrón Transactional Outbox (NestJS + Prisma) / Transactional Outbox Pattern
+// Transactional Outbox Pattern (NestJS + Prisma)
 // --------------------------------------------------------------------------
 import { Injectable } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
@@ -10,7 +10,6 @@ export class OutboxService {
   constructor(private readonly prisma: PrismaClient) {}
 
   async saveMessage(eventType: string, payload: any, tx: any = this.prisma) {
-    // Se guarda en la misma transacción Prisma que el modelo de dominio
     // Saved within the same Prisma transaction as the domain model
     await tx.outboxMessage.create({
       data: {

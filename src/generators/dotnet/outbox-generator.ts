@@ -1,6 +1,6 @@
 export function generateOutboxInfrastructure(namespace: string): string {
   return `// --------------------------------------------------------------------------
-// Patrón Transactional Outbox / Transactional Outbox Pattern (.NET 8/9)
+// Transactional Outbox Pattern (.NET 8/9)
 // --------------------------------------------------------------------------
 using System;
 using System.Collections.Generic;
@@ -54,7 +54,7 @@ namespace ${namespace}.Infrastructure.Outbox
         {
             if (transaction == null)
             {
-                throw new InvalidOperationException("OutboxMessage debe guardarse dentro de una IDbContextTransaction activa.");
+                throw new InvalidOperationException("OutboxMessage must be saved within an active IDbContextTransaction.");
             }
 
             var message = new OutboxMessage
@@ -103,7 +103,7 @@ namespace ${namespace}.Infrastructure.Outbox
                     {
                         try
                         {
-                            // Publicar evento al broker de mensajería (MassTransit, RabbitMQ, Kafka)
+                            // Publish event to message broker (MassTransit, RabbitMQ, Kafka)
                             msg.Status = OutboxStatus.Published;
                             msg.ProcessedOn = DateTime.UtcNow;
                         }
@@ -112,7 +112,7 @@ namespace ${namespace}.Infrastructure.Outbox
                             msg.RetryCount++;
                             msg.Error = ex.Message;
                             msg.Status = msg.RetryCount >= 5 ? OutboxStatus.Failed : OutboxStatus.Pending;
-                            _logger.LogError(ex, "Fallo al publicar mensaje Outbox {Id}", msg.Id);
+                            _logger.LogError(ex, "Failed to publish Outbox message {Id}", msg.Id);
                         }
                     }
 
@@ -120,7 +120,7 @@ namespace ${namespace}.Infrastructure.Outbox
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "Error en ejecutor de Outbox background");
+                    _logger.LogError(ex, "Error in Outbox background processor");
                 }
 
                 await Task.Delay(5000, stoppingToken);

@@ -1,8 +1,6 @@
 export function generateAwsCdkInfrastructure(projectName: string): string {
   const camelName = projectName.charAt(0).toUpperCase() + projectName.slice(1);
-  return `// --------------------------------------------------------------------------
-// AWS CDK: Infraestructura Base para Microservicios
-// --------------------------------------------------------------------------
+  return `// AWS CDK: Base Infrastructure for Microservices
 import * as cdk from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 import * as sns from 'aws-cdk-lib/aws-sns';
@@ -16,7 +14,7 @@ export class ${camelName}InfrastructureStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
 
-    // 1. Mensajería: SNS Topic FIFO para Domain Events
+    // 1. Messaging: SNS FIFO Topic for Domain Events
     // ---------------------------------------------------------
     const domainEventsTopic = new sns.Topic(this, 'DomainEventsTopic', {
       topicName: \`\${id}-domain-events.fifo\`,
@@ -33,7 +31,7 @@ export class ${camelName}InfrastructureStack extends cdk.Stack {
       retentionPeriod: cdk.Duration.days(14),
     });
 
-    // 3. Cola SQS FIFO para Consumidor (con Retry / DLQ)
+    // 3. SQS FIFO Queue for Consumer (with Retry / DLQ)
     // ---------------------------------------------------------
     const consumerQueue = new sqs.Queue(this, 'ServiceConsumerQueue', {
       queueName: \`\${id}-service-queue.fifo\`,
@@ -46,7 +44,7 @@ export class ${camelName}InfrastructureStack extends cdk.Stack {
       },
     });
 
-    // Suscripción SNS FIFO -> SQS FIFO con rawMessageDelivery habilitado
+    // SNS FIFO -> SQS FIFO Subscription with rawMessageDelivery enabled
     domainEventsTopic.addSubscription(new subscriptions.SqsSubscription(consumerQueue, {
       rawMessageDelivery: true,
     }));

@@ -1,6 +1,4 @@
-// --------------------------------------------------------------------------
-// Generador Frontend Angular 17+ (NgRx Signal Store & NgRx Classic)
-// --------------------------------------------------------------------------
+// Angular 17+ Frontend Generator (NgRx Signal Store & NgRx Classic)
 
 export function generateAngularStoreInfrastructure(featureName: string, mode: 'signals' | 'classic' = 'signals'): string {
   const camelName = featureName.charAt(0).toLowerCase() + featureName.slice(1);

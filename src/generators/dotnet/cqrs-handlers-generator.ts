@@ -1,6 +1,4 @@
-// --------------------------------------------------------------------------
-// Generador de CommandHandlers, QueryHandlers y Read Model Projectors MediatR
-// --------------------------------------------------------------------------
+// MediatR CommandHandlers, QueryHandlers and Read Model Projectors Generator
 
 export function generateCqrsHandlers(namespace: string, featureName: string): string {
   const featurePascal = featureName.replace(/[^a-zA-Z0-9]/g, '');
@@ -30,13 +28,13 @@ namespace ${namespace}.Application.Handlers
 
         public async Task<CommandResult> Handle(Create${featurePascal}Command request, CancellationToken cancellationToken)
         {
-            _logger.LogInformation("Procesando comando para crear {Feature} con ref {Ref}", "${featurePascal}", request.ReferenceCode);
+            _logger.LogInformation("Processing command to create {Feature} with ref {Ref}", "${featurePascal}", request.ReferenceCode);
             
-            // Creación de entidad y guardado atómico
+            // Entity creation and atomic save
             var entityId = Guid.NewGuid();
             await Task.CompletedTask;
 
-            return new CommandResult(true, "${featurePascal} creado exitosamente", entityId);
+            return new CommandResult(true, "${featurePascal} created successfully", entityId);
         }
     }
 
@@ -52,7 +50,7 @@ namespace ${namespace}.Application.Handlers
         }
     }
 
-    // 3. Event Projector (Actualizador de Vista de Lectura)
+    // 3. Event Projector (Read View Updater)
     public class ${featurePascal}EventProjector : INotificationHandler<${featurePascal}ProcessedEventNotification>
     {
         private readonly ILogger<${featurePascal}EventProjector> _logger;
@@ -64,7 +62,7 @@ namespace ${namespace}.Application.Handlers
 
         public async Task Handle(${featurePascal}ProcessedEventNotification notification, CancellationToken cancellationToken)
         {
-            _logger.LogInformation("Proyectando evento de lectura {EventId} en ReadModel DB", notification.EventId);
+            _logger.LogInformation("Projecting read event {EventId} into ReadModel DB", notification.EventId);
             await Task.CompletedTask;
         }
     }

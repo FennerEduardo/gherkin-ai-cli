@@ -1,6 +1,6 @@
 export function generateIdempotencyInfrastructure(namespace: string): string {
   return `// --------------------------------------------------------------------------
-// Patrón de Consumidor e Interceptor Idempotente / Idempotent Pattern (.NET 8/9)
+// Idempotent Consumer & Interceptor Pattern (.NET 8/9)
 // --------------------------------------------------------------------------
 using System;
 using System.Text.Json;

@@ -1,5 +1,5 @@
 // --------------------------------------------------------------------------
-// Arquitectura CQRS en Java 21 / Spring Boot 3
+// CQRS Architecture for Java 21 / Spring Boot 3
 // --------------------------------------------------------------------------
 
 export function generateJavaCQRSInfrastructure(packageName: string): string {
@@ -14,14 +14,14 @@ import java.util.UUID;
 
 public class PaymentCQRS {
 
-    // Comandos y Consultas como Records inmutables (Java 21)
+    // Commands and Queries as immutable Records (Java 21)
     public record CreatePaymentCommand(UUID tenantId, BigDecimal amount, String currency, String customerId) {}
     public record GetPaymentQuery(UUID paymentId) {}
 
     public record PaymentCreatedEvent(UUID paymentId, UUID tenantId, BigDecimal amount) {}
     public record PaymentDTO(UUID paymentId, String status, BigDecimal amount) {}
 
-    // Bus de Comandos / Services desacoplados
+    // Decoupled Command Bus / Services
     @Service
     public static class CreatePaymentCommandHandler {
         private final ApplicationEventPublisher eventPublisher;
@@ -33,20 +33,20 @@ public class PaymentCQRS {
         @Transactional
         public UUID handle(CreatePaymentCommand command) {
             UUID paymentId = UUID.randomUUID();
-            // 1. Guardar en Write Model (DB Dominio)
+            // 1. Save to Write Model (Domain DB)
             
-            // 2. Publicar Evento de Dominio
+            // 2. Publish Domain Event
             eventPublisher.publishEvent(new PaymentCreatedEvent(paymentId, command.tenantId(), command.amount()));
             return paymentId;
         }
     }
 
-    // Handlers de Consulta (Read Model)
+    // Query Handlers (Read Model)
     @Service
     public static class GetPaymentQueryHandler {
         @Transactional(readOnly = true)
         public PaymentDTO handle(GetPaymentQuery query) {
-            // Lectura optimizada desde Read Model / Vista proyectada
+            // Optimized read from Read Model / Projected View
             return new PaymentDTO(query.paymentId(), "PROCESSED", BigDecimal.valueOf(100.00));
         }
     }

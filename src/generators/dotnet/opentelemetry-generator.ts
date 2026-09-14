@@ -1,6 +1,6 @@
 export function generateOpenTelemetryConfig(namespace: string): string {
   return `// --------------------------------------------------------------------------
-// Configuración ejecutable de OpenTelemetry & OTLP (.NET 8/9)
+// Executable OpenTelemetry & OTLP Configuration (.NET 8/9)
 // --------------------------------------------------------------------------
 using System;
 using Microsoft.Extensions.Configuration;

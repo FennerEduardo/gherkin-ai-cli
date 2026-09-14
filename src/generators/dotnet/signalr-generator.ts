@@ -1,10 +1,10 @@
 // --------------------------------------------------------------------------
-// Generador SignalR Realtime Hub para .NET 8/9
+// SignalR Realtime Hub Generator for .NET 8/9
 // --------------------------------------------------------------------------
 
 export function generateSignalRInfrastructure(namespace: string): string {
   return `// --------------------------------------------------------------------------
-// Hub de SignalR para Notificación Realtime de Eventos de Dominio
+// SignalR Hub for Realtime Domain Event Notifications
 // --------------------------------------------------------------------------
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.SignalR;
@@ -30,7 +30,7 @@ namespace ${namespace}.Infrastructure.Realtime
         public async Task SubscribeToTenant(string tenantId)
         {
             await Groups.AddToGroupAsync(Context.ConnectionId, $"Tenant_{tenantId}");
-            _logger.LogInformation("Conexión SignalR {ConnectionId} suscrita a Tenant {TenantId}", Context.ConnectionId, tenantId);
+            _logger.LogInformation("SignalR connection {ConnectionId} subscribed to Tenant {TenantId}", Context.ConnectionId, tenantId);
         }
 
         public async Task UnsubscribeFromTenant(string tenantId)

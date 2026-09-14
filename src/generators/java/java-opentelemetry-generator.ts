@@ -1,5 +1,5 @@
 // --------------------------------------------------------------------------
-// Configuración de OpenTelemetry & Micrometer Tracing para Java 21 / Spring Boot 3
+// OpenTelemetry & Micrometer Tracing Configuration for Java 21 / Spring Boot 3
 // --------------------------------------------------------------------------
 
 export function generateJavaOpenTelemetryInfrastructure(packageName: string): string {

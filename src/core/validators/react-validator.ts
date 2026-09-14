@@ -11,13 +11,13 @@ export function validateReactRules(context: ValidatorContext): ValidationResult 
 
     // 1. Evitar llamadas a base de datos o fs directamente en componentes de React
     if (content.includes('import pg') || content.includes('import { PrismaClient }') || content.includes("require('fs')")) {
-      result.errors.push(`[React-Architecture] El componente ${file.path} intenta importar módulos de servidor/BD directamente.`);
+      result.errors.push(`[React-Architecture] The component ${file.path} attempts to import server/DB modules directly.`);
       result.valid = false;
     }
 
-    // 2. Advertencia si se modifica el estado de Redux de forma mutativa fuera de createSlice
+    // 2. Warning if Redux state is mutated directly outside createSlice
     if (content.includes('.state = ') && !content.includes('createSlice')) {
-      result.warnings.push(`[React-Redux] Posible mutación directa de estado detectada en ${file.path}. Use Redux Toolkit reducers o setState.`);
+      result.warnings.push(`[React-Redux] Possible direct state mutation detected in ${file.path}. Use Redux Toolkit reducers or setState.`);
     }
   }
 

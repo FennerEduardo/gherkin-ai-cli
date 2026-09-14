@@ -1,5 +1,5 @@
 // --------------------------------------------------------------------------
-// Patrón Transactional Outbox para Java 21 / Spring Boot 3.2+
+// Transactional Outbox Pattern for Java 21 / Spring Boot 3.2+
 // --------------------------------------------------------------------------
 
 export function generateJavaOutboxInfrastructure(packageName: string): string {
@@ -107,7 +107,7 @@ public class OutboxService {
             OutboxMessage message = new OutboxMessage(domainEvent.getClass().getSimpleName(), payload);
             repository.save(message);
         } catch (Exception e) {
-            throw new RuntimeException("Error serializando evento para Outbox", e);
+            throw new RuntimeException("Error serializing event for Outbox", e);
         }
     }
 }
@@ -129,7 +129,7 @@ public class OutboxPublisher {
 
         for (OutboxMessage msg : pending) {
             try {
-                // Publicación al broker de mensajería (Kafka, RabbitMQ, SQS)
+                // Publish to message broker (Kafka, RabbitMQ, SQS)
                 // EventBroker.publish(msg.getEventType(), msg.getPayload());
                 msg.markAsPublished();
             } catch (Exception e) {

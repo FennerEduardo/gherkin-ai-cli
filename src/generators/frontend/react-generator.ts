@@ -1,6 +1,4 @@
-// --------------------------------------------------------------------------
-// Generador Frontend React 18 + Redux Toolkit / RTK Query
-// --------------------------------------------------------------------------
+// React 18 + Redux Toolkit / RTK Query Frontend Generator
 
 export function generateReactReduxInfrastructure(featureName: string): string {
   const camelName = featureName.charAt(0).toLowerCase() + featureName.slice(1);
@@ -26,7 +24,7 @@ const initialState: ${pascalName}State = {
   tenantId: null
 };
 
-// Async Thunk para consumir API Backend
+// Async Thunk to consume Backend API
 export const fetch${pascalName}List = createAsyncThunk(
   '${camelName}/fetchList',
   async (tenantId: string | undefined, { rejectWithValue }) => {
@@ -36,7 +34,7 @@ export const fetch${pascalName}List = createAsyncThunk(
       });
       return response.data;
     } catch (err: any) {
-      return rejectWithValue(err.response?.data?.message || 'Error al obtener datos');
+      return rejectWithValue(err.response?.data?.message || 'Error fetching data');
     }
   }
 );
@@ -52,7 +50,7 @@ export const execute${pascalName}Command = createAsyncThunk(
       const response = await axios.post(\`/api/v1/${camelName}/commands\`, payload.data, { headers });
       return response.data;
     } catch (err: any) {
-      return rejectWithValue(err.response?.data?.message || 'Error ejecutando comando');
+      return rejectWithValue(err.response?.data?.message || 'Error executing command');
     }
   }
 );

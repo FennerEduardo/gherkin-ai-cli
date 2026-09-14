@@ -1,6 +1,6 @@
 export function generateSagaInfrastructure(namespace: string): string {
   return `// --------------------------------------------------------------------------
-// Patrón de Orquestación Saga / Saga Orchestration Pattern (.NET 8/9)
+// Saga Orchestration Pattern (.NET 8/9)
 // --------------------------------------------------------------------------
 using System;
 using System.Threading.Tasks;
@@ -68,7 +68,7 @@ namespace ${namespace}.Application.Sagas
                 When(TimeoutExpired)
                     .TransitionTo(Compensating)
                     .Then(context => {
-                        context.Saga.ErrorReason = "Saga timeout alcanzado sin autorización.";
+                        context.Saga.ErrorReason = "Saga timeout reached without authorization.";
                     })
                     .Publish(context => new CancelAuthorizationCommand { PaymentId = context.Saga.PaymentId, Reason = "Timeout" })
                     .TransitionTo(Failed)

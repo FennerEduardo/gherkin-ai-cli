@@ -1,5 +1,5 @@
 // --------------------------------------------------------------------------
-// Generador del Servicio Cliente SignalR para Angular 17+
+// SignalR Client Service Generator for Angular 17+
 // --------------------------------------------------------------------------
 
 export function generateAngularSignalRService(featureName: string): string {
@@ -53,12 +53,12 @@ export class SignalRNotificationService {
         const data = JSON.parse(payload);
         this.store.onRealtimeStatusUpdate(data);
       } catch (e) {
-        console.error('Error parseando evento SignalR:', e);
+        console.error('Error parsing SignalR event:', e);
       }
     });
 
     this.hubConnection.on('ReceiveSagaStateChanged', (sagaId: string, currentState: string) => {
-      console.log(\`Saga \${sagaId} cambió a estado: \${currentState}\`);
+      console.log(\`Saga \${sagaId} transitioned to state: \${currentState}\`);
     });
   }
 

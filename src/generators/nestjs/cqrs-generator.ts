@@ -1,11 +1,11 @@
 export function generateNestJsCqrsModules(): string {
   return `// --------------------------------------------------------------------------
-// Plantilla base para CQRS en NestJS / Base template for CQRS in NestJS
+// Base Template for CQRS in NestJS
 // --------------------------------------------------------------------------
 import { Module } from '@nestjs/common';
 import { CqrsModule } from '@nestjs/cqrs';
 
-// Comandos / Commands
+// Commands
 export class CreateTransactionCommand {
   constructor(
     public readonly tenantId: string,
@@ -19,7 +19,7 @@ export class GetTransactionQuery {
   constructor(public readonly transactionId: string) {}
 }
 
-// Eventos / Events
+// Events
 export class TransactionCreatedEvent {
   constructor(
     public readonly transactionId: string,

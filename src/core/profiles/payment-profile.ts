@@ -3,27 +3,27 @@ import { BaseProfile, DomainEvent, DomainCommand, StateMachineState, RetryPolicy
 export class PaymentProfile extends BaseProfile {
   id = 'payments';
   name = 'Payment Platform Profile';
-  description = 'Ecosistema de microservicios distribuido y orientado a eventos para procesar transacciones de pago con arquitectura CQRS.';
+  description = 'Event-driven distributed microservices ecosystem for processing payment transactions with CQRS architecture.';
 
   commonEvents: DomainEvent[] = [
     {
       name: 'PaymentInitiated',
-      description: 'El pago ha sido iniciado y está pendiente de autorización.',
+      description: 'Payment has been initiated and is pending authorization.',
       payloadSchema: { type: 'object', properties: { paymentId: { type: 'string' }, amount: { type: 'number' }, currency: { type: 'string' } } }
     },
     {
       name: 'PaymentAuthorized',
-      description: 'El pago ha sido autorizado por el proveedor.',
+      description: 'Payment has been authorized by the provider.',
       payloadSchema: { type: 'object', properties: { paymentId: { type: 'string' }, authorizationCode: { type: 'string' } } }
     },
     {
       name: 'PaymentCompleted',
-      description: 'El pago ha sido capturado y liquidado exitosamente.',
+      description: 'Payment has been captured and settled successfully.',
       payloadSchema: { type: 'object', properties: { paymentId: { type: 'string' }, settlementId: { type: 'string' } } }
     },
     {
       name: 'PaymentFailed',
-      description: 'El pago falló en alguna etapa del ciclo de vida.',
+      description: 'Payment failed at some stage of the lifecycle.',
       payloadSchema: { type: 'object', properties: { paymentId: { type: 'string' }, reason: { type: 'string' }, errorCode: { type: 'string' } } }
     }
   ];
@@ -31,17 +31,17 @@ export class PaymentProfile extends BaseProfile {
   commonCommands: DomainCommand[] = [
     {
       name: 'InitiatePayment',
-      description: 'Inicia el proceso de pago.',
+      description: 'Initiates the payment process.',
       payloadSchema: { type: 'object', properties: { amount: { type: 'number' }, currency: { type: 'string' }, source: { type: 'string' }, destination: { type: 'string' } } }
     },
     {
       name: 'AuthorizePayment',
-      description: 'Autoriza el pago contra el proveedor externo.',
+      description: 'Authorizes the payment against the external provider.',
       payloadSchema: { type: 'object', properties: { paymentId: { type: 'string' } } }
     },
     {
       name: 'CapturePayment',
-      description: 'Captura los fondos autorizados previamente.',
+      description: 'Captures the previously authorized funds.',
       payloadSchema: { type: 'object', properties: { paymentId: { type: 'string' } } }
     }
   ];

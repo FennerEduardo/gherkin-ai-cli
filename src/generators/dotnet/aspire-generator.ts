@@ -1,5 +1,5 @@
 // --------------------------------------------------------------------------
-// Generador .NET Aspire (AppHost & ServiceDefaults) para .NET 8/9
+// .NET Aspire Generator (AppHost & ServiceDefaults) for .NET 8/9
 // --------------------------------------------------------------------------
 
 export function generateDotNetAspireAppHost(namespace: string): string {
@@ -8,7 +8,7 @@ using Projects;
 
 var builder = DistributedApplication.CreateBuilder(args);
 
-// Dependencias de Infraestructura orquestadas en contenedores
+// Infrastructure dependencies orchestrated in containers
 var postgres = builder.AddPostgres("postgres")
     .WithPgAdmin()
     .AddDatabase("appdb");
@@ -17,7 +17,7 @@ var rabbitmq = builder.AddRabbitMQ("messaging");
 
 var redis = builder.AddRedis("cache");
 
-// Servicio Microservicio .NET
+// .NET Microservice
 builder.AddProject<${namespace}_ApiService>("apiservice")
     .WithReference(postgres)
     .WithReference(rabbitmq)

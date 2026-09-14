@@ -1,5 +1,5 @@
 // --------------------------------------------------------------------------
-// Patrón de Orquestación Saga / Saga Orchestration Pattern en Java 21 / Spring Boot 3
+// Saga Orchestration Pattern for Java 21 / Spring Boot 3
 // --------------------------------------------------------------------------
 
 export function generateJavaSagaInfrastructure(packageName: string): string {
@@ -15,7 +15,7 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.UUID;
 
-// Records de Eventos y Comandos (Java 21)
+// Event and Command Records (Java 21)
 public class PaymentSagaContract {
     public record PaymentInitiatedEvent(UUID correlationId, UUID paymentId, BigDecimal amount) {}
     public record PaymentAuthorizedEvent(UUID correlationId) {}
@@ -83,18 +83,18 @@ public class PaymentSagaOrchestrator {
         SagaInstance saga = new SagaInstance(event.correlationId(), event.paymentId(), event.amount());
         sagaRepository.save(saga);
 
-        // Disparar Comando de Autorización
+        // Dispatch Authorization Command
         // dispatch(new PaymentSagaContract.AuthorizePaymentCommand(saga.getPaymentId(), saga.getAmount()));
     }
 
     @Transactional
     public void handle(PaymentSagaContract.PaymentAuthorizedEvent event) {
         SagaInstance saga = sagaRepository.findById(event.correlationId())
-                .orElseThrow(() -> new IllegalArgumentException("Saga no encontrada: " + event.correlationId()));
+                .orElseThrow(() -> new IllegalArgumentException("Saga not found: " + event.correlationId()));
 
         saga.setCurrentState(SagaInstance.SagaState.AUTHORIZED);
 
-        // Disparar Captura
+        // Dispatch Capture
         // dispatch(new PaymentSagaContract.CapturePaymentCommand(saga.getPaymentId()));
         saga.setCurrentState(SagaInstance.SagaState.COMPLETED);
         sagaRepository.save(saga);
@@ -103,12 +103,12 @@ public class PaymentSagaOrchestrator {
     @Transactional
     public void handle(PaymentSagaContract.PaymentFailedEvent event) {
         SagaInstance saga = sagaRepository.findById(event.correlationId())
-                .orElseThrow(() -> new IllegalArgumentException("Saga no encontrada: " + event.correlationId()));
+                .orElseThrow(() -> new IllegalArgumentException("Saga not found: " + event.correlationId()));
 
         saga.setCurrentState(SagaInstance.SagaState.COMPENSATING);
         saga.setFailureReason(event.reason());
 
-        // Ejecutar Acción Compensatoria (Cancelar Autorización)
+        // Execute Compensatory Action (Cancel Authorization)
         // dispatch(new PaymentSagaContract.CancelAuthorizationCommand(saga.getPaymentId(), event.reason()));
 
         saga.setCurrentState(SagaInstance.SagaState.FAILED);
