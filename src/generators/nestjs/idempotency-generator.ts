@@ -4,6 +4,7 @@ export function generateNestJsIdempotencyInterceptor(): string {
 // --------------------------------------------------------------------------
 import { Injectable, NestInterceptor, ExecutionContext, CallHandler, HttpException, HttpStatus } from '@nestjs/common';
 import { Observable, of } from 'rxjs';
+import { tap } from 'rxjs/operators';
 import { PrismaClient } from '@prisma/client';
 
 @Injectable()
@@ -28,8 +29,21 @@ export class IdempotencyInterceptor implements NestInterceptor {
       return of(JSON.parse(existing.responseBody));
     }
 
-    return next.handle();
-    // Note: The event must be saved after successful processing in the main pipeline.
+    return next.handle().pipe(
+      tap(async (response) => {
+        try {
+          await this.prisma.processedEvent.create({
+            data: {
+              eventId: idempotencyKey,
+              responseBody: JSON.stringify(response),
+              processedAt: new Date()
+            }
+          });
+        } catch (err) {
+          // Ignore uniqueness constraint violations if race condition occurred
+        }
+      })
+    );
   }
 }
 `;

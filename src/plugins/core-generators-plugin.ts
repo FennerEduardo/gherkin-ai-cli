@@ -16,7 +16,15 @@ function irToParsedFeature(ir: SpecificationIR | any): ParsedFeature {
     featureName: ir.featureName || 'AppFeature',
     descriptionLines: ir.featureDescription || [],
     tags: ir.tags || [],
-    scenarios: [],
+    scenarios: (ir.scenarios || []).map((sc: any) => ({
+      name: sc.name,
+      tags: sc.tags || [],
+      steps: [
+        ...(sc.preconditions || []).map((p: string) => ({ keyword: 'Given', text: p, tags: [] })),
+        ...(sc.actions || []).map((a: string) => ({ keyword: 'When', text: a, tags: [] })),
+        ...(sc.expectations || []).map((e: string) => ({ keyword: 'Then', text: e, tags: [] }))
+      ]
+    })),
     domainAnalysis: {
       actors: (ir.actors || []).map((a: any) => a.name),
       commands: (ir.commands || []).map((c: any) => c.name),

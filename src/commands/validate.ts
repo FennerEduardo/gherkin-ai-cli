@@ -13,6 +13,7 @@ import { Project } from 'ts-morph';
 import { validateOpenAPIAgainstIR, validateOpenAPISpec } from '../core/openapi-validator';
 import { validateAsyncAPIAgainstIR, validateAsyncAPISpec } from '../core/asyncapi-validator';
 import { runAllValidators, ValidatorContext } from '../core/validators';
+import { buildIR } from '../core/ir-builder';
 
 function collectFilesRecursively(dir: string): { path: string; content: string }[] {
   const results: { path: string; content: string }[] = [];
@@ -63,7 +64,7 @@ export async function handleValidateCommand(options: { feature?: string; config?
     } else {
       const gherkinText = readFileSync(featurePath);
       const parsed = parseGherkinText(gherkinText);
-      parsedFeatureIR = parsed;
+      parsedFeatureIR = buildIR(parsed, featurePath, { domainProfile: config.domainProfile });
       
       if (parsed.scenarios.length === 0) {
         logger.error('Feature file contains zero valid scenarios.');
