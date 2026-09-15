@@ -67,6 +67,10 @@ export class CoreContractsPlugin implements GherkinAIPlugin {
     if (result.nativeContract) {
       artifacts.push({ filePath: result.nativeContract.filename, content: result.nativeContract.content, type: 'contract' });
     }
+    
+    if (result.projectRootFile) {
+      artifacts.push({ filePath: result.projectRootFile.filename, content: result.projectRootFile.content, type: 'config' });
+    }
 
     return artifacts;
   }

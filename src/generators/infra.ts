@@ -121,16 +121,18 @@ services:
     ports:
       - "${dbPort}"
     volumes:
-      - db_data:/var/lib/data
+      - db_data:${db.includes('postgres') ? '/var/lib/postgresql/data' : (db.includes('mongo') ? '/data/db' : '/var/lib/mysql')}
 
+  ${['none', 'native-events'].includes(messaging) ? '' : `
   # Message Broker
   ${messaging}:
-    image: rabbitmq:3-management-alpine
+    image: ${messaging === 'sqs' ? 'localstack/localstack' : (messaging === 'kafka' ? 'confluentinc/cp-kafka' : 'rabbitmq:3-management-alpine')}
     container_name: ${config.projectName}-mq
     restart: always
     ports:
-      - "5672:5672"
-      - "15672:15672"
+      - "${messaging === 'sqs' ? '4566:4566' : (messaging === 'kafka' ? '9092:9092' : '5672:5672')}"
+      ${messaging === 'rabbitmq' ? '- "15672:15672"' : ''}
+  `}
 
   # Redis Cache
   redis:
@@ -172,14 +174,14 @@ functions:
 `;
 
   const envExample = `# Environment Variables for ${config.projectName}
-NODE_ENV=development
+${config.stack.language === 'csharp' ? 'ASPNETCORE_ENVIRONMENT=Development' : 'NODE_ENV=development'}
 PORT=3000
 
 # Database Connection
 DATABASE_URL=${db}://dev_user:dev_password@localhost:5432/${config.projectName}_db?schema=public
 
 # Security & Authentication
-JWT_SECRET=super_secret_jwt_key_change_in_production
+JWT_SECRET=<YOUR_SUPER_SECRET_JWT_KEY_MIN_32_CHARS>
 JWT_TTL_SECONDS=${config.rules.jwtTtlSeconds || 3600}
 BCRYPT_COST_FACTOR=${config.rules.bcryptCostFactor || 12}
 

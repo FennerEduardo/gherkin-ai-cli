@@ -159,6 +159,10 @@ export function parseGherkinText(gherkinText: string): ParsedFeature {
       let qMatch;
       while ((qMatch = quoteRegex.exec(st.text)) !== null) {
         const fieldName = qMatch[1].toLowerCase();
+        
+        // Ignore stop words (articles)
+        if (['a', 'an', 'the', 'el', 'la', 'un', 'una', 'with', 'is', 'for', 'of'].includes(fieldName)) continue;
+
         let type = 'string';
         if (!isNaN(Number(qMatch[2]))) type = 'number';
         

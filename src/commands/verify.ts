@@ -125,6 +125,19 @@ export async function handleVerifyCommand(options: VerifyCommandOptions = {}): P
       const { validateGuardrails } = require('../core/guardrails');
       const proposedFiles = repairResult.codeModifications.map((m: any) => m.filePath);
       
+      // Anti-Stub Validation (Prevent Agent from leaving TODOs)
+      const stubFiles = repairResult.codeModifications.filter((m: any) => 
+        /\/\/\s*TODO:|\/\/\s*FIXME:|throw new NotImplementedException/i.test(m.content)
+      );
+
+      if (stubFiles.length > 0) {
+        console.log(chalk.red(`   ✖ ANTI-STUB VIOLATION: Agent generated placeholder code.`));
+        const stubFileNames = stubFiles.map((m: any) => m.filePath).join(', ');
+        guardrailViolationPrompt = `CRITICAL ERROR: Your proposed modifications in [${stubFileNames}] contain placeholder stubs (TODO, FIXME, or NotImplementedException).\nThis is strictly forbidden. You MUST write the actual implementation.`;
+        iteration++;
+        continue;
+      }
+      
       // Immutable Spec Mode
       const specViolations = proposedFiles.filter((f: string) => f.endsWith('.feature'));
       if (specViolations.length > 0) {

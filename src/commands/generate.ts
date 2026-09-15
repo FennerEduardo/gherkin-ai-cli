@@ -253,6 +253,24 @@ Objective: Write detailed Gherkin feature scenarios for ${title}.
     logger.success(`[Plugin ${artifact.type}] Generated: ${artifact.filePath}`);
   });
 
+  // Generate traceability inventory
+  const crypto = require('crypto');
+  const inventory = {
+    version: '1.0',
+    generatedAt: new Date().toISOString(),
+    createdBy: 'gherkin-ai-cli',
+    artifacts: filteredArtifacts.map(a => ({
+      filePath: a.filePath,
+      type: a.type,
+      checksum: crypto.createHash('sha256').update(a.content).digest('hex')
+    }))
+  };
+  
+  const gheDir = path.join(process.cwd(), '.ghe');
+  if (!fs.existsSync(gheDir)) fs.mkdirSync(gheDir, { recursive: true });
+  writeFileSync(path.join(gheDir, 'inventory.json'), JSON.stringify(inventory, null, 2));
+  logger.success(`[Audit] Traceability inventory saved to .ghe/inventory.json`);
+
   logger.banner();
   ensureGitignore(process.cwd());
   logger.success(`All artifacts successfully generated under ${config.outputDir}!`);
