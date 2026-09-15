@@ -12,6 +12,7 @@ import { SpecificationIR, EnrichedScenario, ScenarioCategory } from './semantic-
 import { buildIR } from './ir-builder';
 import { lintSpecification } from './specification-linter';
 import { loadConstitution } from './constitution';
+import { loadConfig } from './config';
 
 // ---------------------------------------------------------------------------
 // Convergence Metrics
@@ -94,6 +95,13 @@ export function checkConvergence(
   // 6. Traceability
   const traceability = evaluateTraceability(ir);
   dimensions.push(traceability);
+
+  // 7. Code Coverage (reads real coverage reports from test tools)
+  const codeCoverage = evaluateCodeCoverage(projectDir);
+  dimensions.push(codeCoverage);
+  if (codeCoverage.score < 80 && codeCoverage.score > 0) {
+    recommendations.push(`Code coverage is at ${codeCoverage.score}%. Run your test suite with \`--coverage\` to improve.`);
+  }
 
   // Calculate overall convergence
   const overallConvergence = Math.round(
@@ -361,4 +369,110 @@ function evaluateTraceability(ir: SpecificationIR): ConvergenceDimension {
     details,
     status: score >= 80 ? 'pass' : score >= 50 ? 'warn' : 'fail',
   };
+}
+
+// ---------------------------------------------------------------------------
+// Code Coverage Dimension (Integration with Istanbul/c8/Vitest/JaCoCo)
+// ---------------------------------------------------------------------------
+
+interface CoverageSummaryEntry {
+  total: number;
+  covered: number;
+  skipped: number;
+  pct: number;
+}
+
+interface CoverageSummaryReport {
+  total: {
+    lines: CoverageSummaryEntry;
+    statements: CoverageSummaryEntry;
+    functions: CoverageSummaryEntry;
+    branches: CoverageSummaryEntry;
+  };
+}
+
+function evaluateCodeCoverage(projectDir: string): ConvergenceDimension {
+  const details: string[] = [];
+  const config = loadConfig();
+  const target = config.rules?.coverageTarget || 85;
+
+  // Search for coverage report in common locations
+  const candidatePaths = [
+    path.join(projectDir, 'coverage', 'coverage-summary.json'),  // Istanbul/c8/vitest default
+    path.join(projectDir, 'coverage', 'coverage-final.json'),
+    path.join(projectDir, '.nyc_output', 'coverage-summary.json'),
+  ];
+
+  let summaryPath: string | null = null;
+  for (const p of candidatePaths) {
+    if (fs.existsSync(p)) {
+      summaryPath = p;
+      break;
+    }
+  }
+
+  if (!summaryPath) {
+    details.push('No coverage report found.');
+    details.push(`→ Run your test suite with --coverage (e.g., \`vitest run --coverage\`, \`npx jest --coverage\`)`);
+    details.push(`→ Expected location: coverage/coverage-summary.json`);
+    return {
+      name: 'Code Coverage',
+      score: 0,
+      maxScore: 100,
+      details,
+      status: 'fail',
+    };
+  }
+
+  try {
+    const raw = fs.readFileSync(summaryPath, 'utf8');
+    const report: CoverageSummaryReport = JSON.parse(raw);
+    const total = report.total;
+
+    if (!total || !total.lines) {
+      details.push('Coverage report found but format is not recognized.');
+      return {
+        name: 'Code Coverage',
+        score: 0,
+        maxScore: 100,
+        details,
+        status: 'fail',
+      };
+    }
+
+    const linesPct = Math.round(total.lines.pct);
+    const branchesPct = Math.round(total.branches?.pct || 0);
+    const functionsPct = Math.round(total.functions?.pct || 0);
+    const statementsPct = Math.round(total.statements?.pct || 0);
+
+    // Weighted average: lines 40%, branches 30%, functions 20%, statements 10%
+    const weightedScore = Math.round(
+      linesPct * 0.4 + branchesPct * 0.3 + functionsPct * 0.2 + statementsPct * 0.1
+    );
+
+    details.push(`Lines: ${linesPct}% | Branches: ${branchesPct}% | Functions: ${functionsPct}% | Statements: ${statementsPct}%`);
+    details.push(`Weighted score: ${weightedScore}% (target: ${target}%)`);
+    details.push(`Source: ${path.relative(projectDir, summaryPath)}`);
+
+    if (weightedScore < target) {
+      details.push(`⚠ Below coverage target of ${target}%`);
+    }
+
+    return {
+      name: 'Code Coverage',
+      score: Math.min(100, weightedScore),
+      maxScore: 100,
+      details,
+      status: weightedScore >= target ? 'pass' : weightedScore >= (target * 0.7) ? 'warn' : 'fail',
+    };
+  } catch (err: any) {
+    details.push(`Failed to parse coverage report: ${err.message}`);
+    return {
+      name: 'Code Coverage',
+      score: 0,
+      maxScore: 100,
+      details,
+      status: 'fail',
+    };
+  }
 }

@@ -64,6 +64,9 @@
     "test:e2e": "playwright test",
     "prepublishOnly": "npm run build",
     "publish:beta": "npm run build && npm publish --tag beta",
+    "release": "commit-and-tag-version",
+    "release:minor": "commit-and-tag-version --release-as minor",
+    "release:major": "commit-and-tag-version --release-as major",
     "publish:prod": "npm run build && npm publish"
   },
   "engines": {
@@ -87,6 +90,7 @@
     "@types/express": "^5.0.6",
     "@types/inquirer": "^8.2.10",
     "@types/node": "^20.14.0",
+    "commit-and-tag-version": "^12.5.0",
     "ts-node": "^10.9.2",
     "typescript": "^5.4.5",
     "vitest": "^4.1.11",

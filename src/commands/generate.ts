@@ -12,6 +12,7 @@ import { registerCorePlugins } from '../plugins/core-generators-plugin';
 import { fileExistsSync, readFileSync, writeFileSync } from '../utils/file-system';
 import { logger } from '../utils/logger';
 import { ensureGitignore } from '../utils/gitignore-manager';
+import { detectMissingDependencies } from '../core/stack-setup';
 import inquirer from 'inquirer';
 import chalk from 'chalk';
 
@@ -170,6 +171,38 @@ Objective: Write detailed Gherkin feature scenarios for ${title}.
   if (!confirmContext) {
     logger.warn('Context rejected. Please update gherkin-ai.config.json or run `ghk detect` and run again.');
     process.exit(1);
+  }
+
+  // ── Stack Dependency Check ──────────────────────────────────────────
+  const setupResult = detectMissingDependencies(config, process.cwd());
+  if (setupResult.hasMissing) {
+    console.log(chalk.yellow(`\n⚠ Missing ${setupResult.missing.length} stack dependency group(s) declared in config:\n`));
+    for (const dep of setupResult.missing) {
+      console.log(chalk.yellow(`  • ${dep.name} (${dep.category}): ${dep.reason}`));
+      console.log(chalk.cyan(`    → ${dep.installCommand}`));
+    }
+    console.log('');
+
+    if (isNonInteractive) {
+      logger.info('Run the commands above to install missing dependencies, or use `ghk init` to reconfigure.');
+    } else {
+      const { autoInstall } = await inquirer.prompt([{
+        type: 'confirm',
+        name: 'autoInstall',
+        message: 'Would you like to install missing stack dependencies now?',
+        default: false
+      }]);
+
+      if (autoInstall) {
+        const { executeSetup } = require('../core/stack-setup');
+        const result = executeSetup(setupResult.suggestions, { cwd: process.cwd() });
+        if (result.success) {
+          logger.success('Stack dependencies installed successfully.');
+        } else {
+          logger.error(`Some installations failed: ${result.output}`);
+        }
+      }
+    }
   }
 
   const agentChoices = [

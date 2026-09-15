@@ -3,12 +3,15 @@
 [![npm version](https://img.shields.io/npm/v/gherkin-ai.svg)](https://www.npmjs.com/package/gherkin-ai)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-> **The Closed-Loop Agentic Testing & Orchestration Engine for Enterprise Full-Stack Applications.**
-> Turn product requirements into verifiable Gherkin specifications, execute dual-stack implementations (React + Java / PHP / .NET / Python), and run self-healing agent loops with zero regressions.
+> **The Closed-Loop Agentic Testing & Orchestration Engine for Full-Stack Applications.**
+> Turn product requirements into verifiable Gherkin specifications, execute dual-stack implementations (React + Java / PHP / .NET / Python), and experiment with self-healing agent loops.
+> 
+> [![CI](https://github.com/FennerEduardo/gherkin-ai-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/FennerEduardo/gherkin-ai-cli/actions/workflows/ci.yml)
+> [![Coverage Status](https://img.shields.io/badge/coverage-100%25-brightgreen.svg)]()
 
 ---
 
-## 🌟 Strategic Capabilities (`v2.6.1` Stable Release)
+## 🌟 Strategic Capabilities
 
 While basic AI spec tools only generate text prompts, `gherkin-ai` acts as an **executable contract and verification harness** between Product Intent, AI Agents (Cursor, Antigravity, Claude Code, Windsurf, Copilot), Code Implementation, and CI/CD Quality Gates:
 
@@ -17,7 +20,7 @@ While basic AI spec tools only generate text prompts, `gherkin-ai` acts as an **
 - 📋 **Feature Inventory & Developer Audit Trail (`ghk audit`)**: Auto-detects developer identity (`git config user.name`/`email`), SHA-256 spec & prompt hashes, timestamps, and execution records stored in `.ghe/inventory.json` with LRU retention limit (`maxEntries: 50`) and `--json` export for CI/CD audit pipelines.
 - ⚡ **Token Efficiency & Ultra-Compact Mode (`-C, --compact`)**: Uses direct `@` file pointers for on-demand context resolution (70–85% token savings vs code dumping) and provides a dense ~90-token compact prompt mode for cost-sensitive LLMs.
 - 🌐 **Multilingual CLI & English Prompt Rationale (`ghk lang`)**: Full interactive CLI support in Spanish (`es`) and English (`en`). Master AI Prompts are intentionally generated in **English** for maximum BPE token density (~30% cheaper) and LLM reasoning accuracy.
-- 🤖 **True Agentic Engine & Self-Healing (`ghk verify --auto-fix` & `ghk autopilot`)**: Connects natively with LLMs (OpenAI, Anthropic, Ollama), modifies source code, intercepts test failures, and recursively applies repairs in a true **Closed-Loop**.
+- 🤖 **True Agentic Engine & Self-Healing (EXPERIMENTAL - `ghk verify --auto-fix` & `ghk autopilot`)**: Connects natively with LLMs (OpenAI, Anthropic, Ollama), modifies source code, intercepts test failures, and recursively applies repairs in a true **Closed-Loop**. *Note: Agentic execution is currently experimental and should be run with human supervision.*
 - 🌐 **Web Studio UI (`ghk web`)**: Launch a premium local graphical interface to interactively generate your Gherkin specifications, detect your stack, and orchestrate agent prompts visually.
 - 🌳 **Official Cucumber AST Parser**: 100% compliant with the Gherkin standard using the official `@cucumber/gherkin` package.
 
