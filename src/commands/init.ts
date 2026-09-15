@@ -160,7 +160,30 @@ export function generateGovernanceConfig(config: GherkinAIConfig, workspaceDir: 
 
   const prohibitedImports: Record<string, string[]> = {};
   const allowedPaths: string[] = ['specs/**', 'tests/**', 'generated-specs/**'];
-  const requireHumanApprovalOn: string[] = ['docker-compose.yml'];
+  const requireHumanApprovalOn: string[] = [
+    'docker-compose.yml',
+    'package.json',
+    'package-lock.json',
+    'yarn.lock',
+    'pnpm-lock.yaml',
+    '*.csproj',
+    'pom.xml',
+    'build.gradle',
+    'requirements.txt',
+    'pyproject.toml',
+    'go.mod',
+    'go.sum',
+    'Gemfile',
+    'composer.json',
+    'composer.lock',
+    '.github/workflows/**',
+    '.gitlab-ci.yml',
+    'Jenkinsfile',
+    'terraform/**',
+    '*.tf',
+    'kubernetes/**',
+    'helm/**'
+  ];
 
   // Backend / Service Paths & Imports
   allowedPaths.push('src/**', 'app/**', 'public/**', 'views/**', 'controllers/**', 'domain/**');
@@ -219,7 +242,10 @@ export function generateGovernanceConfig(config: GherkinAIConfig, workspaceDir: 
       '**/secrets.*',
       'node_modules/**',
       'vendor/**',
-      '.git/**'
+      '.git/**',
+      '.github/workflows/**',
+      'terraform/**',
+      'kubernetes/**'
     ],
     maxFilesPerTask: 12,
     prohibitedImports,

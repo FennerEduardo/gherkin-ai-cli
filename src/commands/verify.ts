@@ -7,6 +7,7 @@ import { executeSandbox, SandboxExecutionOptions } from '../core/execution-sandb
 import { parseExecutionFailure } from '../core/error-parser';
 import { RealAgentProvider, LLMConfig } from '../core/agent-adapter';
 import { loadConfig } from '../core/config';
+import { MetricsEngine } from '../core/metrics-engine';
 
 export interface VerifyCommandOptions {
   autoFix?: boolean;
@@ -30,6 +31,9 @@ export async function handleVerifyCommand(options: VerifyCommandOptions = {}): P
   let success = false;
   const fileBackups: Record<string, string> = {};
   let guardrailViolationPrompt: string | null = null;
+  const metricsEngine = new MetricsEngine();
+  const execEvents: any[] = [];
+  const execErrors: any[] = [];
 
   while (iteration <= maxRetries && !success) {
     console.log(chalk.bold.blue(`[Iteration ${iteration}/${maxRetries}] Running Test Harness...`));
@@ -39,6 +43,8 @@ export async function handleVerifyCommand(options: VerifyCommandOptions = {}): P
     if (result.success) {
       console.log(chalk.bold.green(`\n✅ Suite Verification Passed! (Duration: ${result.durationMs}ms)`));
       console.log(chalk.green(`   Executed command: ${result.commandExecuted}\n`));
+      metricsEngine.recordTestRun(true);
+      execEvents.push({ type: 'test_passed', iteration, durationMs: result.durationMs });
       success = true;
       break;
     }
@@ -59,6 +65,10 @@ export async function handleVerifyCommand(options: VerifyCommandOptions = {}): P
 
     if (!options.autoFix) {
       console.log(chalk.gray('\n   Tip: Re-run with --auto-fix to invoke agent self-healing repair loops.\n'));
+      metricsEngine.recordHumanIntervention();
+      metricsEngine.recordTestRun(false);
+      const logPath = metricsEngine.saveExecutionLog(execEvents, execErrors);
+      console.log(chalk.gray(`\n   📊 Execution metrics saved to: ${logPath}`));
       process.exitCode = result.exitCode;
       return;
     }
@@ -84,6 +94,10 @@ export async function handleVerifyCommand(options: VerifyCommandOptions = {}): P
         console.log(chalk.gray(`   No files were modified during the attempts. Nothing to rollback.`));
       }
       
+      metricsEngine.recordHumanIntervention();
+      metricsEngine.recordTestRun(false);
+      const logPath = metricsEngine.saveExecutionLog(execEvents, execErrors);
+      console.log(chalk.gray(`\n   📊 Execution metrics saved to: ${logPath}`));
       process.exitCode = result.exitCode;
       return;
     }
@@ -99,6 +113,10 @@ export async function handleVerifyCommand(options: VerifyCommandOptions = {}): P
       contextFiles: diagnosis.affectedFiles,
       diagnosis
     });
+
+    metricsEngine.recordTestRun(false);
+    metricsEngine.recordAgentAttempt(repairResult.tokensUsed || 0, repairResult.codeModifications?.length || 0);
+    execEvents.push({ type: 'agent_repair_attempt', iteration, tokens: repairResult.tokensUsed });
 
     console.log(chalk.gray(`   ${repairResult.agentResponse.split('\n')[0]}`));
     
@@ -185,6 +203,13 @@ export async function handleVerifyCommand(options: VerifyCommandOptions = {}): P
     
     iteration++;
   }
+
+  // Set mock requirements since this is just the verify command
+  // In a real scenario, this would be passed down from the parsed features
+  metricsEngine.setRequirements(success ? 10 : 0, 10);
+  
+  const logPath = metricsEngine.saveExecutionLog(execEvents, execErrors);
+  console.log(chalk.bold.cyan(`\n📊 Closed-Loop Execution metrics saved to: ${logPath}`));
 
   if (!success) {
     process.exitCode = 1;

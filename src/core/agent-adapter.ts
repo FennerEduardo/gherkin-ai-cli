@@ -14,6 +14,7 @@ export interface AgentResult {
   success: boolean;
   codeModifications?: { filePath: string; content: string }[];
   agentResponse: string;
+  tokensUsed?: number;
   telemetry?: {
     inputTokens: number;
     outputTokens: number;

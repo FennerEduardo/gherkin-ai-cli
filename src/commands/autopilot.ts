@@ -17,6 +17,7 @@ import { handleVerifyCommand } from './verify';
 import { loadConfig } from '../core/config';
 import { resolveSpecDir } from '../utils/spec-dir-resolver';
 import { validateRequirement } from '../core/requirement-validator';
+import { MetricsEngine } from '../core/metrics-engine';
 
 export interface AutopilotOptions {
   requirement?: string;
@@ -56,6 +57,10 @@ export async function handleAutopilotCommand(options: AutopilotOptions = {}): Pr
     riskScore: 0,
     finalStatus: 'failed'
   };
+
+  const metricsEngine = new MetricsEngine();
+  const execEvents: any[] = [];
+  const execErrors: any[] = [];
 
   const reqFile = options.requirement || 'requirement.md';
   runLog.requirementFile = reqFile;
@@ -137,6 +142,8 @@ export async function handleAutopilotCommand(options: AutopilotOptions = {}): Pr
 
   let specContent = '';
   if (specRes.success && specRes.codeModifications && specRes.codeModifications.length > 0) {
+    metricsEngine.recordAgentAttempt(specRes.tokensUsed || 0, specRes.codeModifications.length);
+    execEvents.push({ type: 'spec_agent_attempt', tokens: specRes.tokensUsed });
     let specDirPath = process.env.GHK_SPEC_DIR || configInstance.specDir || 'specs';
     try {
       specDirPath = resolveSpecDir(configInstance.specDir);
@@ -246,6 +253,8 @@ export async function handleAutopilotCommand(options: AutopilotOptions = {}): Pr
   }
 
   if (scaffoldRes.success && scaffoldRes.codeModifications && scaffoldRes.codeModifications.length > 0) {
+    metricsEngine.recordAgentAttempt(scaffoldRes.tokensUsed || 0, scaffoldRes.codeModifications.length);
+    execEvents.push({ type: 'scaffold_agent_attempt', tokens: scaffoldRes.tokensUsed });
     runLog.scaffoldingResult = 'success';
     const { validateTypeScriptSyntax } = require('../core/syntax-validator');
     for (const mod of scaffoldRes.codeModifications) {
@@ -323,6 +332,10 @@ export async function handleAutopilotCommand(options: AutopilotOptions = {}): Pr
   }
   console.log('\nRun `ghk quality` to see a detailed risk breakdown.\n');
 
+  metricsEngine.setRequirements(validation.score > 70 ? 10 : 5, 10); // Mock coverage mapping
+  const logPath = metricsEngine.saveExecutionLog(execEvents, execErrors);
+  console.log(chalk.bold.magenta(`\n📊 DVE Metrics & Execution Log saved to: ${logPath}`));
+
   saveRunLog(runLog);
 }
 
@@ -332,7 +345,6 @@ function saveRunLog(log: AutopilotRunLog): void {
     fs.mkdirSync(logDir, { recursive: true });
     const logPath = path.join(logDir, `${log.runId}.json`);
     fs.writeFileSync(logPath, JSON.stringify(log, null, 2), 'utf8');
-    console.log(chalk.gray(`  📄 Run log saved to: ${logPath}`));
   } catch {
     // Non-critical: don't crash if logging fails
   }
