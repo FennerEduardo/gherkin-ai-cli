@@ -4,7 +4,38 @@
 
 import fs from 'fs';
 import path from 'path';
+import crypto from 'crypto';
 import { logger } from '../utils/logger';
+
+// Machine-specific encryption key based on user and machine info
+const ENCRYPTION_KEY = crypto.scryptSync(
+  process.env.USER || process.env.USERNAME || 'gherkin-ai-user',
+  'ghk-salt-v1',
+  32
+);
+
+function encrypt(text: string): string {
+  const iv = crypto.randomBytes(16);
+  const cipher = crypto.createCipheriv('aes-256-cbc', ENCRYPTION_KEY, iv);
+  let encrypted = cipher.update(text, 'utf8', 'hex');
+  encrypted += cipher.final('hex');
+  return `${iv.toString('hex')}:${encrypted}`;
+}
+
+function decrypt(text: string): string {
+  try {
+    const parts = text.split(':');
+    if (parts.length !== 2) return text; // Possibly unencrypted legacy key
+    const iv = Buffer.from(parts[0], 'hex');
+    const encryptedText = parts[1];
+    const decipher = crypto.createDecipheriv('aes-256-cbc', ENCRYPTION_KEY, iv);
+    let decrypted = decipher.update(encryptedText, 'hex', 'utf8');
+    decrypted += decipher.final('utf8');
+    return decrypted;
+  } catch {
+    return text; // Fallback to raw text if decryption fails
+  }
+}
 
 export interface AuthConfig {
   token?: string;
@@ -23,7 +54,11 @@ export function getAuthConfig(workspaceDir: string = process.cwd()): AuthConfig 
   }
   try {
     const raw = fs.readFileSync(authPath, 'utf8');
-    return JSON.parse(raw);
+    const auth = JSON.parse(raw) as AuthConfig;
+    if (auth.apiKey && auth.apiKey.includes(':')) {
+      auth.apiKey = decrypt(auth.apiKey);
+    }
+    return auth;
   } catch {
     return null;
   }
@@ -38,6 +73,7 @@ export function saveAuthConfig(auth: AuthConfig, workspaceDir: string = process.
   const authPath = path.join(gheDir, 'auth.json');
   const payload: AuthConfig = {
     ...auth,
+    apiKey: auth.apiKey ? encrypt(auth.apiKey) : undefined,
     loggedInAt: new Date().toISOString()
   };
 

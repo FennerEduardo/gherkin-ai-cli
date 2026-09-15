@@ -12,7 +12,7 @@ import { logger } from '../utils/logger';
 import { Project } from 'ts-morph';
 import { validateOpenAPIAgainstIR, validateOpenAPISpec } from '../core/openapi-validator';
 import { validateAsyncAPIAgainstIR, validateAsyncAPISpec } from '../core/asyncapi-validator';
-import { runAllValidators, ValidatorContext } from '../core/validators';
+import { runAllValidators, ValidatorContext } from '../core/validators/index';
 import { buildIR } from '../core/ir-builder';
 
 function collectFilesRecursively(dir: string): { path: string; content: string }[] {
