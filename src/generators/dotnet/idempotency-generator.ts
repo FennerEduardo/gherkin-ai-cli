@@ -31,6 +31,7 @@ namespace ${namespace}.Application.Behaviors
     {
         Task<IdempotencyRecord?> GetAsync(string key);
         Task SaveAsync(IdempotencyRecord record);
+        Task<bool> TryAddAsync(IdempotencyRecord record); // Atomic Insert for concurrency
     }
 
     public class IdempotentBehavior<TRequest, TResponse> : IPipelineBehavior<TRequest, TResponse>
@@ -47,11 +48,21 @@ namespace ${namespace}.Application.Behaviors
 
         public async Task<TResponse> Handle(TRequest request, RequestHandlerDelegate<TResponse> next, CancellationToken cancellationToken)
         {
-            var existingRecord = await _store.GetAsync(request.IdempotencyKey);
-            if (existingRecord != null)
+            // Atomic check-and-set to prevent race conditions (AC-01/02)
+            var initialRecord = new IdempotencyRecord 
+            { 
+                IdempotencyKey = request.IdempotencyKey, 
+                Path = typeof(TRequest).Name,
+                StatusCode = 202 // In Progress
+            };
+
+            var acquired = await _store.TryAddAsync(initialRecord);
+            if (!acquired)
             {
-                _logger.LogWarning("Petición idempotente previamente procesada. Key: {Key}", request.IdempotencyKey);
-                if (!string.IsNullOrEmpty(existingRecord.ResponsePayload))
+                var existingRecord = await _store.GetAsync(request.IdempotencyKey);
+                _logger.LogWarning("Petición idempotente previamente procesada o en curso. Key: {Key}", request.IdempotencyKey);
+                
+                if (existingRecord != null && !string.IsNullOrEmpty(existingRecord.ResponsePayload))
                 {
                     return JsonSerializer.Deserialize<TResponse>(existingRecord.ResponsePayload)!;
                 }
@@ -59,14 +70,10 @@ namespace ${namespace}.Application.Behaviors
             }
 
             var response = await next();
-            var record = new IdempotencyRecord
-            {
-                IdempotencyKey = request.IdempotencyKey,
-                Path = typeof(TRequest).Name,
-                ResponsePayload = JsonSerializer.Serialize(response),
-                StatusCode = 200
-            };
-            await _store.SaveAsync(record);
+            
+            initialRecord.ResponsePayload = JsonSerializer.Serialize(response);
+            initialRecord.StatusCode = 200;
+            await _store.SaveAsync(initialRecord);
 
             return response;
         }

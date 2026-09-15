@@ -11,6 +11,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using MediatR;
 using Microsoft.Extensions.Logging;
+using ${namespace}.Infrastructure.Data;
 
 namespace ${namespace}.Application.Handlers
 {
@@ -18,21 +19,26 @@ namespace ${namespace}.Application.Handlers
     public class Create${featurePascal}CommandHandler : IRequestHandler<Create${featurePascal}Command, CommandResult>
     {
         private readonly ILogger<Create${featurePascal}CommandHandler> _logger;
+        private readonly ApplicationDbContext _dbContext;
 
-        public Create${featurePascal}CommandHandler(ILogger<Create${featurePascal}CommandHandler> logger)
+        public Create${featurePascal}CommandHandler(ILogger<Create${featurePascal}CommandHandler> logger, ApplicationDbContext dbContext)
         {
             _logger = logger;
+            _dbContext = dbContext;
         }
 
         public async Task<CommandResult> Handle(Create${featurePascal}Command request, CancellationToken cancellationToken)
         {
             _logger.LogInformation("Processing command to create {Feature} with ref {Ref}", "${featurePascal}", request.ReferenceCode);
             
-            // Entity creation and atomic save
+            // Scaffold: Replace with actual domain logic
             var entityId = Guid.NewGuid();
-            await Task.CompletedTask;
+            
+            // Atomic save through DbContext (enables Outbox pattern)
+            // _dbContext.${featurePascal}s.Add(newEntity);
+            // await _dbContext.SaveChangesAsync(cancellationToken);
 
-            return new CommandResult(true, "${featurePascal} created successfully", entityId);
+            return new CommandResult(true, "${featurePascal} created successfully (Scaffold)", entityId);
         }
     }
 
@@ -40,10 +46,18 @@ namespace ${namespace}.Application.Handlers
 
     public class Get${featurePascal}QueryHandler : IRequestHandler<Get${featurePascal}Query, ${featurePascal}ReadModel?>
     {
+        private readonly ApplicationDbContext _dbContext;
+
+        public Get${featurePascal}QueryHandler(ApplicationDbContext dbContext)
+        {
+            _dbContext = dbContext;
+        }
+
         public async Task<${featurePascal}ReadModel?> Handle(Get${featurePascal}Query request, CancellationToken cancellationToken)
         {
-            await Task.CompletedTask;
-            return new ${featurePascal}ReadModel(request.${featurePascal}Id, "REF-10020", 250.00m, "COMPLETED", DateTime.UtcNow);
+            // Scaffold: Read from actual Read Model store or DbContext
+            // var entity = await _dbContext.${featurePascal}s.FindAsync(request.${featurePascal}Id);
+            throw new Exception("Scaffold: Implement database read logic here");
         }
     }
 

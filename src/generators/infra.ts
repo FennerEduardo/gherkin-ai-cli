@@ -73,18 +73,18 @@ export function generateInfra(config: GherkinAIConfig): { dockerComposeYaml: str
 
   let dbImage = 'postgres:16-alpine';
   let dbEnv = `
-      POSTGRES_DB: ${config.projectName}_db
-      POSTGRES_USER: dev_user
-      POSTGRES_PASSWORD: dev_password`;
+      POSTGRES_DB: \${POSTGRES_DB:-${config.projectName}_db}
+      POSTGRES_USER: \${POSTGRES_USER:-dev_user}
+      POSTGRES_PASSWORD: \${POSTGRES_PASSWORD:-dev_password}`;
   let dbPort = '5432:5432';
 
   if (db.includes('mysql') || db.includes('mariadb')) {
     dbImage = 'mysql:8.0';
     dbEnv = `
-      MYSQL_DATABASE: ${config.projectName}_db
-      MYSQL_ROOT_PASSWORD: root_password
-      MYSQL_USER: dev_user
-      MYSQL_PASSWORD: dev_password`;
+      MYSQL_DATABASE: \${MYSQL_DATABASE:-${config.projectName}_db}
+      MYSQL_ROOT_PASSWORD: \${MYSQL_ROOT_PASSWORD:-root_password}
+      MYSQL_USER: \${MYSQL_USER:-dev_user}
+      MYSQL_PASSWORD: \${MYSQL_PASSWORD:-dev_password}`;
     dbPort = '3306:3306';
   } else if (db.includes('mongo')) {
     dbImage = 'mongo:7.0';
@@ -106,7 +106,7 @@ services:
     working_dir: /app
     environment:
       - ENVIRONMENT=development
-      - DATABASE_URL=${db}://dev_user:dev_password@${db}:5432/${config.projectName}_db
+      - DATABASE_URL=\${DATABASE_URL:-${db}://dev_user:dev_password@${db}:5432/${config.projectName}_db}
     ports:
       - "8000:8000"
     depends_on:

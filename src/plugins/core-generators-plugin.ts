@@ -55,10 +55,13 @@ export class CoreContractsPlugin implements GherkinAIPlugin {
     const result = generateContracts(parsed, ir, config);
     
     const artifacts: GeneratedArtifact[] = [
-      { filePath: 'contracts.ts', content: result.contractsTs, type: 'contract' },
       { filePath: 'ADR-001-architecture-decisions.md', content: result.adrMd, type: 'other' },
       { filePath: 'openapi.json', content: result.openApiJson, type: 'openapi' }
     ];
+
+    if (config.stack.language === 'node' || config.stack.language === 'typescript' || config.stack.language === 'javascript' || config.stack.language === 'nest' || config.stack.language === 'nestjs') {
+      artifacts.push({ filePath: 'contracts.ts', content: result.contractsTs, type: 'contract' });
+    }
 
     if (result.asyncApiJson) {
       artifacts.push({ filePath: 'asyncapi.json', content: result.asyncApiJson, type: 'contract' });

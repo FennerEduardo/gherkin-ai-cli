@@ -95,19 +95,24 @@ namespace ${namespace}.Infrastructure.Outbox
                     var messageBroker = scope.ServiceProvider.GetRequiredService<IMessageBrokerPublisher>();
 
                     var now = DateTime.UtcNow;
+                    var lockTime = now.AddSeconds(30);
+                    
+                    // Atomic Locking (AC-08): PostgreSQL FOR UPDATE SKIP LOCKED
                     var pendingMessages = await dbContext.Set<OutboxMessage>()
-                        .Where(m => m.Status == OutboxStatus.Pending && (m.LockUntil == null || m.LockUntil < now))
-                        .Take(50)
+                        .FromSqlRaw(@"
+                            UPDATE ""OutboxMessages""
+                            SET ""Status"" = 1, ""LockUntil"" = {0}
+                            WHERE ""Id"" IN (
+                                SELECT ""Id"" FROM ""OutboxMessages""
+                                WHERE ""Status"" = 0 AND (""LockUntil"" IS NULL OR ""LockUntil"" < {1})
+                                LIMIT 50
+                                FOR UPDATE SKIP LOCKED
+                            )
+                            RETURNING *;", lockTime, now)
                         .ToListAsync(stoppingToken);
 
                     if (pendingMessages.Any())
                     {
-                        foreach (var msg in pendingMessages)
-                        {
-                            msg.Status = OutboxStatus.Processing;
-                            msg.LockUntil = now.AddSeconds(30);
-                        }
-                        await dbContext.SaveChangesAsync(stoppingToken);
 
                         foreach (var msg in pendingMessages)
                         {

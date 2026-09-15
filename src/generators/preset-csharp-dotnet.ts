@@ -22,9 +22,9 @@ export function generateCsharpDotnetPreset(parsed: ParsedFeature, config?: Gherk
 
   const generatedMethods = new Set<string>();
 
-  const stepDefCode = `// SpecFlow Step Definitions for ${parsed.featureName}
+  const stepDefCode = `// Reqnroll Step Definitions for ${parsed.featureName}
 using System;
-using TechTalk.SpecFlow;
+using Reqnroll;
 
 namespace ${namespace}.Tests.Steps
 {
@@ -133,6 +133,96 @@ public class ${featurePascal}Controller : ControllerBase
 }
 `;
 
+  const dbContextCode = `using Microsoft.EntityFrameworkCore;
+using ${namespace}.Domain.Entities;
+using ${namespace}.Infrastructure.Outbox;
+
+namespace ${namespace}.Infrastructure.Data
+{
+    public class ApplicationDbContext : DbContext
+    {
+        public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options) : base(options) { }
+
+        public DbSet<${featurePascal}Aggregate> ${featurePascal}s { get; set; } = null!;
+        public DbSet<OutboxMessage> OutboxMessages { get; set; } = null!;
+
+        protected override void OnModelCreating(ModelBuilder modelBuilder)
+        {
+            base.OnModelCreating(modelBuilder);
+            
+            modelBuilder.Entity<${featurePascal}Aggregate>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+                // Additional configurations can be added here
+            });
+            
+            modelBuilder.Entity<OutboxMessage>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+            });
+        }
+    }
+}
+`;
+
+  const programCode = `using Microsoft.AspNetCore.Builder;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.EntityFrameworkCore;
+using MassTransit;
+using ${namespace}.Infrastructure.Data;
+
+var builder = WebApplication.CreateBuilder(args);
+
+// Add services to the container.
+builder.Services.AddControllers();
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen();
+
+// Configure DbContext
+builder.Services.AddDbContext<ApplicationDbContext>(options =>
+    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection") ?? "Host=localhost;Database=mydb;Username=postgres;Password=postgres"));
+
+// Configure MediatR
+builder.Services.AddMediatR(cfg => cfg.RegisterServicesFromAssembly(typeof(Program).Assembly));
+
+// Configure MassTransit
+builder.Services.AddMassTransit(x =>
+{
+${config?.stack?.messaging === 'sqs' ? `    x.UsingAmazonSqs((context, cfg) =>
+    {
+        cfg.Host("us-east-1", h => {
+            h.AccessKey("test");
+            h.SecretKey("test");
+        });
+        cfg.ConfigureEndpoints(context);
+    });` : `    x.UsingRabbitMq((context, cfg) =>
+    {
+        cfg.Host(builder.Configuration["RabbitMQ:Host"] ?? "localhost", "/", h => {
+            h.Username(builder.Configuration["RabbitMQ:Username"] ?? "guest");
+            h.Password(builder.Configuration["RabbitMQ:Password"] ?? "guest");
+        });
+        cfg.ConfigureEndpoints(context);
+    });`}
+});
+
+var app = builder.Build();
+
+// Configure the HTTP request pipeline.
+if (app.Environment.IsDevelopment())
+{
+    app.UseSwagger();
+    app.UseSwaggerUI();
+}
+
+app.UseAuthorization();
+app.MapControllers();
+
+app.Run();
+
+public partial class Program { } // For integration testing
+`;
+
   return [
     {
       filename: `src/Domain/${featurePascal}.cs`,
@@ -146,6 +236,14 @@ public class ${featurePascal}Controller : ControllerBase
     {
       filename: `src/Api/Controllers/${featurePascal}Controller.cs`,
       content: apiControllerCode
+    },
+    {
+      filename: `src/Infrastructure/Data/ApplicationDbContext.cs`,
+      content: dbContextCode
+    },
+    {
+      filename: `src/Api/Program.cs`,
+      content: programCode
     },
     {
       filename: `tests/Steps/${className}.cs`,
