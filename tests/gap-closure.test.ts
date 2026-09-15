@@ -49,7 +49,7 @@ Feature: User Transfer Payment
     const convergence = checkConvergence(ir, process.cwd());
 
     expect(convergence.overallConvergence).toBeGreaterThanOrEqual(0);
-    expect(convergence.dimensions).toHaveLength(6);
+    expect(convergence.dimensions).toHaveLength(7);
   });
 
   it('should detect secrets and PII using Context Security Layer', () => {

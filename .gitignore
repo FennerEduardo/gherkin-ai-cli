@@ -8,7 +8,6 @@ dist/
 *.tsbuildinfo
 
 # Generated specs & CLI test outputs
-generated-specs/
 agent-bundle.md
 agent-bundle.json
 
@@ -25,6 +24,7 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
+*.jsonl
 
 # Editor & IDE settings
 .vscode/
@@ -49,3 +49,10 @@ coverage/
 .nyc_output/
 playwright-report/
 test-results/
+
+# gherkin-ai CLI
+.ghe/
+
+# gherkin-ai CLI Logs, Telemetry & Secrets
+.gherkin-ai/
+telemetry.jsonl

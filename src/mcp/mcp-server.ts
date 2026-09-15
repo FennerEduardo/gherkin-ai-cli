@@ -11,12 +11,28 @@ import { generateContracts } from '../generators/contracts';
 import { detectExistingStack } from '../core/stack-detector';
 import { getArchRule } from '../core/arch-rules';
 import { loadConfig } from '../core/config';
-import { buildIR } from '../core/ir-builder';
+import { buildIR, buildSpecificationIR } from '../core/ir-builder';
 import { lintSpecification } from '../core/specification-linter';
 import { calculateConvergence } from '../core/convergence-engine';
-import { calculateQualityScorecard } from '../core/quality-score';
+import { calculateDeliveryRisk } from '../core/risk-engine';
 import { generateConstitution, loadConstitution, getConstraintsByLevel } from '../core/constitution';
 import { scanContextSecurity, detectPromptInjection } from '../core/context-security';
+import { SpecHashBaseline } from '../core/governance/spec-hash-baseline';
+import { AgentPolicyEngine } from '../core/governance/agent-policy-engine';
+import { handleLoginCommand } from '../commands/login';
+import { handleInitCommand } from '../commands/init';
+import { handleGenerateCommand } from '../commands/generate';
+import { handleAddCommand } from '../commands/add';
+import { handleCreateCommand } from '../commands/create';
+import { handleAuditCommand } from '../commands/audit';
+import { handleAgentLogCommand } from '../commands/agent-log';
+import { handleImplementCommand } from '../commands/implement';
+import { promisify } from 'util';
+import { exec, execFile } from 'child_process';
+import { CrossServiceImpactAnalyzer } from '../core/analysis/cross-service-impact';
+
+const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 
 export function startMcpServer(): void {
   process.stdin.setEncoding('utf8');
@@ -98,6 +114,39 @@ function handleJsonRpcMessage(message: any): void {
 
 function getToolDefinitions() {
   return [
+    {
+      name: 'run_cli_diff',
+      description: 'Run the ghk diff command to detect drift between a Gherkin feature file and a target source code file.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          feature: { type: 'string', description: 'Path to the .feature file.' },
+          target: { type: 'string', description: 'Path to the target source code file.' }
+        },
+        required: ['feature', 'target']
+      }
+    },
+    {
+      name: 'run_cli_verify',
+      description: 'Run the ghk verify command to execute closed-loop testing.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          autoFix: { type: 'boolean', description: 'Enable auto-fix with agent repair loop if tests fail.' }
+        }
+      }
+    },
+    {
+      name: 'run_cli_autopilot',
+      description: 'Run the ghk autopilot command to generate and scaffold features autonomously.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          requirement: { type: 'string', description: 'Path to the requirement markdown file.' }
+        },
+        required: ['requirement']
+      }
+    },
     {
       name: 'parse_gherkin',
       description: 'Parse Gherkin .feature specification text into domain AST (commands, queries, events, actors).',
@@ -238,16 +287,200 @@ function getToolDefinitions() {
         properties: {}
       }
     },
+    {
+      name: 'ghk_governance_check',
+      description: 'Evaluate target files against agent policy boundaries and verify SHA-256 specification baselines for drift.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          files: { type: 'array', items: { type: 'string' }, description: 'Paths of files the agent intends to create or modify.' }
+        },
+        required: ['files']
+      }
+    },
+    {
+      name: 'ghk_impact_analysis',
+      description: 'Calculate multi-service Blast Radius across OpenAPI endpoints, AsyncAPI events, DTOs and DB schemas.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          gherkinText: { type: 'string', description: 'Optional Gherkin feature text.' },
+          changedFiles: { type: 'array', items: { type: 'string' }, description: 'List of changed or target files.' }
+        }
+      }
+    },
+    {
+      name: 'run_cli_init',
+      description: 'Initialize project configuration non-interactively with dual-stack backend and frontend settings.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          projectName: { type: 'string', description: 'Project name.' },
+          architecture: { type: 'string', description: 'Software architecture (hexagonal, ddd, clean, cqrs, monolith, api-rest, microservices).' },
+          language: { type: 'string', description: 'Backend language (java, csharp, typescript, php, python, go, ruby).' },
+          framework: { type: 'string', description: 'Backend framework (spring-boot, dotnet-aspnetcore, nestjs, fastapi, laravel, etc.).' },
+          orm: { type: 'string', description: 'Database ORM / persistence.' },
+          database: { type: 'string', description: 'Database engine (postgresql, mysql, mongodb, sqlite, redis).' },
+          validation: { type: 'string', description: 'Validation library (jakarta-validation, fluent-validation, zod, etc.).' },
+          messaging: { type: 'string', description: 'Event broker (rabbitmq, kafka, sqs, redis-pubsub, native-events, none).' },
+          testing: { type: 'string', description: 'Testing framework (junit, xunit, vitest, jest, pytest, phpunit).' },
+          frontendFramework: { type: 'string', description: 'Frontend framework (angular, react, vue, vanilla-js, none).' },
+          frontendLanguage: { type: 'string', description: 'Frontend language (typescript, javascript).' },
+          frontendStateManagement: { type: 'string', description: 'Frontend state pattern (signals, classic, pinia, redux-toolkit).' },
+          enterprise: { type: 'boolean', description: 'Enable enterprise constitution guardrails.' }
+        }
+      }
+    },
+    {
+      name: 'run_cli_generate',
+      description: 'Generate contracts, DTO schemas, test fixtures, docker-compose, and agent prompts from Gherkin feature spec.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          feature: { type: 'string', description: 'Path to Gherkin .feature file.' },
+          config: { type: 'string', description: 'Optional path to gherkin-ai.config.json file.' }
+        },
+        required: ['feature']
+      }
+    },
+    {
+      name: 'run_cli_add',
+      description: 'Inject contracts & AI agent prompts into an existing brownfield project target directory.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          feature: { type: 'string', description: 'Path to Gherkin .feature file.' },
+          target: { type: 'string', description: 'Target directory inside existing project.' }
+        },
+        required: ['feature', 'target']
+      }
+    },
+    {
+      name: 'run_cli_create',
+      description: 'Create a Gherkin .feature specification non-interactively with feature name, actor, action, outcome, and scenarios.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          featureName: { type: 'string', description: 'Feature name/title.' },
+          actor: { type: 'string', description: 'Feature actor (As a...).' },
+          action: { type: 'string', description: 'Feature action (I want to...).' },
+          outcome: { type: 'string', description: 'Feature outcome (So that...).' },
+          scenarioName: { type: 'string', description: 'Main scenario title.' },
+          output: { type: 'string', description: 'Destination path for created .feature file.' },
+          target: { type: 'string', description: 'Optional target directory to auto-inject contracts.' }
+        },
+        required: ['featureName']
+      }
+    },
+    {
+      name: 'run_cli_login',
+      description: 'Configure API credentials, tokens, and AI providers (OpenAI, Anthropic, Gemini, Ollama, custom) non-interactively.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          token: { type: 'string', description: 'Platform or agent auth token.' },
+          user: { type: 'string', description: 'User or agent identifier/email.' },
+          apiKey: { type: 'string', description: 'LLM API key.' },
+          provider: { type: 'string', description: 'AI provider (openai, anthropic, gemini, ollama, azure-openai, custom).' },
+          endpoint: { type: 'string', description: 'AI or server API endpoint URL.' },
+          server: { type: 'string', description: 'Centralized audit or registry server URL.' }
+        }
+      }
+    },
+    {
+      name: 'run_cli_audit',
+      description: 'Query or clear feature execution audit trail inventory.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          feature: { type: 'string', description: 'Filter audit records by feature spec or name.' },
+          clear: { type: 'boolean', description: 'If true, clears audit trail history.' }
+        }
+      }
+    },
+    {
+      name: 'run_cli_agent_log',
+      description: 'Record or view actions executed by AI Agents during feature implementation.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          action: { type: 'string', description: 'Describe concrete action taken by AI Agent.' },
+          feature: { type: 'string', description: 'Feature name or spec path.' },
+          list: { type: 'boolean', description: 'If true, lists agent action walkthrough.' },
+          clear: { type: 'boolean', description: 'If true, clears agent action logs.' }
+        }
+      }
+    },
+    {
+      name: 'run_cli_implement',
+      description: 'Generate AI Agent Master Implementation Prompt and context package for a feature.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          feature: { type: 'string', description: 'Path to Gherkin .feature file.' },
+          docker: { type: 'boolean', description: 'Include Docker container sandbox instructions in master prompt.' },
+          compact: { type: 'boolean', description: 'Generate ultra-compact prompt for low-cost models.' }
+        },
+        required: ['feature']
+      }
+    }
   ];
 }
+
 
 // ---------------------------------------------------------------------------
 // Tool Call Handlers
 // ---------------------------------------------------------------------------
 
-function handleToolCall(id: number | string, name: string, args: any): void {
+async function handleToolCall(id: number | string, name: string, args: any): Promise<void> {
   try {
     switch (name) {
+      case 'run_cli_diff': {
+        const { feature, target } = args;
+        try {
+          const { stdout, stderr } = await execFileAsync('node', ['bin/gherkin-ai.js', 'diff', '--feature', feature, '--target', target], { shell: false });
+          sendJsonRpcResponse(id, {
+            content: [{ type: 'text', text: stdout || stderr }]
+          });
+        } catch (e: any) {
+          sendJsonRpcResponse(id, {
+            content: [{ type: 'text', text: e.stdout || e.stderr || e.message }]
+          });
+        }
+        break;
+      }
+
+      case 'run_cli_verify': {
+        const commandArgs = ['bin/gherkin-ai.js', 'verify'];
+        if (args.autoFix) commandArgs.push('--auto-fix');
+        try {
+          const { stdout, stderr } = await execFileAsync('node', commandArgs, { shell: false });
+          sendJsonRpcResponse(id, {
+            content: [{ type: 'text', text: stdout || stderr }]
+          });
+        } catch (e: any) {
+          sendJsonRpcResponse(id, {
+            content: [{ type: 'text', text: e.stdout || e.stderr || e.message }]
+          });
+        }
+        break;
+      }
+
+      case 'run_cli_autopilot': {
+        const requirement = args.requirement;
+        try {
+          const { stdout, stderr } = await execFileAsync('node', ['bin/gherkin-ai.js', 'autopilot', '--requirement', requirement], { shell: false });
+          sendJsonRpcResponse(id, {
+            content: [{ type: 'text', text: stdout || stderr }]
+          });
+        } catch (e: any) {
+          sendJsonRpcResponse(id, {
+            content: [{ type: 'text', text: e.stdout || e.stderr || e.message }]
+          });
+        }
+        break;
+      }
+
       case 'parse_gherkin': {
         const parsed = parseGherkinText(args.gherkinText || '');
         sendJsonRpcResponse(id, {
@@ -272,7 +505,8 @@ function handleToolCall(id: number | string, name: string, args: any): void {
         if (args.language) config.stack.language = args.language;
         if (args.architecture) config.architecture = args.architecture;
         const parsed = parseGherkinText(args.gherkinText || '');
-        const output = generateContracts(parsed, config);
+        const ir = buildSpecificationIR(parsed, args.featureFile as string);
+        const output = generateContracts(parsed, ir, config);
         sendJsonRpcResponse(id, {
           content: [{ type: 'text', text: JSON.stringify(output, null, 2) }]
         });
@@ -379,9 +613,14 @@ function handleToolCall(id: number | string, name: string, args: any): void {
       }
 
       case 'calculate_quality': {
-        const scorecard = calculateQualityScorecard();
+        const riskCard = calculateDeliveryRisk();
         sendJsonRpcResponse(id, {
-          content: [{ type: 'text', text: JSON.stringify(scorecard, null, 2) }]
+          content: [
+            {
+              type: 'text',
+              text: `=== Deployment Risk Assessment ===\nRisk Level: ${riskCard.riskLevel}\nRisk Score: ${riskCard.overallRiskScore}\nBlast Radius: ${riskCard.blastRadius}\nTest Strength: ${riskCard.testStrength}\nSecurity Sensitivity: ${riskCard.securitySensitivity}\nRequires Human Approval: ${riskCard.requiresHumanApproval}\n\nFactors:\n${riskCard.factors.join('\n')}`
+            }
+          ]
         });
         break;
       }
@@ -426,6 +665,125 @@ function handleToolCall(id: number | string, name: string, args: any): void {
         break;
       }
 
+      case 'ghk_governance_check': {
+        const policyEngine = new AgentPolicyEngine(process.cwd());
+        const hashBaseline = new SpecHashBaseline(process.cwd());
+        const files = args.files || [];
+        const policyEval = policyEngine.evaluateFileModifications(files);
+        const driftEval = hashBaseline.verifyDrift(files);
+
+        sendJsonRpcResponse(id, {
+          content: [{ type: 'text', text: JSON.stringify({
+            policy: policyEval,
+            baselineDrift: driftEval
+          }, null, 2) }]
+        });
+        break;
+      }
+
+      case 'ghk_impact_analysis': {
+        const analyzer = new CrossServiceImpactAnalyzer();
+        let ir = buildIR(parseGherkinText(args.gherkinText || 'Feature: Impact Analysis'), 'input.feature');
+        const result = analyzer.analyzeImpact(ir, args.changedFiles || []);
+
+        sendJsonRpcResponse(id, {
+          content: [{ type: 'text', text: JSON.stringify(result, null, 2) }]
+        });
+        break;
+      }
+
+      case 'run_cli_init': {
+        await handleInitCommand({
+          ...args,
+          nonInteractive: true,
+          yes: true
+        });
+        sendJsonRpcResponse(id, {
+          content: [{ type: 'text', text: JSON.stringify({ success: true, message: 'Project initialized via MCP', config: loadConfig() }, null, 2) }]
+        });
+        break;
+      }
+
+      case 'run_cli_generate': {
+        await handleGenerateCommand({
+          ...args,
+          nonInteractive: true,
+          yes: true
+        });
+        sendJsonRpcResponse(id, {
+          content: [{ type: 'text', text: JSON.stringify({ success: true, message: `Contracts generated for ${args.feature}` }, null, 2) }]
+        });
+        break;
+      }
+
+      case 'run_cli_add': {
+        await handleAddCommand({
+          ...args,
+          nonInteractive: true,
+          yes: true
+        });
+        sendJsonRpcResponse(id, {
+          content: [{ type: 'text', text: JSON.stringify({ success: true, message: `Contracts added to target ${args.target}` }, null, 2) }]
+        });
+        break;
+      }
+
+      case 'run_cli_create': {
+        await handleCreateCommand({
+          ...args,
+          nonInteractive: true,
+          yes: true
+        });
+        sendJsonRpcResponse(id, {
+          content: [{ type: 'text', text: JSON.stringify({ success: true, message: `Feature spec created: ${args.featureName}` }, null, 2) }]
+        });
+        break;
+      }
+
+      case 'run_cli_login': {
+        const authData = await handleLoginCommand({
+          ...args,
+          nonInteractive: true,
+          yes: true
+        });
+        sendJsonRpcResponse(id, {
+          content: [{ type: 'text', text: JSON.stringify({ success: true, message: 'Auth credentials saved', user: authData.user, provider: authData.provider }, null, 2) }]
+        });
+        break;
+      }
+
+      case 'run_cli_audit': {
+        await handleAuditCommand({
+          ...args,
+          json: true
+        });
+        sendJsonRpcResponse(id, {
+          content: [{ type: 'text', text: JSON.stringify({ success: true, message: 'Audit query executed' }, null, 2) }]
+        });
+        break;
+      }
+
+      case 'run_cli_agent_log': {
+        await handleAgentLogCommand({
+          ...args,
+          json: true
+        });
+        sendJsonRpcResponse(id, {
+          content: [{ type: 'text', text: JSON.stringify({ success: true, message: 'Agent log action executed' }, null, 2) }]
+        });
+        break;
+      }
+
+      case 'run_cli_implement': {
+        await handleImplementCommand({
+          ...args
+        });
+        sendJsonRpcResponse(id, {
+          content: [{ type: 'text', text: JSON.stringify({ success: true, message: `Master prompt generated for ${args.feature}` }, null, 2) }]
+        });
+        break;
+      }
+
       default:
         sendJsonRpcResponse(id, null, {
           code: -32601,
@@ -439,3 +797,4 @@ function handleToolCall(id: number | string, name: string, args: any): void {
     });
   }
 }
+

@@ -20,17 +20,36 @@ export interface GherkinAIConfig {
     testing: string;
     aiEngine?: string;
   };
+  frontendStack?: {
+    framework: string;
+    language: string;
+    bundler?: string;
+    stateManagement?: string;
+    orm?: string;
+    database?: string;
+    validation?: string;
+    testing?: string;
+    unitTesting?: string;
+    e2eTesting?: string;
+  };
   rules: {
     bcryptCostFactor?: number;
     jwtTtlSeconds?: number;
     strictLayerBoundaries?: boolean;
     coverageTarget?: number;
   };
+  audit?: {
+    enabled?: boolean;
+    maxEntries?: number;
+    persistInGit?: boolean;
+  };
   designPatterns?: string[];
   codingRules?: string[];
   outputDir: string;
-  specDir?: string;       // Directorio de features/specs (default: auto-detect)
-  testCommand?: string;   // Comando de pruebas personalizado para verify/autopilot
+  specDir?: string;       // Feature/specs directory (default: auto-detect)
+  testCommand?: string;   // Custom test command for verify/autopilot
+  domainProfile?: string; // Business domain profile (e.g., 'payments')
+  channelMapping?: Record<string, string>; // Optional per-event channel name overrides (e.g., { PaymentInitiated: "payments.initiated" })
 }
 
 export const defaultConfig: GherkinAIConfig = {
@@ -53,6 +72,11 @@ export const defaultConfig: GherkinAIConfig = {
     strictLayerBoundaries: true,
     coverageTarget: 85
   },
+  audit: {
+    enabled: true,
+    maxEntries: 50,
+    persistInGit: false
+  },
   designPatterns: [],
   codingRules: [],
   outputDir: './generated-specs',
@@ -70,7 +94,16 @@ export function loadConfig(configPath?: string): GherkinAIConfig {
   try {
     const raw = readFileSync(targetPath);
     const parsed = JSON.parse(raw);
-    return { ...defaultConfig, ...parsed, stack: { ...defaultConfig.stack, ...(parsed.stack || {}) } };
+    return {
+      ...defaultConfig,
+      ...parsed,
+      stack: { ...defaultConfig.stack, ...(parsed.stack || {}) },
+      audit: { ...defaultConfig.audit, ...(parsed.audit || {}) },
+      rules: { ...defaultConfig.rules, ...(parsed.rules || {}) },
+      frontendStack: parsed.frontendStack 
+        ? { ...(defaultConfig.frontendStack || {}), ...parsed.frontendStack }
+        : defaultConfig.frontendStack
+    };
   } catch (err) {
     throw new Error(`Failed to parse config file at ${targetPath}: ${(err as Error).message}`);
   }

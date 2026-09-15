@@ -58,7 +58,7 @@ describe('Convergence Engine', () => {
       expect(report.sourceFile).toBe('registration.feature');
       expect(report.timestamp).toBeDefined();
       expect(report.dimensions).toBeInstanceOf(Array);
-      expect(report.dimensions.length).toBe(6);
+      expect(report.dimensions.length).toBe(7);
       expect(typeof report.overallConvergence).toBe('number');
       expect(report.overallConvergence).toBeGreaterThanOrEqual(0);
       expect(report.overallConvergence).toBeLessThanOrEqual(100);
@@ -77,6 +77,7 @@ describe('Convergence Engine', () => {
       expect(dimensionNames).toContain('Architecture Compliance');
       expect(dimensionNames).toContain('Security Policy');
       expect(dimensionNames).toContain('Traceability');
+      expect(dimensionNames).toContain('Code Coverage');
     });
 
     it('each dimension should have score, maxScore, details, status', () => {
@@ -99,7 +100,7 @@ describe('Convergence Engine', () => {
       const report = checkConvergence(ir);
 
       expect(report.featureName).toBe('User Registration');
-      expect(report.dimensions.length).toBe(6);
+      expect(report.dimensions.length).toBe(7);
     });
   });
 

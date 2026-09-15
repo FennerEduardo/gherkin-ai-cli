@@ -3,6 +3,7 @@
    ========================================================================== */
 
 import path from 'path';
+import fs from 'fs';
 import { loadConfig } from '../core/config';
 import { parseGherkinText } from '../core/gherkin-parser';
 import { buildIR } from '../core/ir-builder';
@@ -10,41 +11,113 @@ import { pluginRegistry } from '../core/plugin-system';
 import { registerCorePlugins } from '../plugins/core-generators-plugin';
 import { fileExistsSync, readFileSync, writeFileSync } from '../utils/file-system';
 import { logger } from '../utils/logger';
+import { ensureGitignore } from '../utils/gitignore-manager';
+import { detectMissingDependencies } from '../core/stack-setup';
 import inquirer from 'inquirer';
 import chalk from 'chalk';
 
-const DEFAULT_SAMPLE_GHERKIN = `Feature: User Authentication & Token Issuance
-  As a registered user
-  I want to authenticate using valid credentials
-  So that I obtain a JWT token to access protected APIs
+function buildDynamicFeatureTemplate(rawName: string): string {
+  const baseName = path.basename(rawName, '.feature').replace(/^[0-9]+[-_]?/, '');
+  const words = baseName.split(/[-_]/).filter(Boolean);
+  const title = words.map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ') || 'Domain Feature';
+  const pascalName = words.map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join('');
 
-  Scenario: Successful login with valid credentials
-    Given a registered user exists with email "dev@example.com" and password "Pass123!"
-    When sending an authentication request with email "dev@example.com" and password "Pass123!"
+  return `Feature: ${title}
+  As a system user or business manager
+  I want to process and manage ${title.toLowerCase()} operations
+  So that data integrity and business rules are enforced across the application
+
+  Scenario: Process ${title.toLowerCase()} successfully
+    Given a valid ${title.toLowerCase()} request with required payload
+    When processing ${title.toLowerCase()} request
     Then the system responds with HTTP status 200 OK
-    And returns a short-lived access JWT token
-    And emits a "UserAuthenticated" domain event
+    And stores record in database
+    And emits a "${pascalName}Processed" domain event
 
-  Scenario: Rejected login with wrong password
-    Given a registered user exists with email "dev@example.com"
-    When sending an authentication request with wrong password "WrongPass"
-    Then the system responds with HTTP status 401 Unauthorized
-    And returns error message "Invalid credentials"
+  Scenario: Reject ${title.toLowerCase()} with invalid parameters
+    Given an invalid ${title.toLowerCase()} request with missing fields
+    When processing ${title.toLowerCase()} request
+    Then the system responds with HTTP status 400 Bad Request
+    And returns validation error details
 `;
+}
 
 export async function handleGenerateCommand(options: { feature?: string; config?: string; yes?: boolean }): Promise<void> {
   logger.banner();
 
   const config = loadConfig(options.config);
-  let gherkinText = DEFAULT_SAMPLE_GHERKIN;
+  let gherkinText = buildDynamicFeatureTemplate('sample-feature.feature');
+  const isNonInteractive = options.yes || process.env.GHK_NON_INTERACTIVE === 'true' || !!process.env.CI;
 
   if (options.feature) {
     const featurePath = path.resolve(process.cwd(), options.feature);
     if (fileExistsSync(featurePath)) {
       gherkinText = readFileSync(featurePath);
-      logger.info(`Loaded feature specification from: ${featurePath}`);
+      logger.info(`Loaded existing feature specification from: ${featurePath}`);
     } else {
-      logger.warn(`Feature file not found at ${featurePath}. Using default sample feature.`);
+      const specsDir = path.dirname(featurePath);
+      if (!fs.existsSync(specsDir)) {
+        fs.mkdirSync(specsDir, { recursive: true });
+      }
+
+      const baseName = path.basename(options.feature, '.feature').replace(/^[0-9]+[-_]?/, '');
+      const words = baseName.split(/[-_]/).filter(Boolean);
+      const title = words.map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ') || 'Domain Feature';
+
+      if (!isNonInteractive) {
+        logger.warn(`Feature file not found at ${featurePath}.`);
+        const { createMode } = await inquirer.prompt([{
+          type: 'list',
+          name: 'createMode',
+          message: `How would you like to create specification at ${options.feature}?`,
+          choices: [
+            { name: `1. Auto-generate Context Template based on "${title}"`, value: 'template' },
+            { name: '2. Interactive Terminal Wizard (Define Actor, Action & Scenarios)', value: 'wizard' },
+            { name: '3. AI Agent Assistant Mode (Generate prompt for Claude/Cursor/Antigravity to draft spec)', value: 'ai-assistant' }
+          ],
+          default: 'template'
+        }]);
+
+        if (createMode === 'wizard') {
+          const { handleCreateCommand } = require('./create');
+          await handleCreateCommand({ output: featurePath, yes: false });
+          gherkinText = readFileSync(featurePath);
+        } else if (createMode === 'ai-assistant') {
+          gherkinText = buildDynamicFeatureTemplate(options.feature);
+          writeFileSync(featurePath, gherkinText);
+          logger.success(`Created initial feature specification at: ${featurePath}`);
+          
+          const promptPath = path.join(config.outputDir, 'prompts', 'feature-spec-assistant.md');
+          const promptDir = path.dirname(promptPath);
+          if (!fs.existsSync(promptDir)) fs.mkdirSync(promptDir, { recursive: true });
+          
+          const assistantPrompt = `# 🤖 ROLE: GHERKIN SPECIFICATION ASSISTANT AGENT
+Objective: Write detailed Gherkin feature scenarios for ${title}.
+
+🛠️ Target Tech Stack:
+- Language: ${config.stack.language} (${config.stack.framework})
+- Architecture: ${config.architecture}
+- Persistence: ${config.stack.orm} + ${config.stack.database}
+
+📌 Target File: ${featurePath}
+
+🎯 Instructions for AI Agent:
+1. Open and edit ${featurePath}.
+2. Implement complete Given/When/Then BDD scenarios matching business requirements.
+3. Specify HTTP status codes, payload validations, and domain events.
+`;
+          writeFileSync(promptPath, assistantPrompt);
+          logger.success(`Generated AI Assistant Prompt for Feature Drafting: ${promptPath}`);
+        } else {
+          gherkinText = buildDynamicFeatureTemplate(options.feature);
+          writeFileSync(featurePath, gherkinText);
+          logger.success(`Created feature specification from domain template: ${featurePath}`);
+        }
+      } else {
+        gherkinText = buildDynamicFeatureTemplate(options.feature);
+        writeFileSync(featurePath, gherkinText);
+        logger.success(`Created feature specification from domain template: ${featurePath}`);
+      }
     }
   } else {
     logger.info('No feature file specified. Using built-in sample feature spec.');
@@ -63,12 +136,18 @@ export async function handleGenerateCommand(options: { feature?: string; config?
   const parsed = parseGherkinText(gherkinText);
 
   logger.info('Building Semantic IR...');
-  const ir = buildIR(parsed, options.feature || 'sample.feature');
+  const ir = buildIR(parsed, options.feature || 'sample.feature', { domainProfile: config.domainProfile });
 
   logger.info(`Target Output Directory: ${config.outputDir}`);
 
   // Initialize Plugin Architecture
   pluginRegistry.initialize({ config, constitution: null, projectDir: process.cwd() });
+  
+  // Auto-sync governance policy to reflect current config
+  if (fs.existsSync(path.join(process.cwd(), '.ghkgovernance.yaml'))) {
+    const { generateGovernanceConfig } = require('./init');
+    generateGovernanceConfig(config, process.cwd());
+  }
   
   // Only register core plugins if not already registered (to prevent duplicate throws)
   if (pluginRegistry.getPlugins().length === 0) {
@@ -84,7 +163,6 @@ export async function handleGenerateCommand(options: { feature?: string; config?
     console.log(`- AI Tools: ${config.stack.aiEngine}`);
   }
 
-  const isNonInteractive = options.yes || process.env.GHK_NON_INTERACTIVE === 'true' || !!process.env.CI;
   let confirmContext = true;
   if (!isNonInteractive) {
     const answer = await inquirer.prompt([{
@@ -99,6 +177,38 @@ export async function handleGenerateCommand(options: { feature?: string; config?
   if (!confirmContext) {
     logger.warn('Context rejected. Please update gherkin-ai.config.json or run `ghk detect` and run again.');
     process.exit(1);
+  }
+
+  // ── Stack Dependency Check ──────────────────────────────────────────
+  const setupResult = detectMissingDependencies(config, process.cwd());
+  if (setupResult.hasMissing) {
+    console.log(chalk.yellow(`\n⚠ Missing ${setupResult.missing.length} stack dependency group(s) declared in config:\n`));
+    for (const dep of setupResult.missing) {
+      console.log(chalk.yellow(`  • ${dep.name} (${dep.category}): ${dep.reason}`));
+      console.log(chalk.cyan(`    → ${dep.installCommand}`));
+    }
+    console.log('');
+
+    if (isNonInteractive) {
+      logger.info('Run the commands above to install missing dependencies, or use `ghk init` to reconfigure.');
+    } else {
+      const { autoInstall } = await inquirer.prompt([{
+        type: 'confirm',
+        name: 'autoInstall',
+        message: 'Would you like to install missing stack dependencies now?',
+        default: false
+      }]);
+
+      if (autoInstall) {
+        const { executeSetup } = require('../core/stack-setup');
+        const result = executeSetup(setupResult.suggestions, { cwd: process.cwd() });
+        if (result.success) {
+          logger.success('Stack dependencies installed successfully.');
+        } else {
+          logger.error(`Some installations failed: ${result.output}`);
+        }
+      }
+    }
   }
 
   const agentChoices = [
@@ -139,7 +249,16 @@ export async function handleGenerateCommand(options: { feature?: string; config?
     return true;
   });
 
-  const fs = require('fs');
+  // Anti-Stub Global Validation Gate
+  const stubArtifacts = filteredArtifacts.filter(a => /\/\/\s*TODO:|\/\/\s*FIXME:|throw new NotImplementedException/i.test(a.content));
+  if (stubArtifacts.length > 0) {
+    logger.error('CRITICAL GUARDRAIL VIOLATION: Generate flow produced artifacts with placeholder code (TODO/FIXME).');
+    logger.error('The following generated files contain stubs:');
+    stubArtifacts.forEach(a => logger.error(` - ${a.filePath}`));
+    logger.error('Aborting generation to enforce clean architecture and complete implementations.');
+    process.exit(1);
+  }
+
   filteredArtifacts.forEach(artifact => {
     const fullPath = path.join(config.outputDir, artifact.filePath);
     const dir = path.dirname(fullPath);
@@ -150,7 +269,45 @@ export async function handleGenerateCommand(options: { feature?: string; config?
     logger.success(`[Plugin ${artifact.type}] Generated: ${artifact.filePath}`);
   });
 
+  // Generate traceability inventory
+  const crypto = require('crypto');
+  const inventory = {
+    version: '1.0',
+    generatedAt: new Date().toISOString(),
+    createdBy: 'gherkin-ai-cli',
+    artifacts: filteredArtifacts.map(a => ({
+      filePath: a.filePath,
+      type: a.type,
+      checksum: crypto.createHash('sha256').update(a.content).digest('hex')
+    }))
+  };
+  
+  const gheDir = path.join(process.cwd(), '.ghe');
+  if (!fs.existsSync(gheDir)) fs.mkdirSync(gheDir, { recursive: true });
+  writeFileSync(path.join(gheDir, 'inventory.json'), JSON.stringify(inventory, null, 2));
+  logger.success(`[Audit] Traceability inventory saved to .ghe/inventory.json`);
+
+  // Generate Suggested Commit Message
+  const suggestedCommit = `feat: Implement ${parsed.featureName} base architecture
+
+This commit implements the foundation for ${parsed.featureName} based on Gherkin specifications.
+
+Generated Artifacts:
+${filteredArtifacts.map(a => `- ${a.filePath}`).join('\n')}
+
+Validation:
+- Anti-Stub validation: Passed
+- Gherkin Coverage: ${parsed.scenarios.length} scenarios mapped
+- CQRS/DDD Contracts: Generated
+
+Next Steps:
+- Run 'docker compose up -d' or use the provided test infrastructure to validate integrations.
+`;
+  writeFileSync(path.join(gheDir, 'suggested_commit.md'), suggestedCommit);
+  logger.info(`[Git] Suggested commit message written to .ghe/suggested_commit.md`);
+
   logger.banner();
+  ensureGitignore(process.cwd());
   logger.success(`All artifacts successfully generated under ${config.outputDir}!`);
   logger.info('Ready for AI Agents (Claude Code, Cursor, Antigravity, Copilot).');
 }

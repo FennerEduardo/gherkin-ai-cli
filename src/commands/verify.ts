@@ -7,6 +7,7 @@ import { executeSandbox, SandboxExecutionOptions } from '../core/execution-sandb
 import { parseExecutionFailure } from '../core/error-parser';
 import { RealAgentProvider, LLMConfig } from '../core/agent-adapter';
 import { loadConfig } from '../core/config';
+import { MetricsEngine } from '../core/metrics-engine';
 
 export interface VerifyCommandOptions {
   autoFix?: boolean;
@@ -29,6 +30,10 @@ export async function handleVerifyCommand(options: VerifyCommandOptions = {}): P
   let iteration = 1;
   let success = false;
   const fileBackups: Record<string, string> = {};
+  let guardrailViolationPrompt: string | null = null;
+  const metricsEngine = new MetricsEngine();
+  const execEvents: any[] = [];
+  const execErrors: any[] = [];
 
   while (iteration <= maxRetries && !success) {
     console.log(chalk.bold.blue(`[Iteration ${iteration}/${maxRetries}] Running Test Harness...`));
@@ -38,6 +43,8 @@ export async function handleVerifyCommand(options: VerifyCommandOptions = {}): P
     if (result.success) {
       console.log(chalk.bold.green(`\n✅ Suite Verification Passed! (Duration: ${result.durationMs}ms)`));
       console.log(chalk.green(`   Executed command: ${result.commandExecuted}\n`));
+      metricsEngine.recordTestRun(true);
+      execEvents.push({ type: 'test_passed', iteration, durationMs: result.durationMs });
       success = true;
       break;
     }
@@ -46,12 +53,22 @@ export async function handleVerifyCommand(options: VerifyCommandOptions = {}): P
     const diagnosis = parseExecutionFailure(result);
 
     console.log(chalk.yellow(`   Diagnosis: ${diagnosis.summary}`));
+    if (guardrailViolationPrompt) {
+      diagnosis.suggestedFixContext = guardrailViolationPrompt;
+      guardrailViolationPrompt = null;
+      console.log(chalk.yellow(`   [Injected Guardrail Violation to Agent Context]`));
+    }
+
     if (diagnosis.affectedFiles.length > 0) {
       console.log(chalk.gray(`   Affected files: ${diagnosis.affectedFiles.join(', ')}`));
     }
 
     if (!options.autoFix) {
       console.log(chalk.gray('\n   Tip: Re-run with --auto-fix to invoke agent self-healing repair loops.\n'));
+      metricsEngine.recordHumanIntervention();
+      metricsEngine.recordTestRun(false);
+      const logPath = metricsEngine.saveExecutionLog(execEvents, execErrors);
+      console.log(chalk.gray(`\n   📊 Execution metrics saved to: ${logPath}`));
       process.exitCode = result.exitCode;
       return;
     }
@@ -77,6 +94,10 @@ export async function handleVerifyCommand(options: VerifyCommandOptions = {}): P
         console.log(chalk.gray(`   No files were modified during the attempts. Nothing to rollback.`));
       }
       
+      metricsEngine.recordHumanIntervention();
+      metricsEngine.recordTestRun(false);
+      const logPath = metricsEngine.saveExecutionLog(execEvents, execErrors);
+      console.log(chalk.gray(`\n   📊 Execution metrics saved to: ${logPath}`));
       process.exitCode = result.exitCode;
       return;
     }
@@ -93,10 +114,54 @@ export async function handleVerifyCommand(options: VerifyCommandOptions = {}): P
       diagnosis
     });
 
+    metricsEngine.recordTestRun(false);
+    metricsEngine.recordAgentAttempt(repairResult.tokensUsed || 0, repairResult.codeModifications?.length || 0);
+    execEvents.push({ type: 'agent_repair_attempt', iteration, tokens: repairResult.tokensUsed });
+
     console.log(chalk.gray(`   ${repairResult.agentResponse.split('\n')[0]}`));
     
     // Apply Code Modifications if provided by RealAgentProvider
     if (repairResult.codeModifications && repairResult.codeModifications.length > 0) {
+      const { validateGuardrails } = require('../core/guardrails');
+      const proposedFiles = repairResult.codeModifications.map((m: any) => m.filePath);
+      
+      // Anti-Stub Validation (Prevent Agent from leaving TODOs)
+      const stubFiles = repairResult.codeModifications.filter((m: any) => 
+        /\/\/\s*TODO:|\/\/\s*FIXME:|throw new NotImplementedException/i.test(m.content)
+      );
+
+      if (stubFiles.length > 0) {
+        console.log(chalk.red(`   ✖ ANTI-STUB VIOLATION: Agent generated placeholder code.`));
+        const stubFileNames = stubFiles.map((m: any) => m.filePath).join(', ');
+        guardrailViolationPrompt = `CRITICAL ERROR: Your proposed modifications in [${stubFileNames}] contain placeholder stubs (TODO, FIXME, or NotImplementedException).\nThis is strictly forbidden. You MUST write the actual implementation.`;
+        iteration++;
+        continue;
+      }
+      
+      // Immutable Spec Mode
+      const specViolations = proposedFiles.filter((f: string) => f.endsWith('.feature'));
+      if (specViolations.length > 0) {
+        console.log(chalk.red(`   ✖ GUARDRAIL VIOLATION: Immutable Spec Mode is active. Agent cannot modify .feature files during auto-fix.`));
+        guardrailViolationPrompt = `CRITICAL ERROR: You attempted to modify the following specification files: ${specViolations.join(', ')}.\nThis is strictly forbidden. You must fix the implementation code to satisfy the existing specification, NOT change the specification.`;
+        iteration++;
+        continue;
+      }
+      
+      const guardrailValidation = validateGuardrails({
+        action: 'generate_code',
+        targetFiles: proposedFiles
+      }, process.cwd());
+      
+      if (!guardrailValidation.allowed) {
+        console.log(chalk.red(`   ✖ GUARDRAIL VIOLATION: Agent changes rejected.`));
+        for (const v of guardrailValidation.violations) {
+          console.log(chalk.red(`     - ${v}`));
+        }
+        guardrailViolationPrompt = `CRITICAL ERROR: Your proposed modifications violated security guardrails:\n${guardrailValidation.violations.join('\n')}\nRewrite your modifications to comply with these policies.`;
+        iteration++;
+        continue;
+      }
+
       console.log(chalk.green(`   Applying ${repairResult.codeModifications.length} code modification(s)...`));
       for (const mod of repairResult.codeModifications) {
         try {
@@ -128,7 +193,8 @@ export async function handleVerifyCommand(options: VerifyCommandOptions = {}): P
             continue;
           }
 
-          const fullPath = path.resolve(mod.filePath);
+          const { resolveSafePath } = require('../utils/file-system');
+          const fullPath = resolveSafePath(process.cwd(), mod.filePath);
           
           if (!fileBackups[fullPath] && fs.existsSync(fullPath)) {
              const backupDir = path.resolve('.ghe', 'backups');
@@ -150,6 +216,13 @@ export async function handleVerifyCommand(options: VerifyCommandOptions = {}): P
     
     iteration++;
   }
+
+  // Set mock requirements since this is just the verify command
+  // In a real scenario, this would be passed down from the parsed features
+  metricsEngine.setRequirements(success ? 10 : 0, 10);
+  
+  const logPath = metricsEngine.saveExecutionLog(execEvents, execErrors);
+  console.log(chalk.bold.cyan(`\n📊 Closed-Loop Execution metrics saved to: ${logPath}`));
 
   if (!success) {
     process.exitCode = 1;

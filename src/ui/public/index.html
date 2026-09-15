@@ -86,6 +86,7 @@
                     <button id="tab-results" class="flex-1 py-3 text-center text-sky-400 font-semibold border-b-2 border-sky-400 bg-slate-800/50" data-i18n="tabResults">Generation</button>
                     <button id="tab-terminal" class="flex-1 py-3 text-center text-slate-400 font-semibold hover:text-slate-300" data-i18n="tabTerminal">Terminal</button>
                     <button id="tab-agent" class="flex-1 py-3 text-center text-slate-400 font-semibold hover:text-slate-300" data-i18n="tabAgent">Agent</button>
+                    <button id="tab-observability" class="flex-1 py-3 text-center text-slate-400 font-semibold hover:text-slate-300">Observability</button>
                 </div>
 
                 <!-- Results Content -->
@@ -148,8 +149,34 @@
                     </div>
                 </div>
 
+                <!-- Observability Content -->
+                <div id="observability-view" class="hidden flex-1 p-4 flex-col bg-slate-900 rounded-b-lg overflow-y-auto">
+                    <div class="flex gap-2 mb-4 shrink-0">
+                        <button id="obs-tab-inventory" class="obs-tab-btn bg-slate-800 hover:bg-slate-700 text-white px-3 py-1 rounded text-sm transition-colors border border-sky-500">Inventory</button>
+                        <button id="obs-tab-logs" class="obs-tab-btn bg-slate-800 hover:bg-slate-700 text-slate-400 px-3 py-1 rounded text-sm transition-colors border border-transparent">Agent Logs</button>
+                        <button id="obs-tab-contracts" class="obs-tab-btn bg-slate-800 hover:bg-slate-700 text-slate-400 px-3 py-1 rounded text-sm transition-colors border border-transparent">Contracts</button>
+                        <button id="obs-tab-prompts" class="obs-tab-btn bg-slate-800 hover:bg-slate-700 text-slate-400 px-3 py-1 rounded text-sm transition-colors border border-transparent">Prompts</button>
+                    </div>
+                    <div id="obs-content" class="flex-1 overflow-y-auto grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <!-- Content goes here -->
+                    </div>
+                </div>
+
             </section>
         </main>
+    </div>
+
+    <!-- Code Viewer Modal -->
+    <div id="codeViewerModal" class="hidden fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex justify-center items-center p-8">
+        <div class="bg-slate-900 border border-slate-700 w-full max-w-4xl h-full max-h-[80vh] flex flex-col rounded-lg shadow-2xl">
+            <div class="flex justify-between items-center p-3 border-b border-slate-700 bg-slate-800 rounded-t-lg">
+                <h3 id="modalTitle" class="text-sky-400 font-mono text-sm font-semibold">filename.ts</h3>
+                <button onclick="document.getElementById('codeViewerModal').classList.add('hidden')" class="text-slate-400 hover:text-white px-2 py-1"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="flex-1 overflow-auto p-4">
+                <pre id="modalContent" class="text-slate-300 font-mono text-xs whitespace-pre-wrap leading-relaxed"></pre>
+            </div>
+        </div>
     </div>
 
     <footer class="text-center text-slate-500 text-sm py-2 shrink-0" data-i18n="footerHtml">
@@ -284,23 +311,49 @@
                         const root = document.getElementById('explorer-tree');
                         root.innerHTML = '';
                         
-                        function renderNode(node, container, level = 0) {
+                        function renderNode(node, container, level = 0, relativePath = '') {
                             const div = document.createElement('div');
-                            div.className = `flex items-center gap-2 py-1 hover:bg-slate-800 cursor-default px-2 rounded`;
+                            div.className = `flex items-center gap-2 py-1 hover:bg-slate-800 cursor-pointer px-2 rounded`;
                             div.style.paddingLeft = `${level * 12 + 8}px`;
                             
                             const icon = node.type === 'dir' ? '<i class="fa-solid fa-folder text-amber-400"></i>' : '<i class="fa-regular fa-file text-sky-300"></i>';
-                            div.innerHTML = `${icon} <span>${node.name}</span>`;
+                            div.innerHTML = `${icon} <span class="truncate">${node.name}</span>`;
                             container.appendChild(div);
+                            
+                            const currentPath = level === 0 ? '' : (relativePath ? `${relativePath}/${node.name}` : node.name);
 
-                            if (node.children && node.children.length > 0) {
-                                // Subcontainer
+                            if (node.type === 'dir') {
                                 const sub = document.createElement('div');
-                                node.children.sort((a,b) => {
-                                    if(a.type===b.type) return a.name.localeCompare(b.name);
-                                    return a.type === 'dir' ? -1 : 1;
-                                }).forEach(child => renderNode(child, sub, level + 1));
+                                sub.className = 'hidden'; // collapsed by default
                                 container.appendChild(sub);
+                                
+                                div.onclick = () => {
+                                    sub.classList.toggle('hidden');
+                                };
+                                
+                                if (node.children && node.children.length > 0) {
+                                    node.children.sort((a,b) => {
+                                        if(a.type===b.type) return a.name.localeCompare(b.name);
+                                        return a.type === 'dir' ? -1 : 1;
+                                    }).forEach(child => renderNode(child, sub, level + 1, currentPath));
+                                }
+                            } else {
+                                // It's a file
+                                div.onclick = async () => {
+                                    try {
+                                        const res = await fetch(`/api/file?path=${encodeURIComponent(currentPath)}`);
+                                        const data = await res.json();
+                                        if (data.success) {
+                                            document.getElementById('modalTitle').innerText = currentPath;
+                                            document.getElementById('modalContent').textContent = data.content;
+                                            document.getElementById('codeViewerModal').classList.remove('hidden');
+                                        } else {
+                                            alert("Error reading file: " + data.error);
+                                        }
+                                    } catch (err) {
+                                        alert("Network error");
+                                    }
+                                };
                             }
                         }
 
@@ -339,13 +392,15 @@
             const tabRes = document.getElementById('tab-results');
             const tabTerm = document.getElementById('tab-terminal');
             const tabAgt = document.getElementById('tab-agent');
+            const tabObs = document.getElementById('tab-observability');
             const viewRes = document.getElementById('results-view');
             const viewTerm = document.getElementById('terminal-view');
             const viewAgt = document.getElementById('agent-view');
+            const viewObs = document.getElementById('observability-view');
 
             function switchMainTab(tab) {
-                [tabRes, tabTerm, tabAgt].forEach(t => t.className = 'flex-1 py-3 text-center text-slate-400 font-semibold hover:text-slate-300');
-                [viewRes, viewTerm, viewAgt].forEach(v => { v.classList.add('hidden'); v.classList.remove('flex'); });
+                [tabRes, tabTerm, tabAgt, tabObs].forEach(t => t.className = 'flex-1 py-3 text-center text-slate-400 font-semibold hover:text-slate-300');
+                [viewRes, viewTerm, viewAgt, viewObs].forEach(v => { v.classList.add('hidden'); v.classList.remove('flex'); });
 
                 if (tab === 'results') {
                     tabRes.className = 'flex-1 py-3 text-center text-sky-400 font-semibold border-b-2 border-sky-400 bg-slate-800/50';
@@ -354,15 +409,94 @@
                     tabTerm.className = 'flex-1 py-3 text-center text-sky-400 font-semibold border-b-2 border-sky-400 bg-slate-800/50';
                     viewTerm.classList.remove('hidden'); viewTerm.classList.add('flex');
                     document.getElementById('terminal-input').focus();
-                } else {
+                } else if (tab === 'agent') {
                     tabAgt.className = 'flex-1 py-3 text-center text-sky-400 font-semibold border-b-2 border-sky-400 bg-slate-800/50';
                     viewAgt.classList.remove('hidden'); viewAgt.classList.add('flex');
+                } else {
+                    tabObs.className = 'flex-1 py-3 text-center text-sky-400 font-semibold border-b-2 border-sky-400 bg-slate-800/50';
+                    viewObs.classList.remove('hidden'); viewObs.classList.add('flex');
+                    loadObservability('inventory');
                 }
             }
 
             tabRes.addEventListener('click', () => switchMainTab('results'));
             tabTerm.addEventListener('click', () => switchMainTab('terminal'));
             tabAgt.addEventListener('click', () => switchMainTab('agent'));
+            tabObs.addEventListener('click', () => switchMainTab('observability'));
+
+            // Observability Logic
+            document.querySelectorAll('.obs-tab-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    document.querySelectorAll('.obs-tab-btn').forEach(b => {
+                        b.classList.remove('text-white', 'border-sky-500');
+                        b.classList.add('text-slate-400', 'border-transparent');
+                    });
+                    e.target.classList.add('text-white', 'border-sky-500');
+                    e.target.classList.remove('text-slate-400', 'border-transparent');
+                    loadObservability(e.target.id.replace('obs-tab-', ''));
+                });
+            });
+
+            async function loadObservability(type) {
+                const out = document.getElementById('obs-content');
+                out.innerHTML = '<div class="col-span-2 text-center text-slate-500 py-10"><i class="fa-solid fa-spinner fa-spin text-2xl"></i></div>';
+                try {
+                    let endpoint = '/api/inventory';
+                    if (type === 'logs') endpoint = '/api/agent-logs';
+                    if (type === 'prompts') endpoint = '/api/prompts';
+                    if (type === 'contracts') endpoint = '/api/contracts';
+                    
+                    const res = await fetch(endpoint);
+                    const data = await res.json();
+                    
+                    out.innerHTML = '';
+                    
+                    if (type === 'inventory' && data.inventory) {
+                        if (data.inventory.length === 0) out.innerHTML = '<div class="col-span-2 text-slate-500">No inventory found</div>';
+                        data.inventory.forEach(inv => {
+                            out.innerHTML += `
+                                <div class="bg-slate-800 border border-slate-700 p-4 rounded-lg hover:border-sky-500 cursor-pointer" onclick="document.getElementById('modalTitle').innerText='Audit: '+this.dataset.id; document.getElementById('modalContent').textContent=this.dataset.json; document.getElementById('codeViewerModal').classList.remove('hidden');" data-id="${inv.recordId}" data-json='${JSON.stringify(inv, null, 2).replace(/'/g, "&#39;")}'>
+                                    <h4 class="text-sky-400 font-semibold">${inv.featureName}</h4>
+                                    <p class="text-xs font-mono text-slate-400 mt-1">ID: ${inv.recordId}</p>
+                                    <p class="text-sm mt-2 font-mono bg-slate-900 p-1 rounded">${inv.command}</p>
+                                </div>
+                            `;
+                        });
+                    } else if (type === 'logs' && data.logs) {
+                        if (data.logs.length === 0) out.innerHTML = '<div class="col-span-2 text-slate-500">No logs found</div>';
+                        data.logs.forEach(log => {
+                            out.innerHTML += `
+                                <div class="bg-slate-800 border border-slate-700 p-4 rounded-lg col-span-2 flex flex-col gap-2">
+                                    <div class="text-xs text-slate-400">${new Date(log.timestamp).toLocaleString()} • ${log.featureName} • ${log.agentId.name}</div>
+                                    <div class="text-indigo-300 font-mono text-sm">${log.action}</div>
+                                </div>
+                            `;
+                        });
+                    } else if (type === 'contracts' && data.contracts) {
+                        if (data.contracts.length === 0) out.innerHTML = '<div class="col-span-2 text-slate-500">No contracts found</div>';
+                        data.contracts.forEach(c => {
+                            out.innerHTML += `
+                                <div class="bg-slate-800 border border-slate-700 p-4 rounded-lg hover:border-amber-500 cursor-pointer" onclick="document.getElementById('modalTitle').innerText=this.dataset.title; document.getElementById('modalContent').textContent=this.dataset.content; document.getElementById('codeViewerModal').classList.remove('hidden');" data-title="${c.filename}" data-content="${c.content.replace(/"/g, '&quot;').replace(/'/g, "&#39;").replace(/\n/g, '&#10;')}">
+                                    <h4 class="text-amber-400 font-semibold">${c.filename}</h4>
+                                    <p class="text-xs text-slate-400 mt-1">Contract File</p>
+                                </div>
+                            `;
+                        });
+                    } else if (type === 'prompts' && data.prompts) {
+                        if (data.prompts.length === 0) out.innerHTML = '<div class="col-span-2 text-slate-500">No prompts found</div>';
+                        data.prompts.forEach(p => {
+                            out.innerHTML += `
+                                <div class="bg-slate-800 border border-slate-700 p-4 rounded-lg hover:border-purple-500 cursor-pointer" onclick="document.getElementById('modalTitle').innerText=this.dataset.title; document.getElementById('modalContent').textContent=this.dataset.content; document.getElementById('codeViewerModal').classList.remove('hidden');" data-title="${p.filename}" data-content="${p.content.replace(/"/g, '&quot;').replace(/'/g, "&#39;").replace(/\n/g, '&#10;')}">
+                                    <h4 class="text-purple-400 font-semibold">${p.filename}</h4>
+                                    <p class="text-xs text-slate-400 mt-1">Agent Prompt</p>
+                                </div>
+                            `;
+                        });
+                    }
+                } catch(e) {
+                    out.innerHTML = '<div class="col-span-2 text-red-500">Error loading data.</div>';
+                }
+            }
 
             // Agent Suggestion
             document.getElementById('send-agent-btn').addEventListener('click', async () => {

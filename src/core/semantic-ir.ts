@@ -231,6 +231,87 @@ export interface TraceabilityMap {
 }
 
 // ---------------------------------------------------------------------------
+// Distributed Systems Primitives
+// ---------------------------------------------------------------------------
+
+export interface BrokerConfig {
+  type: 'rabbitmq' | 'kafka' | 'sns-sqs' | 'azure-servicebus' | 'nats';
+  connectionHint?: string;
+}
+
+export interface ChannelSpec extends TraceableElement {
+  name: string;
+  broker: BrokerConfig;
+  direction: 'publish' | 'subscribe' | 'both';
+  eventRef: string;       // DomainEvent ID or name
+  deliveryGuarantee: 'at-most-once' | 'at-least-once' | 'exactly-once';
+  consumerGroup?: string;
+  routingKey?: string;
+  partitions?: number;
+  retryPolicy?: RetryPolicySpec;
+  deadLetterChannel?: DeadLetterSpec;
+}
+
+export interface RetryPolicySpec {
+  maxRetries: number;
+  backoffStrategy: 'fixed' | 'exponential' | 'linear';
+  initialDelayMs: number;
+  maxDelayMs?: number;
+}
+
+export interface DeadLetterSpec {
+  channelName: string;
+  alertOnThreshold?: number;
+}
+
+export interface OutboxSpec extends TraceableElement {
+  entity: string;
+  eventTypes: string[];          // DomainEvent names
+  pollingIntervalMs?: number;
+  batchSize?: number;
+  lockDurationMs?: number;
+}
+
+export interface InboxSpec extends TraceableElement {
+  entity: string;
+  deduplicationKey: string;      // e.g., 'eventId', 'correlationId'
+  ttlMs?: number;
+}
+
+export interface SagaSpec extends TraceableElement {
+  name: string;
+  states: string[];
+  initialState: string;
+  terminalStates: string[];
+  steps: SagaStepSpec[];
+  timeoutMs?: number;
+  correlationKey: string;
+}
+
+export interface SagaStepSpec {
+  name: string;
+  command: string;               // Command ID or name
+  compensationCommand?: string;  // Compensation Command ID or name
+  onSuccess: string;             // Next state
+  onFailure: string;             // Compensation state
+  timeoutMs?: number;
+  retryPolicy?: RetryPolicySpec;
+}
+
+export interface ProjectionSpec extends TraceableElement {
+  name: string;
+  sourceEvents: string[];        // DomainEvent IDs or names
+  targetReadModel: string;
+  rebuildable: boolean;
+}
+
+export interface TenantContextSpec {
+  propagationStrategy: 'header' | 'jwt-claim' | 'path-param' | 'subdomain';
+  isolationLevel: 'row-level' | 'schema' | 'database';
+  claimName?: string;
+}
+
+// ---------------------------------------------------------------------------
 // The Complete Specification IR
 // ---------------------------------------------------------------------------
 
@@ -258,8 +339,10 @@ export interface SpecificationIR {
   stateMachines: StateMachine[];
   invariants: Invariant[];
 
-  // Contract Hints
+  // Contract Hints & Entities
   apiEndpoints: APIEndpointHint[];
+  contracts?: { type: 'REST' | 'EVENT' | 'GRAPHQL' | 'NATIVE'; method?: string; endpoint?: string; entity: string }[];
+  entities?: { name: string; fields: FieldSpec[] }[];
   
   // Governance
   constraints: Constraint[];
@@ -278,6 +361,15 @@ export interface SpecificationIR {
     ambiguities: string[];
     contradictions: string[];
   };
+
+  // Distributed Systems (optional)
+  channels?: ChannelSpec[];
+  outbox?: OutboxSpec;
+  inbox?: InboxSpec;
+  sagas?: SagaSpec[];
+  projections?: ProjectionSpec[];
+  tenantContext?: TenantContextSpec;
+  brokers?: BrokerConfig[];
 }
 
 // ---------------------------------------------------------------------------
@@ -285,9 +377,11 @@ export interface SpecificationIR {
 // ---------------------------------------------------------------------------
 
 export interface IRBuildOptions {
-  mode: 'deterministic' | 'hybrid';
+  mode?: 'deterministic' | 'hybrid';
   constitutionPath?: string;
   existingCodebase?: string;    // Path to scan for brownfield enrichment
   llmEnrichment?: boolean;
   traceabilityDepth?: 'shallow' | 'deep';
+  profileName?: string;
+  domainProfile?: string;
 }

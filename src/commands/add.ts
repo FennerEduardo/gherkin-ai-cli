@@ -9,16 +9,19 @@ import { detectExistingStack } from '../core/stack-detector';
 import { parseGherkinText } from '../core/gherkin-parser';
 import { generateContracts } from '../generators/contracts';
 import { generatePrompts } from '../generators/prompts';
+import { buildSpecificationIR } from '../core/ir-builder';
 import { handleCreateCommand } from './create';
 import { fileExistsSync, readFileSync, writeFileSync, ensureDirSync } from '../utils/file-system';
 import { logger } from '../utils/logger';
 
-export async function handleAddCommand(options: { feature?: string; target?: string; config?: string }): Promise<void> {
+export async function handleAddCommand(options: { feature?: string; target?: string; config?: string; yes?: boolean; nonInteractive?: boolean }): Promise<void> {
   logger.banner();
+
+  const { promptOrFallback } = require('../utils/i18n-cli');
 
   if (!options.feature) {
     logger.info('No --feature file specified. Launching interactive spec wizard...');
-    await handleCreateCommand({ target: options.target });
+    await handleCreateCommand({ target: options.target, yes: options.yes, nonInteractive: options.nonInteractive });
     return;
   }
 
@@ -27,17 +30,17 @@ export async function handleAddCommand(options: { feature?: string; target?: str
   if (!fileExistsSync(featurePath)) {
     logger.warn(`Feature file not found at: ${featurePath}`);
     
-    const answer = await inquirer.prompt([
+    const answer = await promptOrFallback([
       {
         type: 'confirm',
         name: 'createNow',
         message: '¿Deseas crear la especificación Gherkin paso a paso ahora (wizard interactivo)?',
         default: true
       }
-    ]);
+    ], options);
 
     if (answer.createNow) {
-      await handleCreateCommand({ output: options.feature, target: options.target });
+      await handleCreateCommand({ output: options.feature, target: options.target, yes: options.yes, nonInteractive: options.nonInteractive });
       return;
     } else {
       process.exit(1);
@@ -56,15 +59,21 @@ export async function handleAddCommand(options: { feature?: string; target?: str
   const parsed = parseGherkinText(gherkinText);
 
   const featurePascal = parsed.featureName.replace(/[^a-zA-Z0-9]/g, '') || 'Feature';
-  const targetDir = options.target 
+  let targetDir = options.target 
     ? path.resolve(process.cwd(), options.target) 
     : path.resolve(process.cwd(), 'src', 'modules', featurePascal.toLowerCase());
+
+  if (!targetDir.startsWith(process.cwd())) {
+    logger.error(`Security Violation: Target path escapes the current workspace: ${targetDir}`);
+    process.exit(1);
+  }
 
   ensureDirSync(targetDir);
   logger.info(`Injecting contracts & AI prompts into: ${targetDir}`);
 
   // 1. Generate Contracts, OpenAPI, AsyncAPI & Native Language Contract
-  const { contractsTs, adrMd, openApiJson, asyncApiJson, nativeContract } = generateContracts(parsed, config);
+  const ir = buildSpecificationIR(parsed, featurePath, { domainProfile: config.domainProfile });
+  const { contractsTs, adrMd, openApiJson, asyncApiJson, nativeContract } = generateContracts(parsed, ir, config);
   const contractFileName = `${featurePascal.toLowerCase()}.contract.ts`;
   
   writeFileSync(path.join(targetDir, contractFileName), contractsTs);

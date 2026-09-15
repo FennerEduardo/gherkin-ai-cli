@@ -8,8 +8,10 @@ import { detectExistingStack } from '../core/stack-detector';
 import { saveConfig } from '../core/config';
 import { logger } from '../utils/logger';
 import { suggestPatterns } from '../core/patterns-suggester';
+import { ensureGitignore } from '../utils/gitignore-manager';
+import { promptOrFallback } from '../utils/i18n-cli';
 
-export async function handleDetectCommand(): Promise<void> {
+export async function handleDetectCommand(options?: { yes?: boolean; nonInteractive?: boolean }): Promise<void> {
   logger.banner();
   logger.info('Scanning project directory for existing stack & architecture...');
 
@@ -28,12 +30,12 @@ export async function handleDetectCommand(): Promise<void> {
   console.log(`- Testing Framework: ${detectedConfig.stack.testing}`);
   console.log('------------------------------------------------------------\n');
 
-  const { confirmStack } = await inquirer.prompt([{
+  const { confirmStack } = await promptOrFallback([{
     type: 'confirm',
     name: 'confirmStack',
     message: 'Is the detected stack correct?',
     default: true
-  }]);
+  }], options);
 
   if (!confirmStack) {
     logger.warn('You can manually edit the generated gherkin-ai.config.json to reflect your actual stack.');
@@ -48,12 +50,12 @@ export async function handleDetectCommand(): Promise<void> {
     if (suggestions.codingRules.length > 0) {
         console.log(`- Coding Rules: ${suggestions.codingRules.join(' | ')}`);
     }
-    const { applySuggestions } = await inquirer.prompt([{
+    const { applySuggestions } = await promptOrFallback([{
       type: 'confirm',
       name: 'applySuggestions',
       message: 'Do you want to apply these design patterns and coding rules to your configuration?',
       default: true
-    }]);
+    }], options);
 
     if (applySuggestions) {
       detectedConfig.designPatterns = suggestions.designPatterns;
@@ -65,6 +67,7 @@ export async function handleDetectCommand(): Promise<void> {
   saveConfig(detectedConfig, targetPath);
 
   logger.success(`Saved detected project configuration to: ${targetPath}`);
+  ensureGitignore(process.cwd());
   logger.info('You can now add feature contracts directly to your project using:');
   logger.info('  ghk add --feature ./specs/my-feature.feature --target ./src/modules/my-feature');
 }

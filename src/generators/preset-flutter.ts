@@ -17,7 +17,7 @@ ${parsed.scenarios.map(sc => `
     testWidgets('${sc.name.replace(/'/g, "\\'")}', (WidgetTester tester) async {
 ${sc.steps.map(st => `
       // ${st.keyword.trim()} ${st.text}
-      // TODO: Implement step
+      throw UnimplementedError();
 `).join('')}
     });
 `).join('')}

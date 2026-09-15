@@ -19,9 +19,8 @@ import (
 ${parsed.scenarios.map(sc => `
 // Scenario: ${sc.name}
 ${sc.steps.map(st => `
-func ${st.text.toLowerCase().replace(/[^a-z0-9]/g, '')}(ctx context.Context) (context.Context, error) {
-    // TODO: Implement step
-    return ctx, godog.ErrPending
+func ${st.text.toLowerCase().replace(/[^a-z0-9]/g, '')}(ctx context.Context) error {
+    return godog.ErrPending
 }
 `).join('')}
 `).join('')}

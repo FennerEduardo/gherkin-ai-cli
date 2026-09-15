@@ -30,6 +30,7 @@ import {
   SourceLocation
 } from './semantic-ir';
 import { loadConstitution, Constitution } from './constitution';
+import { resolveDomainProfile } from './profiles/profile-registry';
 
 // ---------------------------------------------------------------------------
 // Deterministic ID Generator
@@ -60,6 +61,7 @@ const VERB_PATTERNS: Record<string, RegExp> = {
   logout: /\b(logs?\s*out|sign\s*out|cierra\s*sesión)\b/i,
   send: /\b(sends?|dispatches?|envía|despacha)\b/i,
   search: /\b(searches?|finds?|queries?|looks?\s*up|busca|encuentra|consulta)\b/i,
+  process: /\b(process(es|ing)?|procesa|procesando|handles?|maneja)\b/i,
   pay: /\b(pays?|charges?|paga|cobra)\b/i,
   calculate: /\b(calculat(es?|ion)|comput(es?|ation)|calcula)\b/i,
   assign: /\b(assigns?|allocat(es?|ion)|asigna)\b/i,
@@ -140,6 +142,95 @@ export function buildIR(
   const policies = extractPolicies(parsed, constitution, sourceFile);
   const assumptions = extractAssumptions(parsed, sourceFile);
   const risks = extractRisks(parsed, sourceFile);
+
+  // Automatic Domain Profile Enrichment (Option 2)
+  const activeProfileName = options.profileName || options.domainProfile;
+  const profile = resolveDomainProfile(activeProfileName);
+  if (profile) {
+    profile.commonEvents.forEach(pe => {
+      if (!events.some(e => e.name.toLowerCase() === pe.name.toLowerCase())) {
+        events.push({
+          id: generateId('EVT'),
+          name: pe.name,
+          eventType: pe.name,
+          payload: [],
+          triggeredBy: commands.length > 0 ? [commands[0].id] : [],
+          source: { file: sourceFile, line: 0 },
+          confidence: 1.0,
+          inferenceSource: 'deterministic'
+        });
+      }
+    });
+
+    profile.commonCommands.forEach(pc => {
+      if (!commands.some(c => c.name.toLowerCase() === pc.name.toLowerCase())) {
+        commands.push({
+          id: generateId('CMD'),
+          name: pc.name,
+          verb: pc.name.replace(/Payment$/, '').toLowerCase(),
+          subject: 'payment',
+          inputFields: [],
+          preconditions: [],
+          postconditions: [],
+          triggeredBy: actors[0]?.id || 'ACT-0001',
+          emittedEvents: [],
+          source: { file: sourceFile, line: 0 },
+          confidence: 1.0,
+          inferenceSource: 'deterministic'
+        });
+      }
+    });
+
+    if (profile.stateMachines) {
+      for (const [smName, states] of Object.entries(profile.stateMachines)) {
+        if (!stateMachines.some(sm => sm.entity === smName)) {
+          stateMachines.push({
+            entity: smName,
+            states: states.map(s => s.name),
+            initialState: states[0]?.name || 'Pending',
+            finalStates: states.filter(s => s.transitions.length === 0).map(s => s.name),
+            transitions: states.flatMap(s => s.transitions.map(t => ({
+              id: generateId('TRN'),
+              entity: smName,
+              fromState: s.name,
+              toState: t,
+              trigger: `On${t}`,
+              guards: [],
+              source: { file: sourceFile, line: 0 },
+              confidence: 1.0,
+              inferenceSource: 'deterministic'
+            })))
+          });
+        }
+      }
+    }
+
+    profile.getStandardRules().forEach(rule => {
+      constraints.push({
+        id: generateId('CST'),
+        level: 'must',
+        description: `Profile Requirement: ${rule}`,
+        category: 'compliance',
+        evidence: [profile.id],
+        source: { file: sourceFile, line: 0 },
+        confidence: 1.0,
+        inferenceSource: 'deterministic'
+      });
+    });
+
+    policies.push({
+      id: generateId('POL'),
+      name: `${profile.name} Governance Policy`,
+      type: 'security',
+      rules: [
+        `Domain Profile: ${profile.name} (${profile.id})`,
+        `Mandatory Rules: ${profile.getStandardRules().join(', ')}`
+      ],
+      source: { file: sourceFile, line: 0 },
+      confidence: 1.0,
+      inferenceSource: 'deterministic'
+    });
+  }
 
   const enrichedScenarios = enrichScenarios(
     parsed.scenarios, sourceFile, actors, commands, queries
@@ -308,9 +399,25 @@ function extractCommands(
       }
 
       // Try to extract subject from step text
-      const subjectMatch = step.text.match(/(?:the|an?|el|la|un|una)\s+(\w+(?:\s+\w+)?)/i);
-      if (subjectMatch) {
-        subject = subjectMatch[1].toLowerCase().replace(/\s+/g, '_');
+      // Skip stop words
+      const stopWords = new Set(['a', 'an', 'the', 'el', 'la', 'un', 'una', 'is', 'to', 'from', 'with']);
+      const words = step.text.replace(/[^a-zA-Z0-9\s]/g, '').split(/\s+/).map(w => w.toLowerCase());
+      
+      const verbIdx = words.findIndex(w => VERB_PATTERNS[verb]?.test(w));
+      if (verbIdx !== -1 && verbIdx < words.length - 1) {
+        // Try to find the next meaningful noun after the verb
+        const nextWords = words.slice(verbIdx + 1).filter(w => !stopWords.has(w));
+        if (nextWords.length > 0) {
+          subject = nextWords[0];
+          if (nextWords.length > 1 && nextWords[1].length > 2) {
+             subject += `_${nextWords[1]}`;
+          }
+        }
+      } else {
+        const subjectMatch = step.text.match(/(?:the|an?|el|la|un|una)\s+(\w+(?:\s+\w+)?)/i);
+        if (subjectMatch) {
+          subject = subjectMatch[1].toLowerCase().replace(/\s+/g, '_');
+        }
       }
 
       const preconditions = sc.steps
@@ -393,7 +500,29 @@ function extractEvents(
     for (const step of sc.steps) {
       if (!/event|publishes|emits|broadcasts|evento|emite/i.test(step.text)) continue;
 
-      const eventName = step.text.replace(/[^a-zA-Z0-9]/g, '').substring(0, 60);
+      // Extract PascalCase Event, Quoted Event, or fallback Noun Phrase
+      let eventName = '';
+      const quoteMatch = step.text.match(/"([^"]+)"/);
+      const pascalMatch = step.text.match(/\b([A-Z][a-zA-Z0-9]*Event)\b/);
+
+      if (quoteMatch) {
+        eventName = quoteMatch[1].replace(/[^a-zA-Z0-9]/g, '');
+      } else if (pascalMatch) {
+        eventName = pascalMatch[1];
+      } else {
+        // Fallback: capitalize remaining important words
+        const words = step.text.replace(/[^a-zA-Z0-9\s]/g, '').split(/\s+/);
+        const stopWords = new Set(['a', 'an', 'the', 'el', 'la', 'un', 'una', 'is', 'to', 'from', 'with', 'published', 'broadcasts', 'emits', 'eventually']);
+        eventName = words
+          .filter(w => !stopWords.has(w.toLowerCase()))
+          .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+          .join('')
+          .substring(0, 60);
+        
+        if (!eventName.toLowerCase().endsWith('event')) {
+          eventName += 'Event';
+        }
+      }
       events.push({
         id: generateId('EVT'),
         name: eventName,

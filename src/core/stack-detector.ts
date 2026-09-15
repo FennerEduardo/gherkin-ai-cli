@@ -220,73 +220,97 @@ export function detectExistingStack(rootDir: string = process.cwd()): GherkinAIC
         detected.stack.language = 'javascript';
       }
 
+      // Testing Framework Detection (Vitest, Jest, Mocha, Playwright)
+      let detectedTesting = allDeps['jest'] ? 'jest' : 'vitest';
+      if (allDeps['vitest']) detectedTesting = 'vitest';
+      else if (allDeps['mocha']) detectedTesting = 'mocha';
+
+      // ORM Detection
+      let detectedOrm = 'none';
+      if (allDeps['prisma'] || allDeps['@prisma/client']) detectedOrm = 'prisma';
+      else if (allDeps['typeorm']) detectedOrm = 'typeorm';
+      else if (allDeps['sequelize']) detectedOrm = 'sequelize';
+      else if (allDeps['drizzle-orm']) detectedOrm = 'drizzle';
+      else if (allDeps['mongoose']) detectedOrm = 'mongoose';
+
+      // CLI Tool Detection
+      if (pkg.bin || allDeps['commander'] || allDeps['yargs']) {
+        detected.stack.framework = 'commander-cli';
+        detected.stack.orm = detectedOrm;
+        detected.stack.validation = allDeps['zod'] ? 'zod' : 'custom';
+        detected.stack.testing = detectedTesting;
+        detected.architecture = 'modular';
+      }
+
+      let backendDetected = false;
+
+      // Node.js Backend Frameworks (NestJS, Express, Fastify)
+      if (allDeps['@nestjs/core']) {
+        detected.stack.framework = 'nestjs';
+        detected.stack.orm = detectedOrm !== 'none' ? detectedOrm : 'typeorm';
+        detected.stack.validation = 'zod';
+        detected.stack.testing = detectedTesting;
+        backendDetected = true;
+      } else if (allDeps['fastify']) {
+        detected.stack.framework = 'fastify';
+        detected.stack.orm = detectedOrm !== 'none' ? detectedOrm : 'drizzle';
+        detected.stack.validation = 'zod';
+        detected.stack.testing = detectedTesting;
+        backendDetected = true;
+      } else if (allDeps['express']) {
+        detected.stack.framework = 'express';
+        detected.stack.orm = detectedOrm;
+        detected.stack.validation = 'zod';
+        detected.stack.testing = detectedTesting;
+        backendDetected = true;
+      }
+
+      const setFrontend = (fw: string, orm: string, db: string, val: string, sm?: string) => {
+        detected.frontendStack = {
+          language: detected.stack.language,
+          framework: fw,
+          orm: orm,
+          database: db,
+          validation: val,
+          testing: detectedTesting,
+          stateManagement: sm
+        };
+        // If no backend was detected, make the frontend the primary framework
+        if (!backendDetected) {
+          detected.stack.framework = fw;
+          detected.stack.orm = orm;
+          detected.stack.database = db;
+          detected.stack.validation = val;
+          detected.stack.testing = detectedTesting;
+        }
+      };
+
       // Angular / Ionic Frontend Detection
       if (fileExistsSync(angularJsonPath) || allDeps['@angular/core']) {
-        if (allDeps['@ionic/angular']) {
-          detected.stack.framework = 'ionic-angular';
-        } else {
-          detected.stack.framework = 'angular';
-        }
-        detected.stack.orm = 'http-client-rxjs';
-        detected.stack.database = 'localstorage-indexeddb';
-        detected.stack.validation = 'angular-reactive-forms';
-        detected.stack.testing = 'jasmine-karma';
-        detected.architecture = 'modular';
-        detected.outputDir = './src/app';
+        setFrontend(allDeps['@ionic/angular'] ? 'ionic-angular' : 'angular', 'http-client-rxjs', 'localstorage-indexeddb', 'angular-reactive-forms', 'ngrx');
       }
       // React Native Detection
       else if (allDeps['react-native']) {
-        detected.stack.framework = 'react-native';
-        detected.stack.orm = 'async-storage';
-        detected.stack.database = 'sqlite-capacitor';
-        detected.stack.validation = 'zod';
-        detected.stack.testing = 'jest';
+        setFrontend('react-native', 'async-storage', 'sqlite-capacitor', 'zod');
         detected.architecture = 'modular';
       }
       // Electron Desktop
       else if (allDeps['electron']) {
-        detected.stack.framework = 'electron';
+        setFrontend('electron', 'localstorage', 'sqlite', 'zod');
         detected.architecture = 'desktop';
       }
       // React / Next.js Frontend
       else if (allDeps['react'] || allDeps['next']) {
-        detected.stack.framework = allDeps['next'] ? 'nextjs' : 'react';
-        detected.stack.orm = allDeps['prisma'] ? 'prisma' : 'tanstack-query';
-        detected.stack.database = 'postgresql';
-        detected.stack.validation = 'zod';
-        detected.stack.testing = 'vitest';
+        setFrontend(allDeps['next'] ? 'nextjs' : 'react', detectedOrm !== 'none' ? detectedOrm : 'tanstack-query', 'postgresql', 'zod', 'redux');
       }
       // Vue / Nuxt Frontend
       else if (allDeps['vue'] || allDeps['nuxt']) {
-        detected.stack.framework = allDeps['nuxt'] ? 'nuxtjs' : 'vue';
-        detected.stack.orm = 'pinia-axios';
-        detected.stack.database = 'localstorage';
-        detected.stack.validation = 'vee-validate';
-        detected.stack.testing = 'vitest';
+        const sm = allDeps['pinia'] ? 'pinia' : (allDeps['vuex'] ? 'vuex' : undefined);
+        setFrontend(allDeps['nuxt'] ? 'nuxtjs' : 'vue', sm ? `${sm}-axios` : 'axios', 'localstorage', 'vee-validate', sm);
       }
       // Svelte / Astro / Solid Frontend
       else if (allDeps['svelte'] || allDeps['astro'] || allDeps['solid-js']) {
-        detected.stack.framework = allDeps['svelte'] ? 'svelte' : (allDeps['astro'] ? 'astro' : 'solid-js');
-        detected.stack.orm = 'fetch-api';
-        detected.stack.validation = 'zod';
-        detected.stack.testing = 'vitest';
-      }
-      // Node.js Backend Frameworks (NestJS, Express, Fastify)
-      else if (allDeps['@nestjs/core']) {
-        detected.stack.framework = 'nestjs';
-        detected.stack.orm = allDeps['prisma'] ? 'prisma' : 'typeorm';
-        detected.stack.validation = 'zod';
-        detected.stack.testing = 'jest';
-      } else if (allDeps['fastify']) {
-        detected.stack.framework = 'fastify';
-        detected.stack.orm = allDeps['prisma'] ? 'prisma' : 'drizzle';
-        detected.stack.validation = 'zod';
-        detected.stack.testing = 'vitest';
-      } else if (allDeps['express']) {
-        detected.stack.framework = 'express';
-        detected.stack.orm = allDeps['prisma'] ? 'prisma' : 'sequelize';
-        detected.stack.validation = 'zod';
-        detected.stack.testing = 'jest';
+        setFrontend(allDeps['svelte'] ? 'svelte' : (allDeps['astro'] ? 'astro' : 'solid-js'), 'fetch-api', 'localstorage', 'zod');
       }
 
     } catch {

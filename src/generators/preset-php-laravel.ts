@@ -32,9 +32,9 @@ ${sc.steps.map(st => `
     /**
      * @${st.keyword.trim()} ${st.text.replace(/'/g, "\\'")}
      */
-    public function step${st.text.replace(/[^a-zA-Z0-9]/g, '')}()
+    public function ${st.keyword.trim().toLowerCase()}${st.text.replace(/[^a-zA-Z0-9]/g, '')}()
     {
-        // TODO: Implement step
+        throw new \\Behat\\Behat\\Tester\\Exception\\PendingException();
     }
 `).join('')}
 `).join('')}

@@ -4,8 +4,9 @@
 
 import { ParsedFeature } from '../core/gherkin-parser';
 import { GherkinAIConfig } from '../core/config';
+import { SpecificationIR } from '../core/semantic-ir';
 
-export function generateGoContracts(parsed: ParsedFeature, config: GherkinAIConfig): string {
+export function generateGoContracts(parsed: ParsedFeature, ir: SpecificationIR, config: GherkinAIConfig): string {
   const featurePascal = parsed.featureName.replace(/[^a-zA-Z0-9]/g, '');
 
   return `/* ==========================================================================
@@ -31,16 +32,16 @@ type IDomainEvent interface {
 	GetEventType() string
 }
 
-${parsed.domainAnalysis.events.map((ev, i) => `type Event${i + 1} struct {
-	EventID    string                 \`json:"event_id"\`
-	OccurredOn time.Time              \`json:"occurred_on"\`
-	EventType  string                 \`json:"event_type"\`
+${ir.events.map((ev, i) => `type Event${i + 1} struct {
+	EventID    uuid.UUID              \`json:"eventId"\`
+	OccurredOn time.Time              \`json:"occurredOn"\`
+	EventType  string                 \`json:"eventType"\`
 	Payload    map[string]interface{} \`json:"payload"\`
 }
 
 func (e Event${i + 1}) GetEventID() string       { return e.EventID }
 func (e Event${i + 1}) GetOccurredOn() time.Time { return e.OccurredOn }
-func (e Event${i + 1}) GetEventType() string    { return "${ev.replace(/[^a-zA-Z0-9]/g, '')}" }`).join('\n\n')}
+func (e Event${i + 1}) GetEventType() string    { return "${ev.name.replace(/[^a-zA-Z0-9]/g, '')}" }`).join('\n\n')}
 
 // --------------------------------------------------------------------------
 // 2. Command DTO Struct

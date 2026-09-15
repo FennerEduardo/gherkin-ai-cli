@@ -3,7 +3,6 @@
    ========================================================================== */
 
 import express from 'express';
-import cors from 'cors';
 import path from 'path';
 import fs from 'fs';
 import chalk from 'chalk';
@@ -11,14 +10,23 @@ import { detectExistingStack } from '../core/stack-detector';
 import { generateContracts } from '../generators/contracts';
 import { generatePrompts } from '../generators/prompts';
 import { parseGherkinText } from '../core/gherkin-parser';
+import { handleQualityCommand } from '../commands/quality';
 import { loadConfig, saveConfig } from '../core/config';
+import { buildSpecificationIR } from '../core/ir-builder';
 import { RealAgentProvider, LLMConfig } from '../core/agent-adapter';
 import { exec } from 'child_process';
 
 export function startWebServer(port: number): void {
   const app = express();
   
-  app.use(cors());
+  // Localhost-only security check (no cors dependency required)
+  app.use((req, res, next) => {
+    const host = req.headers.host || '';
+    if (!host.includes('localhost') && !host.includes('127.0.0.1')) {
+      return res.status(403).json({ success: false, error: 'Access denied: Local connections only.' });
+    }
+    next();
+  });
   app.use(express.json());
   
   // Static files for frontend
@@ -49,9 +57,11 @@ export function startWebServer(port: number): void {
 
       // Save feature file
       const safeName = (featureName || 'feature').toLowerCase().replace(/\s+/g, '-');
-      const specsDir = path.join(process.cwd(), 'specs');
+      const specsDir = fs.existsSync(path.join(process.cwd(), 'features'))
+        ? path.join(process.cwd(), 'features')
+        : (fs.existsSync(path.join(process.cwd(), 'specs')) ? path.join(process.cwd(), 'specs') : path.join(process.cwd(), 'features'));
       if (!fs.existsSync(specsDir)) fs.mkdirSync(specsDir, { recursive: true });
-      
+
       const featurePath = path.join(specsDir, `${safeName}.feature`);
       fs.writeFileSync(featurePath, gherkinText, 'utf8');
 
@@ -61,7 +71,8 @@ export function startWebServer(port: number): void {
       saveConfig(config);
 
       const parsed = parseGherkinText(gherkinText);
-      const generatedContracts = generateContracts(parsed, config);
+      const ir = buildSpecificationIR(parsed, req.body.file);
+      const generatedContracts = generateContracts(parsed, ir, config);
       const generatedPrompts = generatePrompts(parsed, config);
 
       // Save contracts & prompts
@@ -101,25 +112,76 @@ export function startWebServer(port: number): void {
   // API: List Features
   app.get('/api/features', (req, res) => {
     try {
-      const specsDir = path.join(process.cwd(), 'specs');
-      if (!fs.existsSync(specsDir)) {
+      const targetDir = fs.existsSync(path.join(process.cwd(), 'features'))
+        ? path.join(process.cwd(), 'features')
+        : (fs.existsSync(path.join(process.cwd(), 'specs')) ? path.join(process.cwd(), 'specs') : path.join(process.cwd(), 'features'));
+      if (!fs.existsSync(targetDir)) {
         return res.json({ success: true, features: [] });
       }
-      const files = fs.readdirSync(specsDir).filter(f => f.endsWith('.feature'));
+      
+      const getFilesRecursively = (dir: string): string[] => {
+        let results: string[] = [];
+        const list = fs.readdirSync(dir);
+        for (const file of list) {
+          const filePath = path.join(dir, file);
+          const stat = fs.statSync(filePath);
+          if (stat && stat.isDirectory()) {
+            results = results.concat(getFilesRecursively(filePath));
+          } else {
+            results.push(filePath);
+          }
+        }
+        return results;
+      };
+
+      const allFiles = getFilesRecursively(targetDir);
+      // Return relative paths so the UI just shows 'backend/customer_crud.feature'
+      const files = allFiles
+        .filter(f => f.endsWith('.feature'))
+        .map(f => path.relative(targetDir, f).replace(/\\/g, '/'));
+
       res.json({ success: true, features: files });
     } catch (err) {
       res.status(500).json({ success: false, error: (err as Error).message });
     }
   });
 
-  // API: Get Feature Content
-  app.get('/api/features/:name', (req, res) => {
+  // API: Get Feature Content (Dynamic Paths)
+  app.use('/api/features', (req, res, next) => {
+    // If it's the base route /api/features, skip and let the app.get('/api/features') handle it
+    if (req.path === '/' || req.path === '') {
+      return next();
+    }
+    
     try {
-      const featurePath = path.join(process.cwd(), 'specs', req.params.name);
+      const targetDir = fs.existsSync(path.join(process.cwd(), 'features'))
+        ? path.join(process.cwd(), 'features')
+        : path.join(process.cwd(), 'specs');
+      
+      // req.path will be e.g. '/backend/customer_crud.feature'
+      const featureName = decodeURIComponent(req.path.replace(/^\//, ''));
+      const featurePath = path.join(targetDir, featureName);
       if (!fs.existsSync(featurePath)) {
         return res.status(404).json({ success: false, error: 'Feature not found' });
       }
       const content = fs.readFileSync(featurePath, 'utf8');
+      res.json({ success: true, content });
+    } catch (err) {
+      res.status(500).json({ success: false, error: (err as Error).message });
+    }
+  });
+
+  // API: Read arbitrary file (for Explorer viewer)
+  app.get('/api/file', (req, res) => {
+    try {
+      const filePath = req.query.path as string;
+      if (!filePath) return res.status(400).json({ success: false, error: 'Path is required' });
+      const fullPath = path.join(process.cwd(), filePath);
+      if (!fullPath.startsWith(process.cwd())) {
+         return res.status(403).json({ success: false, error: 'Access denied' });
+      }
+      if (!fs.existsSync(fullPath)) return res.status(404).json({ success: false, error: 'File not found' });
+      const content = fs.readFileSync(fullPath, 'utf8');
       res.json({ success: true, content });
     } catch (err) {
       res.status(500).json({ success: false, error: (err as Error).message });
@@ -210,18 +272,112 @@ export function startWebServer(port: number): void {
     }
   });
 
+  // API: Get Inventory
+  app.get('/api/inventory', (req, res) => {
+    try {
+      const inventoryPath = path.join(process.cwd(), '.ghe', 'inventory.json');
+      if (!fs.existsSync(inventoryPath)) {
+        return res.json({ success: true, inventory: [] });
+      }
+      const data = fs.readFileSync(inventoryPath, 'utf8');
+      res.json({ success: true, inventory: JSON.parse(data) });
+    } catch (err) {
+      res.status(500).json({ success: false, error: (err as Error).message });
+    }
+  });
+
+  // API: Get Agent Logs
+  app.get('/api/agent-logs', (req, res) => {
+    try {
+      const logsPath = path.join(process.cwd(), '.ghe', 'agent_logs.json');
+      if (!fs.existsSync(logsPath)) {
+        return res.json({ success: true, logs: [] });
+      }
+      const data = fs.readFileSync(logsPath, 'utf8');
+      res.json({ success: true, logs: JSON.parse(data) });
+    } catch (err) {
+      res.status(500).json({ success: false, error: (err as Error).message });
+    }
+  });
+
+  // API: Get Prompts
+  app.get('/api/prompts', (req, res) => {
+    try {
+      const promptsDir = path.join(process.cwd(), 'generated-specs', 'prompts');
+      if (!fs.existsSync(promptsDir)) {
+        return res.json({ success: true, prompts: [] });
+      }
+      const files = fs.readdirSync(promptsDir).filter(f => f.endsWith('.md'));
+      
+      const prompts = files.map(file => {
+        const content = fs.readFileSync(path.join(promptsDir, file), 'utf8');
+        return { filename: file, content };
+      });
+      
+      res.json({ success: true, prompts });
+    } catch (err) {
+      res.status(500).json({ success: false, error: (err as Error).message });
+    }
+  });
+
+  // API: Get Contracts
+  app.get('/api/contracts', (req, res) => {
+    try {
+      const specsDir = path.join(process.cwd(), 'generated-specs');
+      if (!fs.existsSync(specsDir)) {
+        return res.json({ success: true, contracts: [] });
+      }
+      const files = fs.readdirSync(specsDir).filter(f => !fs.statSync(path.join(specsDir, f)).isDirectory());
+      
+      const contracts = files.map(file => {
+        const content = fs.readFileSync(path.join(specsDir, file), 'utf8');
+        return { filename: file, content };
+      });
+      
+      res.json({ success: true, contracts });
+    } catch (err) {
+      res.status(500).json({ success: false, error: (err as Error).message });
+    }
+  });
+
+  // API: Get Governance
+  app.get('/api/governance', (req, res) => {
+    try {
+      const govPath = path.join(process.cwd(), '.ghkgovernance.yaml');
+      if (!fs.existsSync(govPath)) {
+        return res.status(404).json({ success: false, error: 'Governance file not found' });
+      }
+      const content = fs.readFileSync(govPath, 'utf8');
+      res.json({ success: true, content });
+    } catch (err) {
+      res.status(500).json({ success: false, error: (err as Error).message });
+    }
+  });
+
   // API: Execute CLI Command
   app.post('/api/execute', (req, res) => {
     try {
       const { command } = req.body;
-      if (!command) {
-        return res.status(400).json({ success: false, error: 'Command is required' });
+      if (!command || typeof command !== 'string') {
+        return res.status(400).json({ success: false, error: 'Command is required and must be a string' });
       }
 
-      // Ensure it's a ghk command
+      // Security: Strict validation against OS command injection
       let safeCmd = command.trim();
       if (safeCmd.startsWith('ghk ')) {
-        safeCmd = safeCmd.replace('ghk ', '');
+        safeCmd = safeCmd.substring(4).trim();
+      }
+
+      // Regex to detect shell metacharacters: &, |, ;, $, >, <, `
+      if (/[&|;$><`]/.test(safeCmd)) {
+        return res.status(403).json({ success: false, error: 'Command contains illegal characters' });
+      }
+
+      // Allowed CLI root commands
+      const allowedCommands = ['autopilot', 'verify', 'diff', 'generate', 'add', 'lint'];
+      const baseCmd = safeCmd.split(' ')[0];
+      if (!allowedCommands.includes(baseCmd)) {
+        return res.status(403).json({ success: false, error: `Command '${baseCmd}' is not allowed via Web Studio RCE` });
       }
       
       const cliPath = path.resolve(__dirname, '../../dist/index.js');
@@ -240,9 +396,9 @@ export function startWebServer(port: number): void {
     }
   });
 
-  app.listen(port, () => {
-    console.log(chalk.cyan(`\n🚀 Gherkin AI Web UI is running!`));
-    console.log(chalk.white(`Navigate to: `) + chalk.green.bold(`http://localhost:${port}`));
+  app.listen(port, '127.0.0.1', () => {
+    console.log(chalk.cyan(`\n🚀 Gherkin AI Web UI is running (Bound to 127.0.0.1)`));
+    console.log(chalk.white(`Navigate to: `) + chalk.green.bold(`http://127.0.0.1:${port}`));
     console.log(chalk.gray(`Press Ctrl+C to stop the server.`));
   });
 }

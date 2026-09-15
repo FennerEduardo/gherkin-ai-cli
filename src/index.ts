@@ -22,6 +22,10 @@ import { handleWebCommand } from './commands/web';
 import { handleEvaluateCommand } from './commands/evaluate';
 import { handleLintCommand } from './commands/lint';
 import { handleConvergeCommand } from './commands/converge';
+import { handleImplementCommand } from './commands/implement';
+import { handleAuditCommand } from './commands/audit';
+import { handleAgentLogCommand } from './commands/agent-log';
+import { handleLoginCommand } from './commands/login';
 
 // Dynamic version from package.json
 const pkg = require('../package.json');
@@ -47,10 +51,40 @@ program
   .option('--stdout', 'Print dry-run patches or modifications to stdout instead of files');
 
 program
+  .command('login')
+  .alias('auth')
+  .description('Configure API credentials, tokens, and LLM providers for AI Agents non-interactively')
+  .option('--token <string>', 'Authentication token')
+  .option('--user <email>', 'User or Agent identifier')
+  .option('--apiKey <key>', 'LLM API key (OpenAI, Anthropic, Gemini, etc.)')
+  .option('--provider <name>', 'AI Provider (openai, anthropic, gemini, ollama, custom)', 'openai')
+  .option('--endpoint <url>', 'AI or server API endpoint URL')
+  .option('--server <url>', 'Centralized audit or registry server URL')
+  .action(async (options) => {
+    await handleLoginCommand(options);
+  });
+
+program
   .command('init')
+
   .alias('i')
   .description('Initialize interactive gherkin-ai project configuration (gherkin-ai.config.json)')
   .option('--enterprise', 'Initialize with enterprise constitution guardrails')
+  .option('-p, --projectName <name>', 'Project name')
+  .option('-a, --architecture <arch>', 'Primary software architecture')
+  .option('-l, --language <lang>', 'Programming language / runtime')
+  .option('-f, --framework <framework>', 'Primary framework')
+  .option('-o, --orm <orm>', 'Database ORM / persistence')
+  .option('-d, --database <db>', 'Database engine')
+  .option('-v, --validation <lib>', 'Validation library')
+  .option('-m, --messaging <broker>', 'Event broker / messaging')
+  .option('-t, --testing <testing>', 'Testing framework')
+  .option('--frontendFramework <framework>', 'Frontend Framework / Library')
+  .option('--frontendLanguage <lang>', 'Frontend Language')
+  .option('--frontendBundler <bundler>', 'Frontend Bundler')
+  .option('--frontendUnitTesting <testing>', 'Frontend Unit Testing Framework')
+  .option('--frontendE2eTesting <testing>', 'Frontend E2E Testing Framework')
+  .option('--outputDir <dir>', 'Output directory for generated contracts')
   .action(async (options) => {
     await handleInitCommand(options);
   });
@@ -128,9 +162,14 @@ program
   .option('-C, --caveman', 'Enable simple prompt creation mode (skip step-by-step wizard)')
   .option('--headless', 'Run in headless non-interactive mode for CI/CD')
   .option('--config <file>', 'Path to JSON configuration file for headless mode')
+  .option('-n, --featureName <name>', 'Feature name')
+  .option('-a, --actor <actor>', 'Feature actor (As a...)')
+  .option('-A, --action <action>', 'Feature action (I want to...)')
+  .option('-S, --scenarioName <name>', 'Scenario name')
   .action(async (options) => {
     await handleCreateCommand(options);
   });
+
 
 program
   .command('detect')
@@ -168,6 +207,7 @@ program
   .option('-f, --feature <file>', 'Path to Gherkin .feature file')
   .option('-c, --config <file>', 'Path to custom gherkin-ai.config.json file')
   .option('--openapi <file>', 'Path to OpenAPI spec file to validate against IR')
+  .option('--asyncapi <file>', 'Path to AsyncAPI spec file to validate against IR')
   .action(async (options) => {
     await handleValidateCommand(options);
   });
@@ -237,6 +277,45 @@ program
   .option('--strict', 'Fail if overall convergence is below 80%')
   .action(async (options) => {
     await handleConvergeCommand(options);
+  });
+
+program
+  .command('implement')
+  .alias('impl')
+  .description('Generate AI Agent Master Implementation Prompt & context package for a feature')
+  .option('-f, --feature <file>', 'Path to Gherkin .feature file')
+  .option('--docker', 'Include Docker container sandbox execution instructions in master prompt')
+  .option('--inventory', 'Display feature implementation & prompt execution audit trail history')
+  .option('--history', 'Alias for --inventory')
+  .option('--no-audit', 'Disable feature execution audit trail tracking for this run')
+  .option('-C, --compact', 'Generate ultra-compact prompt with minimal token footprint for low-cost models')
+  .action(async (options) => {
+    await handleImplementCommand(options);
+  });
+
+program
+  .command('audit')
+  .alias('inventory')
+  .alias('inv')
+  .alias('history')
+  .description('View feature implementation & prompt execution audit trail inventory')
+  .option('-f, --feature <file>', 'Filter audit trail by feature spec or name')
+  .option('--json', 'Output audit records as JSON for CI/CD pipelines')
+  .option('--clear', 'Clear/purge audit trail history')
+  .action(async (options) => {
+    await handleAuditCommand(options);
+  });
+
+program
+  .command('agent-log')
+  .description('Record or view actions executed by AI Agents during feature implementation')
+  .option('-a, --action <string>', 'Describe the concrete action taken by the AI Agent')
+  .option('-f, --feature <string>', 'Link action to a specific feature name or hash')
+  .option('-l, --list', 'List all agent actions as a walkthrough')
+  .option('--json', 'Output agent logs as JSON')
+  .option('--clear', 'Clear agent action logs')
+  .action(async (options) => {
+    await handleAgentLogCommand(options);
   });
 
 program

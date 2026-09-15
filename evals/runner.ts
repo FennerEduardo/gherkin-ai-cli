@@ -3,12 +3,15 @@ import path from 'path';
 import { parseGherkinText } from '../src/core/gherkin-parser';
 import { calculateConvergence } from '../src/core/convergence-engine';
 import { lintSpecification } from '../src/core/specification-linter';
+import { AgentPolicyEngine } from '../src/core/governance/agent-policy-engine';
+import { CrossServiceImpactAnalyzer } from '../src/core/analysis/cross-service-impact';
+import { buildIR } from '../src/core/ir-builder';
 
 const domains = ['ecommerce', 'banking', 'logistics'];
 let passCount = 0;
 let failCount = 0;
 
-console.log('🧪 Starting Gherkin AI Benchmark & Eval Suite...\n');
+console.log('🧪 Starting Gherkin AI Benchmark & Governance Eval Suite...\n');
 
 for (const domain of domains) {
   const domainDir = path.join(__dirname, 'domains', domain);
@@ -37,26 +40,41 @@ for (const domain of domains) {
       const gherkinText = fs.readFileSync(path.join(inputDir, featureFile), 'utf8');
       
       // 1. Parser & IR extraction stability
-      const ir = parseGherkinText(gherkinText);
-      if (!ir || !ir.scenarios) {
+      const parsed = parseGherkinText(gherkinText);
+      if (!parsed || !parsed.scenarios) {
         throw new Error('IR Parsing failed to generate scenarios array');
       }
 
       // 2. Convergence Engine Stability
-      const convergence = calculateConvergence([ir], null);
-      if (convergence.overallScore === undefined) {
+      const convergence = calculateConvergence(parsed, featureFile);
+      if (convergence.overallConvergence === undefined) {
         throw new Error('Convergence calculation returned invalid payload');
       }
 
       // 3. Linter Stability
-      const lint = lintSpecification(gherkinText, null);
+      const lint = lintSpecification(parsed, featureFile);
       if (lint.score === undefined) {
         throw new Error('Linter calculation returned invalid payload');
       }
 
-      console.log(`  └─ IR Extracted: ${ir.scenarios.length} scenarios, ${ir.domainAnalysis.commands.length} commands`);
-      console.log(`  └─ Convergence Score: ${convergence.overallScore}%`);
+      // 4. Governance & Impact Analysis Evaluation
+      const policyEngine = new AgentPolicyEngine(process.cwd());
+      const policyResult = policyEngine.evaluateFileModifications(['src/index.ts', 'specs/sample.feature']);
+      if (!policyResult.allowed) {
+        throw new Error('Policy evaluation failed unexpectedly for valid files');
+      }
+
+      const impactAnalyzer = new CrossServiceImpactAnalyzer();
+      const specIr = buildIR(parsed, featureFile);
+      const impactResult = impactAnalyzer.analyzeImpact(specIr, ['schema.prisma']);
+      if (impactResult.riskLevel !== 'CRITICAL') {
+        throw new Error('Impact analysis failed to detect CRITICAL risk for schema.prisma modification');
+      }
+
+      console.log(`  └─ IR Extracted: ${parsed.scenarios.length} scenarios, ${parsed.domainAnalysis.commands.length} commands`);
+      console.log(`  └─ Convergence Score: ${convergence.overallConvergence}%`);
       console.log(`  └─ Lint Score: ${lint.score}%`);
+      console.log(`  └─ Governance Risk Engine: ${impactResult.riskLevel} (Blast Radius validated)`);
       console.log(`  ✅ PASS\n`);
       passCount++;
     } catch (e: any) {

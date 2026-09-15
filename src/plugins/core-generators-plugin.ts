@@ -5,6 +5,7 @@ import { generateContracts } from '../generators/contracts';
 import { generateFixtures } from '../generators/fixtures';
 import { generatePrompts } from '../generators/prompts';
 import { generateInfra } from '../generators/infra';
+import { generateAwsCdkInfrastructure } from '../generators/infrastructure/aws-cdk-generator';
 import { generatePresets } from '../generators/presets';
 import { generatePrismaStack } from '../generators/prisma-stack';
 import { ParsedFeature } from '../core/gherkin-parser';
@@ -16,7 +17,15 @@ function irToParsedFeature(ir: SpecificationIR | any): ParsedFeature {
     featureName: ir.featureName || 'AppFeature',
     descriptionLines: ir.featureDescription || [],
     tags: ir.tags || [],
-    scenarios: [],
+    scenarios: (ir.scenarios || []).map((sc: any) => ({
+      name: sc.name,
+      tags: sc.tags || [],
+      steps: [
+        ...(sc.preconditions || []).map((p: string) => ({ keyword: 'Given', text: p, tags: [] })),
+        ...(sc.actions || []).map((a: string) => ({ keyword: 'When', text: a, tags: [] })),
+        ...(sc.expectations || []).map((e: string) => ({ keyword: 'Then', text: e, tags: [] }))
+      ]
+    })),
     domainAnalysis: {
       actors: (ir.actors || []).map((a: any) => a.name),
       commands: (ir.commands || []).map((c: any) => c.name),
@@ -43,16 +52,31 @@ export class CoreContractsPlugin implements GherkinAIPlugin {
 
   generate(ir: SpecificationIR, config: GherkinAIConfig): GeneratedArtifact[] {
     const parsed = irToParsedFeature(ir);
-    const result = generateContracts(parsed, config);
+    const result = generateContracts(parsed, ir, config);
     
     const artifacts: GeneratedArtifact[] = [
-      { filePath: 'contracts.ts', content: result.contractsTs, type: 'contract' },
       { filePath: 'ADR-001-architecture-decisions.md', content: result.adrMd, type: 'other' },
       { filePath: 'openapi.json', content: result.openApiJson, type: 'openapi' }
     ];
 
+    if (config.stack.language === 'node' || config.stack.language === 'typescript' || config.stack.language === 'javascript' || config.stack.language === 'nest' || config.stack.language === 'nestjs') {
+      artifacts.push({ filePath: 'contracts.ts', content: result.contractsTs, type: 'contract' });
+    }
+
+    if (result.asyncApiJson) {
+      artifacts.push({ filePath: 'asyncapi.json', content: result.asyncApiJson, type: 'contract' });
+    }
+
     if (result.nativeContract) {
       artifacts.push({ filePath: result.nativeContract.filename, content: result.nativeContract.content, type: 'contract' });
+    }
+    
+    if (result.projectRootFile) {
+      if (Array.isArray(result.projectRootFile)) {
+        result.projectRootFile.forEach(f => artifacts.push({ filePath: f.filename, content: f.content, type: 'config' }));
+      } else {
+        artifacts.push({ filePath: result.projectRootFile.filename, content: result.projectRootFile.content, type: 'config' });
+      }
     }
 
     return artifacts;
@@ -119,6 +143,38 @@ export class CoreInfraPlugin implements GherkinAIPlugin {
       artifacts.push({ filePath: 'docker-compose.yml', content: result.dockerComposeYaml, type: 'config' });
     }
     artifacts.push({ filePath: '.env.example', content: result.envExample, type: 'config' });
+
+    // Ensure AWS CDK is connected to the central pipeline
+    // This addresses the gap reported in the Java+Spring+AWS scenario
+    const cdkStack = generateAwsCdkInfrastructure(config.projectName);
+    artifacts.push({ filePath: `infrastructure/lib/${config.projectName}-stack.ts`, content: cdkStack, type: 'config' });
+    
+    artifacts.push({
+      filePath: `infrastructure/cdk.json`,
+      content: JSON.stringify({ app: `npx ts-node bin/${config.projectName}.ts` }, null, 2),
+      type: 'config'
+    });
+    
+    artifacts.push({
+      filePath: `infrastructure/package.json`,
+      content: JSON.stringify({
+        name: `${config.projectName}-infra`,
+        version: "0.1.0",
+        dependencies: {
+          "aws-cdk-lib": "2.100.0",
+          "constructs": "10.0.0"
+        },
+        devDependencies: {
+          "aws-cdk": "2.100.0",
+          "ts-node": "^10.9.1",
+          "typescript": "~5.2.2"
+        },
+        scripts: {
+          "synth": "cdk synth"
+        }
+      }, null, 2),
+      type: 'config'
+    });
 
     return artifacts;
   }

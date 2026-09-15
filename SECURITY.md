@@ -20,3 +20,9 @@ Please note that Gherkin AI CLI has features like `ghk verify --auto-fix` which 
 Users are strongly advised to:
 1. Always run these features in containerized/Docker environments or inside a CI/CD Sandbox.
 2. Use the `--dry-run` flag to review AI-generated code before applying it to the host filesystem.
+
+### Web Studio (Local UI Server)
+The `ghk web` command starts a local server that provides a web interface. 
+- The server binds strictly to `127.0.0.1` and uses restricted CORS. It is NOT intended to be exposed to a public network.
+- The UI contains an endpoint (`/api/execute`) that allows executing CLI commands. While restricted via strict validation, this is inherently a Remote Code Execution (RCE) surface.
+- **Do not run `ghk web` in CI/CD or production environments**. It is intentionally disabled by default if `process.env.CI === 'true'`.

@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import path from 'path';
 import { parseGherkinText } from '../src/core/gherkin-parser';
 import { generateContracts } from '../src/generators/contracts';
@@ -12,7 +12,8 @@ import { buildProjectContext } from '../src/core/context-builder';
 import { validateGuardrails } from '../src/core/guardrails';
 import { generateJavaSpringPreset } from '../src/generators/preset-java-spring';
 import { generateReactPlaywrightPreset } from '../src/generators/preset-react-playwright';
-import { calculateQualityScorecard } from '../src/core/quality-score';
+import { calculateDeliveryRisk } from '../src/core/risk-engine';
+import { buildSpecificationIR } from '../src/core/ir-builder';
 
 const sampleSpec = `Feature: User Login Feature
   As an authenticated user
@@ -61,7 +62,8 @@ describe('gherkin-ai CLI unit tests', () => {
   describe('Contracts Generator', () => {
     it('should generate TypeScript contracts', () => {
       const parsed = parseGherkinText(sampleSpec);
-      const { contractsTs, adrMd } = generateContracts(parsed, defaultConfig);
+      const ir = buildSpecificationIR(parsed, 'test.feature');
+      const { contractsTs, adrMd } = generateContracts(parsed, ir, defaultConfig);
       expect(contractsTs).toContain('UserLoginFeatureCommandSchema');
       expect(adrMd).toContain('ADR 001');
     });
@@ -72,7 +74,8 @@ describe('gherkin-ai CLI unit tests', () => {
         Given an email "test@test.com" @validate:email
         And an age "25" @range(18,100)`;
       const parsed = parseGherkinText(advancedSpec);
-      const { contractsTs } = generateContracts(parsed, defaultConfig);
+      const ir = buildSpecificationIR(parsed, 'advanced.feature');
+      const { contractsTs } = generateContracts(parsed, ir, defaultConfig);
       expect(contractsTs).toContain('email: z.string().email()');
       expect(contractsTs).toContain('age: z.number().min(18).max(100)');
     });
@@ -80,7 +83,8 @@ describe('gherkin-ai CLI unit tests', () => {
     it('should generate Python (Pydantic) contracts', () => {
       const parsed = parseGherkinText(sampleSpec);
       const pythonConfig = { ...defaultConfig, stack: { ...defaultConfig.stack, language: 'python' } };
-      const { nativeContract: pyContract } = generateContracts(parsed, pythonConfig);
+      const ir = buildSpecificationIR(parsed, 'test.feature');
+      const { nativeContract: pyContract } = generateContracts(parsed, ir, pythonConfig);
       expect(pyContract?.filename).toBe('userloginfeature.contract.py');
       expect(pyContract?.content).toContain('class UserLoginFeatureCommand(BaseModel)');
     });
@@ -88,7 +92,8 @@ describe('gherkin-ai CLI unit tests', () => {
     it('should generate PHP 8.2 contracts', () => {
       const parsed = parseGherkinText(sampleSpec);
       const phpConfig = { ...defaultConfig, stack: { ...defaultConfig.stack, language: 'php' } };
-      const { nativeContract: phpContract } = generateContracts(parsed, phpConfig);
+      const ir = buildSpecificationIR(parsed, 'test.feature');
+      const { nativeContract: phpContract } = generateContracts(parsed, ir, phpConfig);
       expect(phpContract?.filename).toBe('userloginfeature.contract.php');
       expect(phpContract?.content).toContain('readonly class UserLoginFeatureCommand');
     });
@@ -152,14 +157,6 @@ describe('gherkin-ai CLI unit tests', () => {
     });
   });
 
-  describe('Quality Score Engine', () => {
-    it('should calculate static score based on repository analysis', () => {
-      const scorecard = calculateQualityScorecard();
-      expect(typeof scorecard.overallScore).toBe('number');
-      expect(scorecard.overallScore).toBeGreaterThanOrEqual(0);
-    });
-  });
-
   describe('Patterns Suggester', () => {
     it('should suggest clean architecture patterns for React', () => {
       const mockReactStack = { framework: 'react', language: 'typescript' };
@@ -171,9 +168,11 @@ describe('gherkin-ai CLI unit tests', () => {
   });
 
   describe('RealAgentProvider (LLM Rate Limits & Backoff)', () => {
+
     it('should retry on HTTP 429 and eventually succeed', async () => {
+      vi.useFakeTimers();
       let attempts = 0;
-      global.fetch = async (url: any, options: any) => {
+      global.fetch = vi.fn().mockImplementation(async (url: any, options: any) => {
         attempts++;
         if (attempts < 3) {
           return { ok: false, status: 429, text: async () => 'Rate Limit Exceeded' } as any;
@@ -181,42 +180,51 @@ describe('gherkin-ai CLI unit tests', () => {
         return {
           ok: true,
           status: 200,
-          json: async () => ({ choices: [{ message: { content: 'Mock response' } }] })
+          json: async () => ({ response: '{"files":[{"filePath":"test.ts","content":"// fixed"}]}' })
         } as any;
-      };
+      });
 
       const { RealAgentProvider } = await import('../src/core/agent-adapter');
-      const agent = new RealAgentProvider({ provider: 'openai', apiKey: 'mock' });
+      const agent = new RealAgentProvider({ provider: 'ollama', apiKey: 'mock' });
       
-      const result = await agent.executeTask({
+      const promise = agent.executeTask({
         id: 'test',
         type: 'auto_fix',
         prompt: 'Fix this',
         contextFiles: []
       });
+
+      await vi.runAllTimersAsync();
+      const result = await promise;
 
       expect(attempts).toBe(3);
       expect(result.success).toBe(true);
-      expect(result.agentResponse).toBe('Mock response');
+      expect(result.agentResponse).toBe('{"files":[{"filePath":"test.ts","content":"// fixed"}]}');
+      vi.useRealTimers();
     });
 
     it('should fail after max retries', async () => {
-      global.fetch = async () => {
+      vi.useFakeTimers();
+      global.fetch = vi.fn().mockImplementation(async () => {
         return { ok: false, status: 500, text: async () => 'Internal Server Error' } as any;
-      };
+      });
 
       const { RealAgentProvider } = await import('../src/core/agent-adapter');
-      const agent = new RealAgentProvider({ provider: 'openai', apiKey: 'mock' });
+      const agent = new RealAgentProvider({ provider: 'ollama', apiKey: 'mock' });
       
-      const result = await agent.executeTask({
+      const promise = agent.executeTask({
         id: 'test',
         type: 'auto_fix',
         prompt: 'Fix this',
         contextFiles: []
       });
 
+      await vi.runAllTimersAsync();
+      const result = await promise;
+
       expect(result.success).toBe(false);
-      expect(result.agentResponse).toContain('LLM Error: HTTP 500 after 3 attempts');
+      expect(result.agentResponse).toContain('Error: HTTP 500 after 3 attempts');
+      vi.useRealTimers();
     });
   });
 });
