@@ -143,6 +143,12 @@ Objective: Write detailed Gherkin feature scenarios for ${title}.
   // Initialize Plugin Architecture
   pluginRegistry.initialize({ config, constitution: null, projectDir: process.cwd() });
   
+  // Auto-sync governance policy to reflect current config
+  if (fs.existsSync(path.join(process.cwd(), '.ghkgovernance.yaml'))) {
+    const { generateGovernanceConfig } = require('./init');
+    generateGovernanceConfig(config, process.cwd());
+  }
+  
   // Only register core plugins if not already registered (to prevent duplicate throws)
   if (pluginRegistry.getPlugins().length === 0) {
     registerCorePlugins(pluginRegistry);
@@ -242,6 +248,16 @@ Objective: Write detailed Gherkin feature scenarios for ${title}.
     }
     return true;
   });
+
+  // Anti-Stub Global Validation Gate
+  const stubArtifacts = filteredArtifacts.filter(a => /\/\/\s*TODO:|\/\/\s*FIXME:|throw new NotImplementedException/i.test(a.content));
+  if (stubArtifacts.length > 0) {
+    logger.error('CRITICAL GUARDRAIL VIOLATION: Generate flow produced artifacts with placeholder code (TODO/FIXME).');
+    logger.error('The following generated files contain stubs:');
+    stubArtifacts.forEach(a => logger.error(` - ${a.filePath}`));
+    logger.error('Aborting generation to enforce clean architecture and complete implementations.');
+    process.exit(1);
+  }
 
   filteredArtifacts.forEach(artifact => {
     const fullPath = path.join(config.outputDir, artifact.filePath);

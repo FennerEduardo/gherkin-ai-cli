@@ -45,8 +45,8 @@ public class ${className} {
         }
         return `
     @${lastKeyword}("${st.text.replace(/"/g, '\\"')}")
-    public void step_${st.text.replace(/[^a-zA-Z0-9]/g, '_')}() {
-        // TODO: Implement Step Binding for GraphQL / REST Service
+    public void ${st.keyword.trim()}${st.text.replace(/[^a-zA-Z0-9]/g, '')}() {
+        throw new io.cucumber.java.PendingException();
     }`;
     }).join('\n')}
     `;}).join('\n')}

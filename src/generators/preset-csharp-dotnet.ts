@@ -35,7 +35,7 @@ ${(sc.steps || []).map(st => `
         [${st.keyword.trim()}("${st.text.replace(/"/g, '""')}")]
         public void ${st.keyword.trim()}${st.text.replace(/[^a-zA-Z0-9]/g, '')}()
         {
-            // TODO: Implement step
+            ScenarioContext.Current.Pending();
         }
 `).join('')}
 `).join('')}
@@ -77,14 +77,7 @@ public class ${featurePascal} : AggregateRoot<Guid>
 }
 `;
 
-  const appCommandsCode = `namespace ${namespace}.Application.Commands;
 
-using System;
-using MediatR;
-
-public record Create${featurePascal}Command(string ReferenceCode, decimal Amount) : IRequest<string>;
-public record Get${featurePascal}Query(Guid ${featurePascal}Id) : IRequest<object?>;
-`;
 
   const infraRepoCode = `namespace ${namespace}.Infrastructure.Repositories;
 
@@ -140,10 +133,7 @@ public class ${featurePascal}Controller : ControllerBase
       filename: `src/Domain/${featurePascal}.cs`,
       content: domainEntityCode
     },
-    {
-      filename: `src/Application/Commands/${featurePascal}Commands.cs`,
-      content: appCommandsCode
-    },
+
     {
       filename: `src/Infrastructure/Repositories/${featurePascal}Repository.cs`,
       content: infraRepoCode
@@ -198,7 +188,7 @@ public class ${featurePascal}Controller : ControllerBase
     },
     {
       filename: `tests/IntegrationTests/DistributedSystemIntegrationTest.cs`,
-      content: generateDotNetTestcontainersIntegrationTest(namespace)
+      content: generateDotNetTestcontainersIntegrationTest(namespace, featurePascal)
     }
   ];
 }

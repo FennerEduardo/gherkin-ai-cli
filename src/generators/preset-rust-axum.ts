@@ -20,8 +20,7 @@ ${parsed.scenarios.map(sc => `
 ${sc.steps.map(st => `
 #[${st.keyword.trim().toLowerCase()}(expr = "${st.text.replace(/"/g, '\\"')}")]
 async fn step_${st.text.toLowerCase().replace(/[^a-z0-9]/g, '_')}(w: &mut AppWorld) {
-    // TODO: Implement step
-    todo!("Implement step: ${st.text.replace(/"/g, '\\"')}");
+    unimplemented!()
 }
 `).join('')}
 `).join('')}

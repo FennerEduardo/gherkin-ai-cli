@@ -22,6 +22,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using MediatR;
 
 // --------------------------------------------------------------------------
 // 1. Core DDD Interfaces & Base Classes
@@ -53,7 +54,7 @@ public abstract class ValueObject
 {
     protected abstract IEnumerable<object> GetEqualityComponents();
 
-    public override boolean Equals(object? obj)
+    public override bool Equals(object? obj)
     {
         if (obj == null || obj.GetType() != GetType()) return false;
         var other = (ValueObject)obj;
@@ -91,7 +92,7 @@ public record Create${featurePascal}Command(
     DateTime Timestamp,
     string ReferenceCode,
     decimal Amount
-);
+) : IRequest<string>;
 
 public record Get${featurePascal}Query(
     Guid ${featurePascal}Id,

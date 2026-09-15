@@ -335,6 +335,12 @@ ${effectiveProhibited.map(p => `- \`${p}\``).join('\n')}
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="8.0.2" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Tools" Version="8.0.2" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.PostgreSQL" Version="8.0.2" />
+    <PackageReference Include="MassTransit" Version="8.1.3" />
+    <PackageReference Include="Microsoft.AspNetCore.SignalR" Version="1.1.0" />
+    <PackageReference Include="SpecFlow.xUnit" Version="3.9.74" />
+    <PackageReference Include="Testcontainers" Version="3.7.0" />
+    <PackageReference Include="xunit" Version="2.7.0" />
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="8.0.2" />
   </ItemGroup>
 </Project>`
     };

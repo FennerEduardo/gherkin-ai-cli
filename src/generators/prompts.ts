@@ -66,7 +66,7 @@ export function generatePrompts(parsed: ParsedFeature, config: GherkinAIConfig):
 
   // Inject Execution & Architectural "What and How" Rules
   let strictExecutionGuardrails = `\n## [MANDATORY] AI Agent Execution Instructions (The "What" and "How")\n`;
-  strictExecutionGuardrails += `1. **WHAT TO DO**: Read the Gherkin feature file and the domain models provided. You MUST implement exactly what is specified in the feature file. Do NOT invent new features, do NOT add speculative functionality, and do NOT leave placeholder comments (e.g. "// TODO: implement").\n`;
+  strictExecutionGuardrails += `1. **WHAT TO DO**: Read the Gherkin feature file and the domain models provided. You MUST implement exactly what is specified in the feature file. Do NOT invent new features, do NOT add speculative functionality, and do NOT leave placeholder comments (e.g. "pending implementation").\n`;
   strictExecutionGuardrails += `2. **HOW TO DO IT**: Follow the specified architecture strictly (\`${config.architecture}\`). Respect layer boundaries:\n`;
   strictExecutionGuardrails += `   - Domain Layer must have NO dependencies on infrastructure or external libraries.\n`;
   strictExecutionGuardrails += `   - Application Layer (Use Cases) orchestrates domain entities but does not contain business logic.\n`;

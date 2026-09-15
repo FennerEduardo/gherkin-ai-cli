@@ -61,6 +61,7 @@ const VERB_PATTERNS: Record<string, RegExp> = {
   logout: /\b(logs?\s*out|sign\s*out|cierra\s*sesión)\b/i,
   send: /\b(sends?|dispatches?|envía|despacha)\b/i,
   search: /\b(searches?|finds?|queries?|looks?\s*up|busca|encuentra|consulta)\b/i,
+  process: /\b(process(es|ing)?|procesa|procesando|handles?|maneja)\b/i,
   pay: /\b(pays?|charges?|paga|cobra)\b/i,
   calculate: /\b(calculat(es?|ion)|comput(es?|ation)|calcula)\b/i,
   assign: /\b(assigns?|allocat(es?|ion)|asigna)\b/i,

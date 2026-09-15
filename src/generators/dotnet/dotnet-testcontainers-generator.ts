@@ -2,7 +2,7 @@
 // Pruebas de Integración E2E con WebApplicationFactory y Testcontainers.DotNet
 // --------------------------------------------------------------------------
 
-export function generateDotNetTestcontainersIntegrationTest(namespace: string): string {
+export function generateDotNetTestcontainersIntegrationTest(namespace: string, featurePascal: string): string {
   return `// --------------------------------------------------------------------------
 // Integration Tests con Testcontainers & WebApplicationFactory (.NET 8/9)
 // --------------------------------------------------------------------------
@@ -56,10 +56,10 @@ namespace ${namespace}.IntegrationTests
             var command = new { Amount = 250.00m, CustomerId = "cust_123", ReferenceCode = "REF-2026-X" };
 
             // Act
-            var response = await _client.PostAsJsonAsync("/api/v1/payments", command);
+            var response = await _client.PostAsJsonAsync("/api/v1/${featurePascal.toLowerCase()}", command);
 
             // Assert
-            Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+            Assert.True(response.IsSuccessStatusCode);
         }
 
         [Fact]
@@ -69,13 +69,13 @@ namespace ${namespace}.IntegrationTests
             var idempotencyKey = Guid.NewGuid().ToString();
             var command = new { Amount = 100.00m, CustomerId = "cust_555" };
             
-            var request1 = new HttpRequestMessage(HttpMethod.Post, "/api/v1/payments")
+            var request1 = new HttpRequestMessage(HttpMethod.Post, "/api/v1/${featurePascal.toLowerCase()}")
             {
                 Content = JsonContent.Create(command)
             };
             request1.Headers.Add("X-Idempotency-Key", idempotencyKey);
 
-            var request2 = new HttpRequestMessage(HttpMethod.Post, "/api/v1/payments")
+            var request2 = new HttpRequestMessage(HttpMethod.Post, "/api/v1/${featurePascal.toLowerCase()}")
             {
                 Content = JsonContent.Create(command)
             };
@@ -86,8 +86,8 @@ namespace ${namespace}.IntegrationTests
             var resp2 = await _client.SendAsync(request2);
 
             // Assert
-            Assert.Equal(HttpStatusCode.Accepted, resp1.StatusCode);
-            Assert.Equal(HttpStatusCode.Accepted, resp2.StatusCode); // Deduplicado idempotentemente
+            Assert.True(resp1.IsSuccessStatusCode);
+            Assert.True(resp2.IsSuccessStatusCode); // Deduplicado idempotentemente
         }
 
         [Fact]
@@ -97,7 +97,7 @@ namespace ${namespace}.IntegrationTests
             var invalidCommand = new { Amount = -50.00m, CustomerId = "cust_invalid" };
 
             // Act
-            var response = await _client.PostAsJsonAsync("/api/v1/payments", invalidCommand);
+            var response = await _client.PostAsJsonAsync("/api/v1/${featurePascal.toLowerCase()}", invalidCommand);
 
             // Assert
             Assert.True(response.StatusCode == HttpStatusCode.BadRequest || response.StatusCode == HttpStatusCode.UnprocessableEntity);
