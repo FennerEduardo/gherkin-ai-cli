@@ -24,7 +24,7 @@ describe('ghk CLI Integration Tests', () => {
   it('should initialize config in non-interactive mode', () => {
     // Run the compiled CLI
     const cliPath = path.resolve(__dirname, '../../dist/index.js');
-    execSync(`node ${cliPath} init --yes`, { cwd: testDir });
+    execSync(`node ${cliPath} init --yes --language typescript`, { cwd: testDir });
     
     expect(fs.existsSync(path.join(testDir, 'gherkin-ai.config.json'))).toBe(true);
   });

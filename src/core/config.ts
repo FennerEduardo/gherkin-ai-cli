@@ -79,7 +79,7 @@ export const defaultConfig: GherkinAIConfig = {
   },
   designPatterns: [],
   codingRules: [],
-  outputDir: './generated-specs',
+  outputDir: './',
   specDir: undefined,
   testCommand: undefined
 };
