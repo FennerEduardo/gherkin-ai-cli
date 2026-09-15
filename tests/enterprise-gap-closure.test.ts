@@ -41,7 +41,7 @@ describe('Enterprise Gap Closure & Clean Architecture Suite (.NET + Angular Sign
 
   it('generates 4-project Clean Architecture layout for .NET', () => {
     const domainFile = files.find(f => f.filename.includes('src/Domain/OrderManagement.cs'));
-    const appFile = files.find(f => f.filename.includes('src/Application/Commands/OrderManagementCommands.cs'));
+    const appFile = files.find(f => f.filename.includes('src/Application/CQRS/OrderManagementHandlers.cs'));
     const infraFile = files.find(f => f.filename.includes('src/Infrastructure/Repositories/OrderManagementRepository.cs'));
     const apiFile = files.find(f => f.filename.includes('src/Api/Controllers/OrderManagementController.cs'));
 
@@ -53,11 +53,11 @@ describe('Enterprise Gap Closure & Clean Architecture Suite (.NET + Angular Sign
 
   it('uses dynamic namespaces based on config.projectName', () => {
     const domainFile = files.find(f => f.filename.includes('src/Domain/OrderManagement.cs'))!;
-    const appFile = files.find(f => f.filename.includes('src/Application/Commands/OrderManagementCommands.cs'))!;
+    const appFile = files.find(f => f.filename.includes('src/Application/CQRS/OrderManagementHandlers.cs'))!;
     const apiFile = files.find(f => f.filename.includes('src/Api/Controllers/OrderManagementController.cs'))!;
 
     expect(domainFile.content).toContain('namespace CustomCompany.BankingApp.Domain.Entities');
-    expect(appFile.content).toContain('namespace CustomCompany.BankingApp.Application.Commands');
+    expect(appFile.content).toContain('namespace CustomCompany.BankingApp.Application.Handlers');
     expect(apiFile.content).toContain('namespace CustomCompany.BankingApp.Api.Controllers');
   });
 

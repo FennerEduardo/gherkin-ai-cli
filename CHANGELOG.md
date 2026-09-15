@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.6.2] - 2026-09-15
+
+### Added
+- **Docker Validation Script (`validate.sh`):** C# and .NET generators now emit a `validate.sh` script to verify compilation cleanly inside an isolated Docker container without relying on host SDKs.
+- **Git Commit Suggester:** `ghk generate` now intelligently outputs a draft commit message in `.ghe/suggested_commit.md` documenting the scaffolds, features generated, and CI validations.
+- **Atomic Concurrency Handlers (C#):** Replaced in-memory Idempotency and Outbox implementations with robust PostgreSQL atomic locks (`FOR UPDATE SKIP LOCKED` and `TryAddAsync`).
+
+### Changed
+- **BDD Framework Migration:** Replaced deprecated `SpecFlow.xUnit` with `Reqnroll.xUnit` as the standard BDD C# framework for generated step definitions.
+- **Improved C# Scaffolding:** Cleaned up stubs (`Task.CompletedTask`) and replaced them with functional Entity Framework Core snippets (`ApplicationDbContext`, DbSets) and explicit Scaffolding exceptions to pass the internal Anti-Stub Guardrail.
+- **Dynamic Brokers:** `preset-csharp-dotnet.ts` now injects `MassTransit` configuration (RabbitMQ vs SQS) dynamically based on `gherkin-ai.config.json` instead of hardcoding.
+- **Docker Compose Security:** Database passwords are no longer hardcoded in `docker-compose.yml`; the generator now uses shell variables (`${POSTGRES_PASSWORD:-dev_password}`).
+
+### Fixed
+- **CS0111 Step Duplication:** C# Step Definitions generator now uses a `Set` to prevent duplicate method generation when scenarios share the same BDD steps.
+- **MediatR Contract Constraints:** Fixed `IRequest` inheritance bounds for Commands and Queries in C# contracts to satisfy MediatR `IRequestHandler` type constraints.
+- **AWS CDK Naming Bug:** Fixed PascalCase conversion for project names with hyphens (e.g., `transactional-system` -> `TransactionalSystemInfrastructureStack`) to prevent invalid TS identifiers in CDK.
+- **Artifact Sprawl:** Forced default `outputDir` in config to `./` to prevent split-brain architecture where `.feature` files live in the root and code lives inside a nested `generated-specs` folder.
+- **TS Leak in C#:** Prevented Node.js/Zod `contracts.ts` files from being incorrectly emitted into C# project trees.
+
 ## [2.6.1] - 2026-09-07
 
 ### Fixed
