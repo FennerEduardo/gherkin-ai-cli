@@ -10,12 +10,9 @@
     "gherkin-cli": "bin/gherkin-ai.js",
     "gherkin-ia": "bin/gherkin-ai.js"
   },
-  "readmeFilename": "README.md",
   "files": [
     "dist",
     "bin",
-    "README.md",
-    "LICENSE",
     "docs"
   ],
   "keywords": [
