@@ -1,5 +1,5 @@
 export function generateAwsCdkInfrastructure(projectName: string): string {
-  const camelName = projectName.charAt(0).toUpperCase() + projectName.slice(1);
+  const camelName = projectName.split('-').map(p => p.charAt(0).toUpperCase() + p.slice(1)).join('');
   return `// AWS CDK: Base Infrastructure for Microservices
 import * as cdk from 'aws-cdk-lib';
 import { Construct } from 'constructs';

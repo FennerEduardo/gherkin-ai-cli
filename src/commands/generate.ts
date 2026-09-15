@@ -287,6 +287,25 @@ Objective: Write detailed Gherkin feature scenarios for ${title}.
   writeFileSync(path.join(gheDir, 'inventory.json'), JSON.stringify(inventory, null, 2));
   logger.success(`[Audit] Traceability inventory saved to .ghe/inventory.json`);
 
+  // Generate Suggested Commit Message
+  const suggestedCommit = `feat: Implement ${parsed.featureName} base architecture
+
+This commit implements the foundation for ${parsed.featureName} based on Gherkin specifications.
+
+Generated Artifacts:
+${filteredArtifacts.map(a => `- ${a.filePath}`).join('\n')}
+
+Validation:
+- Anti-Stub validation: Passed
+- Gherkin Coverage: ${parsed.scenarios.length} scenarios mapped
+- CQRS/DDD Contracts: Generated
+
+Next Steps:
+- Run 'docker compose up -d' or use the provided test infrastructure to validate integrations.
+`;
+  writeFileSync(path.join(gheDir, 'suggested_commit.md'), suggestedCommit);
+  logger.info(`[Git] Suggested commit message written to .ghe/suggested_commit.md`);
+
   logger.banner();
   ensureGitignore(process.cwd());
   logger.success(`All artifacts successfully generated under ${config.outputDir}!`);

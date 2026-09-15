@@ -20,6 +20,8 @@ export function generateCsharpDotnetPreset(parsed: ParsedFeature, config?: Gherk
   const className = featurePascal + 'StepDefinitions';
   const namespace = config?.projectName ? config.projectName.replace(/[^a-zA-Z0-9.]/g, '') : 'MyEnterpriseApp';
 
+  const generatedMethods = new Set<string>();
+
   const stepDefCode = `// SpecFlow Step Definitions for ${parsed.featureName}
 using System;
 using TechTalk.SpecFlow;
@@ -31,13 +33,16 @@ namespace ${namespace}.Tests.Steps
     {
 ${parsed.scenarios.map(sc => `
         // Scenario: ${sc.name}
-${(sc.steps || []).map(st => `
-        [${st.keyword.trim()}("${st.text.replace(/"/g, '""')}")]
-        public void ${st.keyword.trim()}${st.text.replace(/[^a-zA-Z0-9]/g, '')}()
+${(sc.steps || []).map(st => {
+    const methodName = `${st.keyword.trim()}${st.text.replace(/[^a-zA-Z0-9]/g, '')}`;
+    if (generatedMethods.has(methodName)) return '';
+    generatedMethods.add(methodName);
+    return `        [${st.keyword.trim()}("${st.text.replace(/"/g, '""')}")]
+        public void ${methodName}()
         {
-            ScenarioContext.Current.Pending();
-        }
-`).join('')}
+            throw new PendingStepException();
+        }`;
+}).join('\n')}
 `).join('')}
     }
 }
@@ -123,7 +128,7 @@ public class ${featurePascal}Controller : ControllerBase
     public async Task<IActionResult> Create([FromBody] Create${featurePascal}Command command)
     {
         var result = await _mediator.Send(command);
-        return Accepted(result);
+        return Ok(result);
     }
 }
 `;

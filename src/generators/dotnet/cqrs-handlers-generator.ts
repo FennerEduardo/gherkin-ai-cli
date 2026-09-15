@@ -14,8 +14,6 @@ using Microsoft.Extensions.Logging;
 
 namespace ${namespace}.Application.Handlers
 {
-    public record CommandResult(bool Success, string Message, Guid? EntityId);
-
     // 1. Command Handler
     public class Create${featurePascal}CommandHandler : IRequestHandler<Create${featurePascal}Command, CommandResult>
     {
@@ -39,7 +37,6 @@ namespace ${namespace}.Application.Handlers
     }
 
     // 2. Query Handler (Read Model)
-    public record ${featurePascal}ReadModel(Guid Id, string ReferenceCode, decimal Amount, string Status, DateTime UpdatedAt);
 
     public class Get${featurePascal}QueryHandler : IRequestHandler<Get${featurePascal}Query, ${featurePascal}ReadModel?>
     {

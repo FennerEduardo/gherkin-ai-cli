@@ -23,7 +23,10 @@ export interface GeneratedContractsOutput {
   projectRootFile?: {
     filename: string;
     content: string;
-  };
+  } | {
+    filename: string;
+    content: string;
+  }[];
 }
 
 import { SpecificationIR } from '../core/semantic-ir';
@@ -321,9 +324,10 @@ ${effectiveProhibited.map(p => `- \`${p}\``).join('\n')}
   let projectRootFile: GeneratedContractsOutput['projectRootFile'];
   
   if (config.stack.language === 'csharp' || config.stack.language === '.net' || config.stack.language === 'dotnet') {
-    projectRootFile = {
-      filename: `${config.projectName || 'MyProject'}.csproj`,
-      content: `<Project Sdk="Microsoft.NET.Sdk.Web">
+    projectRootFile = [
+      {
+        filename: `${config.projectName || 'MyProject'}.csproj`,
+        content: `<Project Sdk="Microsoft.NET.Sdk.Web">
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
@@ -343,7 +347,15 @@ ${effectiveProhibited.map(p => `- \`${p}\``).join('\n')}
     <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="8.0.2" />
   </ItemGroup>
 </Project>`
-    };
+      },
+      {
+        filename: `validate.sh`,
+        content: `#!/bin/bash
+echo "Running .NET Build validation inside Docker..."
+docker run --rm -v $(pwd):/app -w /app mcr.microsoft.com/dotnet/sdk:8.0 dotnet build
+`
+      }
+    ];
   } else if (config.stack.language === 'java') {
     projectRootFile = {
       filename: `pom.xml`,

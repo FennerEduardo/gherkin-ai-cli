@@ -86,18 +86,22 @@ ${ir.events.length > 0 ? ir.events.map((ev, i) => `public record ${ev.name.repla
 // --------------------------------------------------------------------------
 // 3. Strongly-Typed Command & Query Records
 // --------------------------------------------------------------------------
+public record CommandResult(bool Success, string Message, Guid? EntityId);
+
 public record Create${featurePascal}Command(
     Guid RequestId,
     Guid TenantId,
     DateTime Timestamp,
     string ReferenceCode,
     decimal Amount
-) : IRequest<string>;
+) : IRequest<CommandResult>;
+
+public record ${featurePascal}ReadModel(Guid Id, string ReferenceCode, decimal Amount, string Status, DateTime UpdatedAt);
 
 public record Get${featurePascal}Query(
     Guid ${featurePascal}Id,
     Guid TenantId
-);
+) : IRequest<${featurePascal}ReadModel?>;
 
 // --------------------------------------------------------------------------
 // 4. Strongly-Typed Domain Repository Port
