@@ -7,7 +7,7 @@ This document provides a comprehensive list of all commands available in the `gh
 ## 🤖 Agent Orchestration & Implementation
 
 ### `ghk implement` (alias: `impl`)
-Generate the **AI Agent Master Implementation Prompt & Context Package** for a feature. This command compiles `.ghkgovernance.yaml`, domain contracts (`*.contract.php`, `.ts`, `.py`, `.java`), ADRs, OpenAPI specs, and docker-compose configurations into an executable AI agent package saved at `generated-specs/prompts/implement-master-prompt.md`.
+Generate the **AI Agent Master Implementation Prompt & Context Package** for a feature. This command compiles `.ghkgovernance.yaml`, domain contracts (`*.contract.php`, `.ts`, `.py`, `.java`, `.go`, `.ex`, `.kt`, `.proto`, `.graphql`), ADRs, OpenAPI specs, and docker-compose configurations into an executable AI agent package saved at `generated-specs/prompts/implement-master-prompt.md`.
 
 - `-f, --feature <file>`: Path to Gherkin `.feature` file (auto-selects first feature if omitted).
 - `--docker`: Include Docker container sandbox execution instructions in the master prompt.
@@ -65,11 +65,13 @@ ghk lang --set es
 | :--- | :--- | :--- |
 | **C# / .NET** | `mcr.microsoft.com/dotnet/sdk:8.0` | `docker compose run --rm app dotnet test` |
 | **Java / Spring Boot** | `eclipse-temurin:21-jdk-alpine` | `docker compose run --rm app ./gradlew test` |
-| **PHP** | `php:8.3-cli-alpine` | `docker compose run --rm app vendor/bin/phpunit` |
-| **Python** | `python:3.11-slim` | `docker compose run --rm app pytest` |
+| **Kotlin / Spring Boot**| `eclipse-temurin:21-jdk-alpine` | `docker compose run --rm app ./gradlew test` |
+| **PHP / Laravel** | `php:8.3-cli-alpine` | `docker compose run --rm app vendor/bin/phpunit` |
+| **Python / Django** | `python:3.12-alpine` | `docker compose run --rm app pytest` |
 | **Node / TypeScript** | `node:20-alpine` | `docker compose run --rm app npm test` |
-| **Go** | `golang:1.22-alpine` | `docker compose run --rm app go test ./...` |
-| **Ruby** | `ruby:3.3-alpine` | `docker compose run --rm app bundle exec rspec` |
+| **Go / chi** | `golang:1.22-alpine` | `docker compose run --rm app go test -race ./...` |
+| **Ruby / Rails** | `ruby:3.3-alpine` | `docker compose run --rm app bundle exec rspec` |
+| **Elixir / Phoenix** | `elixir:1.16-alpine` | `docker compose run --rm app mix test` |
 
 ---
 

@@ -64,6 +64,7 @@ ghk verify --docker --auto-fix
 
 ## 📖 Comprehensive Documentation
 
+- [Multi-Stack Evaluation Report (15 Projects)](docs/EVALUATION_REPORT.md)
 - [CLI Commands Reference Guide](docs/COMMANDS.md)
 - [Model Context Protocol (MCP) Integration Guide](docs/MCP_GUIDE.md)
 - [Closed-Loop Verification & Auto-Repair Guide](docs/USAGE_GUIDE.md)
