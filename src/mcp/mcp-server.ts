@@ -27,6 +27,8 @@ import { handleCreateCommand } from '../commands/create';
 import { handleAuditCommand } from '../commands/audit';
 import { handleAgentLogCommand } from '../commands/agent-log';
 import { handleImplementCommand } from '../commands/implement';
+import { handleLintCommand } from '../commands/lint';
+import { handleConvergeCommand } from '../commands/converge';
 import { promisify } from 'util';
 import { exec, execFile } from 'child_process';
 import { CrossServiceImpactAnalyzer } from '../core/analysis/cross-service-impact';
@@ -423,6 +425,29 @@ function getToolDefinitions() {
         },
         required: ['feature']
       }
+    },
+    {
+      name: 'run_cli_lint',
+      description: 'Run the ghk lint command to validate specification files against Gherkin-AI rules.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          feature: { type: 'string', description: 'Optional path to specific .feature file to lint.' },
+          threshold: { type: 'string', description: 'Minimum passing score.' }
+        }
+      }
+    },
+    {
+      name: 'run_cli_converge',
+      description: 'Run the ghk converge command to measure alignment between Specification and Implementation.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          feature: { type: 'string', description: 'Optional path to specific .feature file to analyze.' },
+          threshold: { type: 'string', description: 'Minimum passing score.' },
+          json: { type: 'boolean', description: 'Output as JSON.' }
+        }
+      }
     }
   ];
 }
@@ -780,6 +805,26 @@ async function handleToolCall(id: number | string, name: string, args: any): Pro
         });
         sendJsonRpcResponse(id, {
           content: [{ type: 'text', text: JSON.stringify({ success: true, message: `Master prompt generated for ${args.feature}` }, null, 2) }]
+        });
+        break;
+      }
+
+      case 'run_cli_lint': {
+        await handleLintCommand({
+          ...args
+        });
+        sendJsonRpcResponse(id, {
+          content: [{ type: 'text', text: JSON.stringify({ success: true, message: `Linting executed` }, null, 2) }]
+        });
+        break;
+      }
+
+      case 'run_cli_converge': {
+        await handleConvergeCommand({
+          ...args
+        });
+        sendJsonRpcResponse(id, {
+          content: [{ type: 'text', text: JSON.stringify({ success: true, message: `Convergence analysis executed` }, null, 2) }]
         });
         break;
       }

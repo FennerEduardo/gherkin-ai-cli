@@ -5,7 +5,7 @@
    analysis with optional LLM enrichment for brownfield projects.
    ========================================================================== */
 
-import { ParsedFeature, ScenarioModel, StepModel } from './gherkin-parser';
+import { ParsedFeature, ScenarioModel, StepModel } from './parsers/specification-interface';
 import {
   SpecificationIR,
   IRBuildOptions,

@@ -43,10 +43,28 @@ export async function handleVerifyCommand(options: VerifyCommandOptions = {}): P
     if (result.success) {
       console.log(chalk.bold.green(`\n✅ Suite Verification Passed! (Duration: ${result.durationMs}ms)`));
       console.log(chalk.green(`   Executed command: ${result.commandExecuted}\n`));
-      metricsEngine.recordTestRun(true);
-      execEvents.push({ type: 'test_passed', iteration, durationMs: result.durationMs });
-      success = true;
-      break;
+      
+      console.log(chalk.bold.cyan(`🔍 Running Architectural Convergence Check...`));
+      try {
+        const { handleConvergeCommand } = require('./converge');
+        let oldExitCode = process.exitCode;
+        await handleConvergeCommand({ threshold: '80' });
+        if (process.exitCode !== oldExitCode && process.exitCode !== 0) {
+          console.log(chalk.bold.red(`\n✖ CI/CD Gate Failed: Tests passed but Architectural Convergence is below threshold.`));
+          success = false;
+          break; // break out to fail
+        } else {
+           console.log(chalk.bold.green(`\n✅ CI/CD Gate Passed: Architectural Convergence meets threshold.`));
+           success = true;
+           metricsEngine.recordTestRun(true);
+           execEvents.push({ type: 'test_passed', iteration, durationMs: result.durationMs });
+           break;
+        }
+      } catch (e) {
+        console.log(chalk.yellow(`⚠ Warning: Could not run convergence engine: ${e}`));
+        success = true;
+        break;
+      }
     }
 
     console.log(chalk.bold.yellow(`\n❌ Execution Failed (Exit Code: ${result.exitCode})`));

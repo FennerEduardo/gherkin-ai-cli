@@ -4,68 +4,37 @@
 
 import fs from 'fs';
 import path from 'path';
-import crypto from 'crypto';
+import os from 'os';
 import { logger } from '../utils/logger';
-
-// Machine-specific encryption key based on user and machine info
-const ENCRYPTION_KEY = crypto.scryptSync(
-  process.env.USER || process.env.USERNAME || 'gherkin-ai-user',
-  'ghk-salt-v1',
-  32
-);
-
-function encrypt(text: string): string {
-  const iv = crypto.randomBytes(16);
-  const cipher = crypto.createCipheriv('aes-256-cbc', ENCRYPTION_KEY, iv);
-  let encrypted = cipher.update(text, 'utf8', 'hex');
-  encrypted += cipher.final('hex');
-  return `${iv.toString('hex')}:${encrypted}`;
-}
-
-function decrypt(text: string): string {
-  try {
-    const parts = text.split(':');
-    if (parts.length !== 2) return text; // Possibly unencrypted legacy key
-    const iv = Buffer.from(parts[0], 'hex');
-    const encryptedText = parts[1];
-    const decipher = crypto.createDecipheriv('aes-256-cbc', ENCRYPTION_KEY, iv);
-    let decrypted = decipher.update(encryptedText, 'hex', 'utf8');
-    decrypted += decipher.final('utf8');
-    return decrypted;
-  } catch {
-    return text; // Fallback to raw text if decryption fails
-  }
-}
 
 export interface AuthConfig {
   token?: string;
   user?: string;
   provider?: 'openai' | 'anthropic' | 'gemini' | 'ollama' | 'azure-openai' | 'custom' | string;
-  apiKey?: string;
+  // API keys are explicitly removed from file storage for security.
+  // Must be provided via environment variables (e.g. OPENAI_API_KEY).
   endpoint?: string;
   serverUrl?: string;
   loggedInAt?: string;
 }
 
-export function getAuthConfig(workspaceDir: string = process.cwd()): AuthConfig | null {
-  const authPath = path.join(workspaceDir, '.gherkin-ai', 'auth.json');
+export function getAuthConfig(): AuthConfig | null {
+  const authPath = path.join(os.homedir(), '.gherkin-ai', 'auth.json');
   if (!fs.existsSync(authPath)) {
     return null;
   }
   try {
     const raw = fs.readFileSync(authPath, 'utf8');
     const auth = JSON.parse(raw) as AuthConfig;
-    if (auth.apiKey && auth.apiKey.includes(':')) {
-      auth.apiKey = decrypt(auth.apiKey);
-    }
+    // apiKey is no longer supported in file configuration
     return auth;
   } catch {
     return null;
   }
 }
 
-export function saveAuthConfig(auth: AuthConfig, workspaceDir: string = process.cwd()): string {
-  const gheDir = path.join(workspaceDir, '.gherkin-ai');
+export function saveAuthConfig(auth: AuthConfig): string {
+  const gheDir = path.join(os.homedir(), '.gherkin-ai');
   if (!fs.existsSync(gheDir)) {
     fs.mkdirSync(gheDir, { recursive: true });
   }
@@ -73,7 +42,6 @@ export function saveAuthConfig(auth: AuthConfig, workspaceDir: string = process.
   const authPath = path.join(gheDir, 'auth.json');
   const payload: AuthConfig = {
     ...auth,
-    apiKey: auth.apiKey ? encrypt(auth.apiKey) : undefined,
     loggedInAt: new Date().toISOString()
   };
 
@@ -97,7 +65,10 @@ export async function handleLoginCommand(options?: {
   const token = options?.token || process.env.GHK_AUTH_TOKEN || 'tok_agent_synthetic_' + Date.now().toString(36);
   const user = options?.user || process.env.GHK_USER || process.env.USER || 'agent-ai@local';
   const provider = options?.provider || process.env.GHK_AI_PROVIDER || 'openai';
-  const apiKey = options?.apiKey || process.env.OPENAI_API_KEY || process.env.ANTHROPIC_API_KEY || process.env.GEMINI_API_KEY || 'sk-synthetic-key';
+  if (options?.apiKey) {
+    logger.warn('⚠️ WARNING: For security, API keys are no longer stored in configuration files.');
+    logger.warn('Please export your key as an environment variable (e.g., OPENAI_API_KEY, ANTHROPIC_API_KEY).');
+  }
   const endpoint = options?.endpoint || process.env.GHK_AI_ENDPOINT || 'https://api.openai.com/v1';
   const serverUrl = options?.server || process.env.GHK_SERVER_URL || 'https://api.gherkin-ai.local';
 
@@ -105,7 +76,6 @@ export async function handleLoginCommand(options?: {
     token,
     user,
     provider,
-    apiKey,
     endpoint,
     serverUrl
   };

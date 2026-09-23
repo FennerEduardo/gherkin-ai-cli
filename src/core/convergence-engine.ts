@@ -401,6 +401,11 @@ function evaluateCodeCoverage(projectDir: string): ConvergenceDimension {
     path.join(projectDir, 'coverage', 'coverage-summary.json'),  // Istanbul/c8/vitest default
     path.join(projectDir, 'coverage', 'coverage-final.json'),
     path.join(projectDir, '.nyc_output', 'coverage-summary.json'),
+    path.join(projectDir, 'target', 'site', 'jacoco', 'jacoco.xml'), // Java JaCoCo
+    path.join(projectDir, 'coverage', 'jacoco.xml'),
+    path.join(projectDir, 'coverage.cobertura.xml'), // .NET Cobertura
+    path.join(projectDir, 'coverage', 'coverage.cobertura.xml'),
+    path.join(projectDir, 'TestResults', 'coverage.cobertura.xml'), // .NET
   ];
 
   let summaryPath: string | null = null;
@@ -426,6 +431,14 @@ function evaluateCodeCoverage(projectDir: string): ConvergenceDimension {
 
   try {
     const raw = fs.readFileSync(summaryPath, 'utf8');
+
+    if (summaryPath.endsWith('jacoco.xml')) {
+       return parseJacoco(raw, target, summaryPath, projectDir);
+    }
+    if (summaryPath.endsWith('cobertura.xml')) {
+       return parseCobertura(raw, target, summaryPath, projectDir);
+    }
+
     const report: CoverageSummaryReport = JSON.parse(raw);
     const total = report.total;
 
@@ -445,11 +458,63 @@ function evaluateCodeCoverage(projectDir: string): ConvergenceDimension {
     const functionsPct = Math.round(total.functions?.pct || 0);
     const statementsPct = Math.round(total.statements?.pct || 0);
 
+    return calculateFinalCoverageScore(linesPct, branchesPct, functionsPct, statementsPct, target, summaryPath, projectDir);
+  } catch (err: any) {
+    details.push(`Failed to parse coverage report: ${err.message}`);
+    return {
+      name: 'Code Coverage',
+      score: 0,
+      maxScore: 100,
+      details,
+      status: 'fail',
+    };
+  }
+}
+
+function parseJacoco(raw: string, target: number, summaryPath: string, projectDir: string): ConvergenceDimension {
+  try {
+    const instructionMatch = raw.match(/<counter type="INSTRUCTION" missed="(\d+)" covered="(\d+)"\/>/);
+    const branchMatch = raw.match(/<counter type="BRANCH" missed="(\d+)" covered="(\d+)"\/>/);
+    const methodMatch = raw.match(/<counter type="METHOD" missed="(\d+)" covered="(\d+)"\/>/);
+
+    const calcPct = (missed: string, covered: string) => {
+      const m = parseInt(missed, 10);
+      const c = parseInt(covered, 10);
+      if (m + c === 0) return 0;
+      return Math.round((c / (m + c)) * 100);
+    };
+
+    const linesPct = instructionMatch ? calcPct(instructionMatch[1], instructionMatch[2]) : 0;
+    const branchesPct = branchMatch ? calcPct(branchMatch[1], branchMatch[2]) : 0;
+    const functionsPct = methodMatch ? calcPct(methodMatch[1], methodMatch[2]) : 0;
+
+    return calculateFinalCoverageScore(linesPct, branchesPct, functionsPct, linesPct, target, summaryPath, projectDir);
+  } catch {
+    return { name: 'Code Coverage', score: 0, maxScore: 100, details: ['Failed to parse JaCoCo'], status: 'fail' };
+  }
+}
+
+function parseCobertura(raw: string, target: number, summaryPath: string, projectDir: string): ConvergenceDimension {
+  try {
+    const coverageMatch = raw.match(/<coverage[^>]*line-rate="([0-9.]+)"[^>]*branch-rate="([0-9.]+)"/);
+    if (!coverageMatch) throw new Error();
+
+    const linesPct = Math.round(parseFloat(coverageMatch[1]) * 100);
+    const branchesPct = Math.round(parseFloat(coverageMatch[2]) * 100);
+
+    return calculateFinalCoverageScore(linesPct, branchesPct, linesPct, linesPct, target, summaryPath, projectDir);
+  } catch {
+    return { name: 'Code Coverage', score: 0, maxScore: 100, details: ['Failed to parse Cobertura'], status: 'fail' };
+  }
+}
+
+function calculateFinalCoverageScore(linesPct: number, branchesPct: number, functionsPct: number, statementsPct: number, target: number, summaryPath: string, projectDir: string): ConvergenceDimension {
     // Weighted average: lines 40%, branches 30%, functions 20%, statements 10%
     const weightedScore = Math.round(
       linesPct * 0.4 + branchesPct * 0.3 + functionsPct * 0.2 + statementsPct * 0.1
     );
 
+    const details: string[] = [];
     details.push(`Lines: ${linesPct}% | Branches: ${branchesPct}% | Functions: ${functionsPct}% | Statements: ${statementsPct}%`);
     details.push(`Weighted score: ${weightedScore}% (target: ${target}%)`);
     details.push(`Source: ${path.relative(projectDir, summaryPath)}`);
@@ -465,14 +530,4 @@ function evaluateCodeCoverage(projectDir: string): ConvergenceDimension {
       details,
       status: weightedScore >= target ? 'pass' : weightedScore >= (target * 0.7) ? 'warn' : 'fail',
     };
-  } catch (err: any) {
-    details.push(`Failed to parse coverage report: ${err.message}`);
-    return {
-      name: 'Code Coverage',
-      score: 0,
-      maxScore: 100,
-      details,
-      status: 'fail',
-    };
-  }
 }

@@ -247,6 +247,12 @@ ${record ? `6. AUDIT REGISTRY RECORD: ${record.recordId} (Spec Hash: ${featureVe
 `;
   }
 
+  console.log(chalk.bold.red('\n============================================================'));
+  console.log(chalk.bold.red('⚠️ DEPRECATION WARNING: Manual Prompts are deprecated.'));
+  console.log(chalk.red('Please use the IDE Delegate (ide_delegate provider) to execute implementation automatically.'));
+  console.log(chalk.red('Example: ghk autopilot --provider ide_delegate'));
+  console.log(chalk.bold.red('============================================================\n'));
+
   console.log(chalk.green(quickPrompt));
   console.log(chalk.bold.cyan('------------------------------------------------------------\n'));
 

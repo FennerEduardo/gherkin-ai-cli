@@ -5,42 +5,22 @@
 
 import { generateMessages } from '@cucumber/gherkin';
 import { IdGenerator, SourceMediaType } from '@cucumber/messages';
+import { ParsedFeature, ScenarioModel, StepModel, DomainField, ISpecificationParser, SpecificationParserOptions } from './parsers/specification-interface';
+export { ParsedFeature, ScenarioModel, StepModel, DomainField, ISpecificationParser, SpecificationParserOptions };
 
-export interface StepModel {
-  keyword: 'Given' | 'When' | 'Then' | 'And' | 'But';
-  text: string;
-  tags: string[];
-}
-
-export interface ScenarioModel {
-  name: string;
-  steps: StepModel[];
-  tags: string[];
-}
-
-export interface DomainField {
-  name: string;
-  type: string;
-  validations: string[];
-}
-
-export interface ParsedFeature {
-  featureName: string;
-  descriptionLines: string[];
-  tags: string[];
-  scenarios: ScenarioModel[];
-  domainAnalysis: {
-    actors: string[];
-    commands: string[];
-    queries: string[];
-    events: string[];
-    fixtures: string[];
-    fields: DomainField[];
-    httpCodes: string[];
-  };
+export class GherkinParser implements ISpecificationParser {
+  parse(content: string, options?: SpecificationParserOptions): ParsedFeature {
+    return parseGherkinText(content);
+  }
 }
 
 export function parseGherkinText(gherkinText: string): ParsedFeature {
+  const trimmed = gherkinText.trim();
+  if (trimmed.startsWith('#') || trimmed.match(/^[-*]\s+/)) {
+    const { MarkdownEarsParser } = require('./parsers/markdown-ears-parser');
+    return new MarkdownEarsParser().parse(gherkinText);
+  }
+
   const options = {
     includeSource: false,
     includeGherkinDocument: true,

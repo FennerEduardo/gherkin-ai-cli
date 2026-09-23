@@ -58,7 +58,7 @@ export function generatePresets(parsed: ParsedFeature, config: GherkinAIConfig):
     results.push(...generateCsharpDotnetPreset(parsed, config));
   } else if (lang === 'typescript' || lang === 'javascript') {
     if (framework === 'nestjs') {
-      results.push(...generateNodeNestJsPreset(parsed));
+      results.push(...generateNodeNestJsPreset(parsed, config));
     } else {
       results.push(...generateReactPlaywrightPreset(parsed));
     }

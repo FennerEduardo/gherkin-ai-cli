@@ -53,7 +53,7 @@ public class ${className} {
 }
 `;
 
-  return [
+  const results = [
     {
       filename: `${className}.java`,
       content: stepDefCode
@@ -70,5 +70,20 @@ public class ${className} {
       content: generateJavaCQRSInfrastructure(packageName)
     }
   ];
+
+  // Generate DTOs
+  if (parsed.domainAnalysis && parsed.domainAnalysis.fields) {
+    for (const field of parsed.domainAnalysis.fields) {
+      const type = field.type === 'number' ? 'Double' :
+                   field.type === 'boolean' ? 'Boolean' : 'String';
+      const recordName = field.name.charAt(0).toUpperCase() + field.name.slice(1) + 'DTO';
+      results.push({
+        filename: `application/dto/${recordName}.java`,
+        content: `package ${packageName}.dto;\n\npublic record ${recordName}(${type} value) {}\n`
+      });
+    }
+  }
+
+  return results;
 }
 

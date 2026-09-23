@@ -2,6 +2,8 @@
    gherkin-ai-cli - Agnostic Agent Adapter Interface & Provider Engine
    ========================================================================== */
 
+import { getAuthConfig } from '../commands/login';
+
 export interface AgentTask {
   id: string;
   type: 'spec_generation' | 'scaffold_binding' | 'auto_fix' | 'security_review';
@@ -39,12 +41,22 @@ export function resolveLLMConfig(): LLMConfig {
   let provider = process.env.LLM_PROVIDER as 'openai' | 'anthropic' | 'ollama' | 'ide_delegate';
   
   if (!provider) {
-    if (apiKey) {
-      provider = process.env.ANTHROPIC_API_KEY ? 'anthropic' : 'openai';
+    const globalAuth = getAuthConfig();
+    if (globalAuth && globalAuth.provider) {
+      provider = globalAuth.provider as any;
     } else {
-      provider = 'ollama';
-      console.log('\n[INFO] No LLM API keys detected. Defaulting to local Ollama (Air-Gapped mode).\n');
+      if (apiKey) {
+        provider = process.env.ANTHROPIC_API_KEY ? 'anthropic' : 'openai';
+      } else {
+        provider = 'ollama';
+        console.log('\n[INFO] No LLM API keys detected. Defaulting to local Ollama (Air-Gapped mode).\n');
+      }
     }
+  }
+
+  if (provider !== 'ollama' && provider !== 'ide_delegate' && !apiKey) {
+    console.warn(`\n[WARNING] Provider is set to ${provider} but no API key was found in environment variables.`);
+    console.warn(`Please set OPENAI_API_KEY, ANTHROPIC_API_KEY, or LLM_API_KEY.\n`);
   }
 
   return {

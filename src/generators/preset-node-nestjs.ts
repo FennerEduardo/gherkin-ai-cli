@@ -3,8 +3,11 @@
    ========================================================================== */
 
 import { ParsedFeature } from '../core/gherkin-parser';
+import { GherkinAIConfig } from '../core/config';
+import { buildIR } from '../core/ir-builder';
+import { generatePrismaSchema } from './prisma-generator';
 
-export function generateNodeNestJsPreset(parsed: ParsedFeature): { filename: string; content: string }[] {
+export function generateNodeNestJsPreset(parsed: ParsedFeature, config?: GherkinAIConfig): { filename: string; content: string }[] {
   const className = parsed.featureName.replace(/[^a-zA-Z0-9]/g, '');
   const moduleName = parsed.featureName.toLowerCase().replace(/[^a-z0-9]/g, '-');
 
@@ -65,10 +68,20 @@ ${stepBody}
 `).join('')}
 `;
 
-  return [
+  const results = [
     {
       filename: `test/steps/${moduleName}.steps.ts`,
       content: stepDefCode
     }
   ];
+
+  if (config) {
+    const ir = buildIR(parsed, 'feature.feature');
+    results.push({
+      filename: 'prisma/schema.prisma',
+      content: generatePrismaSchema(ir, config)
+    });
+  }
+
+  return results;
 }
