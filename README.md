@@ -3,8 +3,8 @@
 [![npm version](https://img.shields.io/npm/v/gherkin-ai.svg)](https://www.npmjs.com/package/gherkin-ai)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-> **The Closed-Loop Agentic Testing & Orchestration Engine for Full-Stack Applications.**
-> Turn product requirements into verifiable Gherkin specifications, execute 15+ multi-stack implementations (React/Vue/Angular + Java / Kotlin / Go / Elixir / PHP / Ruby / Python / .NET / Flutter / React Native, plus gRPC & GraphQL contracts), and experiment with self-healing agent loops.
+> **The Closed-Loop Verification Engine & Enterprise-Ready Scaffolding Tool**
+> Turn product requirements into verifiable Gherkin specifications, execute 15+ multi-stack implementations (React/Vue/Angular + Java / Kotlin / Go / Elixir / PHP / Ruby / Python / .NET / Flutter / React Native, plus gRPC & GraphQL contracts), and utilize regression detection loops.
 > 
 > [![CI](https://github.com/FennerEduardo/gherkin-ai-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/FennerEduardo/gherkin-ai-cli/actions/workflows/ci.yml)
 > [![Coverage Status](https://img.shields.io/badge/coverage-100%25-brightgreen.svg)]()
@@ -15,14 +15,14 @@
 
 While basic AI spec tools only generate text prompts, `gherkin-ai` acts as an **executable contract and verification harness** between Product Intent, AI Agents (Cursor, Antigravity, Claude Code, Windsurf, Copilot), Code Implementation, and CI/CD Quality Gates:
 
-- 🤖 **AI Agent Implementation Orchestration (`ghk implement`)**: Compiles `.ghkgovernance.yaml`, domain contracts (`*.contract.php`, `.ts`, `.py`, `.java`, `.go`, `.ex`, `.kt`, `.proto`, `.graphql`), ADRs, and Gherkin features into a copy-pasteable Master Agent Implementation Prompt.
-- 🐳 **Docker Container Sandbox & Host Protection (`--docker`)**: Generates stack-specific dev container environments (`mcr.microsoft.com/dotnet/sdk`, `eclipse-temurin:21`, `elixir:1.16`, `golang:1.22`, `php:8.3`, `python:3.12`, `ruby:3.3`, `node:20`) so AI agents run tests inside isolated Docker containers without polluting host OS.
-- 📋 **Feature Inventory & Developer Audit Trail (`ghk audit`)**: Auto-detects developer identity (`git config user.name`/`email`), SHA-256 spec & prompt hashes, timestamps, and execution records stored in `.ghe/inventory.json` with LRU retention limit (`maxEntries: 50`) and `--json` export for CI/CD audit pipelines.
-- ⚡ **Token Efficiency & Ultra-Compact Mode (`-C, --compact`)**: Uses direct `@` context pointers (`@.ghkgovernance.yaml`, `@features/*.feature`) for on-demand resolution to radically reduce token footprint vs. code dumping, providing an ultra-compact prompt mode for cost-sensitive LLMs.
-- 🌐 **Multilingual CLI & English Prompt Rationale (`ghk lang`)**: Full interactive CLI support in Spanish (`es`) and English (`en`). Master AI Prompts are intentionally generated in **English** for maximum BPE token density (~30% cheaper) and LLM reasoning accuracy.
-- 🤖 **True Agentic Engine & Self-Healing (EXPERIMENTAL - `ghk verify --auto-fix` & `ghk autopilot`)**: Connects natively with LLMs (OpenAI, Anthropic, Ollama), modifies source code, intercepts test failures, and recursively applies repairs in a true **Closed-Loop**. *Note: Agentic execution is currently experimental and should be run with human supervision.*
-- 🌐 **Web Studio UI (`ghk web`)**: Launch a premium local graphical interface to interactively generate your Gherkin specifications, detect your stack, and orchestrate agent prompts visually.
-- 🌳 **Official Cucumber AST Parser**: 100% compliant with the Gherkin standard using the official `@cucumber/gherkin` package.
+- 🤖 **AI Agent Implementation Orchestration (`ghk implement`)** ![STABLE](https://img.shields.io/badge/status-STABLE-brightgreen): Compiles `.ghkgovernance.yaml`, domain contracts (`*.contract.php`, `.ts`, `.py`, `.java`, `.go`, `.ex`, `.kt`, `.proto`, `.graphql`), ADRs, and Gherkin features into a copy-pasteable Master Agent Implementation Prompt.
+- 🌳 **Official Cucumber AST Parser** ![STABLE](https://img.shields.io/badge/status-STABLE-brightgreen): 100% compliant with the Gherkin standard using the official `@cucumber/gherkin` package.
+- 📋 **Feature Inventory & Developer Audit Trail (`ghk audit`)** ![STABLE](https://img.shields.io/badge/status-STABLE-brightgreen): Auto-detects developer identity (`git config user.name`/`email`), SHA-256 spec & prompt hashes, timestamps, and execution records stored in `.ghe/inventory.json` with LRU retention limit (`maxEntries: 50`) and `--json` export for CI/CD audit pipelines.
+- 🐳 **Docker Container Sandbox & Host Protection (`--docker`)** ![STABLE](https://img.shields.io/badge/status-STABLE-brightgreen): Generates stack-specific dev container environments (`mcr.microsoft.com/dotnet/sdk`, `eclipse-temurin:21`, `elixir:1.16`, `golang:1.22`, `php:8.3`, `python:3.12`, `ruby:3.3`, `node:20`) so AI agents run tests inside isolated Docker containers without polluting host OS.
+- ⚡ **Token Efficiency & Ultra-Compact Mode (`-C, --compact`)** ![STABLE](https://img.shields.io/badge/status-STABLE-brightgreen): Uses direct `@` context pointers (`@.ghkgovernance.yaml`, `@features/*.feature`) for on-demand resolution to radically reduce token footprint vs. code dumping, providing an ultra-compact prompt mode for cost-sensitive LLMs.
+- 🌐 **Multilingual CLI & English Prompt Rationale (`ghk lang`)** ![STABLE](https://img.shields.io/badge/status-STABLE-brightgreen): Full interactive CLI support in Spanish (`es`) and English (`en`). Master AI Prompts are intentionally generated in **English** for maximum BPE token density (~30% cheaper) and LLM reasoning accuracy.
+- 🌐 **Web Studio UI (`ghk web`)** ![BETA](https://img.shields.io/badge/status-BETA-yellow): Launch a premium local graphical interface to interactively generate your Gherkin specifications, detect your stack, and orchestrate agent prompts visually.
+- 🤖 **True Agentic Engine & Self-Healing (`ghk verify --auto-fix` & `ghk autopilot`)** ![EXPERIMENTAL](https://img.shields.io/badge/status-EXPERIMENTAL-orange): Connects natively with LLMs (OpenAI, Anthropic, Ollama), modifies source code, intercepts test failures, and recursively applies repairs in a true **Closed-Loop**. *Note: Agentic execution is currently experimental and should be run with human supervision.*
 
 ---
 
@@ -57,8 +57,17 @@ ghk audit --json
 ghk lang --set en
 
 # 6. Run Closed-Loop Test Verification with Auto-Fix Loop
-ghk verify --docker --auto-fix
+ghk verify --isolated --auto-fix --apply
 ```
+
+---
+
+## ⚠️ Known Limitations
+
+In the interest of transparency, please note the following current limitations:
+- **Experimental Agent Loops:** The `ghk verify --auto-fix` and `ghk autopilot` commands utilize autonomous LLM loops that are strictly experimental. While circuit breakers and Testcontainers are used, they can still exhibit unpredictable behavior or loops if the LLM cannot resolve the compiler error.
+- **Support Matrix Discrepancy:** While the tool scaffolds 15+ stacks, only 5 target stacks (C# .NET, Java Spring Boot, NestJS Prisma, Go pgx, and Python FastAPI) are considered Tier 1 with full compilation verification and outbox/saga implementations. Languages like Ruby, Rust, Elixir, and Flutter are "Community Previews".
+- **Semantic IR Regex Extraction:** The internal IR builder still relies heavily on RegEx pattern matching rather than deep AST interpretation for some advanced semantic features.
 
 ---
 

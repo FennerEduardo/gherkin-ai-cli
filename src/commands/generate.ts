@@ -12,6 +12,7 @@ import { registerCorePlugins } from '../plugins/core-generators-plugin';
 import { fileExistsSync, readFileSync, writeFileSync } from '../utils/file-system';
 import { logger } from '../utils/logger';
 import { ensureGitignore } from '../utils/gitignore-manager';
+import { pluginManager } from '../core/hooks';
 import { detectMissingDependencies } from '../core/stack-setup';
 import inquirer from 'inquirer';
 import chalk from 'chalk';
@@ -236,9 +237,14 @@ Objective: Write detailed Gherkin feature scenarios for ${title}.
     logger.warn('No agents selected. Filtering out prompt generation.');
   }
 
+  pluginManager.loadPlugins(config);
+  await pluginManager.trigger('beforeGenerate', { ir, config, pluginRegistry });
+
   // Generate all artifacts via Plugin System
   logger.info('Running Generation Plugins...');
   const artifacts = pluginRegistry.runGeneration(ir, config);
+  
+  await pluginManager.trigger('afterGenerate', { artifacts, config });
 
   // Filter out unselected prompts
   const filteredArtifacts = artifacts.filter(a => {

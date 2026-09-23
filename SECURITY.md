@@ -2,27 +2,34 @@
 
 ## Supported Versions
 
-Currently, only the latest stable version of Gherkin AI CLI is supported with security updates. 
+We take the security of Gherkin-AI very seriously. The following table lists the versions of the CLI that are currently supported with security updates.
 
 | Version | Supported          |
 | ------- | ------------------ |
-| 2.x.x   | :white_check_mark: |
-| < 2.0   | :x:                |
+| 2.6.x   | :white_check_mark: |
+| < 2.6.0 | :x:                |
 
 ## Reporting a Vulnerability
 
-If you discover a security vulnerability within Gherkin AI CLI, please **DO NOT** create a public issue. 
+If you discover a security vulnerability within Gherkin-AI, please DO NOT report it by creating a public GitHub issue.
 
-Please send an e-mail to the maintainer or use GitHub Security Advisories to report it privately. All security vulnerabilities will be promptly addressed.
+Instead, please send an email to our security team at **security@gherkin-ai.com** (or reach out to the repository maintainers directly via private message). 
 
-### Features Involving Code Execution
-Please note that Gherkin AI CLI has features like `ghk verify --auto-fix` which intentionally modify source code via LLM execution. 
-Users are strongly advised to:
-1. Always run these features in containerized/Docker environments or inside a CI/CD Sandbox.
-2. Use the `--dry-run` flag to review AI-generated code before applying it to the host filesystem.
+Please include the following information in your report:
+- Type of issue (e.g., buffer overflow, SQL injection, cross-site scripting, MCP permission bypass, API key leak).
+- Full paths of source file(s) related to the manifestation of the issue.
+- The location of the affected source code (tag/branch/commit or direct URL).
+- Any special configuration required to reproduce the issue.
+- Step-by-step instructions to reproduce the issue.
+- Proof of concept or exploit code (if possible).
+- Impact of the issue, including how an attacker might exploit the issue.
 
-### Web Studio (Local UI Server)
-The `ghk web` command starts a local server that provides a web interface. 
-- The server binds strictly to `127.0.0.1` and uses restricted CORS. It is NOT intended to be exposed to a public network.
-- The UI contains an endpoint (`/api/execute`) that allows executing CLI commands. While restricted via strict validation, this is inherently a Remote Code Execution (RCE) surface.
-- **Do not run `ghk web` in CI/CD or production environments**. It is intentionally disabled by default if `process.env.CI === 'true'`.
+### Triage and Resolution Process
+1. We will acknowledge receipt of your vulnerability report within 48 hours.
+2. We will investigate the issue and determine its severity and impact.
+3. We will work to provide a patch or mitigation strategy as soon as possible.
+4. We will coordinate a public disclosure with you, ensuring you receive proper credit for the discovery (unless you prefer to remain anonymous).
+
+## Automated Security Checks
+
+Gherkin-AI includes a centralized \`AgentPolicyEngine\` and a \`SecuritySanitizer\` to enforce strict filesystem access controls and prevent API key leakage via the MCP protocol. Destructive filesystem operations inherently require explicit human confirmation. If you find a bypass to these internal guardrails, it is considered a critical security vulnerability.
