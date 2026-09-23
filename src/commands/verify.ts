@@ -68,10 +68,19 @@ services:
     image: ${brokerImage}
     ports:
       - "${brokerPort}"
+
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true
+    ports:
+      - "4317:4317" # OTLP gRPC
+      - "4318:4318" # OTLP HTTP
+      - "16686:16686" # UI
 `;
       const composePath = path.join(process.cwd(), 'docker-compose.test.yml');
       fs.writeFileSync(composePath, composeContent);
-      console.log(chalk.gray(`   Created ${composePath}`));
+      console.log(chalk.gray(`   Created ${composePath} (Includes DB, Broker, and Jaeger OpenTelemetry Collector)`));
       
       console.log(chalk.cyan(`   Spinning up dependencies...`));
       execSync('docker compose -f docker-compose.test.yml up -d', { stdio: 'inherit', cwd: process.cwd() });
