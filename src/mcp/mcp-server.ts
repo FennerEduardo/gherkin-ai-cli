@@ -32,6 +32,7 @@ import { handleConvergeCommand } from '../commands/converge';
 import { promisify } from 'util';
 import { exec, execFile } from 'child_process';
 import { CrossServiceImpactAnalyzer } from '../core/analysis/cross-service-impact';
+import { classifyOperation, formatSafetyWarning } from './mcp-operation-safety';
 
 const execAsync = promisify(exec);
 const execFileAsync = promisify(execFile);
@@ -83,7 +84,7 @@ function handleJsonRpcMessage(message: any): void {
         },
         serverInfo: {
           name: 'gherkin-ai-mcp',
-          version: '2.6.1'
+          version: '2.6.5'
         }
       });
       break;
@@ -459,6 +460,10 @@ function getToolDefinitions() {
 
 async function handleToolCall(id: number | string, name: string, args: any): Promise<void> {
   try {
+    // Classify operation safety and prepend warnings for destructive operations
+    const safetyClassification = classifyOperation(name);
+    const safetyWarning = formatSafetyWarning(name);
+
     switch (name) {
       case 'run_cli_diff': {
         const { feature, target } = args;

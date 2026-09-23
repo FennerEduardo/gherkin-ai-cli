@@ -59,16 +59,13 @@ public class ${className} {
       content: stepDefCode
     },
     ...generateJavaOutboxInfrastructure(packageName),
-    ...generateJavaSagaInfrastructure(packageName),
+    ...generateJavaSagaInfrastructure(packageName, parsed.featureName),
     ...generateJavaIdempotencyInfrastructure(packageName),
     {
       filename: `infrastructure/telemetry/OpenTelemetryConfig.java`,
       content: generateJavaOpenTelemetryInfrastructure(packageName)
     },
-    {
-      filename: `application/cqrs/PaymentCQRS.java`,
-      content: generateJavaCQRSInfrastructure(packageName)
-    }
+    ...generateJavaCQRSInfrastructure(packageName, parsed.featureName)
   ];
 
   // Generate DTOs

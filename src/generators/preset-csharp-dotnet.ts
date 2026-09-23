@@ -143,22 +143,23 @@ namespace ${namespace}.Infrastructure.Data
     {
         public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options) : base(options) { }
 
-        public DbSet<${featurePascal}Aggregate> ${featurePascal}s { get; set; } = null!;
+        public DbSet<${featurePascal}> ${featurePascal}s { get; set; } = null!;
         public DbSet<OutboxMessage> OutboxMessages { get; set; } = null!;
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
             
-            modelBuilder.Entity<${featurePascal}Aggregate>(entity =>
+            modelBuilder.Entity<${featurePascal}>(entity =>
             {
                 entity.HasKey(e => e.Id);
-                // Additional configurations can be added here
+                entity.HasIndex(e => e.ReferenceCode).IsUnique();
             });
             
             modelBuilder.Entity<OutboxMessage>(entity =>
             {
                 entity.HasKey(e => e.Id);
+                entity.HasIndex(e => e.ProcessedOn).HasFilter("[ProcessedOn] IS NULL");
             });
         }
     }
@@ -254,8 +255,8 @@ public partial class Program { } // For integration testing
       content: generateCqrsHandlers(namespace, parsed.featureName)
     },
     {
-      filename: `src/Application/Sagas/PaymentSagaStateMachine.cs`,
-      content: generateSagaInfrastructure(namespace)
+      filename: `src/Application/Sagas/${featurePascal}SagaStateMachine.cs`,
+      content: generateSagaInfrastructure(namespace, parsed.featureName)
     },
     {
       filename: `src/Application/Behaviors/IdempotencyInfrastructure.cs`,

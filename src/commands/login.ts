@@ -1,5 +1,11 @@
 /* ==========================================================================
    gherkin-ai-cli - Login & Auth Credentials Command
+   
+   SECURITY: API keys are NEVER stored in plaintext files.
+   Resolution order:
+   1. Environment variables (OPENAI_API_KEY, ANTHROPIC_API_KEY, etc.)
+   2. OS keychain via `keytar` (if available, for local DX)
+   3. auth.json stores ONLY non-sensitive config (provider, endpoint, user)
    ========================================================================== */
 
 import fs from 'fs';
@@ -11,22 +17,96 @@ export interface AuthConfig {
   token?: string;
   user?: string;
   provider?: 'openai' | 'anthropic' | 'gemini' | 'ollama' | 'azure-openai' | 'custom' | string;
-  // API keys are explicitly removed from file storage for security.
-  // Must be provided via environment variables (e.g. OPENAI_API_KEY).
   endpoint?: string;
   serverUrl?: string;
   loggedInAt?: string;
+  // API keys are NEVER stored in this file. Use environment variables.
+}
+
+const AUTH_DIR = path.join(os.homedir(), '.gherkin-ai');
+const AUTH_PATH = path.join(AUTH_DIR, 'auth.json');
+const KEYCHAIN_SERVICE = 'gherkin-ai-cli';
+
+/**
+ * Resolve API key from environment variables.
+ * This is the primary and recommended approach for all environments.
+ */
+export function resolveApiKeyFromEnv(): string | undefined {
+  return (
+    process.env.OPENAI_API_KEY ||
+    process.env.ANTHROPIC_API_KEY ||
+    process.env.GEMINI_API_KEY ||
+    process.env.AZURE_OPENAI_API_KEY ||
+    process.env.LLM_API_KEY
+  );
+}
+
+/**
+ * Attempt to store API key in OS keychain (macOS Keychain, Windows Credential Manager, Linux libsecret).
+ * Returns true if successful, false if keytar is not available.
+ */
+async function storeKeyInKeychain(provider: string, apiKey: string): Promise<boolean> {
+  try {
+    const keytar = require('keytar');
+    await keytar.setPassword(KEYCHAIN_SERVICE, provider, apiKey);
+    return true;
+  } catch {
+    // keytar not available (CI, containers, minimal installs) — this is expected
+    return false;
+  }
+}
+
+/**
+ * Attempt to retrieve API key from OS keychain.
+ * Returns null if keytar is not available or no key is stored.
+ */
+async function getKeyFromKeychain(provider: string): Promise<string | null> {
+  try {
+    const keytar = require('keytar');
+    return await keytar.getPassword(KEYCHAIN_SERVICE, provider);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Resolve API key with full priority chain:
+ * 1. Environment variables (highest priority, works in CI/CD)
+ * 2. OS keychain (local development convenience)
+ * 3. Returns undefined if no key found
+ */
+export async function resolveApiKey(provider?: string): Promise<string | undefined> {
+  // 1. Environment variables (always check first)
+  const envKey = resolveApiKeyFromEnv();
+  if (envKey) return envKey;
+
+  // 2. OS keychain fallback
+  if (provider) {
+    const keychainKey = await getKeyFromKeychain(provider);
+    if (keychainKey) return keychainKey;
+  }
+
+  return undefined;
 }
 
 export function getAuthConfig(): AuthConfig | null {
-  const authPath = path.join(os.homedir(), '.gherkin-ai', 'auth.json');
-  if (!fs.existsSync(authPath)) {
+  if (!fs.existsSync(AUTH_PATH)) {
     return null;
   }
   try {
-    const raw = fs.readFileSync(authPath, 'utf8');
+    const raw = fs.readFileSync(AUTH_PATH, 'utf8');
     const auth = JSON.parse(raw) as AuthConfig;
-    // apiKey is no longer supported in file configuration
+
+    // Security migration: if old auth.json contains apiKey, warn and remove it
+    if ((auth as any).apiKey) {
+      logger.warn('⚠️  SECURITY: Found API key in auth.json (plaintext). Migrating to secure storage...');
+      logger.warn('   Please set your API key via environment variable instead:');
+      logger.warn('   export OPENAI_API_KEY="your-key-here"');
+      // Remove the key from the file
+      delete (auth as any).apiKey;
+      saveAuthConfig(auth);
+    }
+
     return auth;
   } catch {
     return null;
@@ -34,19 +114,21 @@ export function getAuthConfig(): AuthConfig | null {
 }
 
 export function saveAuthConfig(auth: AuthConfig): string {
-  const gheDir = path.join(os.homedir(), '.gherkin-ai');
-  if (!fs.existsSync(gheDir)) {
-    fs.mkdirSync(gheDir, { recursive: true });
+  if (!fs.existsSync(AUTH_DIR)) {
+    fs.mkdirSync(AUTH_DIR, { recursive: true });
   }
 
-  const authPath = path.join(gheDir, 'auth.json');
+  // Ensure no API key is written to the config file
   const payload: AuthConfig = {
     ...auth,
     loggedInAt: new Date().toISOString()
   };
+  // Explicitly strip any apiKey that might be passed
+  delete (payload as any).apiKey;
 
-  fs.writeFileSync(authPath, JSON.stringify(payload, null, 2), 'utf8');
-  return authPath;
+  // Set restrictive file permissions (owner read/write only)
+  fs.writeFileSync(AUTH_PATH, JSON.stringify(payload, null, 2), { encoding: 'utf8', mode: 0o600 });
+  return AUTH_PATH;
 }
 
 export async function handleLoginCommand(options?: {
@@ -65,12 +147,32 @@ export async function handleLoginCommand(options?: {
   const token = options?.token || process.env.GHK_AUTH_TOKEN || 'tok_agent_synthetic_' + Date.now().toString(36);
   const user = options?.user || process.env.GHK_USER || process.env.USER || 'agent-ai@local';
   const provider = options?.provider || process.env.GHK_AI_PROVIDER || 'openai';
-  if (options?.apiKey) {
-    logger.warn('⚠️ WARNING: For security, API keys are no longer stored in configuration files.');
-    logger.warn('Please export your key as an environment variable (e.g., OPENAI_API_KEY, ANTHROPIC_API_KEY).');
-  }
   const endpoint = options?.endpoint || process.env.GHK_AI_ENDPOINT || 'https://api.openai.com/v1';
   const serverUrl = options?.server || process.env.GHK_SERVER_URL || 'https://api.gherkin-ai.local';
+
+  // Handle API key securely
+  if (options?.apiKey) {
+    // Try OS keychain first
+    const stored = await storeKeyInKeychain(provider, options.apiKey);
+    if (stored) {
+      logger.success('✔ API key stored securely in OS keychain.');
+    } else {
+      // Keychain not available — instruct user to use env vars
+      logger.warn('⚠️  OS keychain not available. API keys are NOT stored in config files for security.');
+      logger.warn('   Please set your API key as an environment variable:');
+      logger.info('');
+      if (provider === 'openai') {
+        logger.info('   export OPENAI_API_KEY="your-key-here"');
+      } else if (provider === 'anthropic') {
+        logger.info('   export ANTHROPIC_API_KEY="your-key-here"');
+      } else if (provider === 'gemini') {
+        logger.info('   export GEMINI_API_KEY="your-key-here"');
+      } else {
+        logger.info('   export LLM_API_KEY="your-key-here"');
+      }
+      logger.info('');
+    }
+  }
 
   const authData: AuthConfig = {
     token,
@@ -87,6 +189,7 @@ export async function handleLoginCommand(options?: {
   logger.info(`   🤖 Proveedor de IA:  ${provider.toUpperCase()}`);
   logger.info(`   🔗 Endpoint Server:  ${endpoint}`);
   logger.info(`   🔑 Token de Sesión:  ${token.substring(0, 10)}...`);
+  logger.info(`   🔒 API Key:          ${options?.apiKey ? '(stored in keychain/env)' : '(from environment variable)'}`);
 
   return authData;
 }

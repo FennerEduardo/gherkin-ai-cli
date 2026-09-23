@@ -5,7 +5,18 @@ import { GherkinAIConfig } from '../src/core/config';
 describe('Distributed Multi-Stack & Frontend Matrix Combinations', () => {
   const mockParsed = {
     featureName: 'OrderManagement',
-    scenarios: []
+    descriptionLines: [],
+    tags: [],
+    scenarios: [],
+    domainAnalysis: {
+      actors: [],
+      commands: [],
+      queries: [],
+      events: [],
+      fixtures: [],
+      fields: [],
+      httpCodes: []
+    }
   };
 
   const matrixBackend = [

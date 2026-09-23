@@ -6,6 +6,10 @@ import { ParsedFeature } from '../core/gherkin-parser';
 import { GherkinAIConfig } from '../core/config';
 import { buildIR } from '../core/ir-builder';
 import { generatePrismaSchema } from './prisma-generator';
+import { generateNestJsCqrsModules } from './nestjs/cqrs-generator';
+import { generateNestJsOutboxInfrastructure } from './nestjs/outbox-generator';
+import { generateNestJsIdempotencyInterceptor } from './nestjs/idempotency-generator';
+import { generateNestJsSagaInfrastructure } from './nestjs/saga-generator';
 
 export function generateNodeNestJsPreset(parsed: ParsedFeature, config?: GherkinAIConfig): { filename: string; content: string }[] {
   const className = parsed.featureName.replace(/[^a-zA-Z0-9]/g, '');
@@ -72,7 +76,20 @@ ${stepBody}
     {
       filename: `test/steps/${moduleName}.steps.ts`,
       content: stepDefCode
-    }
+    },
+    {
+      filename: `src/${moduleName}/${moduleName}.cqrs.ts`,
+      content: generateNestJsCqrsModules()
+    },
+    {
+      filename: `src/infrastructure/outbox.service.ts`,
+      content: generateNestJsOutboxInfrastructure()
+    },
+    {
+      filename: `src/infrastructure/idempotency.interceptor.ts`,
+      content: generateNestJsIdempotencyInterceptor()
+    },
+    ...generateNestJsSagaInfrastructure(parsed.featureName)
   ];
 
   if (config) {

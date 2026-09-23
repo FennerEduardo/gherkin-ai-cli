@@ -15,9 +15,9 @@ describe('TypeScript Ecosystem (NestJS + Vue) Generators & Validators', () => {
 
   it('should generate NestJS Prisma Outbox infrastructure', () => {
     const code = generateNestJsOutboxInfrastructure();
-    expect(code).toContain('@prisma/client');
+    expect(code).toContain('PrismaService');
     expect(code).toContain('outboxMessage.create');
-    expect(code).toContain('saveMessage');
+    expect(code).toContain('FOR UPDATE SKIP LOCKED');
   });
 
   it('should generate NestJS Idempotency Interceptor', () => {

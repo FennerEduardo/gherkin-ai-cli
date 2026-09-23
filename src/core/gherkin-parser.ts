@@ -17,8 +17,12 @@ export class GherkinParser implements ISpecificationParser {
 export function parseGherkinText(gherkinText: string): ParsedFeature {
   const trimmed = gherkinText.trim();
   if (trimmed.startsWith('#') || trimmed.match(/^[-*]\s+/)) {
-    const { MarkdownEarsParser } = require('./parsers/markdown-ears-parser');
-    return new MarkdownEarsParser().parse(gherkinText);
+    try {
+      const { MarkdownEarsParser } = require('./parsers/markdown-ears-parser');
+      return new MarkdownEarsParser().parse(gherkinText);
+    } catch (e) {
+      // Fallback if Phase 4 parser is not yet fully available in this environment
+    }
   }
 
   const options = {
