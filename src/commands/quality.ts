@@ -5,6 +5,7 @@
 import chalk from 'chalk';
 import { calculateDeliveryRisk } from '../core/risk-engine';
 import { loadConfig } from '../core/config';
+import { runCoverage } from '../core/coverage-integration';
 
 export async function handleQualityCommand(): Promise<void> {
   console.log(chalk.bold.cyan('\n📊 Calculating Feature Quality Index Score...\n'));
@@ -33,11 +34,25 @@ export async function handleQualityCommand(): Promise<void> {
     riskCard.factors.forEach(f => console.log(`  - ${f}`));
   }
 
-  if (riskCard.requiresHumanApproval) {
+  console.log(chalk.cyan('\n🔍 Running Test Coverage Analysis...'));
+  const coverageResult = runCoverage(process.cwd(), config);
+
+  console.log(`- Coverage Tool:        ${coverageResult.toolUsed}`);
+  if (coverageResult.errorMessage) {
+    console.log(chalk.yellow(`- Coverage Report:      ⚠️ Not available (${coverageResult.errorMessage})`));
+  } else {
+    const covColor = coverageResult.success ? chalk.green : chalk.red;
+    console.log(`- Coverage Score:       ${covColor(`${coverageResult.coveragePercentage}%`)} (Target: ${coverageResult.targetPercentage}%)`);
+  }
+
+  if (riskCard.requiresHumanApproval || (!coverageResult.success && !coverageResult.errorMessage)) {
     console.log(chalk.red.bold('\n⚠ HUMAN APPROVAL REQUIRED FOR DEPLOYMENT'));
+    if (!coverageResult.success && !coverageResult.errorMessage) {
+      console.log(chalk.red(`  ↳ Code Coverage (${coverageResult.coveragePercentage}%) is below the required target (${coverageResult.targetPercentage}%)`));
+    }
     process.exitCode = 1;
   } else {
-    console.log(chalk.green.bold('\n✅ AUTO-DEPLOYMENT SAFE (Low Risk)'));
+    console.log(chalk.green.bold('\n✅ AUTO-DEPLOYMENT SAFE (Quality Gates Passed)'));
   }
   
   console.log('\n');

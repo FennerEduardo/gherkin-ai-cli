@@ -12,6 +12,7 @@ import { MetricsEngine } from '../core/metrics-engine';
 export interface VerifyCommandOptions {
   autoFix?: boolean;
   docker?: boolean;
+  isolated?: boolean;
   maxRetries?: string | number;
   command?: string;
 }
@@ -34,11 +35,57 @@ export async function handleVerifyCommand(options: VerifyCommandOptions = {}): P
   const metricsEngine = new MetricsEngine();
   const execEvents: any[] = [];
   const execErrors: any[] = [];
+  const previousPatchHashes = new Set<string>();
 
-  while (iteration <= maxRetries && !success) {
-    console.log(chalk.bold.blue(`[Iteration ${iteration}/${maxRetries}] Running Test Harness...`));
-    
-    const result = executeSandbox(sandboxOpts);
+  const fs = require('fs');
+  const path = require('path');
+  const { execSync } = require('child_process');
+  let isIsolatedActive = false;
+
+  try {
+    if (options.isolated) {
+      console.log(chalk.bold.cyan(`\n🐳 [Isolated Mode] Generating dynamic Testcontainers compose stack...`));
+      
+      const dbPort = config.stack.database === 'postgres' ? '5432' : '3306';
+      const dbImage = config.stack.database === 'postgres' ? 'postgres:15-alpine' : 'mysql:8.0';
+      const brokerImage = config.stack.messaging === 'rabbitmq' ? 'rabbitmq:3-management-alpine' : 'redis:7-alpine';
+      const brokerPort = config.stack.messaging === 'rabbitmq' ? '5672:5672' : '6379:6379';
+
+      const composeContent = `version: '3.8'
+services:
+  db:
+    image: ${dbImage}
+    environment:
+      POSTGRES_USER: testuser
+      POSTGRES_PASSWORD: testpassword
+      POSTGRES_DB: testdb
+      MYSQL_ROOT_PASSWORD: testpassword
+      MYSQL_DATABASE: testdb
+    ports:
+      - "\${DB_PORT:-${dbPort}}:${dbPort}"
+  
+  broker:
+    image: ${brokerImage}
+    ports:
+      - "${brokerPort}"
+`;
+      const composePath = path.join(process.cwd(), 'docker-compose.test.yml');
+      fs.writeFileSync(composePath, composeContent);
+      console.log(chalk.gray(`   Created ${composePath}`));
+      
+      console.log(chalk.cyan(`   Spinning up dependencies...`));
+      execSync('docker compose -f docker-compose.test.yml up -d', { stdio: 'inherit', cwd: process.cwd() });
+      isIsolatedActive = true;
+      
+      // Wait for DB to be ready
+      console.log(chalk.gray(`   Waiting 3s for services to initialize...`));
+      execSync('sleep 3');
+    }
+
+    while (iteration <= maxRetries && !success) {
+      console.log(chalk.bold.blue(`[Iteration ${iteration}/${maxRetries}] Running Test Harness...`));
+      
+      const result = executeSandbox(sandboxOpts);
 
     if (result.success) {
       console.log(chalk.bold.green(`\n✅ Suite Verification Passed! (Duration: ${result.durationMs}ms)`));
@@ -140,6 +187,16 @@ export async function handleVerifyCommand(options: VerifyCommandOptions = {}): P
     
     // Apply Code Modifications if provided by RealAgentProvider
     if (repairResult.codeModifications && repairResult.codeModifications.length > 0) {
+      const crypto = require('crypto');
+      const patchHash = crypto.createHash('sha256').update(JSON.stringify(repairResult.codeModifications)).digest('hex');
+
+      if (previousPatchHashes.has(patchHash)) {
+        console.log(chalk.bold.red(`\n⚡ CIRCUIT BREAKER TRIPPED: Agent proposed the exact same code modifications as a previous iteration. Aborting to prevent infinite loop.`));
+        success = false;
+        break;
+      }
+      previousPatchHashes.add(patchHash);
+
       const { validateGuardrails } = require('../core/guardrails');
       const proposedFiles = repairResult.codeModifications.map((m: any) => m.filePath);
       
@@ -185,7 +242,6 @@ export async function handleVerifyCommand(options: VerifyCommandOptions = {}): P
         try {
           const fs = require('fs');
           const path = require('path');
-          const crypto = require('crypto');
           const { validateTypeScriptSyntax } = require('../core/syntax-validator');
           
           if (!validateTypeScriptSyntax(mod.filePath, mod.content)) {
@@ -244,5 +300,17 @@ export async function handleVerifyCommand(options: VerifyCommandOptions = {}): P
 
   if (!success) {
     process.exitCode = 1;
+  }
+  } finally {
+    if (isIsolatedActive) {
+      console.log(chalk.cyan(`\n🧹 Cleaning up Isolated Testcontainers stack...`));
+      try {
+        const { execSync } = require('child_process');
+        execSync('docker compose -f docker-compose.test.yml down -v', { stdio: 'inherit', cwd: process.cwd() });
+        console.log(chalk.gray(`   Isolated environment destroyed successfully.`));
+      } catch (e: any) {
+        console.log(chalk.red(`   ✖ Failed to tear down isolated environment: ${e.message}`));
+      }
+    }
   }
 }

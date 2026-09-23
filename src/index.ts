@@ -100,12 +100,18 @@ program
 program
   .command('verify')
   .alias('v-loop')
-  .description('Run closed-loop verification test harness with optional agent auto-fix and docker isolation')
+  .description('Run closed-loop verification test harness (dry-run by default) with optional agent auto-fix and docker isolation')
   .option('--auto-fix', 'Invoke agent self-healing loop on test failure')
+  .option('--apply', 'Apply agent self-healing code modifications to filesystem (disables dry-run)')
   .option('--docker', 'Run test suite inside isolated Docker container')
+  .option('--isolated', 'Generate docker-compose on the fly to spin up isolated DB/Brokers (Testcontainers mode)')
   .option('--max-retries <number>', 'Maximum auto-fix retries (default: 3)', '3')
   .option('-c, --command <cmd>', 'Custom test execution command')
   .action(async (options) => {
+    // If --apply is not passed, force dry run
+    if (!options.apply) {
+      process.env.GHK_DRY_RUN = 'true';
+    }
     await handleVerifyCommand(options);
   });
 
