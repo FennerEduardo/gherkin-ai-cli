@@ -61,17 +61,31 @@ generator client {
     for (const cmd of ir.commands) {
       const entityName = toPascalCase(cmd.subject || cmd.name.replace(/^(create|update|delete|cancel|place|process)/i, ''));
       if (entityName && entityName.length > 2 && !entityMap[entityName]) {
-        const fields: { name: string; type: string; isId?: boolean; isUnique?: boolean }[] = [
+        const fields: { name: string; type: string; isId?: boolean; isUnique?: boolean; isOptional?: boolean; relationTarget?: string }[] = [
           { name: 'id', type: 'String', isId: true }
         ];
 
+        // Ensure multi-tenancy isolation field
+        fields.push({ name: 'tenantId', type: 'String' });
+
         if (cmd.inputFields && cmd.inputFields.length > 0) {
           for (const f of cmd.inputFields) {
-            if (f.name !== 'id') {
-              const fieldType = f.type === 'number' ? 'Int' :
+            if (f.name !== 'id' && f.name !== 'tenantId') {
+              let fieldType = f.type === 'number' ? 'Int' :
                                 f.type === 'boolean' ? 'Boolean' :
                                 f.type === 'date' ? 'DateTime' : 'String';
-              fields.push({ name: f.name, type: fieldType });
+              
+              // Infer relations based on "Id" suffix
+              let relationTarget = undefined;
+              if (f.name.endsWith('Id') && f.name.length > 2) {
+                const targetModel = toPascalCase(f.name.slice(0, -2));
+                relationTarget = targetModel;
+              }
+
+              // Optional support based on constraints (mocked logic from IR)
+              const isOptional = f.name.toLowerCase().includes('optional') || f.name.toLowerCase() === 'notes';
+
+              fields.push({ name: f.name, type: fieldType, isOptional, relationTarget });
             }
           }
         }
@@ -90,11 +104,16 @@ generator client {
     }
   }
 
-  // Render models
+  // Generate models
   for (const [modelName, fields] of Object.entries(entityMap)) {
     prismaContent += `model ${modelName} {\n`;
+    
+    // Track relations to append them
+    const relations: string[] = [];
+
     for (const f of fields) {
-      let line = `  ${f.name} ${f.type}`;
+      let line = `  ${f.name} ${f.type}${f.isOptional ? '?' : ''}`;
+      
       if (f.isId) {
         line += ' @id @default(uuid())';
       } else if (f.name === 'createdAt') {
@@ -104,8 +123,31 @@ generator client {
       } else if (f.isUnique) {
         line += ' @unique';
       }
+
+      if (f.relationTarget) {
+        // e.g. userId String -> user User @relation(fields: [userId], references: [id])
+        const relationFieldName = f.name.slice(0, -2);
+        relations.push(`  ${relationFieldName} ${f.relationTarget}? @relation(fields: [${f.name}], references: [id])`);
+      }
+
       prismaContent += line + '\n';
     }
+
+    if (relations.length > 0) {
+      prismaContent += '\\n' + relations.join('\\n') + '\\n';
+    }
+
+    // Compound Indexes
+    prismaContent += `\n  @@index([tenantId, createdAt])\n`;
+    
+    if (fields.some(f => f.name === 'status')) {
+      prismaContent += `  @@index([tenantId, status])\n`;
+    }
+
+    // Snake case mapping
+    const snakeCaseName = modelName.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`).replace(/^_/, '');
+    prismaContent += `\n  @@map("${snakeCaseName}")\n`;
+
     prismaContent += `}\n\n`;
   }
 
