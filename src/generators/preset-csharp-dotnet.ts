@@ -58,6 +58,7 @@ public abstract class AggregateRoot<TId>
 {
     public TId Id { get; protected set; } = default!;
     public long Version { get; protected set; }
+    public string TenantId { get; protected set; } = string.Empty;
 }
 
 public abstract class ValueObject
@@ -74,10 +75,11 @@ public class ${featurePascal} : AggregateRoot<Guid>
 {
     public string ReferenceCode { get; private set; } = string.Empty;
 
-    public ${featurePascal}(string referenceCode)
+    public ${featurePascal}(string referenceCode, string tenantId = "default")
     {
         Id = Guid.NewGuid();
         ReferenceCode = referenceCode;
+        TenantId = tenantId;
     }
 }
 `;
@@ -139,9 +141,19 @@ using ${namespace}.Infrastructure.Outbox;
 
 namespace ${namespace}.Infrastructure.Data
 {
+    public interface ITenantService
+    {
+        string GetCurrentTenantId();
+    }
+
     public class ApplicationDbContext : DbContext
     {
-        public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options) : base(options) { }
+        private readonly ITenantService _tenantService;
+
+        public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options, ITenantService tenantService) : base(options) 
+        {
+            _tenantService = tenantService;
+        }
 
         public DbSet<${featurePascal}> ${featurePascal}s { get; set; } = null!;
         public DbSet<OutboxMessage> OutboxMessages { get; set; } = null!;
@@ -154,6 +166,7 @@ namespace ${namespace}.Infrastructure.Data
             {
                 entity.HasKey(e => e.Id);
                 entity.HasIndex(e => e.ReferenceCode).IsUnique();
+                entity.HasQueryFilter(e => EF.Property<string>(e, "TenantId") == _tenantService.GetCurrentTenantId());
             });
             
             modelBuilder.Entity<OutboxMessage>(entity =>
@@ -179,6 +192,10 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
+
+// Configure Tenant Service
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<ITenantService, HttpHeaderTenantService>();
 
 // Configure DbContext
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
@@ -222,6 +239,31 @@ app.MapControllers();
 app.Run();
 
 public partial class Program { } // For integration testing
+
+namespace ${namespace}.Infrastructure.Data
+{
+    using Microsoft.AspNetCore.Http;
+    
+    public class HttpHeaderTenantService : ITenantService
+    {
+        private readonly IHttpContextAccessor _httpContextAccessor;
+
+        public HttpHeaderTenantService(IHttpContextAccessor httpContextAccessor)
+        {
+            _httpContextAccessor = httpContextAccessor;
+        }
+
+        public string GetCurrentTenantId()
+        {
+            var context = _httpContextAccessor.HttpContext;
+            if (context != null && context.Request.Headers.TryGetValue("X-Tenant-Id", out var tenantId))
+            {
+                return tenantId.ToString();
+            }
+            return "default"; // Fallback
+        }
+    }
+}
 `;
 
   return [

@@ -9,6 +9,7 @@ import { generateJavaSagaInfrastructure } from './java/java-saga-generator';
 import { generateJavaIdempotencyInfrastructure } from './java/java-idempotency-generator';
 import { generateJavaOpenTelemetryInfrastructure } from './java/java-opentelemetry-generator';
 import { generateJavaCQRSInfrastructure } from './java/java-cqrs-generator';
+import { generateJavaMultiTenancyInfrastructure } from './java/java-multitenancy-generator';
 
 export function generateJavaSpringPreset(parsed: ParsedFeature): { filename: string; content: string }[] {
   const className = parsed.featureName.replace(/[^a-zA-Z0-9]/g, '') + 'StepDefinitions';
@@ -65,7 +66,8 @@ public class ${className} {
       filename: `infrastructure/telemetry/OpenTelemetryConfig.java`,
       content: generateJavaOpenTelemetryInfrastructure(packageName)
     },
-    ...generateJavaCQRSInfrastructure(packageName, parsed.featureName)
+    ...generateJavaCQRSInfrastructure(packageName, parsed.featureName),
+    ...generateJavaMultiTenancyInfrastructure(packageName)
   ];
 
   // Generate DTOs

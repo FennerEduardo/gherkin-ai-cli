@@ -116,22 +116,30 @@ export function detectDefaultTestCommand(projectDir: string): string {
   return 'npm test';
 }
 
-export function validateStackCompilation(projectDir: string, stack: 'java' | 'dotnet' | 'node'): SandboxResult {
+export function validateStackCompilation(projectDir: string, stack: 'java' | 'dotnet' | 'node' | 'python' | 'go'): SandboxResult {
   let hasLocalSdk = false;
   let command = '';
   let dockerImage = '';
 
   if (stack === 'java') {
     hasLocalSdk = isToolAvailable('mvn');
-    command = 'mvn compile';
+    command = 'mvn compile && mvn test';
     dockerImage = 'maven:3.9-eclipse-temurin-21-alpine';
   } else if (stack === 'dotnet') {
     hasLocalSdk = isToolAvailable('dotnet');
-    command = 'dotnet build --no-restore';
+    command = 'dotnet build --no-restore && dotnet test --no-build';
     dockerImage = 'mcr.microsoft.com/dotnet/sdk:8.0-alpine';
+  } else if (stack === 'python') {
+    hasLocalSdk = isToolAvailable('python3') || isToolAvailable('python');
+    command = 'python -m py_compile $(find . -name "*.py") && pytest';
+    dockerImage = 'python:3.12-alpine';
+  } else if (stack === 'go') {
+    hasLocalSdk = isToolAvailable('go');
+    command = 'go build ./... && go test ./...';
+    dockerImage = 'golang:1.23-alpine';
   } else {
     hasLocalSdk = isToolAvailable('npx');
-    command = 'npx tsc --noEmit';
+    command = 'npx tsc --noEmit && npm test';
     dockerImage = 'node:24-alpine';
   }
 

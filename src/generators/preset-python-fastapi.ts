@@ -6,6 +6,7 @@ import { ParsedFeature } from '../core/gherkin-parser';
 import { generatePythonOutboxInfrastructure } from './python/python-outbox-generator';
 import { generatePythonSagaInfrastructure } from './python/python-saga-generator';
 import { generatePythonIdempotencyInfrastructure } from './python/python-idempotency-generator';
+import { generatePythonMultiTenancyInfrastructure } from './python/python-multitenancy-generator';
 
 export function generatePythonFastApiPreset(parsed: ParsedFeature): { filename: string; content: string }[] {
   const moduleName = parsed.featureName.toLowerCase().replace(/[^a-z0-9]/g, '_') + '_steps';
@@ -36,6 +37,7 @@ def step_${st.text.toLowerCase().replace(/[^a-z0-9]/g, '_')}():
   const outboxFiles = generatePythonOutboxInfrastructure();
   const sagaFiles = generatePythonSagaInfrastructure(parsed.featureName);
   const idempotencyFiles = generatePythonIdempotencyInfrastructure();
+  const multitenancyFiles = generatePythonMultiTenancyInfrastructure();
 
   return [
     {
@@ -44,6 +46,7 @@ def step_${st.text.toLowerCase().replace(/[^a-z0-9]/g, '_')}():
     },
     ...outboxFiles,
     ...sagaFiles,
-    ...idempotencyFiles
+    ...idempotencyFiles,
+    ...multitenancyFiles
   ];
 }

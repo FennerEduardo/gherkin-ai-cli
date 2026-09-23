@@ -6,12 +6,14 @@ import { ParsedFeature } from '../core/gherkin-parser';
 import { generateGoOutboxInfrastructure } from './go/go-outbox-generator';
 import { generateGoSagaInfrastructure } from './go/go-saga-generator';
 import { generateGoIdempotencyInfrastructure } from './go/go-idempotency-generator';
+import { generateGoMultiTenancyInfrastructure } from './go/go-multitenancy-generator';
 
 export function generateGoPreset(parsed: ParsedFeature): { filename: string; content: string }[] {
   const packageName = parsed.featureName.toLowerCase().replace(/[^a-z0-9]/g, '');
   const outboxFiles = generateGoOutboxInfrastructure(packageName || 'bddtests');
   const sagaFiles = generateGoSagaInfrastructure(packageName || 'bddtests', parsed.featureName);
   const idempotencyFiles = generateGoIdempotencyInfrastructure(packageName || 'bddtests');
+  const multitenancyFiles = generateGoMultiTenancyInfrastructure(packageName || 'bddtests');
 
   const stepDefCode = `// Godog Step Definitions for ${parsed.featureName}
 package ${packageName || 'bddtests'}
@@ -61,6 +63,7 @@ func TestFeatures(t *testing.T) {
     },
     ...outboxFiles,
     ...sagaFiles,
-    ...idempotencyFiles
+    ...idempotencyFiles,
+    ...multitenancyFiles
   ];
 }

@@ -10,6 +10,7 @@ import { generateNestJsCqrsModules } from './nestjs/cqrs-generator';
 import { generateNestJsOutboxInfrastructure } from './nestjs/outbox-generator';
 import { generateNestJsIdempotencyInterceptor } from './nestjs/idempotency-generator';
 import { generateNestJsSagaInfrastructure } from './nestjs/saga-generator';
+import { generateNestJsMultiTenancyInfrastructure } from './nestjs/multitenancy-generator';
 
 export function generateNodeNestJsPreset(parsed: ParsedFeature, config?: GherkinAIConfig): { filename: string; content: string }[] {
   const className = parsed.featureName.replace(/[^a-zA-Z0-9]/g, '');
@@ -89,7 +90,8 @@ ${stepBody}
       filename: `src/infrastructure/idempotency.interceptor.ts`,
       content: generateNestJsIdempotencyInterceptor()
     },
-    ...generateNestJsSagaInfrastructure(parsed.featureName)
+    ...generateNestJsSagaInfrastructure(parsed.featureName),
+    ...generateNestJsMultiTenancyInfrastructure()
   ];
 
   if (config) {
