@@ -1,6 +1,4 @@
-export function generateAwsCdkInfrastructure(projectName: string): string {
-  const camelName = projectName.split('-').map(p => p.charAt(0).toUpperCase() + p.slice(1)).join('');
-  return `// AWS CDK: Base Infrastructure for Microservices
+// AWS CDK: Base Infrastructure for Microservices
 import * as cdk from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 import * as sns from 'aws-cdk-lib/aws-sns';
@@ -12,14 +10,14 @@ import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
 
-export class ${camelName}InfrastructureStack extends cdk.Stack {
+export class TestInfrastructureStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
 
     // 1. Messaging: SNS FIFO Topic for Domain Events
     // ---------------------------------------------------------
     const domainEventsTopic = new sns.Topic(this, 'DomainEventsTopic', {
-      topicName: \`\${id}-domain-events.fifo\`,
+      topicName: `${id}-domain-events.fifo`,
       displayName: 'Global Domain Events Exchange',
       fifo: true,
       contentBasedDeduplication: true,
@@ -28,7 +26,7 @@ export class ${camelName}InfrastructureStack extends cdk.Stack {
     // 2. Dead Letter Queue FIFO
     // ---------------------------------------------------------
     const dlq = new sqs.Queue(this, 'MainDeadLetterQueue', {
-      queueName: \`\${id}-dlq.fifo\`,
+      queueName: `${id}-dlq.fifo`,
       fifo: true,
       retentionPeriod: cdk.Duration.days(14),
     });
@@ -36,7 +34,7 @@ export class ${camelName}InfrastructureStack extends cdk.Stack {
     // 3. SQS FIFO Queue for Consumer (with Retry / DLQ)
     // ---------------------------------------------------------
     const consumerQueue = new sqs.Queue(this, 'ServiceConsumerQueue', {
-      queueName: \`\${id}-service-queue.fifo\`,
+      queueName: `${id}-service-queue.fifo`,
       fifo: true,
       contentBasedDeduplication: true,
       visibilityTimeout: cdk.Duration.seconds(30),
@@ -53,7 +51,7 @@ export class ${camelName}InfrastructureStack extends cdk.Stack {
     // 4. Base de Datos DynamoDB (Read Models / Proyecciones)
     // ---------------------------------------------------------
     const readModelTable = new dynamodb.Table(this, 'ReadModelTable', {
-      tableName: \`\${id}-read-models\`,
+      tableName: `${id}-read-models`,
       partitionKey: { name: 'pk', type: dynamodb.AttributeType.STRING },
       sortKey: { name: 'sk', type: dynamodb.AttributeType.STRING },
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
@@ -63,12 +61,12 @@ export class ${camelName}InfrastructureStack extends cdk.Stack {
     // 5. Secrets Manager: Database Credentials
     // ---------------------------------------------------------
     const dbCredentialsSecret = new secretsmanager.Secret(this, 'DbCredentialsSecret', {
-      secretName: \`\${id}-db-credentials\`,
+      secretName: `${id}-db-credentials`,
       description: 'Database credentials for the microservice',
       generateSecretString: {
         secretStringTemplate: JSON.stringify({ username: 'dbadmin' }),
         generateStringKey: 'password',
-        excludeCharacters: '"@/\\\\',
+        excludeCharacters: '"@/\\',
       },
     });
 
@@ -76,7 +74,7 @@ export class ${camelName}InfrastructureStack extends cdk.Stack {
     // ---------------------------------------------------------
     const vpc = new ec2.Vpc(this, 'EksVpc', { maxAzs: 2 });
     const cluster = new eks.Cluster(this, 'ServiceCluster', {
-      clusterName: \`\${id}-cluster\`,
+      clusterName: `${id}-cluster`,
       vpc,
       defaultCapacity: 2,
       version: eks.KubernetesVersion.V1_29,
@@ -89,8 +87,8 @@ export class ${camelName}InfrastructureStack extends cdk.Stack {
       ).withConditions({
         StringEquals: new cdk.CfnJson(this, 'ConditionJson', {
           value: {
-            [\`\${cluster.openIdConnectProvider.openIdConnectProviderIssuer}:aud\`]: 'sts.amazonaws.com',
-            [\`\${cluster.openIdConnectProvider.openIdConnectProviderIssuer}:sub\`]: 'system:serviceaccount:default:microservice-sa',
+            [`${cluster.openIdConnectProvider.openIdConnectProviderIssuer}:aud`]: 'sts.amazonaws.com',
+            [`${cluster.openIdConnectProvider.openIdConnectProviderIssuer}:sub`]: 'system:serviceaccount:default:microservice-sa',
           },
         }),
       }),
@@ -102,6 +100,4 @@ export class ${camelName}InfrastructureStack extends cdk.Stack {
     readModelTable.grantReadWriteData(serviceAccountRole);
     dbCredentialsSecret.grantRead(serviceAccountRole);
   }
-}
-`
 }
