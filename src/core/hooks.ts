@@ -26,8 +26,8 @@ class PluginManager {
 
   loadPlugins(config: GherkinAIConfig) {
     // Dynamically load plugins from config if they exist
-    if (config.plugins && Array.isArray(config.plugins)) {
-      for (const pluginName of config.plugins) {
+    if ((config as any).plugins && Array.isArray((config as any).plugins)) {
+      for (const pluginName of (config as any).plugins) {
         try {
           // Attempt to load local module or from node_modules
           const pluginModule = require(pluginName);

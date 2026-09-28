@@ -42,7 +42,7 @@ generator client {
   }
 
   // Generate Models from Command / Query Entities
-  const entityMap: Record<string, { name: string; type: string; isId?: boolean; isUnique?: boolean }[]> = {};
+  const entityMap: Record<string, { name: string; type: string; isId?: boolean; isUnique?: boolean; isOptional?: boolean; relationTarget?: string }[]> = {};
 
   // Infer User entity if authentication is enabled or referenced in actors
   if (ir.actors && ir.actors.length > 0) {
@@ -150,6 +150,30 @@ generator client {
 
     prismaContent += `}\n\n`;
   }
+
+  // ENTERPRISE GUARANTEES: Inject Outbox and Idempotency Models natively
+  prismaContent += `model OutboxMessage {
+  id          String    @id @default(uuid())
+  eventType   String
+  payload     String    @db.Text
+  occurredOn  DateTime  @default(now())
+  processedOn DateTime?
+  retryCount  Int       @default(0)
+  lastError   String?   @db.Text
+  
+  @@index([processedOn, retryCount, occurredOn])
+  @@map("outbox_messages")
+}
+
+model ProcessedEvent {
+  eventId      String   @id
+  status       String   // PROCESSING, COMPLETED, FAILED
+  responseBody String?  @db.Text
+  processedAt  DateTime @default(now())
+
+  @@index([status, processedAt])
+  @@map("processed_events")
+}\n\n`;
 
   return prismaContent;
 }

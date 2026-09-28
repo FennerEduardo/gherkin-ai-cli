@@ -20,7 +20,8 @@ export interface AuthConfig {
   endpoint?: string;
   serverUrl?: string;
   loggedInAt?: string;
-  // API keys are NEVER stored in this file. Use environment variables.
+  // SECURITY (Enterprise): API keys are NEVER stored in this file. 
+  // Use environment variables (OPENAI_API_KEY) or OS Keychain.
 }
 
 const AUTH_DIR = path.join(os.homedir(), '.gherkin-ai');
@@ -134,7 +135,6 @@ export function saveAuthConfig(auth: AuthConfig): string {
 export async function handleLoginCommand(options?: {
   token?: string;
   user?: string;
-  apiKey?: string;
   provider?: string;
   endpoint?: string;
   server?: string;
@@ -150,29 +150,20 @@ export async function handleLoginCommand(options?: {
   const endpoint = options?.endpoint || process.env.GHK_AI_ENDPOINT || 'https://api.openai.com/v1';
   const serverUrl = options?.server || process.env.GHK_SERVER_URL || 'https://api.gherkin-ai.local';
 
-  // Handle API key securely
-  if (options?.apiKey) {
-    // Try OS keychain first
-    const stored = await storeKeyInKeychain(provider, options.apiKey);
-    if (stored) {
-      logger.success('✔ API key stored securely in OS keychain.');
-    } else {
-      // Keychain not available — instruct user to use env vars
-      logger.warn('⚠️  OS keychain not available. API keys are NOT stored in config files for security.');
-      logger.warn('   Please set your API key as an environment variable:');
-      logger.info('');
-      if (provider === 'openai') {
-        logger.info('   export OPENAI_API_KEY="your-key-here"');
-      } else if (provider === 'anthropic') {
-        logger.info('   export ANTHROPIC_API_KEY="your-key-here"');
-      } else if (provider === 'gemini') {
-        logger.info('   export GEMINI_API_KEY="your-key-here"');
-      } else {
-        logger.info('   export LLM_API_KEY="your-key-here"');
-      }
-      logger.info('');
-    }
+  // Enforce secure API Key handling
+  logger.warn('⚠️  Enterprise Security: API keys cannot be passed via arguments or stored in auth.json.');
+  logger.warn('   Please set your API key as an environment variable:');
+  logger.info('');
+  if (provider === 'openai') {
+    logger.info('   export OPENAI_API_KEY="your-key-here"');
+  } else if (provider === 'anthropic') {
+    logger.info('   export ANTHROPIC_API_KEY="your-key-here"');
+  } else if (provider === 'gemini') {
+    logger.info('   export GEMINI_API_KEY="your-key-here"');
+  } else {
+    logger.info('   export LLM_API_KEY="your-key-here"');
   }
+  logger.info('');
 
   const authData: AuthConfig = {
     token,
@@ -189,7 +180,7 @@ export async function handleLoginCommand(options?: {
   logger.info(`   🤖 Proveedor de IA:  ${provider.toUpperCase()}`);
   logger.info(`   🔗 Endpoint Server:  ${endpoint}`);
   logger.info(`   🔑 Token de Sesión:  ${token.substring(0, 10)}...`);
-  logger.info(`   🔒 API Key:          ${options?.apiKey ? '(stored in keychain/env)' : '(from environment variable)'}`);
+  logger.info(`   🔒 API Key:          (Resolved from Environment Variable or Keychain)`);
 
   return authData;
 }

@@ -93,6 +93,22 @@ export function validateDistributedTopology(context: ValidatorContext): Validati
         'Ensure tenant context is propagated through the entire event chain for proper isolation.'
       );
     }
+
+    // ENTERPRISE GUARANTEES: Row-Level Security Enforcement
+    const hasRLS = context.files.some(f => 
+      f.content.includes('HasQueryFilter') || 
+      f.content.includes('Row Level Security') || 
+      f.content.includes('prisma.$extends') ||
+      f.content.includes('ENABLE ROW LEVEL SECURITY')
+    );
+
+    if (!hasRLS) {
+      result.errors.push(
+        '[DATA LEAKAGE RISK]: TenantId detected but no Row-Level Security (RLS) or Global Query Filters found. ' +
+        'Multi-tenant applications MUST implement explicit RLS to prevent cross-tenant data exposure.'
+      );
+      result.valid = false;
+    }
   }
 
   // Rule 5: Events without projections in CQRS

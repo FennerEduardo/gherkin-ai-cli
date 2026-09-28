@@ -462,7 +462,39 @@ async function handleToolCall(id: number | string, name: string, args: any): Pro
   try {
     // Classify operation safety and prepend warnings for destructive operations
     const safetyClassification = classifyOperation(name);
-    const safetyWarning = formatSafetyWarning(name);
+    let safetyWarning = formatSafetyWarning(name);
+
+    // ENTERPRISE SECURITY: Intercept Destructive Operations via AgentPolicyEngine
+    if (safetyClassification.level === 'destructive') {
+      const isHitlApproved = process.env.GHK_ALLOW_DESTRUCTIVE === 'true';
+      if (!isHitlApproved) {
+        return sendJsonRpcResponse(id, null, {
+          code: -32603,
+          message: `[SECURITY BLOCK] Operation '${name}' is classified as DESTRUCTIVE. ` +
+                   `Enterprise policy requires Human-In-The-Loop (HITL) consent. ` +
+                   `To authorize this execution, run with GHK_ALLOW_DESTRUCTIVE=true.`
+        });
+      }
+      safetyWarning += '\n[SECURITY LOG] Destructive operation approved via GHK_ALLOW_DESTRUCTIVE.\n';
+    }
+
+    // ENTERPRISE SECURITY: Validate file modifications against Constitution
+    if (name === 'run_cli_diff' || name === 'run_cli_add' || name === 'run_cli_generate') {
+      const policyEngine = new AgentPolicyEngine(process.cwd());
+      const targetFiles = [];
+      if (args.target) targetFiles.push(args.target);
+      
+      if (targetFiles.length > 0) {
+        const policyEval = policyEngine.evaluateFileModifications(targetFiles);
+        if (!policyEval.allowed) {
+          return sendJsonRpcResponse(id, null, {
+            code: -32603,
+            message: `[POLICY BLOCK] Operation '${name}' violates governance constitution:\n` +
+                     policyEval.violations.join('\n')
+          });
+        }
+      }
+    }
 
     switch (name) {
       case 'run_cli_diff': {
