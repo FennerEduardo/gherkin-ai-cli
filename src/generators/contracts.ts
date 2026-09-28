@@ -10,6 +10,7 @@ import { generatePythonContracts } from './contracts-python';
 import { generatePhpContracts } from './contracts-php';
 import { generateGoContracts } from './contracts-go';
 import { generateCsharpContracts } from './contracts-csharp';
+import { generateKotlinContracts } from './contracts-kotlin';
 
 export interface GeneratedContractsOutput {
   contractsTs: string;
@@ -318,6 +319,11 @@ ${effectiveProhibited.map(p => `- \`${p}\``).join('\n')}
       filename: `${featurePascal.toLowerCase()}.contract.cs`,
       content: generateCsharpContracts(parsed, ir, config)
     };
+  } else if (config.stack.language === 'kotlin') {
+    nativeContract = {
+      filename: `${featurePascal.toLowerCase()}.contract.kt`,
+      content: generateKotlinContracts(parsed, ir, config)
+    };
   }
 
   // Generate dynamic project root file
@@ -372,6 +378,24 @@ docker run --rm -v $(pwd):/app -w /app mcr.microsoft.com/dotnet/sdk:8.0 dotnet b
     <!-- Add spring boot and persistence dependencies here -->
   </dependencies>
 </project>`
+    };
+  } else if (config.stack.language === 'kotlin') {
+    projectRootFile = {
+      filename: `build.gradle.kts`,
+      content: `plugins {
+    kotlin("jvm") version "1.9.22"
+}
+
+group = "com.example"
+version = "1.0-SNAPSHOT"
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    implementation(kotlin("stdlib"))
+}`
     };
   } else if (['typescript', 'javascript', 'node'].includes(config.stack.language || '')) {
     projectRootFile = {
