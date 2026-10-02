@@ -28,21 +28,6 @@ import { renderAngularProject } from './frontend/kernel/angular';
 import { renderNextProject } from './frontend/kernel/nextjs';
 import { renderReactNativeProject } from './frontend/kernel/react-native';
 
-function toKebabCase(str: string): string {
-  return str
-    .replace(/([a-z])([A-Z])/g, '$1-$2')
-    .replace(/[\s_/\\]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .toLowerCase();
-}
-
-function toPascalCase(str: string): string {
-  const camel = str
-    .replace(/[\s_/\\]+(.)/g, (_, c) => c.toUpperCase())
-    .replace(/^[A-Z]/, (m) => m.toLowerCase());
-  return camel.charAt(0).toUpperCase() + camel.slice(1);
-}
-
 /** @param featureFile path of the source .feature relative to the project root, when known (used by BDD runners that bind one file). */
 export function generatePresets(parsed: ParsedFeature, config: GherkinAIConfig, featureFile?: string): { filename: string; content: string }[] {
   const lang = config.stack.language.toLowerCase();
@@ -83,9 +68,6 @@ export function generatePresets(parsed: ParsedFeature, config: GherkinAIConfig, 
   // Complementary Frontend Dual-Stack Matrix Generation
   if (config.frontendStack && config.frontendStack.framework !== 'none') {
     const feFramework = config.frontendStack.framework.toLowerCase();
-    const safeFeatureName = toPascalCase(parsed.featureName);
-    const kebabFeatureName = toKebabCase(parsed.featureName);
-
     const fm = buildDomainModel(parsed);
     if (feFramework === 'vue') {
       results.push(...renderVueProject(fm));
