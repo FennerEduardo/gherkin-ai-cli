@@ -23,6 +23,7 @@ import { buildDomainModel } from './kernel/domain-model';
 import { renderReactProject } from './frontend/kernel/react';
 import { renderVueProject } from './frontend/kernel/vue';
 import { renderAngularProject } from './frontend/kernel/angular';
+import { renderNextProject } from './frontend/kernel/nextjs';
 
 function toKebabCase(str: string): string {
   return str
@@ -89,6 +90,8 @@ export function generatePresets(parsed: ParsedFeature, config: GherkinAIConfig, 
       results.push(...renderReactProject(fm));
     } else if (feFramework === 'angular') {
       results.push(...renderAngularProject(fm));
+    } else if (feFramework === 'nextjs' || feFramework === 'next') {
+      results.push(...renderNextProject(fm));
     }
   }
 
