@@ -14,6 +14,7 @@ import { generateCsharpDotnetPreset } from './preset-csharp-dotnet';
 import { generateGoPreset } from './preset-go';
 import { generateRustAxumPreset } from './preset-rust-axum';
 import { generateRubyRailsPreset } from './preset-ruby-rails';
+import { generateElixirPhoenixPreset } from './preset-elixir-phoenix';
 import { generateNodeNestJsPreset } from './preset-node-nestjs';
 import { generateNodeExpressPreset } from './preset-node-express';
 import { generateFlutterPreset } from './preset-flutter';
@@ -48,6 +49,8 @@ export function generatePresets(parsed: ParsedFeature, config: GherkinAIConfig, 
     results.push(...generateGoPreset(parsed, config));
   } else if (lang === 'rust') {
     results.push(...generateRustAxumPreset(parsed));
+  } else if (lang === 'elixir') {
+    results.push(...generateElixirPhoenixPreset(parsed, config, featureFile));
   } else if (lang === 'ruby') {
     results.push(...generateRubyRailsPreset(parsed, config));
   } else if (lang === 'dart' || framework === 'flutter') {

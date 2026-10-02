@@ -82,6 +82,14 @@ const STACKS = {
     build: ['bundle install --quiet --jobs 4', 'ruby -c config/application.rb > /dev/null', 'bin/rails runner "puts Rails.version" > /dev/null'],
     test: ['bundle exec rspec', 'bundle exec cucumber']
   },
+  phoenix: {
+    stack: { ...base, language: 'elixir', framework: 'phoenix', orm: 'none', validation: 'ecto-changeset', testing: 'exunit' },
+    image: 'elixir:1.17',
+    caches: [['mix', '/root/.mix'], ['hex', '/root/.hex']],
+    env: { MIX_ENV: 'test' },
+    build: ['mix local.hex --force --if-missing > /dev/null', 'mix local.rebar --force --if-missing > /dev/null', 'mix deps.get > /dev/null', 'mix compile --warnings-as-errors'],
+    test: ['mix test']
+  },
   laravel: {
     stack: { ...base, language: 'php', framework: 'laravel', orm: 'eloquent', validation: 'laravel-validation', testing: 'phpunit' },
     image: 'composer:2',
