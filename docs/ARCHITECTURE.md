@@ -1,4 +1,4 @@
-# 🏗️ `gherkin-ai` CLI Architecture & Agent Pipeline Design (`v2.0.0-beta.1`)
+# 🏗️ `gherkin-ai` CLI Architecture & Agent Pipeline Design (`v3.0`)
 
 This document details the internal design, closed-loop verification engine, MCP protocol integration, guardrails policy engine, and multi-agent delivery orchestration in `gherkin-ai`.
 
@@ -65,7 +65,9 @@ Packages repository context into `.ghe/` and enforces path protection limits (`i
 
 ---
 
-## 3. Quality Score Index Engine (`src/core/quality-score.ts`)
+## 3. Quality & Metrics Engine (`src/core/metrics-engine.ts`, `ghk quality`)
+
+> The former `quality-score.ts` module no longer exists; these axes are computed by `MetricsEngine` and `ghk quality`. Percentages below are illustrative.
 
 Calculates 6-axis feature compliance before PR merge:
 - Specification AST Completeness (95%)
