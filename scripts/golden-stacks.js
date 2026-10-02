@@ -19,6 +19,13 @@ const STACKS = {
     build: ['npm install --no-audit --no-fund --loglevel=error', 'npx prisma generate', 'npm run build'],
     test: ['npm test']
   },
+  express: {
+    stack: { ...base, language: 'typescript', framework: 'express', orm: 'prisma', validation: 'zod', testing: 'jest' },
+    image: 'node:20-bookworm',
+    caches: [['npm', '/root/.npm']],
+    build: ['npm install --no-audit --no-fund --loglevel=error', 'npx prisma generate', 'npm run build'],
+    test: ['npm test']
+  },
   dotnet: {
     stack: { ...base, language: 'csharp', framework: 'dotnet-aspnetcore', orm: 'efcore', validation: 'fluentvalidation', messaging: 'rabbitmq', testing: 'xunit' },
     image: 'mcr.microsoft.com/dotnet/sdk:8.0',

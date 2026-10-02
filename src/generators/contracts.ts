@@ -39,7 +39,34 @@ import { SpecificationIR } from '../core/semantic-ir';
 
 /** Dependencies the generated Node sources import (kept in sync with scripts/golden-build.js). */
 function nodeDependencies(config: GherkinAIConfig): { scripts: Record<string, string>; dependencies: Record<string, string>; devDependencies: Record<string, string> } {
-  if ((config.stack.framework || '').toLowerCase() !== 'nestjs') {
+  const framework = (config.stack.framework || '').toLowerCase();
+  const tsTestTooling = {
+    '@cucumber/cucumber': '^10.9.0',
+    '@types/jest': '^29.5.0',
+    '@types/node': '^20.0.0',
+    '@types/supertest': '^6.0.0',
+    jest: '^29.7.0',
+    supertest: '^7.0.0',
+    'ts-jest': '^29.2.0',
+    'ts-node': '^10.9.2',
+    typescript: '^5.4.0'
+  };
+  if (framework === 'express') {
+    return {
+      scripts: { start: 'node dist/src/server', build: 'tsc -p tsconfig.build.json', test: 'jest && cucumber-js' },
+      dependencies: {
+        express: '^4.21.0',
+        zod: '^3.23.0',
+        ...(config.stack.orm === 'prisma' ? { '@prisma/client': '^5.22.0' } : {})
+      },
+      devDependencies: {
+        ...tsTestTooling,
+        '@types/express': '^4.17.21',
+        ...(config.stack.orm === 'prisma' ? { prisma: '^5.22.0' } : {})
+      }
+    };
+  }
+  if (framework !== 'nestjs') {
     return { scripts: { start: 'node dist/main', build: 'tsc', test: 'jest' }, dependencies: {}, devDependencies: {} };
   }
   return {

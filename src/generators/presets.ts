@@ -15,6 +15,7 @@ import { generateGoPreset } from './preset-go';
 import { generateRustAxumPreset } from './preset-rust-axum';
 import { generateRubyRailsPreset } from './preset-ruby-rails';
 import { generateNodeNestJsPreset } from './preset-node-nestjs';
+import { generateNodeExpressPreset } from './preset-node-express';
 import { generateFlutterPreset } from './preset-flutter';
 
 import { generateVuePiniaStore } from './frontend/vue-pinia-generator';
@@ -65,6 +66,8 @@ export function generatePresets(parsed: ParsedFeature, config: GherkinAIConfig, 
   } else if (lang === 'typescript' || lang === 'javascript') {
     if (framework === 'nestjs') {
       results.push(...generateNodeNestJsPreset(parsed, config));
+    } else if (framework === 'express') {
+      results.push(...generateNodeExpressPreset(parsed, config));
     } else {
       results.push(...generateReactPlaywrightPreset(parsed));
     }
