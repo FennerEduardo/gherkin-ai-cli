@@ -247,7 +247,7 @@ Feature: Customer Management
     expect(output.adrMd).toContain('**Frontend E2E Testing**: cypress');
 
     expect(output.nativeContract).toBeDefined();
-    expect(output.nativeContract?.filename).toBe('customermanagement.contract.php');
+    expect(output.nativeContract?.filename).toBe('contracts/customermanagement.contract.php');
     expect(output.nativeContract?.content).toContain('namespace App\\Domain\\Contracts');
   });
 

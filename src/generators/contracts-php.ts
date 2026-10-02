@@ -37,7 +37,8 @@ interface IDomainEvent
 
 ${ir.events.map((ev, i) => `readonly class Event${i + 1} implements IDomainEvent
 {
-    public string $eventType = '${ev.name.replace(/[^a-zA-Z0-9]/g, '')}';
+    // Readonly classes cannot have property defaults: the type is a class constant.
+    public const EVENT_TYPE = '${ev.name.replace(/[^a-zA-Z0-9]/g, '')}';
 
     public function __construct(
         public string $eventId,
@@ -49,7 +50,7 @@ ${ir.events.map((ev, i) => `readonly class Event${i + 1} implements IDomainEvent
     public function getOccurredOn(): DateTimeImmutable { return $this->occurredOn; }
     public function getEventType(): string
     {
-        return '${ev.name.replace(/[^a-zA-Z0-9]/g, '')}';
+        return self::EVENT_TYPE;
     }
 }`).join('\n\n')}
 

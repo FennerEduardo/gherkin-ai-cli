@@ -66,6 +66,18 @@ const STACKS = {
     caches: [['gomod', '/go/pkg/mod'], ['gobuild', '/root/.cache/go-build']],
     build: ['go mod tidy', 'go vet ./...', 'go build ./...'],
     test: ['go test ./...']
+  },
+  laravel: {
+    stack: { ...base, language: 'php', framework: 'laravel', orm: 'eloquent', validation: 'laravel-validation', testing: 'phpunit' },
+    image: 'composer:2',
+    caches: [['composer', '/tmp/composer-cache']],
+    env: { COMPOSER_CACHE_DIR: '/tmp/composer-cache', COMPOSER_NO_INTERACTION: '1' },
+    build: [
+      'composer install --no-progress --prefer-dist -q',
+      'find app routes tests features contracts bootstrap -name "*.php" -print0 | xargs -0 -n1 php -l > /dev/null',
+      'php artisan --version'
+    ],
+    test: ['vendor/bin/phpunit', 'vendor/bin/behat --no-colors --format=progress']
   }
 };
 

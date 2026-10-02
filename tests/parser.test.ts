@@ -94,7 +94,7 @@ describe('gherkin-ai CLI unit tests', () => {
       const phpConfig = { ...defaultConfig, stack: { ...defaultConfig.stack, language: 'php' } };
       const ir = buildSpecificationIR(parsed, 'test.feature');
       const { nativeContract: phpContract } = generateContracts(parsed, ir, phpConfig);
-      expect(phpContract?.filename).toBe('userloginfeature.contract.php');
+      expect(phpContract?.filename).toBe('contracts/userloginfeature.contract.php');
       expect(phpContract?.content).toContain('readonly class UserLoginFeatureCommand');
     });
   });

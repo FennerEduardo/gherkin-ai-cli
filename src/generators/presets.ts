@@ -59,7 +59,7 @@ export function generatePresets(parsed: ParsedFeature, config: GherkinAIConfig, 
     if (framework === 'django') results.push(...generatePythonDjangoPreset(parsed, config, featureFile));
     else results.push(...generatePythonFastApiPreset(parsed, config, featureFile));
   } else if (lang === 'php') {
-    results.push(...generatePhpLaravelPreset(parsed));
+    results.push(...generatePhpLaravelPreset(parsed, config));
   } else if (lang === 'csharp') {
     results.push(...generateCsharpDotnetPreset(parsed, config));
   } else if (lang === 'typescript' || lang === 'javascript') {

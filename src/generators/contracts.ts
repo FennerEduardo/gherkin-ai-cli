@@ -350,7 +350,8 @@ ${effectiveProhibited.map(p => `- \`${p}\``).join('\n')}
     };
   } else if (config.stack.language === 'php') {
     nativeContract = {
-      filename: `${featurePascal.toLowerCase()}.contract.php`,
+      // Several declarations in one file (not PSR-4 autoloaded); kept as a reference contract and linted.
+      filename: `contracts/${featurePascal.toLowerCase()}.contract.php`,
       content: generatePhpContracts(parsed, ir, config)
     };
   } else if (config.stack.language === 'go') {

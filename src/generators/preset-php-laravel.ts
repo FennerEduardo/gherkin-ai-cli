@@ -1,50 +1,22 @@
 /* ==========================================================================
-   gherkin-ai-cli - PHP Laravel & Behat Preset Generator
+   gherkin-ai-cli - PHP Laravel & Behat Preset Generator  [stable]
+
+   Laravel 13 application: domain kernel (PSR-4) + PHPUnit unit tests, an API
+   route executing the kernel commands (feature tests), Behat bound to
+   ./features with pending steps. Verified by scripts/golden-build.js (laravel).
    ========================================================================== */
 
 import { ParsedFeature } from '../core/gherkin-parser';
+import { GherkinAIConfig } from '../core/config';
+import { buildDomainModel, toKebab } from './kernel/domain-model';
+import { renderLaravelSkeleton, renderPhpController, renderPhpKernel, renderPhpTests } from './kernel/php';
 
-export function generatePhpLaravelPreset(parsed: ParsedFeature): { filename: string; content: string }[] {
-  const className = parsed.featureName.replace(/[^a-zA-Z0-9]/g, '') + 'Context';
-
-  const stepDefCode = `<?php
-// Behat Context for ${parsed.featureName}
-
-namespace Tests\\Behat;
-
-use Behat\\Behat\\Context\\Context;
-use Tests\\TestCase;
-
-class ${className} extends TestCase implements Context
-{
-    /**
-     * Initializes context.
-     * Every scenario gets its own context instance.
-     */
-    public function __construct()
-    {
-        parent::setUp();
-    }
-
-${parsed.scenarios.map(sc => `
-    // Scenario: ${sc.name}
-${sc.steps.map(st => `
-    /**
-     * @${st.keyword.trim()} ${st.text.replace(/'/g, "\\'")}
-     */
-    public function ${st.keyword.trim().toLowerCase()}${st.text.replace(/[^a-zA-Z0-9]/g, '')}()
-    {
-        throw new \\Behat\\Behat\\Tester\\Exception\\PendingException();
-    }
-`).join('')}
-`).join('')}
-}
-`;
-
+export function generatePhpLaravelPreset(parsed: ParsedFeature, config?: GherkinAIConfig): { filename: string; content: string }[] {
+  const m = buildDomainModel(parsed);
   return [
-    {
-      filename: `${className}.php`,
-      content: stepDefCode
-    }
+    ...renderLaravelSkeleton(m, toKebab(config?.projectName || m.kebab)),
+    ...renderPhpKernel(m),
+    renderPhpController(m),
+    ...renderPhpTests(m)
   ];
 }
