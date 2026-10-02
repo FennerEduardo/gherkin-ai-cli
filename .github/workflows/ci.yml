@@ -61,6 +61,20 @@ jobs:
           npm pack --dry-run --json > pack.json
           node -e "const files=require('./pack.json')[0].files.map(f=>f.path); const bad=files.filter(f=>/(^|\/)(\.env|auth\.json|.*\.pem|.*\.key)$/.test(f)); if(bad.length){console.error('Forbidden files in package:',bad);process.exit(1)} console.log(files.length+' files OK')"
 
+  e2e:
+    # Web Studio in a real browser, with network isolation checks (no CDN requests).
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run build
+      - run: npm run test:e2e
+
   golden-builds:
     # Generated code for every STABLE stack must compile (see docs/ENTERPRISE.md, "Stack support tiers").
     runs-on: ubuntu-latest

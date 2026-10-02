@@ -5,7 +5,7 @@ export default defineConfig({
     globals: true,
     environment: 'node',
     testTimeout: 20000,
-    exclude: [...configDefaults.exclude, 'tests/e2e/**', 'tests/integration/web.spec.ts'],
+    exclude: [...configDefaults.exclude, 'tests/e2e/**'],
     coverage: {
       provider: 'v8',
       reporter: ['text-summary', 'json', 'html'],
