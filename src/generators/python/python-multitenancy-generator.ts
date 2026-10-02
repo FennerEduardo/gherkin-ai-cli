@@ -40,7 +40,7 @@ class TenantMiddleware(BaseHTTPMiddleware):
   const sqlalchemyEventsCode = `from sqlalchemy import event
 from sqlalchemy.orm import Session, ORMExecuteState
 from .tenant_context import get_tenant_id
-from .database import Base
+from app.database import Base
 
 # Assume models that need isolation inherit from TenantAwareBase or define tenant_id
 # We'll use a mixin approach for demonstration.

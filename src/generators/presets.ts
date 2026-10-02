@@ -8,6 +8,7 @@ import { generateJavaSpringPreset } from './preset-java-spring';
 import { generateKotlinSpringPreset } from './preset-kotlin-spring';
 import { generateReactPlaywrightPreset } from './preset-react-playwright';
 import { generatePythonFastApiPreset } from './preset-python-fastapi';
+import { generatePythonDjangoPreset } from './preset-python-django';
 import { generatePhpLaravelPreset } from './preset-php-laravel';
 import { generateCsharpDotnetPreset } from './preset-csharp-dotnet';
 import { generateGoPreset } from './preset-go';
@@ -36,7 +37,8 @@ function toPascalCase(str: string): string {
   return camel.charAt(0).toUpperCase() + camel.slice(1);
 }
 
-export function generatePresets(parsed: ParsedFeature, config: GherkinAIConfig): { filename: string; content: string }[] {
+/** @param featureFile path of the source .feature relative to the project root, when known (used by BDD runners that bind one file). */
+export function generatePresets(parsed: ParsedFeature, config: GherkinAIConfig, featureFile?: string): { filename: string; content: string }[] {
   const lang = config.stack.language.toLowerCase();
   const framework = config.stack.framework?.toLowerCase() || '';
   const results: { filename: string; content: string }[] = [];
@@ -54,7 +56,8 @@ export function generatePresets(parsed: ParsedFeature, config: GherkinAIConfig):
   } else if (lang === 'java') {
     results.push(...generateJavaSpringPreset(parsed, config));
   } else if (lang === 'python') {
-    results.push(...generatePythonFastApiPreset(parsed));
+    if (framework === 'django') results.push(...generatePythonDjangoPreset(parsed, config, featureFile));
+    else results.push(...generatePythonFastApiPreset(parsed, config, featureFile));
   } else if (lang === 'php') {
     results.push(...generatePhpLaravelPreset(parsed));
   } else if (lang === 'csharp') {

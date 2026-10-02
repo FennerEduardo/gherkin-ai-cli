@@ -7,7 +7,7 @@ export function generatePythonIdempotencyInfrastructure(): { filename: string; c
   const modelsCode = `from sqlalchemy import Column, String, DateTime, Text, Integer, Enum
 from sqlalchemy.sql import func
 import enum
-from .database import Base
+from app.database import Base
 
 class IdempotencyStatus(enum.Enum):
     PROCESSING = "PROCESSING"
@@ -34,7 +34,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 from .models import IdempotencyRecord, IdempotencyStatus
-from .database import SessionLocal
+from app.database import SessionLocal
 
 logger = logging.getLogger(__name__)
 PROCESSING_TTL_MINUTES = 2
@@ -129,7 +129,7 @@ class IdempotencyMiddleware(BaseHTTPMiddleware):
 import logging
 from datetime import datetime, timezone, timedelta
 from sqlalchemy.orm import sessionmaker
-from .database import engine
+from app.database import engine
 from .models import IdempotencyRecord
 
 logger = logging.getLogger(__name__)

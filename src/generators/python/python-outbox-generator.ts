@@ -9,7 +9,7 @@ from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.sql import func
 import enum
 import uuid
-from .database import Base
+from app.database import Base
 
 class OutboxStatus(enum.Enum):
     PENDING = "PENDING"
@@ -94,7 +94,7 @@ class OutboxService:
   const workerCode = `import asyncio
 import logging
 from sqlalchemy.orm import sessionmaker
-from .database import engine
+from app.database import engine
 from .outbox_service import OutboxService
 # from .broker import MessageBroker
 

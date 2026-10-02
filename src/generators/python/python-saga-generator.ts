@@ -15,7 +15,7 @@ from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.sql import func
 import enum
 import uuid
-from .database import Base
+from app.database import Base
 
 class SagaState(enum.Enum):
     STARTED = "STARTED"
@@ -40,8 +40,8 @@ class ${feature}SagaInstance(Base):
   const orchestratorCode = `import logging
 from uuid import UUID
 from sqlalchemy.orm import Session
-from .models import ${feature}SagaInstance, SagaState
-# from .broker import EventBus
+from app.infrastructure.event_bus import event_bus
+from .${featureLower}_models import ${feature}SagaInstance, SagaState
 
 logger = logging.getLogger(__name__)
 
@@ -61,8 +61,8 @@ class ${feature}SagaOrchestrator:
         self.db.add(saga)
         self.db.commit()
 
-        # TODO: Dispatch Authorize command
-        # EventBus.publish("Authorize${feature}Command", {"${entityId}": str(${entityId})})
+        # Commands are dispatched in-process; bridge them to your broker (e.g. via the outbox) as needed.
+        event_bus.publish("Authorize${feature}Command", {"${entityId}": str(${entityId})})
 
     def handle_authorized(self, correlation_id: UUID):
         logger.info(f"Saga authorized: {correlation_id}")
@@ -74,8 +74,7 @@ class ${feature}SagaOrchestrator:
         saga.current_state = SagaState.COMPLETING
         self.db.commit()
 
-        # TODO: Dispatch Complete command
-        # EventBus.publish("Complete${feature}Command", {"${entityId}": str(saga.${entityId})})
+        event_bus.publish("Complete${feature}Command", {"${entityId}": str(saga.${entityId})})
 
     def handle_completed(self, correlation_id: UUID):
         logger.info(f"Saga completed: {correlation_id}")
@@ -98,8 +97,7 @@ class ${feature}SagaOrchestrator:
         saga.error_reason = reason
         self.db.commit()
 
-        # TODO: Dispatch Compensate command
-        # EventBus.publish("Compensate${feature}Command", {"${entityId}": str(saga.${entityId}), "reason": reason})
+        event_bus.publish("Compensate${feature}Command", {"${entityId}": str(saga.${entityId}), "reason": reason})
 
         saga.current_state = SagaState.FAILED
         self.db.commit()

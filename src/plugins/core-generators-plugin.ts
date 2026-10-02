@@ -1,3 +1,4 @@
+import path from 'path';
 import { GherkinAIPlugin, GeneratedArtifact, PluginContext } from '../core/plugin-system';
 import { SpecificationIR } from '../core/semantic-ir';
 import { GherkinAIConfig } from '../core/config';
@@ -47,6 +48,15 @@ function irToParsedFeature(ir: SpecificationIR | any): ParsedFeature {
       fixtures: []
     }
   };
+}
+
+/** The IR's source feature as a project-relative POSIX path (e.g. features/payment.feature), if it is a real file. */
+function featureFileFromIR(ir: SpecificationIR): string | undefined {
+  const source = ir.sourceFile;
+  if (!source || !source.endsWith('.feature')) return undefined;
+  const rel = path.isAbsolute(source) ? path.relative(process.cwd(), source) : source;
+  if (rel.startsWith('..')) return undefined;
+  return rel.split(path.sep).join('/').replace(/^\.\//, '');
 }
 
 export class CoreContractsPlugin implements GherkinAIPlugin {
@@ -106,7 +116,7 @@ export class CorePresetsPlugin implements GherkinAIPlugin {
 
   generate(ir: SpecificationIR, config: GherkinAIConfig): GeneratedArtifact[] {
     const parsed = irToParsedFeature(ir);
-    const presets = generatePresets(parsed, config);
+    const presets = generatePresets(parsed, config, featureFileFromIR(ir));
     return presets.map((p: any) => ({
       filePath: p.filename,
       content: p.content,

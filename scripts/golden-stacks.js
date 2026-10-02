@@ -43,6 +43,22 @@ const STACKS = {
     env: { GRADLE_USER_HOME: '/cache/gradle' },
     build: ['gradle -q --no-daemon assemble'],
     test: ['gradle --no-daemon test']
+  },
+  fastapi: {
+    stack: { ...base, language: 'python', framework: 'fastapi', orm: 'sqlalchemy', validation: 'pydantic', testing: 'pytest' },
+    image: 'python:3.12-slim',
+    caches: [['pip', '/root/.cache/pip']],
+    env: { PIP_DISABLE_PIP_VERSION_CHECK: '1' },
+    build: ['pip install -q -e ".[test]"', 'python -m compileall -q app'],
+    test: ['pytest -q -rs']
+  },
+  django: {
+    stack: { ...base, language: 'python', framework: 'django', orm: 'django-orm', validation: 'drf', testing: 'pytest' },
+    image: 'python:3.12-slim',
+    caches: [['pip', '/root/.cache/pip']],
+    env: { PIP_DISABLE_PIP_VERSION_CHECK: '1' },
+    build: ['pip install -q -e ".[test]"', 'python -m compileall -q app config', 'python manage.py check'],
+    test: ['pytest -q -rs']
   }
 };
 
