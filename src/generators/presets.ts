@@ -44,7 +44,7 @@ export function generatePresets(parsed: ParsedFeature, config: GherkinAIConfig, 
   const results: { filename: string; content: string }[] = [];
   
   if (lang === 'go') {
-    results.push(...generateGoPreset(parsed));
+    results.push(...generateGoPreset(parsed, config));
   } else if (lang === 'rust') {
     results.push(...generateRustAxumPreset(parsed));
   } else if (lang === 'ruby') {

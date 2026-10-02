@@ -4,6 +4,7 @@
 
 import { CLI_VERSION } from '../version';
 import { renderPom } from './kernel/java';
+import { renderGoMod } from './kernel/go';
 import { renderGradleKts, renderGradleSettings } from './kernel/kotlin';
 import { toKebab } from './kernel/domain-model';
 import { ParsedFeature } from '../core/gherkin-parser';
@@ -354,7 +355,8 @@ ${effectiveProhibited.map(p => `- \`${p}\``).join('\n')}
     };
   } else if (config.stack.language === 'go') {
     nativeContract = {
-      filename: `${featurePascal.toLowerCase()}.contract.go`,
+      // Inside the module so `go build ./...` type-checks it.
+      filename: `internal/contracts/${featurePascal.toLowerCase()}.contract.go`,
       content: generateGoContracts(parsed, ir, config)
     };
   } else if (config.stack.language === 'csharp') {
@@ -431,6 +433,8 @@ docker run --rm -v $(pwd):/app -w /app mcr.microsoft.com/dotnet/sdk:8.0 dotnet b
       { filename: `build.gradle.kts`, content: renderGradleKts() },
       { filename: `settings.gradle.kts`, content: renderGradleSettings(toKebab(config.projectName || 'demo')) }
     ];
+  } else if (config.stack.language === 'go') {
+    projectRootFile = { filename: 'go.mod', content: renderGoMod(toKebab(config.projectName || 'app')) };
   } else if (['typescript', 'javascript', 'node'].includes(config.stack.language || '')) {
     projectRootFile = {
       filename: `package.json`,

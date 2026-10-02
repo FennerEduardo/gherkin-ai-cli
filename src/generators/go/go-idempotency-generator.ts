@@ -8,7 +8,6 @@ export function generateGoIdempotencyInfrastructure(packageName: string): { file
 
 import (
 	"context"
-	"net/http"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -105,8 +104,6 @@ func (r *IdempotencyRepository) DeleteExpired(ctx context.Context, cutoff time.T
 
 import (
 	"bytes"
-	"context"
-	"encoding/json"
 	"log"
 	"net/http"
 	"time"

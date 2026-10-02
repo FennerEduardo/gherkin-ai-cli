@@ -8,13 +8,13 @@ export function generateGoSagaInfrastructure(packageName: string, featureName?: 
     ? featureName.replace(/[^a-zA-Z0-9\s]/g, '').split(/\s+/).map(w => w.charAt(0).toUpperCase() + w.slice(1)).join('')
     : 'Payment';
   const featureLower = feature.charAt(0).toLowerCase() + feature.slice(1);
-  const entityId = featureLower + "ID";
+  // Exported (Go visibility) so JSON tags and other packages can use it.
+  const entityId = feature + "ID";
 
   const modelsCode = `package ${packageName}
 
 import (
 	"context"
-	"encoding/json"
 	"time"
 
 	"github.com/google/uuid"
@@ -86,6 +86,7 @@ func (r *${feature}SagaRepository) Get(ctx context.Context, correlationID uuid.U
 
 import (
 	"context"
+	"encoding/json"
 	"log"
 	"time"
 
@@ -127,16 +128,21 @@ type Compensate${feature}Command struct {
 	Reason    string
 }
 
-// Orchestrator
-type ${feature}SagaOrchestrator struct {
-	repo   *${feature}SagaRepository
-	broker MessageBroker
+// CommandPublisher dispatches saga commands (bridge it to your broker, ideally through the outbox).
+type CommandPublisher interface {
+	Publish(ctx context.Context, command string, payload interface{}) error
 }
 
-func New${feature}SagaOrchestrator(repo *${feature}SagaRepository, broker MessageBroker) *${feature}SagaOrchestrator {
+// Orchestrator
+type ${feature}SagaOrchestrator struct {
+	repo      *${feature}SagaRepository
+	publisher CommandPublisher
+}
+
+func New${feature}SagaOrchestrator(repo *${feature}SagaRepository, publisher CommandPublisher) *${feature}SagaOrchestrator {
 	return &${feature}SagaOrchestrator{
-		repo:   repo,
-		broker: broker,
+		repo:      repo,
+		publisher: publisher,
 	}
 }
 
@@ -159,9 +165,7 @@ func (o *${feature}SagaOrchestrator) HandleInitiated(ctx context.Context, event 
 		return err
 	}
 
-	// TODO: Publish Authorize${feature}Command
-	// o.broker.Publish(...)
-	return nil
+	return o.publisher.Publish(ctx, "Authorize${feature}Command", Authorize${feature}Command{${entityId}: event.${entityId}, Metadata: event.Metadata})
 }
 
 func (o *${feature}SagaOrchestrator) HandleAuthorized(ctx context.Context, event ${feature}AuthorizedEvent) error {
@@ -179,8 +183,7 @@ func (o *${feature}SagaOrchestrator) HandleAuthorized(ctx context.Context, event
 		return err
 	}
 
-	// TODO: Publish Complete${feature}Command
-	return nil
+	return o.publisher.Publish(ctx, "Complete${feature}Command", Complete${feature}Command{${entityId}: saga.${entityId}})
 }
 
 func (o *${feature}SagaOrchestrator) HandleCompleted(ctx context.Context, event ${feature}CompletedEvent) error {
@@ -213,7 +216,9 @@ func (o *${feature}SagaOrchestrator) HandleFailed(ctx context.Context, event ${f
 		return err
 	}
 
-	// TODO: Publish Compensate${feature}Command
+	if err := o.publisher.Publish(ctx, "Compensate${feature}Command", Compensate${feature}Command{${entityId}: saga.${entityId}, Reason: event.Reason}); err != nil {
+		return err
+	}
 
 	saga.CurrentState = SagaStateFailed
 	saga.UpdatedAt = time.Now()
