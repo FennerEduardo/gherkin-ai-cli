@@ -22,8 +22,7 @@ import { generateFlutterPreset } from './preset-flutter';
 import { buildDomainModel } from './kernel/domain-model';
 import { renderReactProject } from './frontend/kernel/react';
 import { renderVueProject } from './frontend/kernel/vue';
-import { generateAngularStoreInfrastructure } from './frontend/angular-ngrx-generator';
-import { generateAngularSignalRService } from './frontend/angular-signalr-service';
+import { renderAngularProject } from './frontend/kernel/angular';
 
 function toKebabCase(str: string): string {
   return str
@@ -89,15 +88,7 @@ export function generatePresets(parsed: ParsedFeature, config: GherkinAIConfig, 
     } else if (feFramework === 'react') {
       results.push(...renderReactProject(fm));
     } else if (feFramework === 'angular') {
-      const mode = config.frontendStack.stateManagement === 'classic' ? 'classic' : 'signals';
-      results.push({
-        filename: `frontend/store/${kebabFeatureName}.store.ts`,
-        content: generateAngularStoreInfrastructure(safeFeatureName, mode)
-      });
-      results.push({
-        filename: `frontend/services/signalr-notification.service.ts`,
-        content: generateAngularSignalRService(safeFeatureName)
-      });
+      results.push(...renderAngularProject(fm));
     }
   }
 

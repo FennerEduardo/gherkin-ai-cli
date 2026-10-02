@@ -14,10 +14,10 @@ export function renderVueProject(m: DomainModel, root = 'frontend'): FeFile[] {
       content: JSON.stringify({
         name: `${m.kebab}-frontend`, private: true, version: '0.1.0', type: 'module',
         scripts: { dev: 'vite', build: 'vue-tsc --noEmit && vite build', test: 'vitest run' },
-        dependencies: { pinia: '^2.2.6', vue: '^3.5.12' },
+        dependencies: { pinia: '^4.0.3', vue: '^3.5.43' },
         devDependencies: {
-          '@pinia/testing': '^0.1.6', '@vitejs/plugin-vue': '^5.1.4', '@vue/test-utils': '^2.4.6',
-          jsdom: '^25.0.1', typescript: '^5.6.3', vite: '^5.4.10', vitest: '^2.1.4', 'vue-tsc': '^2.1.10'
+          '@vitejs/plugin-vue': '^6.0.9', '@vue/test-utils': '^2.5.1', jsdom: '^30.1.1',
+          typescript: '~6.0.0', vite: '^8.3.2', vitest: '^5.0.3', 'vue-tsc': '^3.3.12'
         }
       }, null, 2) + '\n'
     },

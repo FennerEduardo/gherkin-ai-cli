@@ -16,7 +16,7 @@ const feBackend = { ...base, language: 'typescript', framework: 'express', orm: 
 const nodeFrontend = (framework, extra = {}) => ({
   stack: feBackend,
   frontendStack: { framework, language: 'typescript', ...extra },
-  image: 'node:20-bookworm',
+  image: 'node:24-bookworm',
   workdir: 'frontend',
   caches: [['npm', '/root/.npm']],
   build: ['npm install --no-audit --no-fund --loglevel=error', 'npm run build'],
@@ -26,6 +26,7 @@ const nodeFrontend = (framework, extra = {}) => ({
 const STACKS = {
   react: nodeFrontend('react'),
   vue: nodeFrontend('vue'),
+  angular: nodeFrontend('angular', { stateManagement: 'signals' }),
   nestjs: {
     stack: { ...base, language: 'typescript', framework: 'nestjs', orm: 'prisma', validation: 'zod', messaging: 'rabbitmq', testing: 'jest' },
     image: 'node:20-bookworm',

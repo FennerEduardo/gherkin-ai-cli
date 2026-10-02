@@ -102,17 +102,17 @@ describe('Enterprise Gap Closure & Clean Architecture Suite (.NET + Angular Sign
     expect(resilienceFile.content).toContain('UseJitter = true');
   });
 
-  it('generates strongly-typed Angular Signals Store with domain status enums', () => {
-    const storeFile = files.find(f => f.filename.includes('frontend/store/order-management.store.ts'))!;
+  it('generates an Angular Signals Store bound to the typed API client', () => {
+    const storeFile = files.find(f => f.filename === 'frontend/src/app/state/order-management.store.ts')!;
     expect(storeFile).toBeDefined();
-    expect(storeFile.content).toContain("export enum TransactionStatus");
-    expect(storeFile.content).toContain("COMPLETED = 'COMPLETED'");
-    expect(storeFile.content).toContain("signalStore");
-    expect(storeFile.content).toContain("computed(() =>");
+    expect(storeFile.content).toContain('signalStore');
+    expect(storeFile.content).toContain('patchState');
+    expect(storeFile.content).toContain('idempotencyKey');
+    expect(files.some(f => f.filename === 'frontend/src/app/state/order-management.store.spec.ts')).toBe(true);
   });
 
   it('generates Angular SignalR Notification Service', () => {
-    const signalrFile = files.find(f => f.filename.includes('frontend/services/signalr-notification.service.ts'))!;
+    const signalrFile = files.find(f => f.filename === 'frontend/src/app/realtime/realtime.service.ts')!;
     expect(signalrFile).toBeDefined();
     expect(signalrFile.content).toContain('@Injectable');
     expect(signalrFile.content).toContain('HubConnectionBuilder');

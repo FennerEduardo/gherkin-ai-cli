@@ -15,11 +15,11 @@ export function renderReactProject(m: DomainModel, root = 'frontend'): FeFile[] 
       filename: f('package.json'),
       content: pkg(`${m.kebab}-frontend`, {
         scripts: { dev: 'vite', build: 'tsc --noEmit && vite build', test: 'vitest run' },
-        dependencies: { '@reduxjs/toolkit': '^2.3.0', react: '^18.3.1', 'react-dom': '^18.3.1', 'react-redux': '^9.1.2' },
+        dependencies: { '@reduxjs/toolkit': '^2.13.0', react: '^19.3.0', 'react-dom': '^19.3.0', 'react-redux': '^9.3.0' },
         devDependencies: {
-          '@testing-library/jest-dom': '^6.6.3', '@testing-library/react': '^16.0.1', '@testing-library/user-event': '^14.5.2',
-          '@types/react': '^18.3.12', '@types/react-dom': '^18.3.1', '@vitejs/plugin-react': '^4.3.3',
-          jsdom: '^25.0.1', typescript: '^5.6.3', vite: '^5.4.10', vitest: '^2.1.4'
+          '@testing-library/dom': '^10.4.2', '@testing-library/jest-dom': '^7.0.1', '@testing-library/react': '^16.3.3',
+          '@testing-library/user-event': '^14.6.7', '@types/react': '^19.3.0', '@types/react-dom': '^19.3.0',
+          '@vitejs/plugin-react': '^6.1.1', jsdom: '^30.1.1', typescript: '~6.0.0', vite: '^8.3.2', vitest: '^5.0.3'
         }
       })
     },
