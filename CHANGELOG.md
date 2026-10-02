@@ -15,11 +15,15 @@ Enterprise-readiness release, driven by the 2.6.5 reviews. Contains breaking cha
 - **Audit and telemetry:** structured `audit.jsonl` and `telemetry.jsonl` (local only) with execution ids; LLM calls, MCP calls, agent write decisions and plugin loads are audited; `ghk audit export --format jsonl|csv --since`.
 - **Agent write guards:** `autopilot` is dry-run by default (`--apply`); `--apply` is refused in CI (`--allow-unattended-writes`) and on protected branches (`--force-branch`).
 - **Governed plugins:** `plugins.load` with an organization allow-list (`plugins.allow`).
-- **Stack support tiers:** `ghk stacks`; warnings for beta/experimental stacks; golden builds (`scripts/golden-build.js`) compile generated NestJS and .NET projects in CI.
-- **CI/release:** OS × Node matrix, blocking `npm audit`, golden builds, CLI contract tests against the built binary, and a release workflow with npm provenance and a CycloneDX SBOM.
+- **Every stack is stable:** 13 backends (NestJS, Express, ASP.NET Core, Spring Boot Java and Kotlin, FastAPI, Django, Go, Laravel 13, Rails 8, Phoenix, Axum, Flutter), 7 frontends (React, Vue, Angular 22, Next.js 16, React Native/Expo 57, Flutter, Phoenix LiveView) and gRPC/GraphQL contracts. CI generates each one and builds it and runs its generated tests in the stack's official Docker image (`scripts/golden-build.js`); `ghk stacks` lists them.
+- **Shared domain kernel:** every stack renders the same aggregate, unit tests, HTTP contract test and pending BDD steps bound to the feature file.
+- **Opt-in gRPC and GraphQL contracts** (`contracts.grpc`, `contracts.graphql`), validated with buf and graphql-js.
+- **Web Studio works offline:** Tailwind and Font Awesome are bundled instead of loaded from a CDN; Playwright end-to-end tests assert that no external request is made.
+- **CI/release:** OS × Node 22/24 matrix, blocking `npm audit`, golden builds, CLI contract tests against the built binary, and a release workflow with npm provenance and a CycloneDX SBOM.
 - `--threshold` for `lint` and `converge`.
 
 ### Changed
+- **Startup time** reduced from about 0.7 s to about 0.15 s: command handlers and networking are loaded lazily.
 - **MCP server rebuilt on `@modelcontextprotocol/sdk`:**
   - Read-only by default; write tools need `mcp.allowWrite`, and destructive tools also need `GHK_ALLOW_DESTRUCTIVE`.
   - Central path containment, agent policy and auditing on every call.
@@ -54,7 +58,15 @@ Enterprise-readiness release, driven by the 2.6.5 reviews. Contains breaking cha
 - **Portability:** `verify` no longer shells out to `sleep`, which is not available on Windows.
 - **Dependency vulnerabilities:** resolved transitive advisories (brace-expansion, fast-uri, hono, ip-address).
 
+### Fixed (generation)
+- Localized features (`# language: es` or any leading comment) were parsed as Markdown, producing names like `LanguageEs`.
+- Identifiers kept broken fragments of accented words (`CreaciN`); one-letter words were glued to the next (`yrenderizado`).
+- Decimal amounts before a quoted value produced invalid field types (`00DTO`).
+- Connection URLs without credentials (`amqp://rabbitmq:5672`) were rejected as leaked secrets.
+
 ### Removed
+- **Node.js 20 support** (end-of-life); the CLI requires Node.js 22.12 or later.
+- Superseded frontend generators (`react-generator`, `vue-pinia-generator`, `angular-ngrx-generator`, `angular-signalr-service`) and the classic NgRx store mode.
 - `ghk login --apiKey/--token/--user/--endpoint/--server` and the `auth` alias of `login`.
 - MCP tool `run_cli_login`; `clear` on `run_cli_audit`.
 - Legacy hook manager `src/core/hooks.ts`.

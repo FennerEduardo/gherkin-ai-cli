@@ -73,9 +73,24 @@ Open the URL printed by `ghk web`. It contains a session token, and API calls wi
 
 ## Generated code
 
-- The NestJS layout is consolidated under `src/`: `src/prisma/prisma.service.ts`, `src/infrastructure/multitenancy/` and `src/sagas/`.
-- The generated `package.json` now declares its dependencies.
-- `prisma/schema.prisma` includes `OutboxMessage`, `ProcessedEvent` and `SagaInstance`, plus `tenantId` on the domain model.
-- The generated `.csproj` adds `RootNamespace`, uses the correct `Npgsql.EntityFrameworkCore.PostgreSQL` package, adds the OpenTelemetry, Testcontainers, ServiceDiscovery and Swashbuckle packages, and excludes the Aspire AppHost from compilation.
+Every stack now renders the same kernel from the feature (aggregate, unit tests, HTTP contract test where there is an API, pending BDD steps bound to the `.feature` file) and is built and tested in CI. Generated projects are complete, buildable projects rather than loose snippets, so **regenerate into a clean directory or branch and review the diff**: many paths moved.
 
-Regenerating into an existing project overwrites these files, so review the diff.
+| Stack | What changed |
+|---|---|
+| NestJS | Layout consolidated under `src/` (`src/prisma/prisma.service.ts`, `src/infrastructure/multitenancy/`, `src/sagas/`); `package.json` declares dependencies and `build`/`test` scripts (Jest + cucumber-js); Prisma schema includes `OutboxMessage`, `ProcessedEvent`, `SagaInstance` and `tenantId`. |
+| Express | New dedicated preset (previously fell back to the React/Playwright skeleton). |
+| .NET | Tests live in `tests/<Namespace>.Tests/` (xUnit + Reqnroll); the root `.csproj` excludes `tests/**`, `features/**` and the Aspire AppHost, uses `Npgsql.EntityFrameworkCore.PostgreSQL` and adds `RootNamespace`. Integration tests are tagged `Category=Integration`. |
+| Java | Maven project (`pom.xml`, Spring Boot 3.3) with sources under `src/main/java/com/example/<project>/`; one public type per file. |
+| Kotlin | New Gradle (KTS) project; previously contracts only. |
+| Python | FastAPI and Django (DRF) are separate presets with `pyproject.toml`, pytest and pytest-bdd. |
+| Go | Go module with `internal/` packages, chi router, godog; contracts moved to `internal/contracts/`. |
+| PHP | **Laravel 13** (PHP ≥ 8.3, PHPUnit 12, Behat); Laravel 11 is blocked by Composer security advisories. Contracts moved to `contracts/`. |
+| Ruby | Rails 8 API with RSpec and Cucumber. |
+| Elixir | Phoenix project (Bandit, ExUnit); LiveView with `frontendStack.framework: "phoenix-liveview"`. |
+| Rust | Axum 0.7 crate (requires a recent stable toolchain). |
+| Frontends | Generated as a separate project in `./frontend`: React 19 + Redux Toolkit, Vue 3 + Pinia, **Angular 22** (zoneless, NgRx Signals; the classic NgRx store mode was removed), Next.js 16, React Native (Expo 57), Flutter. |
+| Contracts | gRPC and GraphQL are opt-in: `"contracts": { "grpc": true, "graphql": true }`. |
+
+Identifiers are derived from the feature name with diacritics removed (`Creación de Pedidos` → `CreacionDePedidos`), and localized features (`# language: es`) are parsed as Gherkin. Command names come from identifiers quoted in `When` steps (`"CreateOrderCommand"` → `CreateOrder`) or, for English features, from the step's verb; otherwise a single `Process<Feature>` command is generated.
+
+Generated toolchains target currently supported runtimes: Node 24 for frontends, .NET 8, Java 17, Python 3.12, Go 1.22, PHP 8.3, Ruby 3.3, Elixir 1.17. The CLI itself requires **Node.js 22.12 or later** (Node 20 is end-of-life).
