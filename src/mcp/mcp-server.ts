@@ -1,882 +1,178 @@
 /* ==========================================================================
-   gherkin-ai-cli - Model Context Protocol (MCP) Stdio JSON-RPC 2.0 Server
-   
-   REFACTORED: All tools now call functions directly instead of execSync.
-   Added semantic tools: get_constraints, get_business_rules, lint_spec,
-   converge, get_ir, analyze_security.
+   gherkin-ai-cli - Model Context Protocol (MCP) stdio server
+
+   Built on @modelcontextprotocol/sdk. Least privilege by default:
+   - safe tools (read-only analysis) are always available,
+   - requires_review tools (write project files) need `mcp.allowWrite: true`,
+   - destructive tools (run tests, LLM-driven code changes) additionally need
+     GHK_ALLOW_DESTRUCTIVE=true in the server environment.
+   Tools that are not permitted are not registered at all.
+
+   Every call goes through one middleware: workspace path containment,
+   AgentPolicyEngine (.ghkgovernance.yaml) for written paths, stdout capture
+   (stdout is the protocol channel) and an audit record.
    ========================================================================== */
 
-import { parseGherkinText } from '../core/gherkin-parser';
-import { generateContracts } from '../generators/contracts';
-import { detectExistingStack } from '../core/stack-detector';
-import { getArchRule } from '../core/arch-rules';
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import type { ZodRawShape } from 'zod';
+import { CLI_VERSION } from '../version';
 import { loadConfig } from '../core/config';
-import { buildIR, buildSpecificationIR } from '../core/ir-builder';
-import { lintSpecification } from '../core/specification-linter';
-import { calculateConvergence } from '../core/convergence-engine';
-import { calculateDeliveryRisk } from '../core/risk-engine';
-import { generateConstitution, loadConstitution, getConstraintsByLevel } from '../core/constitution';
-import { scanContextSecurity, detectPromptInjection } from '../core/context-security';
-import { SpecHashBaseline } from '../core/governance/spec-hash-baseline';
+import { GhkError, PolicyError } from '../core/errors';
 import { AgentPolicyEngine } from '../core/governance/agent-policy-engine';
-import { handleLoginCommand } from '../commands/login';
-import { handleInitCommand } from '../commands/init';
-import { handleGenerateCommand } from '../commands/generate';
-import { handleAddCommand } from '../commands/add';
-import { handleCreateCommand } from '../commands/create';
-import { handleAuditCommand } from '../commands/audit';
-import { handleAgentLogCommand } from '../commands/agent-log';
-import { handleImplementCommand } from '../commands/implement';
-import { handleLintCommand } from '../commands/lint';
-import { handleConvergeCommand } from '../commands/converge';
-import { promisify } from 'util';
-import { exec, execFile } from 'child_process';
-import { CrossServiceImpactAnalyzer } from '../core/analysis/cross-service-impact';
-import { classifyOperation, formatSafetyWarning } from './mcp-operation-safety';
+import { setRunContext } from '../core/run-context';
+import { getTelemetry } from '../core/telemetry';
+import { assertPathInside } from '../utils/path-guard';
+import { installStdoutGuard, StdoutGuard } from './stdout-guard';
+import { analysisTools } from './tools/analysis';
+import { projectTools } from './tools/project';
+import { executionTools } from './tools/execution';
+import type { ToolSpec } from './tools/types';
 
-const execAsync = promisify(exec);
-const execFileAsync = promisify(execFile);
+export const ALL_TOOLS: ToolSpec[] = [...analysisTools, ...projectTools, ...executionTools];
 
-export function startMcpServer(): void {
-  process.stdin.setEncoding('utf8');
-
-  let buffer = '';
-
-  process.stdin.on('data', (chunk: string) => {
-    buffer += chunk;
-    const lines = buffer.split('\n');
-    buffer = lines.pop() || '';
-
-    for (const line of lines) {
-      if (!line.trim()) continue;
-      try {
-        const message = JSON.parse(line.trim());
-        handleJsonRpcMessage(message);
-      } catch (err) {
-        sendJsonRpcResponse(null, null, {
-          code: -32700,
-          message: `Parse error: ${(err as Error).message}`
-        });
-      }
-    }
-  });
+export interface McpServerOptions {
+  workspace?: string;
+  allowWrite?: boolean;
+  allowDestructive?: boolean;
 }
 
-function sendJsonRpcResponse(id: number | string | null, result: any, error: any = null): void {
-  const response: any = { jsonrpc: '2.0', id };
-  if (error) {
-    response.error = error;
-  } else {
-    response.result = result;
-  }
-  process.stdout.write(JSON.stringify(response) + '\n');
+interface ToolResult {
+  [key: string]: unknown;
+  content: Array<{ type: 'text'; text: string }>;
+  isError?: boolean;
 }
 
-function handleJsonRpcMessage(message: any): void {
-  const { id, method, params } = message;
+// Narrow view of McpServer.registerTool: its generic overloads are expensive for tsc on ~30 tools.
+type RegisterTool = (
+  name: string,
+  config: { description: string; inputSchema: ZodRawShape; annotations?: Record<string, unknown> },
+  cb: (args: Record<string, unknown>) => Promise<ToolResult>
+) => unknown;
 
-  switch (method) {
-    case 'initialize':
-      sendJsonRpcResponse(id, {
-        protocolVersion: '2024-11-05',
-        capabilities: {
-          tools: {}
-        },
-        serverInfo: {
-          name: 'gherkin-ai-mcp',
-          version: '2.6.5'
-        }
-      });
-      break;
-
-    case 'notifications/initialized':
-      break;
-
-    case 'tools/list':
-      sendJsonRpcResponse(id, { tools: getToolDefinitions() });
-      break;
-
-    case 'tools/call':
-      handleToolCall(id, params?.name, params?.arguments || {});
-      break;
-
-    default:
-      if (id !== undefined) {
-        sendJsonRpcResponse(id, null, {
-          code: -32601,
-          message: `Method not found: ${method}`
-        });
-      }
-      break;
-  }
+export function resolveMcpPermissions(options: McpServerOptions = {}): Required<McpServerOptions> {
+  const workspace = options.workspace ?? process.cwd();
+  const config = loadConfig();
+  const allowWrite = options.allowWrite ?? config.mcp?.allowWrite === true;
+  const allowDestructive = allowWrite && (options.allowDestructive ?? process.env.GHK_ALLOW_DESTRUCTIVE === 'true');
+  return { workspace, allowWrite, allowDestructive };
 }
 
-// ---------------------------------------------------------------------------
-// Tool Definitions
-// ---------------------------------------------------------------------------
-
-function getToolDefinitions() {
-  return [
-    {
-      name: 'run_cli_diff',
-      description: 'Run the ghk diff command to detect drift between a Gherkin feature file and a target source code file.',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          feature: { type: 'string', description: 'Path to the .feature file.' },
-          target: { type: 'string', description: 'Path to the target source code file.' }
-        },
-        required: ['feature', 'target']
-      }
-    },
-    {
-      name: 'run_cli_verify',
-      description: 'Run the ghk verify command to execute closed-loop testing.',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          autoFix: { type: 'boolean', description: 'Enable auto-fix with agent repair loop if tests fail.' }
-        }
-      }
-    },
-    {
-      name: 'run_cli_autopilot',
-      description: 'Run the ghk autopilot command to generate and scaffold features autonomously.',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          requirement: { type: 'string', description: 'Path to the requirement markdown file.' }
-        },
-        required: ['requirement']
-      }
-    },
-    {
-      name: 'parse_gherkin',
-      description: 'Parse Gherkin .feature specification text into domain AST (commands, queries, events, actors).',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          gherkinText: { type: 'string', description: 'Gherkin feature file content.' }
-        },
-        required: ['gherkinText']
-      }
-    },
-    {
-      name: 'build_ir',
-      description: 'Build full Semantic Intermediate Representation (IR) from Gherkin text. Returns actors, commands, queries, events, state machines, invariants, constraints, traceability, and quality indicators.',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          gherkinText: { type: 'string', description: 'Gherkin feature file content.' },
-          mode: { type: 'string', description: 'IR build mode: "deterministic" or "hybrid". Default: deterministic.', enum: ['deterministic', 'hybrid'] }
-        },
-        required: ['gherkinText']
-      }
-    },
-    {
-      name: 'generate_contracts',
-      description: 'Generate TypeScript, OpenAPI 3.0, AsyncAPI and native language contracts from Gherkin text.',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          gherkinText: { type: 'string', description: 'Gherkin feature file content.' },
-          language: { type: 'string', description: 'Target language (typescript, python, php, go, csharp).' },
-          architecture: { type: 'string', description: 'Architecture style (hexagonal, ddd, clean, cqrs, serverless, microservices).' }
-        },
-        required: ['gherkinText']
-      }
-    },
-    {
-      name: 'detect_stack',
-      description: 'Auto-detect project tech stack and architecture from workspace root directory.',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          projectDir: { type: 'string', description: 'Absolute path to project directory.' }
-        }
-      }
-    },
-    {
-      name: 'validate_architecture',
-      description: 'Validate Gherkin AST step coverage and layer import boundary isolation rules.',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          gherkinText: { type: 'string', description: 'Gherkin feature text.' },
-          architecture: { type: 'string', description: 'Architecture style to validate against.' }
-        },
-        required: ['gherkinText']
-      }
-    },
-    {
-      name: 'lint_specification',
-      description: 'Run specification linter (14 rules) on Gherkin text. Returns diagnostics with severity, suggestions, and a quality score.',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          gherkinText: { type: 'string', description: 'Gherkin feature file content.' },
-          threshold: { type: 'number', description: 'Minimum passing score (0-100). Default: 70.' }
-        },
-        required: ['gherkinText']
-      }
-    },
-    {
-      name: 'get_constraints',
-      description: 'Get all constraints from the project constitution. Optionally filter by level (must, should, may, must-not).',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          level: { type: 'string', description: 'Filter by constraint level.', enum: ['must', 'should', 'may', 'must-not'] }
-        }
-      }
-    },
-    {
-      name: 'get_business_rules',
-      description: 'Extract business rules, invariants, and state machines from Gherkin text.',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          gherkinText: { type: 'string', description: 'Gherkin feature file content.' }
-        },
-        required: ['gherkinText']
-      }
-    },
-    {
-      name: 'check_convergence',
-      description: 'Measure spec-to-implementation convergence across 6 dimensions: Specification Quality, Scenario Completeness, Contract Coverage, Architecture Compliance, Security Policy, Traceability.',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          gherkinText: { type: 'string', description: 'Gherkin feature file content.' }
-        },
-        required: ['gherkinText']
-      }
-    },
-    {
-      name: 'calculate_quality',
-      description: 'Calculate project quality scorecard across specification, unit tests, integration tests, E2E, type safety, and security dimensions.',
-      inputSchema: {
-        type: 'object',
-        properties: {}
-      }
-    },
-    {
-      name: 'init_enterprise',
-      description: 'Initialize project with enterprise constitution guardrails. Creates .gherkin-ai/ directory with constitution.yaml, agents/, policies/, templates/ and evaluations/.',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          enterprise: { type: 'boolean', description: 'Enable enterprise mode with full constitution.' }
-        }
-      }
-    },
-    {
-      name: 'scan_security',
-      description: 'Scan text for secrets, PII, and prompt injection attempts before sending to LLMs.',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          content: { type: 'string', description: 'Content to scan for security issues.' },
-          redact: { type: 'boolean', description: 'If true, returns a redacted version of the content.' }
-        },
-        required: ['content']
-      }
-    },
-    {
-      name: 'get_constitution',
-      description: 'Read the current project constitution (architecture constraints, security policies, stack configuration, agent permissions).',
-      inputSchema: {
-        type: 'object',
-        properties: {}
-      }
-    },
-    {
-      name: 'ghk_governance_check',
-      description: 'Evaluate target files against agent policy boundaries and verify SHA-256 specification baselines for drift.',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          files: { type: 'array', items: { type: 'string' }, description: 'Paths of files the agent intends to create or modify.' }
-        },
-        required: ['files']
-      }
-    },
-    {
-      name: 'ghk_impact_analysis',
-      description: 'Calculate multi-service Blast Radius across OpenAPI endpoints, AsyncAPI events, DTOs and DB schemas.',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          gherkinText: { type: 'string', description: 'Optional Gherkin feature text.' },
-          changedFiles: { type: 'array', items: { type: 'string' }, description: 'List of changed or target files.' }
-        }
-      }
-    },
-    {
-      name: 'run_cli_init',
-      description: 'Initialize project configuration non-interactively with dual-stack backend and frontend settings.',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          projectName: { type: 'string', description: 'Project name.' },
-          architecture: { type: 'string', description: 'Software architecture (hexagonal, ddd, clean, cqrs, monolith, api-rest, microservices).' },
-          language: { type: 'string', description: 'Backend language (java, csharp, typescript, php, python, go, ruby).' },
-          framework: { type: 'string', description: 'Backend framework (spring-boot, dotnet-aspnetcore, nestjs, fastapi, laravel, etc.).' },
-          orm: { type: 'string', description: 'Database ORM / persistence.' },
-          database: { type: 'string', description: 'Database engine (postgresql, mysql, mongodb, sqlite, redis).' },
-          validation: { type: 'string', description: 'Validation library (jakarta-validation, fluent-validation, zod, etc.).' },
-          messaging: { type: 'string', description: 'Event broker (rabbitmq, kafka, sqs, redis-pubsub, native-events, none).' },
-          testing: { type: 'string', description: 'Testing framework (junit, xunit, vitest, jest, pytest, phpunit).' },
-          frontendFramework: { type: 'string', description: 'Frontend framework (angular, react, vue, vanilla-js, none).' },
-          frontendLanguage: { type: 'string', description: 'Frontend language (typescript, javascript).' },
-          frontendStateManagement: { type: 'string', description: 'Frontend state pattern (signals, classic, pinia, redux-toolkit).' },
-          enterprise: { type: 'boolean', description: 'Enable enterprise constitution guardrails.' }
-        }
-      }
-    },
-    {
-      name: 'run_cli_generate',
-      description: 'Generate contracts, DTO schemas, test fixtures, docker-compose, and agent prompts from Gherkin feature spec.',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          feature: { type: 'string', description: 'Path to Gherkin .feature file.' },
-          config: { type: 'string', description: 'Optional path to gherkin-ai.config.json file.' }
-        },
-        required: ['feature']
-      }
-    },
-    {
-      name: 'run_cli_add',
-      description: 'Inject contracts & AI agent prompts into an existing brownfield project target directory.',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          feature: { type: 'string', description: 'Path to Gherkin .feature file.' },
-          target: { type: 'string', description: 'Target directory inside existing project.' }
-        },
-        required: ['feature', 'target']
-      }
-    },
-    {
-      name: 'run_cli_create',
-      description: 'Create a Gherkin .feature specification non-interactively with feature name, actor, action, outcome, and scenarios.',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          featureName: { type: 'string', description: 'Feature name/title.' },
-          actor: { type: 'string', description: 'Feature actor (As a...).' },
-          action: { type: 'string', description: 'Feature action (I want to...).' },
-          outcome: { type: 'string', description: 'Feature outcome (So that...).' },
-          scenarioName: { type: 'string', description: 'Main scenario title.' },
-          output: { type: 'string', description: 'Destination path for created .feature file.' },
-          target: { type: 'string', description: 'Optional target directory to auto-inject contracts.' }
-        },
-        required: ['featureName']
-      }
-    },
-    {
-      name: 'run_cli_login',
-      description: 'Configure API credentials, tokens, and AI providers (OpenAI, Anthropic, Gemini, Ollama, custom) non-interactively.',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          token: { type: 'string', description: 'Platform or agent auth token.' },
-          user: { type: 'string', description: 'User or agent identifier/email.' },
-          apiKey: { type: 'string', description: 'LLM API key.' },
-          provider: { type: 'string', description: 'AI provider (openai, anthropic, gemini, ollama, azure-openai, custom).' },
-          endpoint: { type: 'string', description: 'AI or server API endpoint URL.' },
-          server: { type: 'string', description: 'Centralized audit or registry server URL.' }
-        }
-      }
-    },
-    {
-      name: 'run_cli_audit',
-      description: 'Query or clear feature execution audit trail inventory.',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          feature: { type: 'string', description: 'Filter audit records by feature spec or name.' },
-          clear: { type: 'boolean', description: 'If true, clears audit trail history.' }
-        }
-      }
-    },
-    {
-      name: 'run_cli_agent_log',
-      description: 'Record or view actions executed by AI Agents during feature implementation.',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          action: { type: 'string', description: 'Describe concrete action taken by AI Agent.' },
-          feature: { type: 'string', description: 'Feature name or spec path.' },
-          list: { type: 'boolean', description: 'If true, lists agent action walkthrough.' },
-          clear: { type: 'boolean', description: 'If true, clears agent action logs.' }
-        }
-      }
-    },
-    {
-      name: 'run_cli_implement',
-      description: 'Generate AI Agent Master Implementation Prompt and context package for a feature.',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          feature: { type: 'string', description: 'Path to Gherkin .feature file.' },
-          docker: { type: 'boolean', description: 'Include Docker container sandbox instructions in master prompt.' },
-          compact: { type: 'boolean', description: 'Generate ultra-compact prompt for low-cost models.' }
-        },
-        required: ['feature']
-      }
-    },
-    {
-      name: 'run_cli_lint',
-      description: 'Run the ghk lint command to validate specification files against Gherkin-AI rules.',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          feature: { type: 'string', description: 'Optional path to specific .feature file to lint.' },
-          threshold: { type: 'string', description: 'Minimum passing score.' }
-        }
-      }
-    },
-    {
-      name: 'run_cli_converge',
-      description: 'Run the ghk converge command to measure alignment between Specification and Implementation.',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          feature: { type: 'string', description: 'Optional path to specific .feature file to analyze.' },
-          threshold: { type: 'string', description: 'Minimum passing score.' },
-          json: { type: 'boolean', description: 'Output as JSON.' }
-        }
-      }
-    }
-  ];
+export function isToolPermitted(tool: ToolSpec, perms: Required<McpServerOptions>): boolean {
+  if (tool.level === 'safe') return true;
+  if (tool.level === 'requires_review') return perms.allowWrite;
+  return perms.allowDestructive;
 }
 
+function summarizeArgs(tool: ToolSpec, args: Record<string, unknown>): string | undefined {
+  const paths = (tool.pathArgs ?? []).map(k => args[k]).filter(Boolean);
+  return paths.length ? paths.join(', ') : undefined;
+}
 
-// ---------------------------------------------------------------------------
-// Tool Call Handlers
-// ---------------------------------------------------------------------------
+/** Executes one tool call with all guards. Exported for tests. */
+export async function invokeTool(tool: ToolSpec, args: Record<string, unknown>, perms: Required<McpServerOptions>, guard?: Pick<StdoutGuard, 'capture'>): Promise<ToolResult> {
+  const telemetry = getTelemetry();
+  const started = Date.now();
+  const resource = summarizeArgs(tool, args);
 
-async function handleToolCall(id: number | string, name: string, args: any): Promise<void> {
+  const deny = (message: string): ToolResult => {
+    telemetry.recordAudit({ source: 'mcp', action: `mcp:${tool.name}`, status: 'BLOCKED', resource, details: message });
+    return { content: [{ type: 'text', text: `[POLICY BLOCK] ${message}` }], isError: true };
+  };
+
+  if (!isToolPermitted(tool, perms)) return deny(`Tool '${tool.name}' (${tool.level}) is not enabled on this server.`);
+
   try {
-    // Classify operation safety and prepend warnings for destructive operations
-    const safetyClassification = classifyOperation(name);
-    let safetyWarning = formatSafetyWarning(name);
-
-    // ENTERPRISE SECURITY: Intercept Destructive Operations via AgentPolicyEngine
-    if (safetyClassification.level === 'destructive') {
-      const isHitlApproved = process.env.GHK_ALLOW_DESTRUCTIVE === 'true';
-      if (!isHitlApproved) {
-        return sendJsonRpcResponse(id, null, {
-          code: -32603,
-          message: `[SECURITY BLOCK] Operation '${name}' is classified as DESTRUCTIVE. ` +
-                   `Enterprise policy requires Human-In-The-Loop (HITL) consent. ` +
-                   `To authorize this execution, run with GHK_ALLOW_DESTRUCTIVE=true.`
-        });
-      }
-      safetyWarning += '\n[SECURITY LOG] Destructive operation approved via GHK_ALLOW_DESTRUCTIVE.\n';
+    for (const key of tool.pathArgs ?? []) {
+      const value = args[key];
+      if (typeof value === 'string' && value) assertPathInside(perms.workspace, value, `Argument '${key}'`);
     }
-
-    // ENTERPRISE SECURITY: Validate file modifications against Constitution
-    if (name === 'run_cli_diff' || name === 'run_cli_add' || name === 'run_cli_generate') {
-      const policyEngine = new AgentPolicyEngine(process.cwd());
-      const targetFiles = [];
-      if (args.target) targetFiles.push(args.target);
-      
-      if (targetFiles.length > 0) {
-        const policyEval = policyEngine.evaluateFileModifications(targetFiles);
-        if (!policyEval.allowed) {
-          return sendJsonRpcResponse(id, null, {
-            code: -32603,
-            message: `[POLICY BLOCK] Operation '${name}' violates governance constitution:\n` +
-                     policyEval.violations.join('\n')
-          });
-        }
-      }
-    }
-
-    switch (name) {
-      case 'run_cli_diff': {
-        const { feature, target } = args;
-        try {
-          const { stdout, stderr } = await execFileAsync('node', ['bin/gherkin-ai.js', 'diff', '--feature', feature, '--target', target], { shell: false });
-          sendJsonRpcResponse(id, {
-            content: [{ type: 'text', text: stdout || stderr }]
-          });
-        } catch (e: any) {
-          sendJsonRpcResponse(id, {
-            content: [{ type: 'text', text: e.stdout || e.stderr || e.message }]
-          });
-        }
-        break;
-      }
-
-      case 'run_cli_verify': {
-        const commandArgs = ['bin/gherkin-ai.js', 'verify'];
-        if (args.autoFix) commandArgs.push('--auto-fix');
-        try {
-          const { stdout, stderr } = await execFileAsync('node', commandArgs, { shell: false });
-          sendJsonRpcResponse(id, {
-            content: [{ type: 'text', text: stdout || stderr }]
-          });
-        } catch (e: any) {
-          sendJsonRpcResponse(id, {
-            content: [{ type: 'text', text: e.stdout || e.stderr || e.message }]
-          });
-        }
-        break;
-      }
-
-      case 'run_cli_autopilot': {
-        const requirement = args.requirement;
-        try {
-          const { stdout, stderr } = await execFileAsync('node', ['bin/gherkin-ai.js', 'autopilot', '--requirement', requirement], { shell: false });
-          sendJsonRpcResponse(id, {
-            content: [{ type: 'text', text: stdout || stderr }]
-          });
-        } catch (e: any) {
-          sendJsonRpcResponse(id, {
-            content: [{ type: 'text', text: e.stdout || e.stderr || e.message }]
-          });
-        }
-        break;
-      }
-
-      case 'parse_gherkin': {
-        const parsed = parseGherkinText(args.gherkinText || '');
-        sendJsonRpcResponse(id, {
-          content: [{ type: 'text', text: JSON.stringify(parsed, null, 2) }]
-        });
-        break;
-      }
-
-      case 'build_ir': {
-        const parsed = parseGherkinText(args.gherkinText || '');
-        const ir = buildIR(parsed, 'mcp-input.feature', {
-          mode: args.mode || 'deterministic'
-        });
-        sendJsonRpcResponse(id, {
-          content: [{ type: 'text', text: JSON.stringify(ir, null, 2) }]
-        });
-        break;
-      }
-
-      case 'generate_contracts': {
-        const config = loadConfig();
-        if (args.language) config.stack.language = args.language;
-        if (args.architecture) config.architecture = args.architecture;
-        const parsed = parseGherkinText(args.gherkinText || '');
-        const ir = buildSpecificationIR(parsed, args.featureFile as string);
-        const output = generateContracts(parsed, ir, config);
-        sendJsonRpcResponse(id, {
-          content: [{ type: 'text', text: JSON.stringify(output, null, 2) }]
-        });
-        break;
-      }
-
-      case 'detect_stack': {
-        const targetDir = args.projectDir || process.cwd();
-        const detected = detectExistingStack(targetDir);
-        sendJsonRpcResponse(id, {
-          content: [{ type: 'text', text: JSON.stringify(detected, null, 2) }]
-        });
-        break;
-      }
-
-      case 'validate_architecture': {
-        const parsed = parseGherkinText(args.gherkinText || '');
-        const arch = getArchRule(args.architecture || 'hexagonal');
-        const scorecard = {
-          featureName: parsed.featureName,
-          scenariosCount: parsed.scenarios.length,
-          commandsCount: parsed.domainAnalysis.commands.length,
-          eventsCount: parsed.domainAnalysis.events.length,
-          prohibitedImportsGuard: arch.prohibitedImports,
-          passed: parsed.scenarios.length > 0
-        };
-        sendJsonRpcResponse(id, {
-          content: [{ type: 'text', text: JSON.stringify(scorecard, null, 2) }]
-        });
-        break;
-      }
-
-      case 'lint_specification': {
-        const parsed = parseGherkinText(args.gherkinText || '');
-        const result = lintSpecification(parsed, 'mcp-input.feature', {
-          threshold: args.threshold || 70,
-        });
-        sendJsonRpcResponse(id, {
-          content: [{ type: 'text', text: JSON.stringify(result, null, 2) }]
-        });
-        break;
-      }
-
-      case 'get_constraints': {
-        const constitution = loadConstitution();
-        let constraints;
-        if (args.level) {
-          constraints = getConstraintsByLevel(constitution, args.level);
-        } else {
-          constraints = constitution?.constraints || [];
-        }
-        // Also include architecture required/forbidden
-        const archConstraints = [];
-        if (constitution?.architecture?.required) {
-          for (const r of constitution.architecture.required) {
-            archConstraints.push({ level: 'must', description: r, category: 'architecture' });
-          }
-        }
-        if (constitution?.architecture?.forbidden) {
-          for (const f of constitution.architecture.forbidden) {
-            archConstraints.push({ level: 'must-not', description: f, category: 'architecture' });
-          }
-        }
-        sendJsonRpcResponse(id, {
-          content: [{ type: 'text', text: JSON.stringify({
-            constraints: [...(constraints || []), ...archConstraints],
-            constitution: constitution ? {
-              architecture: constitution.architecture,
-              security: {
-                dataClassification: constitution.security?.dataClassification,
-                authProvider: constitution.security?.authProvider,
-              },
-              stack: constitution.stack,
-            } : null,
-          }, null, 2) }]
-        });
-        break;
-      }
-
-      case 'get_business_rules': {
-        const parsed = parseGherkinText(args.gherkinText || '');
-        const ir = buildIR(parsed, 'mcp-input.feature');
-        sendJsonRpcResponse(id, {
-          content: [{ type: 'text', text: JSON.stringify({
-            invariants: ir.invariants,
-            stateMachines: ir.stateMachines,
-            commands: ir.commands,
-            events: ir.events,
-            actors: ir.actors,
-            assumptions: ir.assumptions,
-            risks: ir.risks,
-          }, null, 2) }]
-        });
-        break;
-      }
-
-      case 'check_convergence': {
-        const parsed = parseGherkinText(args.gherkinText || '');
-        const report = calculateConvergence(parsed, 'mcp-input.feature');
-        sendJsonRpcResponse(id, {
-          content: [{ type: 'text', text: JSON.stringify(report, null, 2) }]
-        });
-        break;
-      }
-
-      case 'calculate_quality': {
-        const riskCard = calculateDeliveryRisk();
-        sendJsonRpcResponse(id, {
-          content: [
-            {
-              type: 'text',
-              text: `=== Deployment Risk Assessment ===\nRisk Level: ${riskCard.riskLevel}\nRisk Score: ${riskCard.overallRiskScore}\nBlast Radius: ${riskCard.blastRadius}\nTest Strength: ${riskCard.testStrength}\nSecurity Sensitivity: ${riskCard.securitySensitivity}\nRequires Human Approval: ${riskCard.requiresHumanApproval}\n\nFactors:\n${riskCard.factors.join('\n')}`
-            }
-          ]
-        });
-        break;
-      }
-
-      case 'init_enterprise': {
-        generateConstitution({ enterprise: true });
-        sendJsonRpcResponse(id, {
-          content: [{ type: 'text', text: JSON.stringify({
-            success: true,
-            message: 'Enterprise constitution initialized in .gherkin-ai/',
-            created: [
-              '.gherkin-ai/constitution.yaml',
-              '.gherkin-ai/agents/',
-              '.gherkin-ai/policies/',
-              '.gherkin-ai/templates/',
-              '.gherkin-ai/evaluations/',
-            ]
-          }, null, 2) }]
-        });
-        break;
-      }
-
-      case 'scan_security': {
-        const injectionCheck = detectPromptInjection(args.content || '');
-        const securityScan = scanContextSecurity(args.content || '', {
-          redact: args.redact || false,
-        });
-        sendJsonRpcResponse(id, {
-          content: [{ type: 'text', text: JSON.stringify({
-            promptInjection: injectionCheck,
-            contextSecurity: securityScan,
-          }, null, 2) }]
-        });
-        break;
-      }
-
-      case 'get_constitution': {
-        const constitution = loadConstitution();
-        sendJsonRpcResponse(id, {
-          content: [{ type: 'text', text: JSON.stringify(constitution || { error: 'No constitution found. Run init_enterprise to create one.' }, null, 2) }]
-        });
-        break;
-      }
-
-      case 'ghk_governance_check': {
-        const policyEngine = new AgentPolicyEngine(process.cwd());
-        const hashBaseline = new SpecHashBaseline(process.cwd());
-        const files = args.files || [];
-        const policyEval = policyEngine.evaluateFileModifications(files);
-        const driftEval = hashBaseline.verifyDrift(files);
-
-        sendJsonRpcResponse(id, {
-          content: [{ type: 'text', text: JSON.stringify({
-            policy: policyEval,
-            baselineDrift: driftEval
-          }, null, 2) }]
-        });
-        break;
-      }
-
-      case 'ghk_impact_analysis': {
-        const analyzer = new CrossServiceImpactAnalyzer();
-        let ir = buildIR(parseGherkinText(args.gherkinText || 'Feature: Impact Analysis'), 'input.feature');
-        const result = analyzer.analyzeImpact(ir, args.changedFiles || []);
-
-        sendJsonRpcResponse(id, {
-          content: [{ type: 'text', text: JSON.stringify(result, null, 2) }]
-        });
-        break;
-      }
-
-      case 'run_cli_init': {
-        await handleInitCommand({
-          ...args,
-          nonInteractive: true,
-          yes: true
-        });
-        sendJsonRpcResponse(id, {
-          content: [{ type: 'text', text: JSON.stringify({ success: true, message: 'Project initialized via MCP', config: loadConfig() }, null, 2) }]
-        });
-        break;
-      }
-
-      case 'run_cli_generate': {
-        await handleGenerateCommand({
-          ...args,
-          nonInteractive: true,
-          yes: true
-        });
-        sendJsonRpcResponse(id, {
-          content: [{ type: 'text', text: JSON.stringify({ success: true, message: `Contracts generated for ${args.feature}` }, null, 2) }]
-        });
-        break;
-      }
-
-      case 'run_cli_add': {
-        await handleAddCommand({
-          ...args,
-          nonInteractive: true,
-          yes: true
-        });
-        sendJsonRpcResponse(id, {
-          content: [{ type: 'text', text: JSON.stringify({ success: true, message: `Contracts added to target ${args.target}` }, null, 2) }]
-        });
-        break;
-      }
-
-      case 'run_cli_create': {
-        await handleCreateCommand({
-          ...args,
-          nonInteractive: true,
-          yes: true
-        });
-        sendJsonRpcResponse(id, {
-          content: [{ type: 'text', text: JSON.stringify({ success: true, message: `Feature spec created: ${args.featureName}` }, null, 2) }]
-        });
-        break;
-      }
-
-      case 'run_cli_login': {
-        const authData = await handleLoginCommand({
-          ...args,
-          nonInteractive: true,
-          yes: true
-        });
-        sendJsonRpcResponse(id, {
-          content: [{ type: 'text', text: JSON.stringify({ success: true, message: 'Auth credentials saved', user: authData.user, provider: authData.provider }, null, 2) }]
-        });
-        break;
-      }
-
-      case 'run_cli_audit': {
-        await handleAuditCommand({
-          ...args,
-          json: true
-        });
-        sendJsonRpcResponse(id, {
-          content: [{ type: 'text', text: JSON.stringify({ success: true, message: 'Audit query executed' }, null, 2) }]
-        });
-        break;
-      }
-
-      case 'run_cli_agent_log': {
-        await handleAgentLogCommand({
-          ...args,
-          json: true
-        });
-        sendJsonRpcResponse(id, {
-          content: [{ type: 'text', text: JSON.stringify({ success: true, message: 'Agent log action executed' }, null, 2) }]
-        });
-        break;
-      }
-
-      case 'run_cli_implement': {
-        await handleImplementCommand({
-          ...args
-        });
-        sendJsonRpcResponse(id, {
-          content: [{ type: 'text', text: JSON.stringify({ success: true, message: `Master prompt generated for ${args.feature}` }, null, 2) }]
-        });
-        break;
-      }
-
-      case 'run_cli_lint': {
-        await handleLintCommand({
-          ...args
-        });
-        sendJsonRpcResponse(id, {
-          content: [{ type: 'text', text: JSON.stringify({ success: true, message: `Linting executed` }, null, 2) }]
-        });
-        break;
-      }
-
-      case 'run_cli_converge': {
-        await handleConvergeCommand({
-          ...args
-        });
-        sendJsonRpcResponse(id, {
-          content: [{ type: 'text', text: JSON.stringify({ success: true, message: `Convergence analysis executed` }, null, 2) }]
-        });
-        break;
-      }
-
-      default:
-        sendJsonRpcResponse(id, null, {
-          code: -32601,
-          message: `Unknown tool: ${name}`
-        });
+    const writes = tool.writes?.(args) ?? [];
+    if (writes.length) {
+      for (const target of writes) assertPathInside(perms.workspace, target, 'Write target');
+      const evaluation = new AgentPolicyEngine(perms.workspace).evaluateFileModifications(writes);
+      if (!evaluation.allowed) return deny(`Operation '${tool.name}' violates the agent policy:\n${evaluation.violations.join('\n')}`);
     }
   } catch (err) {
-    sendJsonRpcResponse(id, null, {
-      code: -32000,
-      message: `Tool execution failed: ${(err as Error).message}`
-    });
+    if (err instanceof PolicyError) return deny(err.message);
+    throw err;
   }
+
+  const execute = async () => {
+    const result = await tool.run(args, { workspace: perms.workspace });
+    const exitCode = typeof process.exitCode === 'number' ? process.exitCode : 0;
+    process.exitCode = 0; // a failing gate must not make the long-running server exit non-zero
+    return { result, exitCode };
+  };
+  const captured = guard ? await guard.capture(execute) : await execute().then(r => ({ ok: true as const, result: r, output: '' }), error => ({ ok: false as const, error, output: '' }));
+
+  const parts: string[] = [];
+  let isError = false;
+  let detail: string | undefined;
+  if (captured.ok) {
+    if (captured.result.result !== undefined) parts.push(JSON.stringify(captured.result.result, null, 2));
+    if (captured.output.trim()) parts.push(captured.output.trim());
+    if (captured.result.exitCode !== 0) {
+      isError = true;
+      detail = `exit code ${captured.result.exitCode}`;
+      parts.push(`[exit code ${captured.result.exitCode}]`);
+    }
+  } else {
+    isError = true;
+    const error = captured.error;
+    detail = error instanceof Error ? error.message : String(error);
+    if (captured.output.trim()) parts.push(captured.output.trim());
+    parts.push(`Tool execution failed: ${detail}${error instanceof GhkError && error.hint ? `\nHint: ${error.hint}` : ''}`);
+  }
+
+  telemetry.recordAudit({ source: 'mcp', action: `mcp:${tool.name}`, status: isError ? 'FAILED' : 'SUCCESS', resource, details: detail });
+  telemetry.recordEvent({ eventType: 'MCP_TOOL_CALL', commandName: tool.name, durationMs: Date.now() - started, success: !isError });
+
+  return { content: [{ type: 'text', text: parts.join('\n\n') || 'OK' }], ...(isError ? { isError: true } : {}) };
 }
 
+export function createMcpServer(perms: Required<McpServerOptions>, guard?: StdoutGuard): { server: McpServer; registered: string[]; disabled: string[] } {
+  const server = new McpServer(
+    { name: 'gherkin-ai-mcp', version: CLI_VERSION },
+    {
+      instructions:
+        'gherkin-ai: spec-driven analysis and governance for Gherkin specifications. ' +
+        (perms.allowWrite ? 'File-writing tools are enabled. ' : 'Read-only mode: file-writing tools are disabled (mcp.allowWrite). ') +
+        (perms.allowDestructive ? 'Test execution and LLM repair tools are enabled.' : 'Test execution and autonomous code changes are disabled.')
+    }
+  );
+  const register = server.registerTool.bind(server) as unknown as RegisterTool;
+  const registered: string[] = [];
+  const disabled: string[] = [];
+
+  for (const tool of ALL_TOOLS) {
+    if (!isToolPermitted(tool, perms)) {
+      disabled.push(tool.name);
+      continue;
+    }
+    register(
+      tool.name,
+      {
+        description: tool.description,
+        inputSchema: tool.input,
+        annotations: { readOnlyHint: tool.level === 'safe', destructiveHint: tool.level === 'destructive' }
+      },
+      args => invokeTool(tool, args, perms, guard)
+    );
+    registered.push(tool.name);
+  }
+  return { server, registered, disabled };
+}
+
+export async function startMcpServer(options: McpServerOptions = {}): Promise<void> {
+  // Install the guard first: anything printed from here on must not reach the protocol channel.
+  const guard = installStdoutGuard();
+  setRunContext({ nonInteractive: true, command: 'mcp' });
+  const perms = resolveMcpPermissions(options);
+  const { server, registered, disabled } = createMcpServer(perms, guard);
+
+  process.stderr.write(`gherkin-ai MCP server v${CLI_VERSION} — workspace ${perms.workspace} — ${registered.length} tools enabled` +
+    (disabled.length ? `, ${disabled.length} disabled (${disabled.join(', ')})` : '') + '\n');
+
+  await server.connect(new StdioServerTransport(process.stdin, guard.transportStdout));
+}

@@ -5,12 +5,11 @@
 import { startMcpServer } from '../mcp/mcp-server';
 import { installMcpConfig } from '../mcp/mcp-installer';
 
-export async function handleMcpCommand(subcommand?: string): Promise<void> {
-  if (subcommand === 'install' || process.argv.includes('--install')) {
+export async function handleMcpCommand(subcommand?: string, options: { install?: boolean } = {}): Promise<void> {
+  if (subcommand === 'install' || options.install) {
     installMcpConfig();
     return;
   }
-  // Silent start for stdio MCP JSON-RPC 2.0 protocol
-  startMcpServer();
+  // Stdio JSON-RPC server: stdout is reserved for protocol frames.
+  await startMcpServer();
 }
-

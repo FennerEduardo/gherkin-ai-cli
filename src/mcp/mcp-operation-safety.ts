@@ -36,20 +36,20 @@ const TOOL_SAFETY_MAP: Record<string, OperationSafetyLevel> = {
   'ghk_governance_check': 'safe',
   'ghk_impact_analysis': 'safe',
   'run_cli_audit': 'safe',
-  'run_cli_agent_log': 'safe',
+  'run_cli_agent_log_list': 'safe',
+  'generate_contracts': 'safe', // returns contracts as text, writes nothing
   'run_cli_lint': 'safe',
   'run_cli_converge': 'safe',
   'run_cli_diff': 'safe',
 
   // === REQUIRES REVIEW: Generates files, modifies project ===
-  'generate_contracts': 'requires_review',
   'run_cli_generate': 'requires_review',
   'run_cli_init': 'requires_review',
   'run_cli_create': 'requires_review',
   'run_cli_add': 'requires_review',
   'run_cli_implement': 'requires_review',
   'init_enterprise': 'requires_review',
-  'run_cli_login': 'requires_review',
+  'run_cli_agent_log': 'requires_review',
 
   // === DESTRUCTIVE: Autonomous code modification, execution ===
   'run_cli_verify': 'destructive',

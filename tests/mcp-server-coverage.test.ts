@@ -1,9 +1,25 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
 import { handleInitCommand } from '../src/commands/init';
-import { handleLoginCommand } from '../src/commands/login';
 import { handleAuditCommand } from '../src/commands/audit';
 
 describe('MCP Server Tool Coverage', () => {
+  // init writes config, governance and CI files into the cwd: never run it in the repository root.
+  let cwd: string;
+  let dir: string;
+
+  beforeAll(() => {
+    cwd = process.cwd();
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ghk-mcp-coverage-'));
+    process.chdir(dir);
+  });
+
+  afterAll(() => {
+    process.chdir(cwd);
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
 
   it('handleInitCommand runs headlessly without prompts', async () => {
     await expect(handleInitCommand({
@@ -13,16 +29,13 @@ describe('MCP Server Tool Coverage', () => {
       nonInteractive: true,
       yes: true
     })).resolves.not.toThrow();
+    expect(fs.existsSync(path.join(dir, 'gherkin-ai.config.json'))).toBe(true);
   });
 
-  it('handleLoginCommand runs headlessly without prompts', async () => {
-    const auth = await handleLoginCommand({
-      token: 'mcp_token_77',
-      provider: 'openai',
-      nonInteractive: true,
-      yes: true
-    });
-    expect(auth.token).toBe('mcp_token_77');
+  it('generates a CI gate that pins the CLI version', () => {
+    const workflow = fs.readFileSync(path.join(dir, '.github', 'workflows', 'gherkin-ai-gate.yml'), 'utf8');
+    expect(workflow).toMatch(/GHK_VERSION: '\d+\.\d+\.\d+/);
+    expect(workflow).not.toContain('npm install -g gherkin-ai');
   });
 
   it('handleAuditCommand queries inventory without throwing', async () => {
