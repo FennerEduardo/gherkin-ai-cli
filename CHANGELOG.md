@@ -2,6 +2,91 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [3.0.0-beta.1] - Unreleased
+
+Enterprise-readiness release, driven by the 2.6.5 reviews. Contains breaking changes: see `docs/MIGRATION-3.0.md`. For operators: `docs/ENTERPRISE.md`.
+
+### Added
+- **Layered, validated configuration:** defaults → organization (`GHK_ORG_CONFIG`) → user → project → environment, validated with zod; organization `locked` paths; published JSON Schema (`schemas/config.schema.json`); `ghk config show|validate|schema`.
+- **LLM providers:** Azure OpenAI (API key or Entra ID), Amazon Bedrock, Google Gemini and Vertex AI, OpenAI-compatible gateways (`llm.baseUrl` + `llm.headers`), alongside OpenAI, Anthropic and Ollama. Per-request timeouts, a single retry layer honoring `Retry-After`, per-run token budgets, and allow-lists for providers, models and endpoints.
+- **Corporate networking:** `HTTPS_PROXY`/`NO_PROXY` and `network.proxy` for all providers; extra trusted CAs via `network.caFile`.
+- **Credentials:** OS keychain storage (`ghk login`, `--api-key-stdin`), `ghk logout`, `ghk auth status`.
+- **Automation contract:** documented exit codes (2 usage, 3 config, 4 gate, 5 policy, 6 provider, 7 drift); `--json` prints exactly one JSON document on stdout for every command; `--quiet`; `NO_COLOR`.
+- **Audit and telemetry:** structured `audit.jsonl` and `telemetry.jsonl` (local only) with execution ids; LLM calls, MCP calls, agent write decisions and plugin loads are audited; `ghk audit export --format jsonl|csv --since`.
+- **Agent write guards:** `autopilot` is dry-run by default (`--apply`); `--apply` is refused in CI (`--allow-unattended-writes`) and on protected branches (`--force-branch`).
+- **Governed plugins:** `plugins.load` with an organization allow-list (`plugins.allow`).
+- **Stack support tiers:** `ghk stacks`; warnings for beta/experimental stacks; golden builds (`scripts/golden-build.js`) compile generated NestJS and .NET projects in CI.
+- **CI/release:** OS × Node matrix, blocking `npm audit`, golden builds, CLI contract tests against the built binary, and a release workflow with npm provenance and a CycloneDX SBOM.
+- `--threshold` for `lint` and `converge`.
+
+### Changed
+- **MCP server rebuilt on `@modelcontextprotocol/sdk`:**
+  - Read-only by default; write tools need `mcp.allowWrite`, and destructive tools also need `GHK_ALLOW_DESTRUCTIVE`.
+  - Central path containment, agent policy and auditing on every call.
+  - Command output is captured instead of corrupting the stdio protocol.
+  - Commands are invoked in-process, so the server works when installed globally.
+  - `ghk mcp install` pins the package version.
+- **Web Studio:** per-session token, exact Host and Origin checks, path containment, no shell execution.
+- **Security patterns unified** in `src/core/security`. Secrets are redacted from LLM prompts, log files and audit records.
+- **Logger:** levels, stderr for diagnostics, opt-in rotated log file; no longer writes `.ghe/logs` into the working directory on every run.
+- **Single version source:** the CLI banner, `--version` and the MCP `serverInfo` all read the version from `package.json`. The MCP server previously reported a hardcoded value.
+- **Package contents:** `CHANGELOG.md`, `LICENSE`, `SECURITY.md` and `schemas/` are now published.
+
+### Fixed
+- **Credential leak between providers:** a key belonging to another provider could be sent to the selected one (for example, the OpenAI key sent to Anthropic). `--apiKey` was silently ignored.
+- **NestJS idempotency race:** expired or failed keys could be re-claimed by two concurrent requests.
+- **Generated NestJS projects did not compile:**
+  - inconsistent `PrismaService` paths;
+  - missing dependencies;
+  - escaped `\n` inside step definitions;
+  - missing Prisma models;
+  - wrong Prisma delegate casing.
+- **Generated .NET projects did not compile:**
+  - non-existent `Microsoft.EntityFrameworkCore.PostgreSQL` package;
+  - invalid root namespace for hyphenated project names;
+  - Aspire AppHost compiled into the API project;
+  - wrong command namespaces;
+  - missing event record;
+  - missing OpenTelemetry, Testcontainers, ServiceDiscovery and Swashbuckle packages.
+- **Unhandled async errors:** `program.parse()` → `parseAsync()`.
+- **Help and workspace detection:** workspace detection no longer prompts or changes directory for `--help` or in CI. `--project` no longer creates directories (except for `init`).
+- **Web Studio path traversal:** `/api/features/*` and `/api/file` were affected (sibling-prefix bypass).
+- **Portability:** `verify` no longer shells out to `sleep`, which is not available on Windows.
+- **Dependency vulnerabilities:** resolved transitive advisories (brace-expansion, fast-uri, hono, ip-address).
+
+### Removed
+- `ghk login --apiKey/--token/--user/--endpoint/--server` and the `auth` alias of `login`.
+- MCP tool `run_cli_login`; `clear` on `run_cli_audit`.
+- Legacy hook manager `src/core/hooks.ts`.
+- Stray development files from the repository root (`cdk-test-out.ts`, `scratch/`, `specs/`, pack logs).
+
+## [2.6.5] - 2026-09-28
+
+> Published to npm without a changelog entry; reconstructed from git history.
+
+### Added
+- Kotlin contract generation integrated with the contract generation system.
+- Markdown EARS parser (`src/core/parsers/markdown-ears-parser.ts`).
+- Plugin management in `ghk generate`.
+- AWS CDK infrastructure stack (SNS, SQS, DynamoDB, EKS, Secrets Manager).
+- Multi-tenancy support for Go, Java, Python and NestJS generators; Prisma multi-tenancy and relation tracking.
+- OpenTelemetry Jaeger exporter and additional instrumentations.
+- `ghk audit` HTML report generation.
+- Coverage analysis in `ghk quality` and `--isolated` mode in `ghk verify`.
+
+### Changed
+- NestJS Outbox and Saga infrastructure with atomic claims and idempotency patterns.
+- API keys are no longer persisted in `auth.json`; Row-Level Security enforcement and governance checks for destructive MCP operations.
+- Deprecation warnings for manual prompt workflows.
+
+## [2.6.4] - 2026-09-16
+
+### Fixed
+- README explicitly included in the npm bundle.
+
+### Docs
+- Multi-stack evaluation report (`docs/EVALUATION_REPORT.md`) and updated command documentation.
+
 ## [2.6.3](https://github.com/FennerEduardo/gherkin-ai-cli/compare/v2.6.2...v2.6.3) (2026-09-15)
 
 

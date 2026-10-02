@@ -1,0 +1,81 @@
+# Migrating from 2.x to 3.0
+
+3.0 hardens `gherkin-ai` for team and CI use. Most projects need no changes: every `gherkin-ai.config.json` produced by 2.x versions that we tested validates unchanged. The breaking changes below matter mostly to automation and to MCP users.
+
+Start by running:
+
+```bash
+ghk config validate     # schema check of every config layer
+ghk auth status         # which provider, model and credential will be used
+```
+
+## Credentials and login
+
+| 2.x | 3.0 |
+|---|---|
+| `ghk login --apiKey <key>` (accepted, then silently ignored) | Removed. Use the provider's environment variable, or `ghk login --provider <name>`, which stores the key in the OS keychain. For scripts: `--api-key-stdin`. |
+| `--token`, `--user`, `--endpoint`, `--server` | Removed. They produced a synthetic token and pointed at a server that does not exist. |
+| `ghk auth` = alias of `login` | `ghk auth status` shows the effective provider and credential source. |
+| `~/.gherkin-ai/auth.json` | No longer read for keys. The provider moves to `~/.gherkin-ai/config.json` (`llm.provider`); a legacy `provider` in `auth.json` is still honored. You can delete the file. |
+| The first key found in `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, … was sent to whatever provider was selected | Keys are resolved per provider. A selected provider without its key fails with exit code `3`, instead of a warning followed by an authentication error. |
+
+## LLM configuration
+
+- New providers: `openai-compatible`, `azure-openai` (now implemented), `bedrock`, `gemini` (now implemented), `vertex`. See [ENTERPRISE.md §2](./ENTERPRISE.md#2-llm-providers).
+- The default Anthropic model is now `claude-opus-5-5` (previously `claude-3-opus-20240229`). Pin a model with `llm.model` if you need a different one.
+- `LLM_PROVIDER`, `LLM_MODEL` and `LLM_BASE_URL` still work. You can also set them in any config layer under `llm`.
+- Requests now time out (`llm.timeoutMs`, default 120 s). Transport retries are no longer nested, so the worst case is `maxRetries + 1` attempts instead of 9.
+- Secrets in prompts are redacted before sending.
+
+## Exit codes and output
+
+- Exit codes follow a fixed table (`2` usage, `3` config, `4` gate, `5` policy, `6` provider, `7` drift). In 2.x almost every failure was `1`. **Update CI scripts that compare against `1`.** Most should check for non-zero instead.
+- `--json` now guarantees one JSON document on stdout. In 2.x it only silenced the logger. It works before or after the command name.
+- Errors are reported as messages with hints. Stack traces only appear with `--verbose`.
+- The CLI no longer writes `./.ghe/logs/execution.log.jsonl` on every run. Set `logging.file` to keep a log file.
+- `lint` and `converge` accept `--threshold`. `converge --strict` is accepted but deprecated, because the threshold is always enforced.
+
+## Workspace handling
+
+- `--project <dir>` no longer creates the directory, except for `ghk init`. A typo now exits with code `2`.
+- In CI or with `--yes`, the CLI no longer switches silently into the first sub-project it finds. Pass `--project`.
+- `--help`, `config`, `auth`, `login`, `stacks` and `mcp` never prompt or change directory.
+
+## Agent-driven writes
+
+- `ghk autopilot` is now a **dry run by default**, like `verify`. Add `--apply` to write files.
+- With `--apply`, both `verify --auto-fix` and `autopilot` refuse to run:
+  - in CI, unless you pass `--allow-unattended-writes` (or set `policy.allowUnattendedWrites`);
+  - on `main` or `master`, unless you pass `--force-branch` (or configure `policy.protectedBranches`).
+- File paths returned by the model that point outside the workspace are dropped.
+
+## MCP server
+
+- The server is rebuilt on `@modelcontextprotocol/sdk`. Tool names are unchanged, except:
+  - `run_cli_login` was removed.
+  - `run_cli_agent_log` only records actions. Use `run_cli_agent_log_list` to read them.
+  - `run_cli_audit` no longer accepts `clear`.
+- **Read-only by default.** Tools that write files need `"mcp": { "allowWrite": true }` in the config. `run_cli_verify` and `run_cli_autopilot` additionally need `GHK_ALLOW_DESTRUCTIVE=true`. Tools that are not enabled are not listed.
+- `generate_contracts` is now classified as read-only. It returns contracts and does not write them.
+- Re-run `ghk mcp install`, so the client configuration pins the package version.
+
+## Web Studio
+
+Open the URL printed by `ghk web`. It contains a session token, and API calls without the token are rejected. `autopilot` and `--apply` cannot be run from the browser.
+
+## Plugins
+
+`config.plugins` is validated. Both `["my-plugin"]` (2.x) and `{ "load": ["my-plugin"] }` work. When `plugins.allow` is set, only listed plugins load. The undocumented `beforeGenerate`/`afterGenerate` hook manager (`core/hooks`) was removed; use the `GherkinAIPlugin` interface.
+
+## Telemetry and audit
+
+`.gherkin-ai/audit.log` (plain text) is replaced by `.gherkin-ai/audit.jsonl` (structured JSON lines). Telemetry is written for every command, locally only. Disable it with `telemetry.enabled: false` or `GHK_TELEMETRY_DISABLED=true`.
+
+## Generated code
+
+- The NestJS layout is consolidated under `src/`: `src/prisma/prisma.service.ts`, `src/infrastructure/multitenancy/` and `src/sagas/`.
+- The generated `package.json` now declares its dependencies.
+- `prisma/schema.prisma` includes `OutboxMessage`, `ProcessedEvent` and `SagaInstance`, plus `tenantId` on the domain model.
+- The generated `.csproj` adds `RootNamespace`, uses the correct `Npgsql.EntityFrameworkCore.PostgreSQL` package, adds the OpenTelemetry, Testcontainers, ServiceDiscovery and Swashbuckle packages, and excludes the Aspire AppHost from compilation.
+
+Regenerating into an existing project overwrites these files, so review the diff.

@@ -3,11 +3,22 @@
 [![npm version](https://img.shields.io/npm/v/gherkin-ai.svg)](https://www.npmjs.com/package/gherkin-ai)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-> **The Closed-Loop Verification Engine & Enterprise-Ready Scaffolding Tool**
-> Turn product requirements into verifiable Gherkin specifications, execute 15+ multi-stack implementations (React/Vue/Angular + Java / Kotlin / Go / Elixir / PHP / Ruby / Python / .NET / Flutter / React Native, plus gRPC & GraphQL contracts), and utilize regression detection loops.
-> 
+> **Spec-driven verification, governance and prompt generation for AI coding agents.**
+> Turn product requirements into verifiable Gherkin specifications, generate contracts and agent prompts for many stacks, and gate pull requests on specification quality and drift.
+>
 > [![CI](https://github.com/FennerEduardo/gherkin-ai-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/FennerEduardo/gherkin-ai-cli/actions/workflows/ci.yml)
-> [![Coverage Status](https://img.shields.io/badge/coverage-100%25-brightgreen.svg)]()
+
+**Using it in a company?** Read [docs/ENTERPRISE.md](docs/ENTERPRISE.md) (org-wide config and policy locks, Azure OpenAI / Bedrock / Vertex / gateways, proxy and custom CA, keychain credentials, exit codes and `--json`, least-privilege MCP, audit export). Upgrading from 2.x: [docs/MIGRATION-3.0.md](docs/MIGRATION-3.0.md).
+
+### Stack support tiers
+
+| Tier | Stacks | What it means |
+|---|---|---|
+| **stable** | TypeScript · NestJS + Prisma, C# · ASP.NET Core + EF Core | Generated code is compiled in CI on every change. |
+| **beta** | Java · Spring Boot, Python · FastAPI, Go, PHP · Laravel, TypeScript · React | Unit-tested generators; output may need manual fixes. |
+| **experimental** | Kotlin, Ruby · Rails, Rust · Axum, Dart · Flutter | Skeletons and step definitions only. |
+
+Run `ghk stacks` for the current list.
 
 ---
 
@@ -22,7 +33,7 @@ While basic AI spec tools only generate text prompts, `gherkin-ai` acts as an **
 - ⚡ **Token Efficiency & Ultra-Compact Mode (`-C, --compact`)** ![STABLE](https://img.shields.io/badge/status-STABLE-brightgreen): Uses direct `@` context pointers (`@.ghkgovernance.yaml`, `@features/*.feature`) for on-demand resolution to radically reduce token footprint vs. code dumping, providing an ultra-compact prompt mode for cost-sensitive LLMs.
 - 🌐 **Multilingual CLI & English Prompt Rationale (`ghk lang`)** ![STABLE](https://img.shields.io/badge/status-STABLE-brightgreen): Full interactive CLI support in Spanish (`es`) and English (`en`). Master AI Prompts are intentionally generated in **English** for maximum BPE token density (~30% cheaper) and LLM reasoning accuracy.
 - 🌐 **Web Studio UI (`ghk web`)** ![BETA](https://img.shields.io/badge/status-BETA-yellow): Launch a premium local graphical interface to interactively generate your Gherkin specifications, detect your stack, and orchestrate agent prompts visually.
-- 🤖 **True Agentic Engine & Self-Healing (`ghk verify --auto-fix` & `ghk autopilot`)** ![EXPERIMENTAL](https://img.shields.io/badge/status-EXPERIMENTAL-orange): Connects natively with LLMs (OpenAI, Anthropic, Ollama), modifies source code, intercepts test failures, and recursively applies repairs in a true **Closed-Loop**. *Note: Agentic execution is currently experimental and should be run with human supervision.*
+- 🤖 **Agentic repair loop (`ghk verify --auto-fix` & `ghk autopilot`)** ![EXPERIMENTAL](https://img.shields.io/badge/status-EXPERIMENTAL-orange): Calls an LLM (OpenAI, Azure OpenAI, Anthropic, Bedrock, Gemini/Vertex, OpenAI-compatible gateways, Ollama) to propose fixes when tests fail. Changes are written as `.patch` files unless you pass `--apply`, and `--apply` is refused in CI and on protected branches unless explicitly allowed. Run it with human review.
 
 ---
 
@@ -42,10 +53,10 @@ npx -y gherkin-ai implement --feature ./features/01-customer-management.feature
 
 ```bash
 # 1. Initialize Stack Architecture (Supports 14+ Stacks)
-ghk init --stack=java-springboot_vue-pinia
+ghk init --yes -l java -f spring-boot --frontendFramework vue
 
 # 2. Generate Master Agent Implementation Prompt (Docker Sandbox & Compact Mode)
-ghk implement --docker -C --feature ./features/01-customer-management.feature --contract ./contracts/customer.contract.java
+ghk implement --docker -C --feature ./features/01-customer-management.feature
 
 # 3. View Feature Inventory & Developer Audit Trail History
 ghk audit

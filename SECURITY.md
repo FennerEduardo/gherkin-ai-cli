@@ -1,35 +1,55 @@
 # Security Policy
 
-## Supported Versions
+## Supported versions
 
-We take the security of Gherkin-AI very seriously. The following table lists the versions of the CLI that are currently supported with security updates.
+| Version | Supported |
+|---|---|
+| 3.x | ✅ security fixes |
+| 2.6.x | ⚠️ critical fixes only, until 2027-03-31 |
+| < 2.6 | ❌ |
 
-| Version | Supported          |
-| ------- | ------------------ |
-| 2.6.x   | :white_check_mark: |
-| < 2.6.0 | :x:                |
+## Reporting a vulnerability
 
-## Reporting a Vulnerability
+**Do not open a public issue.** Report privately through one of these channels:
 
-If you discover a security vulnerability within Gherkin-AI, please DO NOT report it by creating a public GitHub issue.
+1. GitHub: **Security → Report a vulnerability** on this repository (private advisory). This is the preferred channel.
+2. Email: **security@gherkin-ai.com**.
 
-Instead, please send an email to our security team at **security@gherkin-ai.com** (or reach out to the repository maintainers directly via private message). 
+Please include the affected version, the configuration needed to reproduce, steps or a proof of concept, and the impact you observed.
 
-Please include the following information in your report:
-- Type of issue (e.g., buffer overflow, SQL injection, cross-site scripting, MCP permission bypass, API key leak).
-- Full paths of source file(s) related to the manifestation of the issue.
-- The location of the affected source code (tag/branch/commit or direct URL).
-- Any special configuration required to reproduce the issue.
-- Step-by-step instructions to reproduce the issue.
-- Proof of concept or exploit code (if possible).
-- Impact of the issue, including how an attacker might exploit the issue.
+### What happens next
 
-### Triage and Resolution Process
-1. We will acknowledge receipt of your vulnerability report within 48 hours.
-2. We will investigate the issue and determine its severity and impact.
-3. We will work to provide a patch or mitigation strategy as soon as possible.
-4. We will coordinate a public disclosure with you, ensuring you receive proper credit for the discovery (unless you prefer to remain anonymous).
+| Step | Target |
+|---|---|
+| Acknowledgement | within 2 business days |
+| Triage and severity (CVSS v3.1) | within 5 business days |
+| Fix for critical / high severity | within 30 days |
+| Fix for medium / low severity | next minor release |
 
-## Automated Security Checks
+Fixes are released as patch versions and published with a GitHub Security Advisory. We request a CVE when one applies. Reporters are credited unless they prefer otherwise. Please give us 90 days, or until a fix is released if sooner, before public disclosure.
 
-Gherkin-AI includes a centralized \`AgentPolicyEngine\` and a \`SecuritySanitizer\` to enforce strict filesystem access controls and prevent API key leakage via the MCP protocol. Destructive filesystem operations inherently require explicit human confirmation. If you find a bypass to these internal guardrails, it is considered a critical security vulnerability.
+## In scope
+
+We treat any of the following as a vulnerability:
+
+- **MCP:** bypass of the server's least-privilege model, for example
+  - running a write or destructive tool while it is disabled;
+  - path arguments escaping the workspace;
+  - clearing or forging audit records.
+- **Credentials:** API keys written to disk, logs, telemetry or audit files; or a key sent to a provider other than the one it belongs to.
+- **Prompt redaction:** secrets reaching an LLM provider despite redaction.
+- **Web Studio:** access without the session token, cross-origin or DNS-rebinding access, or path traversal.
+- **Agent writes:** LLM output written outside the workspace, or written while the dry-run, unattended-write or protected-branch guards apply.
+- **Organization policy:** bypass of `locked` settings, provider or model allow-lists, or the plugin allow-list.
+- **Supply chain:** issues in our release process, such as provenance or package contents.
+
+## Security controls (overview)
+
+Details are in [docs/ENTERPRISE.md](docs/ENTERPRISE.md).
+
+- **Credentials.** Keys come from environment variables or the OS keychain only, and are resolved per provider. The CLI never writes them to disk.
+- **Redaction.** Secrets are redacted from LLM prompts, log files and audit details. PII redaction is optional.
+- **MCP.** The server is read-only by default. Write and destructive tools need explicit configuration. Every call checks path containment and the agent policy, and is audited.
+- **Agent-driven changes.** They are dry-run by default. CI and protected-branch guards apply. Model-proposed paths outside the workspace are dropped.
+- **Web Studio.** It binds to localhost and requires a per-session token, an exact Host match and a same-origin Origin. Commands run without a shell.
+- **Releases.** They are published from CI with npm provenance and a CycloneDX SBOM. `npm audit --audit-level=high` blocks CI.
