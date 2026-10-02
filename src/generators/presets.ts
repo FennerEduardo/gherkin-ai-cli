@@ -49,7 +49,7 @@ export function generatePresets(parsed: ParsedFeature, config: GherkinAIConfig):
   } else if (lang === 'dart' || framework === 'flutter') {
     results.push(...generateFlutterPreset(parsed));
   } else if (lang === 'java' || lang === 'kotlin') {
-    results.push(...generateJavaSpringPreset(parsed));
+    results.push(...generateJavaSpringPreset(parsed, config));
   } else if (lang === 'python') {
     results.push(...generatePythonFastApiPreset(parsed));
   } else if (lang === 'php') {

@@ -112,6 +112,7 @@ public interface ${feature}SagaInstanceRepository extends JpaRepository<${featur
 
   const sagaOrchestrator = `${packageHeader}import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -124,9 +125,11 @@ import org.springframework.transaction.annotation.Transactional;
 public class ${feature}SagaOrchestrator {
     private static final Logger log = LoggerFactory.getLogger(${feature}SagaOrchestrator.class);
     private final ${feature}SagaInstanceRepository sagaRepository;
+    private final ApplicationEventPublisher commandBus;
 
-    public ${feature}SagaOrchestrator(${feature}SagaInstanceRepository sagaRepository) {
+    public ${feature}SagaOrchestrator(${feature}SagaInstanceRepository sagaRepository, ApplicationEventPublisher commandBus) {
         this.sagaRepository = sagaRepository;
+        this.commandBus = commandBus;
     }
 
     @Transactional
@@ -136,8 +139,8 @@ public class ${feature}SagaOrchestrator {
         var saga = new ${feature}SagaInstance(event.correlationId(), event.${featureLower}Id(), metadata);
         sagaRepository.save(saga);
 
-        // TODO: Dispatch authorization command via event bus
-        // eventBus.publish(new ${feature}SagaContract.Authorize${feature}Command(saga.get${feature}Id(), event.metadata()));
+        // Commands are dispatched in-process; bridge them to your broker (e.g. via the outbox) as needed.
+        commandBus.publishEvent(new ${feature}SagaContract.Authorize${feature}Command(event.${featureLower}Id(), event.metadata()));
     }
 
     @Transactional
@@ -150,8 +153,7 @@ public class ${feature}SagaOrchestrator {
         saga.transitionTo(${feature}SagaInstance.SagaState.COMPLETING);
         sagaRepository.save(saga);
 
-        // TODO: Dispatch completion command
-        // eventBus.publish(new ${feature}SagaContract.Complete${feature}Command(saga.get${feature}Id()));
+        commandBus.publishEvent(new ${feature}SagaContract.Complete${feature}Command(saga.get${feature}Id()));
     }
 
     @Transactional
@@ -173,8 +175,7 @@ public class ${feature}SagaOrchestrator {
         saga.transitionTo(${feature}SagaInstance.SagaState.COMPENSATING);
         saga.setFailureReason(event.reason());
 
-        // TODO: Dispatch compensating action
-        // eventBus.publish(new ${feature}SagaContract.Compensate${feature}Command(saga.get${feature}Id(), event.reason()));
+        commandBus.publishEvent(new ${feature}SagaContract.Compensate${feature}Command(saga.get${feature}Id(), event.reason()));
 
         saga.transitionTo(${feature}SagaInstance.SagaState.FAILED);
         sagaRepository.save(saga);

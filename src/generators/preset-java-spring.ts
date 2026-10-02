@@ -1,88 +1,61 @@
 /* ==========================================================================
-   gherkin-ai-cli - Java Spring Boot & Cucumber-JVM Preset Generator
+   gherkin-ai-cli - Java Spring Boot & Cucumber-JVM Preset Generator  [stable]
+
+   Produces a standard Maven project: domain kernel + JUnit 5 tests, Cucumber
+   (JUnit Platform) bound to ./features with pending steps, Spring Boot app
+   and enterprise patterns (outbox, saga, idempotency, CQRS, multitenancy,
+   OpenTelemetry). Verified by scripts/golden-build.js (java).
    ========================================================================== */
 
 import { ParsedFeature } from '../core/gherkin-parser';
-
+import { GherkinAIConfig } from '../core/config';
 import { generateJavaOutboxInfrastructure } from './java/java-outbox-generator';
 import { generateJavaSagaInfrastructure } from './java/java-saga-generator';
 import { generateJavaIdempotencyInfrastructure } from './java/java-idempotency-generator';
 import { generateJavaOpenTelemetryInfrastructure } from './java/java-opentelemetry-generator';
 import { generateJavaCQRSInfrastructure } from './java/java-cqrs-generator';
 import { generateJavaMultiTenancyInfrastructure } from './java/java-multitenancy-generator';
+import { buildDomainModel, toFlat } from './kernel/domain-model';
+import { javaPackagePath, renderJavaKernel, renderJavaKernelTests, renderSpringApplication } from './kernel/java';
 
-export function generateJavaSpringPreset(parsed: ParsedFeature): { filename: string; content: string }[] {
-  const className = parsed.featureName.replace(/[^a-zA-Z0-9]/g, '') + 'StepDefinitions';
-  const packageName = 'com.example.app';
-
-  const stepDefCode = `// Cucumber-JVM Step Definition Generator for Spring Boot & GraphQL
-package com.example.bdd.steps;
-
-import io.cucumber.java.en.Given;
-import io.cucumber.java.en.When;
-import io.cucumber.java.en.Then;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.web.client.TestRestTemplate;
-import org.testcontainers.containers.PostgreSQLContainer;
-import org.testcontainers.junit.jupiter.Container;
-import static org.assertj.core.api.Assertions.assertThat;
-
-public class ${className} {
-
-    @Autowired
-    private TestRestTemplate restTemplate;
-
-    @Container
-    static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:15-alpine");
-
-    ${parsed.scenarios.map(sc => {
-        let lastKeyword = 'Given';
-        return `
-    // Scenario: ${sc.name}
-    ${sc.steps.map(st => {
-        const kw = st.keyword.trim();
-        if (kw === 'Given' || kw === 'When' || kw === 'Then') {
-            lastKeyword = kw;
-        }
-        return `
-    @${lastKeyword}("${st.text.replace(/"/g, '\\"')}")
-    public void ${st.keyword.trim()}${st.text.replace(/[^a-zA-Z0-9]/g, '')}() {
-        throw new io.cucumber.java.PendingException();
-    }`;
-    }).join('\n')}
-    `;}).join('\n')}
+/** Base package for generated JVM projects: com.example.<projectname>. */
+export function jvmBasePackage(config?: GherkinAIConfig): string {
+  const flat = toFlat(config?.projectName || 'app');
+  return `com.example.${/^[a-z]/.test(flat) ? flat : `app${flat}`}`;
 }
-`;
+
+export function generateJavaSpringPreset(parsed: ParsedFeature, config?: GherkinAIConfig): { filename: string; content: string }[] {
+  const m = buildDomainModel(parsed);
+  const pkg = jvmBasePackage(config);
+  const srcRoot = `src/main/java/${javaPackagePath(pkg)}`;
+
+  // Pattern generators emit paths relative to the base package (e.g. infrastructure/outbox/X.java).
+  const underBasePackage = (files: { filename: string; content: string }[]) =>
+    files.map(f => ({ filename: `${srcRoot}/${f.filename}`, content: f.content }));
 
   const results = [
-    {
-      filename: `${className}.java`,
-      content: stepDefCode
-    },
-    ...generateJavaOutboxInfrastructure(packageName),
-    ...generateJavaSagaInfrastructure(packageName, parsed.featureName),
-    ...generateJavaIdempotencyInfrastructure(packageName),
-    {
-      filename: `infrastructure/telemetry/OpenTelemetryConfig.java`,
-      content: generateJavaOpenTelemetryInfrastructure(packageName)
-    },
-    ...generateJavaCQRSInfrastructure(packageName, parsed.featureName),
-    ...generateJavaMultiTenancyInfrastructure(packageName)
+    renderSpringApplication(pkg),
+    ...renderJavaKernel(m, pkg),
+    ...renderJavaKernelTests(m, pkg),
+    ...underBasePackage([
+      ...generateJavaOutboxInfrastructure(pkg),
+      ...generateJavaSagaInfrastructure(pkg, parsed.featureName),
+      ...generateJavaIdempotencyInfrastructure(pkg),
+      { filename: 'infrastructure/telemetry/OpenTelemetryConfig.java', content: generateJavaOpenTelemetryInfrastructure(pkg) },
+      ...generateJavaCQRSInfrastructure(pkg, parsed.featureName),
+      ...generateJavaMultiTenancyInfrastructure(pkg)
+    ])
   ];
 
-  // Generate DTOs
-  if (parsed.domainAnalysis && parsed.domainAnalysis.fields) {
-    for (const field of parsed.domainAnalysis.fields) {
-      const type = field.type === 'number' ? 'Double' :
-                   field.type === 'boolean' ? 'Boolean' : 'String';
-      const recordName = field.name.charAt(0).toUpperCase() + field.name.slice(1) + 'DTO';
-      results.push({
-        filename: `application/dto/${recordName}.java`,
-        content: `package ${packageName}.dto;\n\npublic record ${recordName}(${type} value) {}\n`
-      });
-    }
+  // Field DTOs inferred from the specification
+  for (const field of parsed.domainAnalysis?.fields ?? []) {
+    const type = field.type === 'number' ? 'Double' : field.type === 'boolean' ? 'Boolean' : 'String';
+    const recordName = field.name.charAt(0).toUpperCase() + field.name.slice(1) + 'DTO';
+    results.push({
+      filename: `${srcRoot}/application/dto/${recordName}.java`,
+      content: `package ${pkg}.application.dto;\n\npublic record ${recordName}(${type} value) {}\n`
+    });
   }
 
   return results;
 }
-

@@ -3,6 +3,8 @@
    ========================================================================== */
 
 import { CLI_VERSION } from '../version';
+import { renderPom } from './kernel/java';
+import { toKebab } from './kernel/domain-model';
 import { ParsedFeature } from '../core/gherkin-parser';
 import { GherkinAIConfig } from '../core/config';
 import { getArchRule } from '../core/arch-rules';
@@ -421,17 +423,7 @@ docker run --rm -v $(pwd):/app -w /app mcr.microsoft.com/dotnet/sdk:8.0 dotnet b
   } else if (config.stack.language === 'java') {
     projectRootFile = {
       filename: `pom.xml`,
-      content: `<?xml version="1.0" encoding="UTF-8"?>
-<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-  xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
-  <modelVersion>4.0.0</modelVersion>
-  <groupId>com.example</groupId>
-  <artifactId>${config.projectName || 'demo'}</artifactId>
-  <version>0.0.1-SNAPSHOT</version>
-  <dependencies>
-    <!-- Add spring boot and persistence dependencies here -->
-  </dependencies>
-</project>`
+      content: renderPom(toKebab(config.projectName || 'demo'))
     };
   } else if (config.stack.language === 'kotlin') {
     projectRootFile = {

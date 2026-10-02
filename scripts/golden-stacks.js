@@ -28,6 +28,13 @@ const STACKS = {
     build: ['dotnet build tests/*/*.Tests.csproj -nologo -v q'],
     // Integration tests need Docker (Testcontainers) and run separately.
     test: ['dotnet test tests/*/*.Tests.csproj -nologo -v q --no-build --filter "Category!=Integration"']
+  },
+  java: {
+    stack: { ...base, language: 'java', framework: 'spring-boot', orm: 'hibernate', validation: 'jakarta-validation', testing: 'junit' },
+    image: 'maven:3.9-eclipse-temurin-17',
+    caches: [['m2', '/root/.m2']],
+    build: ['mvn -q -B -ntp -DskipTests package'],
+    test: ['mvn -B -ntp test']
   }
 };
 
