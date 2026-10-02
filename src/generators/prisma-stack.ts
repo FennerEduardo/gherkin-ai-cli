@@ -55,7 +55,11 @@ export function generatePrismaStack(parsed: ParsedFeature, config: GherkinAIConf
   let fieldsStr = `  id String @id @default(uuid())\n`;
   // The NestJS PrismaService middleware scopes every domain query by tenantId.
   if (isNest) fieldsStr += `  tenantId String @default("default")\n`;
+  // Feature fields can repeat the columns declared above (or each other); Prisma rejects duplicates.
+  const declared = new Set(['id', ...(isNest ? ['tenantid'] : [])]);
   parsed.domainAnalysis.fields.forEach(f => {
+    if (!/^[A-Za-z]\w*$/.test(f.name) || declared.has(f.name.toLowerCase())) return;
+    declared.add(f.name.toLowerCase());
     let type = f.type === 'number' ? 'Int' : 'String';
     if (f.name.toLowerCase().includes('date') || f.name.toLowerCase().includes('time')) {
       type = 'DateTime';
