@@ -17,5 +17,6 @@ export function generateElixirPhoenixPreset(parsed: ParsedFeature, config?: Gher
   const base = config?.projectName || 'app';
   const otp = /^[a-z]/.test(toSnake(base)) ? toSnake(base) : `app_${toSnake(base)}`;
   const mod = /^[A-Z]/.test(toPascal(base)) ? toPascal(base) : `App${toPascal(base)}`;
-  return renderElixirProject(m, { otp, mod }, featureFile || `features/${m.kebab}.feature`);
+  const liveview = /live-?view/i.test(config?.frontendStack?.framework || "");
+  return renderElixirProject(m, { otp, mod }, featureFile || `features/${m.kebab}.feature`, { liveview });
 }

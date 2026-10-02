@@ -29,6 +29,22 @@ const STACKS = {
   angular: nodeFrontend('angular', { stateManagement: 'signals' }),
   nextjs: { ...nodeFrontend('nextjs'), env: { NEXT_TELEMETRY_DISABLED: '1' } },
   'react-native': { ...nodeFrontend('react-native'), env: { EXPO_NO_TELEMETRY: '1', CI: '1' } },
+  flutter: {
+    stack: { ...base, language: 'dart', framework: 'flutter', orm: 'none', validation: 'none', testing: 'flutter-test' },
+    image: 'ghcr.io/cirruslabs/flutter:stable',
+    caches: [['pub', '/root/.pub-cache']],
+    build: ['flutter pub get', 'flutter analyze --no-fatal-infos'],
+    test: ['flutter test']
+  },
+  'flutter-frontend': {
+    stack: feBackend,
+    frontendStack: { framework: 'flutter', language: 'dart' },
+    image: 'ghcr.io/cirruslabs/flutter:stable',
+    workdir: 'frontend',
+    caches: [['pub', '/root/.pub-cache']],
+    build: ['flutter pub get', 'flutter analyze --no-fatal-infos'],
+    test: ['flutter test']
+  },
   nestjs: {
     stack: { ...base, language: 'typescript', framework: 'nestjs', orm: 'prisma', validation: 'zod', messaging: 'rabbitmq', testing: 'jest' },
     image: 'node:20-bookworm',
@@ -113,6 +129,15 @@ const STACKS = {
     caches: [['cargo-registry', '/usr/local/cargo/registry'], ['cargo-git', '/usr/local/cargo/git']],
     build: ['cargo build --all-targets --quiet'],
     test: ['cargo test --quiet']
+  },
+  'phoenix-liveview': {
+    stack: { ...base, language: 'elixir', framework: 'phoenix', orm: 'none', validation: 'ecto-changeset', testing: 'exunit' },
+    frontendStack: { framework: 'phoenix-liveview', language: 'elixir' },
+    image: 'elixir:1.17',
+    caches: [['mix', '/root/.mix'], ['hex', '/root/.hex']],
+    env: { MIX_ENV: 'test' },
+    build: ['mix local.hex --force --if-missing > /dev/null', 'mix local.rebar --force --if-missing > /dev/null', 'mix deps.get > /dev/null', 'mix compile --warnings-as-errors'],
+    test: ['mix test']
   },
   laravel: {
     stack: { ...base, language: 'php', framework: 'laravel', orm: 'eloquent', validation: 'laravel-validation', testing: 'phpunit' },

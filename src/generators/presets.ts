@@ -17,7 +17,8 @@ import { generateRubyRailsPreset } from './preset-ruby-rails';
 import { generateElixirPhoenixPreset } from './preset-elixir-phoenix';
 import { generateNodeNestJsPreset } from './preset-node-nestjs';
 import { generateNodeExpressPreset } from './preset-node-express';
-import { generateFlutterPreset } from './preset-flutter';
+import { dartPackageName, generateFlutterPreset } from './preset-flutter';
+import { renderFlutterProject } from './frontend/kernel/flutter';
 
 import { buildDomainModel } from './kernel/domain-model';
 import { renderReactProject } from './frontend/kernel/react';
@@ -56,7 +57,7 @@ export function generatePresets(parsed: ParsedFeature, config: GherkinAIConfig, 
   } else if (lang === 'ruby') {
     results.push(...generateRubyRailsPreset(parsed, config));
   } else if (lang === 'dart' || framework === 'flutter') {
-    results.push(...generateFlutterPreset(parsed));
+    results.push(...generateFlutterPreset(parsed, config, featureFile));
   } else if (lang === 'kotlin') {
     results.push(...generateKotlinSpringPreset(parsed, config));
   } else if (lang === 'java') {
@@ -95,6 +96,10 @@ export function generatePresets(parsed: ParsedFeature, config: GherkinAIConfig, 
       results.push(...renderNextProject(fm));
     } else if (feFramework === 'react-native' || feFramework === 'expo') {
       results.push(...renderReactNativeProject(fm));
+    } else if (feFramework === 'flutter') {
+      // The frontend package lives in ./frontend; the feature file is one level up.
+      const feature = featureFile ? `../${featureFile}` : `../features/${fm.kebab}.feature`;
+      results.push(...renderFlutterProject(fm, { root: 'frontend', packageName: `${dartPackageName(config.projectName || fm.snake)}_app`, featurePathFromPackage: feature }));
     }
   }
 
