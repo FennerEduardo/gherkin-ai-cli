@@ -109,7 +109,13 @@ for (const [name, def] of Object.entries(STACKS)) {
     results.push([name, 'ERROR', '-']);
     process.stdout.write(`  ✖ ${err.message}\n`);
   } finally {
-    if (dir && !keep) fs.rmSync(dir, { recursive: true, force: true });
+    if (dir && !keep) {
+      try {
+        fs.rmSync(dir, { recursive: true, force: true });
+      } catch {
+        // Files written by the container as root may not be removable by the runner user; not a build failure.
+      }
+    }
   }
 }
 

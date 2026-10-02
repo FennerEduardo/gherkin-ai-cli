@@ -57,7 +57,7 @@ program
       emitJson(STACK_SUPPORT);
       return;
     }
-    for (const s of STACK_SUPPORT) logger.info(`${s.tier.padEnd(13)} ${s.label}${s.notes ? `  — ${s.notes}` : ''}`);
+    for (const s of STACK_SUPPORT) logger.info(`${s.kind.padEnd(10)} ${s.tier.padEnd(13)} ${s.label}${s.notes ? `  — ${s.notes}` : ''}`);
   });
 
 program

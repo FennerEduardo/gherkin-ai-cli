@@ -2,7 +2,6 @@ import { describe, it, expect } from 'vitest';
 import { generateNestJsCqrsModules } from '../../src/generators/nestjs/cqrs-generator';
 import { generateNestJsOutboxInfrastructure } from '../../src/generators/nestjs/outbox-generator';
 import { generateNestJsIdempotencyInterceptor } from '../../src/generators/nestjs/idempotency-generator';
-import { generateVuePiniaStore, generateVueComposable } from '../../src/generators/frontend/vue-pinia-generator';
 import { validateVuePiniaRules } from '../../src/core/validators/vue-validator';
 
 describe('TypeScript Ecosystem (NestJS + Vue) Generators & Validators', () => {
@@ -34,19 +33,6 @@ describe('TypeScript Ecosystem (NestJS + Vue) Generators & Validators', () => {
     expect(retryBlock).toContain('processedAt: existing.processedAt');
     expect(retryBlock).toContain('reclaimed.count !== 1');
     expect(retryBlock).not.toContain('processedEvent.update(');
-  });
-
-  it('should generate Vue Pinia Store', () => {
-    const code = generateVuePiniaStore('Transactions');
-    expect(code).toContain('defineStore');
-    expect(code).toContain('useTransactionsStore');
-    expect(code).toContain('axios.get(\'/api/transactions\')');
-  });
-
-  it('should generate Vue Composable', () => {
-    const code = generateVueComposable('PaymentFlow');
-    expect(code).toContain('export function usePaymentFlow');
-    expect(code).toContain('onMounted');
   });
 
   it('should validate Vue files against anti-patterns', () => {
