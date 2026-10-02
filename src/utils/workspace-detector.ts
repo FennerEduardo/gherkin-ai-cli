@@ -2,8 +2,12 @@ import fs from 'fs';
 import path from 'path';
 import inquirer from 'inquirer';
 import { getGlobalUserLocale } from './i18n-cli';
-export async function resolveWorkspaceDirectory(opts?: { project?: string; nonInteractive?: boolean }): Promise<void> {
-  const isNonInteractive = opts?.nonInteractive || process.env.CI === 'true' || process.env.GHK_NON_INTERACTIVE === 'true';
+import { isNonInteractive as runIsNonInteractive } from '../core/run-context';
+import { UsageError } from '../core/errors';
+import { logger } from './logger';
+
+export async function resolveWorkspaceDirectory(opts?: { project?: string; nonInteractive?: boolean; createIfMissing?: boolean }): Promise<void> {
+  const isNonInteractive = runIsNonInteractive({ nonInteractive: opts?.nonInteractive });
 
   // If --project is provided, skip interactive selector and switch directly
   if (opts?.project) {
@@ -14,7 +18,10 @@ export async function resolveWorkspaceDirectory(opts?: { project?: string; nonIn
     if (opts.project === '.' || opts.project === path.basename(cwd)) {
       target = cwd;
     } else if (!fs.existsSync(target)) {
-      // Auto-create project directory if bootstrapping a new project
+      // Only `init` may bootstrap a new project directory; anything else is a typo we must not hide.
+      if (!opts.createIfMissing) {
+        throw new UsageError(`Project directory not found: ${target}`, { hint: 'Check --project, or run `ghk init --project <dir>` to create a new project.' });
+      }
       fs.mkdirSync(target, { recursive: true });
     }
 
@@ -40,13 +47,9 @@ export async function resolveWorkspaceDirectory(opts?: { project?: string; nonIn
   }
 
   if (isNonInteractive) {
-    // In non-interactive/CI mode, auto-detect/suggest directory without prompt
-    if (fs.existsSync(path.join(cwd, 'gherkin-ai.config.json')) || fs.existsSync(path.join(cwd, 'package.json'))) {
-      return; // CWD is already a valid project
-    }
-    if (subProjects.length > 0) {
-      // Pick first detected subproject
-      process.chdir(subProjects[0].value);
+    // Never guess a directory in CI: silently switching to a sub-project makes runs non-reproducible.
+    if (subProjects.length > 0 && !fs.existsSync(path.join(cwd, 'gherkin-ai.config.json'))) {
+      logger.verbose(`Multiple projects detected; staying in ${cwd}. Pass --project <dir> to target one explicitly.`);
     }
     return;
   }

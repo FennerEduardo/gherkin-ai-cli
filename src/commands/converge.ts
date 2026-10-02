@@ -2,6 +2,8 @@
    gherkin-ai-cli - 'converge' Command Handler
    ========================================================================== */
 
+import { emitJson } from '../utils/output';
+import { ExitCode } from '../core/errors';
 import fs from 'fs';
 import path from 'path';
 import chalk from 'chalk';
@@ -113,7 +115,7 @@ export async function handleConvergeCommand(options: ConvergeCommandOptions = {}
   }
 
   if (options.json) {
-    console.log(JSON.stringify(allReports, null, 2));
+    emitJson(allReports);
     return;
   }
 
@@ -130,6 +132,6 @@ export async function handleConvergeCommand(options: ConvergeCommandOptions = {}
   console.log('');
 
   if (avgConvergence < threshold) {
-    process.exitCode = 1;
+    process.exitCode = ExitCode.DRIFT;
   }
 }

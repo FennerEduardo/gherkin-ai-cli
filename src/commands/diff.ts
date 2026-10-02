@@ -2,6 +2,7 @@
    gherkin-ai-cli - 'diff' Command Handler (Drift Detection)
    ========================================================================== */
 
+import { ExitCode } from '../core/errors';
 import chalk from 'chalk';
 import fs from 'fs';
 import { parseGherkinText } from '../core/gherkin-parser';
@@ -25,19 +26,19 @@ export async function handleDiffCommand(options: DiffCommandOptions = {}): Promi
   if (!options.feature || !options.target) {
      console.log(chalk.red('Please provide both --feature and --target files.'));
      console.log('Example: ghk diff --feature specs/login.feature --target src/dto/login.dto.ts');
-     process.exitCode = 1;
+     process.exitCode = ExitCode.USAGE;
      return;
   }
 
   if (!fs.existsSync(options.feature)) {
      console.log(chalk.red(`Feature file not found: ${options.feature}`));
-     process.exitCode = 1;
+     process.exitCode = ExitCode.USAGE;
      return;
   }
 
   if (!fs.existsSync(options.target)) {
      console.log(chalk.red(`Target code file not found: ${options.target}`));
-     process.exitCode = 1;
+     process.exitCode = ExitCode.USAGE;
      return;
   }
 
@@ -130,7 +131,7 @@ export async function handleDiffCommand(options: DiffCommandOptions = {}): Promi
 
   if (driftFound) {
       console.log(chalk.bold.red('\n❌ Drift Detection Failed: The source of truth (.feature) does not match the implementation.'));
-      process.exitCode = 1;
+      process.exitCode = ExitCode.DRIFT;
   } else {
       console.log(chalk.bold.green('\n✅ No drift detected. Code is synchronized with the Gherkin specification.'));
   }

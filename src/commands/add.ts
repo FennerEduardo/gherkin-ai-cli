@@ -2,6 +2,8 @@
    gherkin-ai-cli - 'add' Command Handler (Brownfield Contract Injector)
    ========================================================================== */
 
+import { PolicyError, UsageError } from '../core/errors';
+import { isPathInside } from '../utils/path-guard';
 import path from 'path';
 import inquirer from 'inquirer';
 import { loadConfig } from '../core/config';
@@ -43,7 +45,7 @@ export async function handleAddCommand(options: { feature?: string; target?: str
       await handleCreateCommand({ output: options.feature, target: options.target, yes: options.yes, nonInteractive: options.nonInteractive });
       return;
     } else {
-      process.exit(1);
+      throw new UsageError(`Feature file not found: ${options.feature ?? '(none)'}`, { hint: 'Pass an existing file with --feature or create one with `ghk create`.' });
     }
   }
 
@@ -63,9 +65,8 @@ export async function handleAddCommand(options: { feature?: string; target?: str
     ? path.resolve(process.cwd(), options.target) 
     : path.resolve(process.cwd(), 'src', 'modules', featurePascal.toLowerCase());
 
-  if (!targetDir.startsWith(process.cwd())) {
-    logger.error(`Security Violation: Target path escapes the current workspace: ${targetDir}`);
-    process.exit(1);
+  if (!isPathInside(process.cwd(), targetDir)) {
+    throw new PolicyError(`Security Violation: Target path escapes the current workspace: ${targetDir}`);
   }
 
   ensureDirSync(targetDir);

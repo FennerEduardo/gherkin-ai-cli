@@ -2,6 +2,7 @@
    gherkin-ai-cli - 'quality' Command Handler
    ========================================================================== */
 
+import { ExitCode } from '../core/errors';
 import chalk from 'chalk';
 import { calculateDeliveryRisk } from '../core/risk-engine';
 import { loadConfig } from '../core/config';
@@ -50,7 +51,7 @@ export async function handleQualityCommand(): Promise<void> {
     if (!coverageResult.success && !coverageResult.errorMessage) {
       console.log(chalk.red(`  ↳ Code Coverage (${coverageResult.coveragePercentage}%) is below the required target (${coverageResult.targetPercentage}%)`));
     }
-    process.exitCode = 1;
+    process.exitCode = ExitCode.GATE_FAILED;
   } else {
     console.log(chalk.green.bold('\n✅ AUTO-DEPLOYMENT SAFE (Quality Gates Passed)'));
   }

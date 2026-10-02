@@ -2,6 +2,7 @@
    gherkin-ai-cli - 'evaluate' Command Handler (Code Quality & Architecture)
    ========================================================================== */
 
+import { ExitCode } from '../core/errors';
 import fs from 'fs';
 import path from 'path';
 import chalk from 'chalk';
@@ -80,7 +81,7 @@ export async function handleEvaluateCommand(targetFiles: string[], options: Eval
   console.log('\n');
   if (hasErrors) {
     console.log(chalk.bold.red('❌ Code Quality Evaluation Failed. Refactoring recommended.'));
-    process.exitCode = 1;
+    process.exitCode = ExitCode.GATE_FAILED;
   } else {
     console.log(chalk.bold.green('✅ Code Quality Evaluation Passed. Design patterns look solid.'));
   }
