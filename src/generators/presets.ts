@@ -24,6 +24,7 @@ import { renderReactProject } from './frontend/kernel/react';
 import { renderVueProject } from './frontend/kernel/vue';
 import { renderAngularProject } from './frontend/kernel/angular';
 import { renderNextProject } from './frontend/kernel/nextjs';
+import { renderReactNativeProject } from './frontend/kernel/react-native';
 
 function toKebabCase(str: string): string {
   return str
@@ -92,6 +93,8 @@ export function generatePresets(parsed: ParsedFeature, config: GherkinAIConfig, 
       results.push(...renderAngularProject(fm));
     } else if (feFramework === 'nextjs' || feFramework === 'next') {
       results.push(...renderNextProject(fm));
+    } else if (feFramework === 'react-native' || feFramework === 'expo') {
+      results.push(...renderReactNativeProject(fm));
     }
   }
 

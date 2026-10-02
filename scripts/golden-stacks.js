@@ -28,6 +28,7 @@ const STACKS = {
   vue: nodeFrontend('vue'),
   angular: nodeFrontend('angular', { stateManagement: 'signals' }),
   nextjs: { ...nodeFrontend('nextjs'), env: { NEXT_TELEMETRY_DISABLED: '1' } },
+  'react-native': { ...nodeFrontend('react-native'), env: { EXPO_NO_TELEMETRY: '1', CI: '1' } },
   nestjs: {
     stack: { ...base, language: 'typescript', framework: 'nestjs', orm: 'prisma', validation: 'zod', messaging: 'rabbitmq', testing: 'jest' },
     image: 'node:20-bookworm',
