@@ -71,7 +71,7 @@ export function buildDomainModel(input: ParsedFeature): DomainModel {
     }
   };
   const ir = buildIR(parsed, 'feature.feature');
-  const pascal = featurePascalName(parsed.featureName);
+  const pascal = featurePascalName(parsed);
 
   const events = [...new Set((ir.events || []).map(e => toPascal(String(e.name).replace(/Event$/, ''))))].filter(Boolean);
   const defaultEvent = `${pascal}Processed`;

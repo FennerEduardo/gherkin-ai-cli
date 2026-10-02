@@ -217,7 +217,7 @@ function evaluateContractCoverage(
     details.push('TypeScript contracts file found.');
     
     const contractContent = fs.readFileSync(contractsPath, 'utf8');
-    const featureNameNormalized = featurePascalName(ir.featureName);
+    const featureNameNormalized = featurePascalName(ir);
     if (contractContent.includes(featureNameNormalized)) {
       score += 20;
       details.push('Contracts match current feature specification.');

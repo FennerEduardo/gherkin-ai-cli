@@ -9,7 +9,7 @@ import { SpecificationIR } from '../core/semantic-ir';
 import { featurePascalName } from '../utils/naming';
 
 export function generatePhpContracts(parsed: ParsedFeature, ir: SpecificationIR, config: GherkinAIConfig): string {
-  const featurePascal = featurePascalName(parsed.featureName);
+  const featurePascal = featurePascalName(parsed);
 
   return `<?php
 

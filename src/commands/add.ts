@@ -61,7 +61,7 @@ export async function handleAddCommand(options: { feature?: string; target?: str
   const gherkinText = readFileSync(featurePath);
   const parsed = parseGherkinText(gherkinText);
 
-  const featurePascal = featurePascalName(parsed.featureName) || 'Feature';
+  const featurePascal = featurePascalName(parsed) || 'Feature';
   let targetDir = options.target 
     ? path.resolve(process.cwd(), options.target) 
     : path.resolve(process.cwd(), 'src', 'modules', featurePascal.toLowerCase());

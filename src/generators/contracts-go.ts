@@ -9,7 +9,7 @@ import { SpecificationIR } from '../core/semantic-ir';
 import { featurePascalName } from '../utils/naming';
 
 export function generateGoContracts(parsed: ParsedFeature, ir: SpecificationIR, config: GherkinAIConfig): string {
-  const featurePascal = featurePascalName(parsed.featureName);
+  const featurePascal = featurePascalName(parsed);
 
   return `/* ==========================================================================
    Generated Domain Contracts & Go Structs

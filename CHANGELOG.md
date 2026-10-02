@@ -21,6 +21,7 @@ Enterprise-readiness release, driven by the 2.6.5 reviews. Contains breaking cha
 - **Web Studio works offline:** Tailwind and Font Awesome are bundled instead of loaded from a CDN; Playwright end-to-end tests assert that no external request is made.
 - **CI/release:** OS × Node 22/24 matrix, blocking `npm audit`, golden builds, CLI contract tests against the built binary, and a release workflow with npm provenance and a CycloneDX SBOM.
 - `--threshold` for `lint` and `converge`.
+- **`@aggregate:Name` feature tag** sets the type name used by every generator, instead of the name derived from a long feature title.
 
 ### Changed
 - **Startup time** reduced from about 0.7 s to about 0.15 s: command handlers and networking are loaded lazily.

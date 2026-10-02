@@ -47,7 +47,7 @@ export function generatePrismaStack(parsed: ParsedFeature, config: GherkinAIConf
   }
 
   const artifacts: { filename: string; content: string }[] = [];
-  const modelName = featurePascalName(parsed.featureName);
+  const modelName = featurePascalName(parsed);
   // Prisma client delegates are camelCase: model PaymentProcessing -> prisma.paymentProcessing
   const delegate = modelName.charAt(0).toLowerCase() + modelName.slice(1);
   const isNest = config.stack.framework === 'nestjs';

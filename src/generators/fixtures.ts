@@ -10,7 +10,7 @@ import { featurePascalName } from '../utils/naming';
 export function generateFixtures(parsed: ParsedFeature, config: GherkinAIConfig): { fixturesTs: string; seedSql: string } {
   const spec = getStackSpec(config.stack);
 
-  const fixtureName = featurePascalName(parsed.featureName) + 'Fixture';
+  const fixtureName = featurePascalName(parsed) + 'Fixture';
   
   const properties = parsed.domainAnalysis.fields.map(f => {
     let type = f.type === 'number' ? 'number' : 'string';

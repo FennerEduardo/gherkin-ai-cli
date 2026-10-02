@@ -9,7 +9,7 @@ import { SpecificationIR } from '../core/semantic-ir';
 import { featurePascalName } from '../utils/naming';
 
 export function generatePythonContracts(parsed: ParsedFeature, ir: SpecificationIR, config: GherkinAIConfig): string {
-  const featurePascal = featurePascalName(parsed.featureName);
+  const featurePascal = featurePascalName(parsed);
 
   return `# ==========================================================================
 # Generated Domain Contracts & Pydantic DTO Schemas

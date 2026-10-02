@@ -28,7 +28,25 @@ export function safeIdent(raw: string, fallback: string): string {
   return /^[A-Za-z]/.test(raw) ? raw : `${fallback}${raw}`;
 }
 
-/** Canonical PascalCase type name for a feature: the aggregate / entity / contract prefix in every stack. */
-export function featurePascalName(featureName: string | undefined): string {
-  return safeIdent(toPascal(featureName || 'App'), 'Feature');
+/** Feature-level tag that overrides the derived name: `@aggregate:Order` or `@aggregate(Order)`. */
+const AGGREGATE_TAG = /^@?aggregate[:=(]([^)\s]+)\)?$/i;
+
+/** The `@aggregate` tag value of a feature, if any. */
+export function aggregateTagName(tags: readonly string[] | undefined): string | undefined {
+  for (const tag of tags ?? []) {
+    const m = AGGREGATE_TAG.exec(tag.trim());
+    if (m) return m[1];
+  }
+  return undefined;
+}
+
+/**
+ * Canonical PascalCase type name for a feature: the aggregate / entity / contract prefix in every stack.
+ * Pass the parsed feature (or IR) rather than its name so an `@aggregate:Name` tag is honored.
+ */
+export function featurePascalName(feature: string | { featureName?: string; tags?: readonly string[] } | undefined): string {
+  const name = typeof feature === 'string' || feature === undefined
+    ? feature
+    : aggregateTagName(feature.tags) ?? feature.featureName;
+  return safeIdent(toPascal(name || 'App'), 'Feature');
 }

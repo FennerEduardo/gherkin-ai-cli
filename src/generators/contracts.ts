@@ -109,7 +109,7 @@ export function generateContracts(parsed: ParsedFeature, ir: SpecificationIR, co
   const spec = getStackSpec(config.stack);
   const isCqrs = config.architecture === 'cqrs';
 
-  const featurePascal = featurePascalName(parsed.featureName);
+  const featurePascal = featurePascalName(parsed);
 
   const cqrsSection = isCqrs ? `
 // --------------------------------------------------------------------------

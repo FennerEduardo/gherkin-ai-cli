@@ -38,6 +38,33 @@ describe('identifier naming is shared by every generator', () => {
   });
 });
 
+describe('@aggregate tag', () => {
+  // FEATURE with a feature-level tag between the language comment and the title.
+  const tagged = (tag: string) => parseGherkinText(['# language: es', tag, ...FEATURE.split('\n').slice(1)].join('\n'));
+
+  it.each(['@aggregate:Pedido', '@aggregate(Pedido)', '@Aggregate=pedido'])('%s overrides the name derived from the title', tag => {
+    const parsed = tagged(tag);
+    expect(featurePascalName(parsed)).toBe('Pedido');
+    expect(buildDomainModel(parsed)).toMatchObject({ pascal: 'Pedido', kebab: 'pedido', snake: 'pedido' });
+  });
+
+  it('is applied consistently by contracts and pattern generators', () => {
+    const parsed = tagged('@aggregate:PurchaseOrder');
+    const config = { ...defaultConfig, projectName: 'Demo', stack: { ...defaultConfig.stack, language: 'csharp' } };
+    const contracts = generateCsharpContracts(parsed, buildIR(parsed, 'f.feature'), config);
+    expect(contracts).toContain('PurchaseOrderAggregate');
+    expect(contracts).not.toContain('EjecucionDeSaga');
+    const handlers = generateCqrsHandlers('Demo', buildDomainModel(parsed).pascal);
+    for (const type of new Set([...handlers.matchAll(/\b(Create\w+Command|\w+ReadModel)\b/g)].map(m => m[1]))) {
+      expect(contracts, type).toMatch(new RegExp(`record ${type}\\b`));
+    }
+  });
+
+  it('without the tag the title is used', () => {
+    expect(featurePascalName(parseGherkinText(FEATURE))).toBe('EjecucionDeSagaYComandosCqrsEnNet8');
+  });
+});
+
 describe('feature binding relative to outputDir', () => {
   const ir = (sourceFile: string) => ({ sourceFile } as any);
   const base = { ...defaultConfig };

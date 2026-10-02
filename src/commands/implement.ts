@@ -66,7 +66,7 @@ export async function handleImplementCommand(options: {
   const gherkinText = readFileSync(featurePath);
   const parsed = parseGherkinText(gherkinText);
   const featureName = parsed.featureName || path.basename(featurePath, '.feature');
-  const basePascal = featurePascalName(featureName);
+  const basePascal = featurePascalName({ featureName, tags: parsed.tags });
 
   const outDir = config.outputDir || './generated-specs';
   const dockerDetails = getStackDockerDetails(config);

@@ -5,7 +5,7 @@ import { featurePascalName } from '../utils/naming';
 
 export function generateKotlinContracts(parsed: ParsedFeature, ir: SpecificationIR, config: GherkinAIConfig): string {
   const packageName = config.projectName ? config.projectName.replace(/[^a-zA-Z0-9]/g, '').toLowerCase() : 'com.example.app';
-  const featurePascal = featurePascalName(parsed.featureName);
+  const featurePascal = featurePascalName(parsed);
 
   let content = `// ==========================================================================
 // Generated Kotlin Domain Contracts & DTOs

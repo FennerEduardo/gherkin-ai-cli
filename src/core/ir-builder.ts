@@ -559,7 +559,7 @@ function extractStateMachines(parsed: ParsedFeature, sourceFile: string): StateM
 
   // Scan all steps for state-related words
   const allStates: string[] = [];
-  const entityName = featurePascalName(parsed.featureName);
+  const entityName = featurePascalName(parsed);
 
   for (const sc of parsed.scenarios) {
     const stepsText = sc.steps.map(s => s.text).join(' ');
@@ -688,7 +688,7 @@ function extractInvariants(
           id: generateId('INV'),
           name: step.text.substring(0, 80),
           expression: step.text,
-          entity: featurePascalName(parsed.featureName),
+          entity: featurePascalName(parsed),
           type: 'state',
           source: { file: sourceFile, line: 0 },
           confidence: 0.9,
@@ -769,7 +769,7 @@ function extractAPIEndpoints(
       id: generateId('API'),
       method,
       path,
-      operationId: `${cmd.verb}${featurePascalName(parsed.featureName)}`,
+      operationId: `${cmd.verb}${featurePascalName(parsed)}`,
       requestFields: method !== 'GET' ? fields : [],
       responseFields: fields,
       httpCodes,
