@@ -1,0 +1,53 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write   # create the GitHub Release
+  id-token: write   # npm provenance (OIDC)
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: npm
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          registry-url: 'https://registry.npmjs.org'
+
+      - run: npm ci
+
+      - name: Tag matches package.json version
+        run: |
+          PKG="v$(node -p "require('./package.json').version")"
+          if [ "$PKG" != "$GITHUB_REF_NAME" ]; then echo "Tag $GITHUB_REF_NAME does not match package.json ($PKG)"; exit 1; fi
+
+      - run: npm run build
+      - run: npx vitest run --coverage
+      - run: npm audit --audit-level=high
+
+      - name: SBOM (CycloneDX)
+        run: npx --yes @cyclonedx/cyclonedx-npm@1 --omit dev --output-format JSON --output-file sbom.cdx.json
+
+      - name: Publish to npm with provenance
+        run: |
+          if node -p "require('./package.json').version" | grep -q -- '-'; then TAG=beta; else TAG=latest; fi
+          npm publish --provenance --access public --tag "$TAG"
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          # Release notes = this version's CHANGELOG section.
+          awk -v v="$VERSION" 'index($0, "## [" v "]")==1 {p=1; next} /^## \[/ {if (p) exit} p' CHANGELOG.md > notes.md
+          PRERELEASE=""; case "$VERSION" in *-*) PRERELEASE="--prerelease";; esac
+          gh release create "$GITHUB_REF_NAME" sbom.cdx.json --title "$GITHUB_REF_NAME" --notes-file notes.md $PRERELEASE
