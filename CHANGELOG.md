@@ -63,6 +63,11 @@ Enterprise-readiness release, driven by the 2.6.5 reviews. Contains breaking cha
 - Identifiers kept broken fragments of accented words (`CreaciN`); one-letter words were glued to the next (`yrenderizado`).
 - Decimal amounts before a quoted value produced invalid field types (`00DTO`).
 - Connection URLs without credentials (`amqp://rabbitmq:5672`) were rejected as leaked secrets.
+- Generators derived the feature's type names differently, so .NET handlers referenced commands and read models the contracts never declared; all generators now share one naming helper.
+- Features outside `outputDir` were not found by the generated test runners; they are now copied into `<outputDir>/features/`.
+- Go contracts imported `uuid` without using it when a feature declared no events (`go vet` failure).
+- Prisma schemas redeclared `id`/`tenantId` when the feature mentioned an `ID` value.
+- Ruby and Elixir step definitions double-escaped `/` and `|`, breaking steps that contain URL paths; Go dropped backticks from step patterns.
 
 ### Removed
 - **Node.js 20 support** (end-of-life); the CLI requires Node.js 22.12 or later.
