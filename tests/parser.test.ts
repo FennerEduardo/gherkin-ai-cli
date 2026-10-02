@@ -194,7 +194,13 @@ describe('gherkin-ai CLI unit tests', () => {
         contextFiles: []
       });
 
-      await vi.runAllTimersAsync();
+      // Providers load lazily (dynamic import), so keep flushing until the call settles.
+      let settled = false;
+      promise.finally(() => { settled = true; });
+      while (!settled) {
+        await vi.dynamicImportSettled();
+        await vi.runAllTimersAsync();
+      }
       const result = await promise;
 
       expect(attempts).toBe(3);
@@ -219,7 +225,13 @@ describe('gherkin-ai CLI unit tests', () => {
         contextFiles: []
       });
 
-      await vi.runAllTimersAsync();
+      // Providers load lazily (dynamic import), so keep flushing until the call settles.
+      let settled = false;
+      promise.finally(() => { settled = true; });
+      while (!settled) {
+        await vi.dynamicImportSettled();
+        await vi.runAllTimersAsync();
+      }
       const result = await promise;
 
       expect(result.success).toBe(false);

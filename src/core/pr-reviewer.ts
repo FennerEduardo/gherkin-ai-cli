@@ -1,4 +1,6 @@
-import { RealAgentProvider, resolveLLMConfig } from './agent-adapter';
+import { RealAgentProvider } from './agent-adapter';
+import { resolveLLMSettings } from './llm';
+import { configureNetwork } from './net';
 import { GherkinAIConfig } from './config';
 import { parseGherkinText } from './gherkin-parser';
 import { buildIR } from './ir-builder';
@@ -24,8 +26,10 @@ export async function reviewPullRequest(
   
   const archRule = getArchRule(config.architecture);
   
-  const llmConfig = resolveLLMConfig();
-  if (config.stack.aiEngine === 'claude-code') llmConfig.provider = 'anthropic';
+  // A Claude Code project defaults to Anthropic unless llm.provider is set explicitly.
+  const preferAnthropic = config.stack.aiEngine === 'claude-code' && !config.llm?.provider;
+  configureNetwork(config.network);
+  const llmConfig = resolveLLMSettings({ config: preferAnthropic ? { ...config, llm: { ...config.llm, provider: 'anthropic' } } : config });
   const agent = new RealAgentProvider(llmConfig);
 
   const prompt = `You are an expert AI Tech Lead reviewing a Pull Request.
