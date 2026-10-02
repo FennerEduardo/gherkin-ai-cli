@@ -3,8 +3,8 @@
    Powered by @cucumber/gherkin
    ========================================================================== */
 
-import { generateMessages } from '@cucumber/gherkin';
-import { IdGenerator, SourceMediaType } from '@cucumber/messages';
+import { generateMessages, dialects } from '@cucumber/gherkin';
+import { IdGenerator, SourceMediaType, StepKeywordType } from '@cucumber/messages';
 import { ParsedFeature, ScenarioModel, StepModel, DomainField, ISpecificationParser, SpecificationParserOptions } from './parsers/specification-interface';
 export { ParsedFeature, ScenarioModel, StepModel, DomainField, ISpecificationParser, SpecificationParserOptions };
 
@@ -14,9 +14,19 @@ export class GherkinParser implements ISpecificationParser {
   }
 }
 
+const FEATURE_KEYWORDS = [...new Set(Object.values(dialects).flatMap(d => d.feature))];
+
+/** True when the text has a Gherkin Feature line in any dialect (comments such as "# language: es" may precede it). */
+function looksLikeGherkin(text: string): boolean {
+  return text.split('\n').some(line => {
+    const l = line.trim();
+    return FEATURE_KEYWORDS.some(k => l.startsWith(`${k}:`));
+  });
+}
+
 export function parseGherkinText(gherkinText: string): ParsedFeature {
   const trimmed = gherkinText.trim();
-  if (trimmed.startsWith('#') || trimmed.match(/^[-*]\s+/)) {
+  if ((trimmed.startsWith('#') || trimmed.match(/^[-*]\s+/)) && !looksLikeGherkin(gherkinText)) {
     try {
       const { MarkdownEarsParser } = require('./parsers/markdown-ears-parser');
       return new MarkdownEarsParser().parse(gherkinText);
@@ -53,10 +63,14 @@ export function parseGherkinText(gherkinText: string): ParsedFeature {
       const steps: StepModel[] = [];
 
       for (const step of scenario.steps) {
-        let kwStr = step.keyword.trim().toLowerCase();
+        const kwStr = step.keyword.trim().toLowerCase();
         let keyword: StepModel['keyword'] = 'Given';
 
-        if (['given', 'dado', 'dada', 'dados', 'dadas'].includes(kwStr)) keyword = 'Given';
+        // keywordType is dialect-independent (Dado/Étant donné/Angenommen are all Context).
+        if (step.keywordType === StepKeywordType.CONTEXT) keyword = 'Given';
+        else if (step.keywordType === StepKeywordType.ACTION) keyword = 'When';
+        else if (step.keywordType === StepKeywordType.OUTCOME) keyword = 'Then';
+        else if (step.keywordType === StepKeywordType.CONJUNCTION) keyword = ['but', 'pero', 'mais', 'aber', 'ma'].includes(kwStr) ? 'But' : 'And';
         else if (['when', 'cuando'].includes(kwStr)) keyword = 'When';
         else if (['then', 'entonces'].includes(kwStr)) keyword = 'Then';
         else if (['and', 'y', 'e'].includes(kwStr)) keyword = 'And';
@@ -174,6 +188,7 @@ export function parseGherkinText(gherkinText: string): ParsedFeature {
 
   return {
     featureName,
+    language: feature.language,
     descriptionLines,
     tags: featureTags,
     scenarios,

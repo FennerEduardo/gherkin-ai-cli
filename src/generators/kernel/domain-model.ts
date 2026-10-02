@@ -50,7 +50,10 @@ export interface DomainModel {
 
 const words = (s: string) =>
   s
+    .normalize('NFD')
+    .replace(/\p{M}+/gu, '') // Creación -> Creacion, Ñandú -> Nandu
     .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .replace(/([A-Z])([A-Z][a-z])/g, '$1 $2') // YRenderizado -> Y Renderizado
     .replace(/[^A-Za-z0-9]+/g, ' ')
     .trim()
     .split(/\s+/)
@@ -92,7 +95,20 @@ export function buildDomainModel(input: ParsedFeature): DomainModel {
   const events = [...new Set((ir.events || []).map(e => toPascal(String(e.name).replace(/Event$/, ''))))].filter(Boolean);
   const defaultEvent = `${pascal}Processed`;
 
-  const commandNames = [...new Set((ir.commands || []).map(c => toPascal(String(c.name))))].filter(Boolean);
+  // 1) Command identifiers the spec names explicitly: "CreateOrderCommand", `ProcessOrderCommandHandler`.
+  const whenSteps = parsed.scenarios.flatMap(sc => {
+    let last = 'Given';
+    return sc.steps.filter(st => {
+      if (st.keyword === 'Given' || st.keyword === 'When' || st.keyword === 'Then') last = st.keyword;
+      return last === 'When';
+    });
+  });
+  const explicit = whenSteps
+    .flatMap(st => [...st.text.matchAll(/["'`]([A-Z][A-Za-z0-9]*?)Command(?:Handler)?["'`]/g)].map(m => m[1]));
+  // 2) Verb heuristics only understand English; for other dialects they produce noise like "SendElComando".
+  const english = !parsed.language || parsed.language === 'en';
+  const inferred = english ? (ir.commands || []).filter(c => c.verb !== 'unknown').map(c => String(c.name)) : [];
+  const commandNames = [...new Set([...explicit, ...inferred].map(toPascal))].filter(Boolean);
   if (commandNames.length === 0) commandNames.push(`Process${pascal}`);
   const commands: KernelCommand[] = commandNames.map((name, i) => {
     const n = safeIdent(name, 'Do');

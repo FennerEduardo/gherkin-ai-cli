@@ -22,6 +22,8 @@ export interface DomainField {
 
 export interface ParsedFeature {
   featureName: string;
+  /** Gherkin dialect ("en", "es", ...) when parsed from a .feature file. */
+  language?: string;
   descriptionLines: string[];
   tags: string[];
   scenarios: ScenarioModel[];
