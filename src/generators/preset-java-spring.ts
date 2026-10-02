@@ -15,7 +15,7 @@ import { generateJavaIdempotencyInfrastructure } from './java/java-idempotency-g
 import { generateJavaOpenTelemetryInfrastructure } from './java/java-opentelemetry-generator';
 import { generateJavaCQRSInfrastructure } from './java/java-cqrs-generator';
 import { generateJavaMultiTenancyInfrastructure } from './java/java-multitenancy-generator';
-import { buildDomainModel, toFlat } from './kernel/domain-model';
+import { buildDomainModel, toFlat, toPascal } from './kernel/domain-model';
 import { javaPackagePath, renderJavaKernel, renderJavaKernelTests, renderSpringApplication } from './kernel/java';
 
 /** Base package for generated JVM projects: com.example.<projectname>. */
@@ -39,10 +39,10 @@ export function generateJavaSpringPreset(parsed: ParsedFeature, config?: Gherkin
     ...renderJavaKernelTests(m, pkg),
     ...underBasePackage([
       ...generateJavaOutboxInfrastructure(pkg),
-      ...generateJavaSagaInfrastructure(pkg, parsed.featureName),
+      ...generateJavaSagaInfrastructure(pkg, m.pascal),
       ...generateJavaIdempotencyInfrastructure(pkg),
       { filename: 'infrastructure/telemetry/OpenTelemetryConfig.java', content: generateJavaOpenTelemetryInfrastructure(pkg) },
-      ...generateJavaCQRSInfrastructure(pkg, parsed.featureName),
+      ...generateJavaCQRSInfrastructure(pkg, m.pascal),
       ...generateJavaMultiTenancyInfrastructure(pkg)
     ])
   ];
@@ -50,7 +50,8 @@ export function generateJavaSpringPreset(parsed: ParsedFeature, config?: Gherkin
   // Field DTOs inferred from the specification
   for (const field of parsed.domainAnalysis?.fields ?? []) {
     const type = field.type === 'number' ? 'Double' : field.type === 'boolean' ? 'Boolean' : 'String';
-    const recordName = field.name.charAt(0).toUpperCase() + field.name.slice(1) + 'DTO';
+    const recordName = `${toPascal(field.name)}DTO`;
+    if (!/^[A-Za-z]/.test(recordName)) continue;
     results.push({
       filename: `${srcRoot}/application/dto/${recordName}.java`,
       content: `package ${pkg}.application.dto;\n\npublic record ${recordName}(${type} value) {}\n`

@@ -55,3 +55,12 @@ describe('Gherkin dialects', () => {
     expect(parsed.featureName).toBe('Refunds');
   });
 });
+
+describe('field extraction', () => {
+  it('does not turn decimals before a quoted value into fields', () => {
+    const parsed = parseGherkinText('Feature: Pay\n  Scenario: Pay\n    When the customer pays amount 250.00 "USD" with gateway "STRIPE"\n    Then it succeeds');
+    const names = parsed.domainAnalysis.fields.map(f => f.name);
+    expect(names).toContain('gateway');
+    expect(names).not.toContain('00');
+  });
+});

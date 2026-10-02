@@ -64,7 +64,7 @@ void bootstrap();
     { filename: `src/${m.kebab}/${m.kebab}.cqrs.ts`, content: generateNestJsCqrsModules() },
     { filename: `src/infrastructure/outbox.service.ts`, content: generateNestJsOutboxInfrastructure() },
     { filename: `src/infrastructure/idempotency.interceptor.ts`, content: generateNestJsIdempotencyInterceptor() },
-    ...generateNestJsSagaInfrastructure(parsed.featureName),
+    ...generateNestJsSagaInfrastructure(m.pascal),
     ...generateNestJsMultiTenancyInfrastructure()
   ];
 

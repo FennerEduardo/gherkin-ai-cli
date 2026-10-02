@@ -18,7 +18,7 @@ import { buildDomainModel } from './kernel/domain-model';
 import { REQNROLL_JSON, renderCsAggregate, renderCsAggregateTests, renderCsTestProject, renderReqnrollSteps } from './kernel/csharp';
 
 export function generateCsharpDotnetPreset(parsed: ParsedFeature, config?: GherkinAIConfig): { filename: string; content: string }[] {
-  const featurePascal = parsed.featureName.replace(/[^a-zA-Z0-9]/g, '');
+  const featurePascal = buildDomainModel(parsed).pascal;
   const namespace = config?.projectName ? config.projectName.replace(/[^a-zA-Z0-9.]/g, '') : 'MyEnterpriseApp';
   const m = buildDomainModel(parsed);
   const testsDir = `tests/${namespace}.Tests`;
@@ -270,11 +270,11 @@ namespace ${namespace}.Infrastructure.Data
     { filename: `${testsDir}/Steps/${m.pascal}StepDefinitions.cs`, content: renderReqnrollSteps(m, namespace) },
     {
       filename: `src/Application/CQRS/${featurePascal}Handlers.cs`,
-      content: generateCqrsHandlers(namespace, parsed.featureName)
+      content: generateCqrsHandlers(namespace, m.pascal)
     },
     {
       filename: `src/Application/Sagas/${featurePascal}SagaStateMachine.cs`,
-      content: generateSagaInfrastructure(namespace, parsed.featureName)
+      content: generateSagaInfrastructure(namespace, m.pascal)
     },
     {
       filename: `src/Application/Behaviors/IdempotencyInfrastructure.cs`,

@@ -153,7 +153,8 @@ export function parseGherkinText(gherkinText: string): ParsedFeature {
       }
 
       // Semantic extraction from quotes
-      const quoteRegex = /(\w+)\s+"([^"]+)"/g;
+      // The field word must start with a letter at a word boundary: in `monto 250.00 "USD"` the "00" is not a field.
+      const quoteRegex = /(?:^|\s)([A-Za-z_]\w*)\s+"([^"]+)"/g;
       let qMatch;
       while ((qMatch = quoteRegex.exec(st.text)) !== null) {
         const fieldName = qMatch[1].toLowerCase();

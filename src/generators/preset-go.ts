@@ -32,6 +32,6 @@ export function generateGoPreset(parsed: ParsedFeature, config?: GherkinAIConfig
     ...under('internal/infrastructure/outbox', generateGoOutboxInfrastructure('outbox')),
     ...under('internal/infrastructure/idempotency', generateGoIdempotencyInfrastructure('idempotency')),
     ...under('internal/infrastructure/multitenancy', generateGoMultiTenancyInfrastructure('multitenancy')),
-    ...under('internal/sagas', generateGoSagaInfrastructure('sagas', parsed.featureName))
+    ...under('internal/sagas', generateGoSagaInfrastructure('sagas', m.pascal))
   ];
 }

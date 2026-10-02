@@ -85,7 +85,7 @@ def test_unknown_command_returns_404():
     ...renderPyKernel(m),
     ...underAppPackage([
       ...generatePythonOutboxInfrastructure(),
-      ...generatePythonSagaInfrastructure(parsed.featureName),
+      ...generatePythonSagaInfrastructure(m.pascal),
       ...generatePythonIdempotencyInfrastructure(),
       ...generatePythonMultiTenancyInfrastructure()
     ])
