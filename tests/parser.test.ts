@@ -11,7 +11,6 @@ import { parseExecutionFailure } from '../src/core/error-parser';
 import { buildProjectContext } from '../src/core/context-builder';
 import { validateGuardrails } from '../src/core/guardrails';
 import { generateJavaSpringPreset } from '../src/generators/preset-java-spring';
-import { generateReactPlaywrightPreset } from '../src/generators/preset-react-playwright';
 import { calculateDeliveryRisk } from '../src/core/risk-engine';
 import { buildSpecificationIR } from '../src/core/ir-builder';
 
@@ -152,12 +151,6 @@ describe('gherkin-ai CLI unit tests', () => {
       expect(javaPreset.every(f => f.filename.startsWith('src/main/java/') || f.filename.startsWith('src/test/java/'))).toBe(true);
       expect(byName('/bdd/RunCucumberTest.java')?.content).toContain('@IncludeEngines("cucumber")');
       expect(javaPreset.some(f => f.filename.endsWith('Steps.java') && f.content.includes('io.cucumber.java.en.Given'))).toBe(true);
-    });
-
-    it('should generate React Playwright preset', () => {
-      const parsed = parseGherkinText(sampleSpec);
-      const reactPreset = generateReactPlaywrightPreset(parsed);
-      expect(reactPreset[0].content).toContain('@playwright/test');
     });
   });
 

@@ -54,6 +54,9 @@ export const STACK_SUPPORT: StackSupport[] = [
 ];
 
 const find = (id: string) => STACK_SUPPORT.find(s => s.id === id)!;
+const FRONTEND_ALIASES: Record<string, string> = {
+  react: 'react', vue: 'vue', angular: 'angular', nextjs: 'nextjs', next: 'nextjs', 'react-native': 'react-native', expo: 'react-native'
+};
 
 /** Maps a project config to its backend support entry (mirrors the routing in presets.ts). */
 export function getStackSupport(config: Pick<GherkinAIConfig, 'stack'>): StackSupport {
@@ -70,8 +73,13 @@ export function getStackSupport(config: Pick<GherkinAIConfig, 'stack'>): StackSu
   if (lang === 'elixir') return find('elixir/phoenix');
   if (lang === 'rust') return find('rust/axum');
   if (lang === 'dart' || framework === 'flutter') return find('dart/flutter');
-  if ((lang === 'typescript' || lang === 'javascript') && framework === 'nestjs') return find('typescript/nestjs');
-  if ((lang === 'typescript' || lang === 'javascript') && framework === 'express') return find('typescript/express');
+  if (lang === 'typescript' || lang === 'javascript') {
+    if (framework === 'nestjs' || framework === 'nest') return find('typescript/nestjs');
+    if (framework === 'express') return find('typescript/express');
+    // Frontend-only project (see frontendFramework() in presets.ts).
+    const frontendOnly = FRONTEND_ALIASES[framework];
+    if (frontendOnly) return find(`frontend/${frontendOnly}`);
+  }
   return {
     id: `${lang}/${framework || 'unknown'}`,
     label: `${lang} ${framework}`.trim(),

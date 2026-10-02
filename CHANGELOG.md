@@ -35,6 +35,10 @@ Enterprise-readiness release, driven by the 2.6.5 reviews. Contains breaking cha
 - **Logger:** levels, stderr for diagnostics, opt-in rotated log file; no longer writes `.ghe/logs` into the working directory on every run.
 - **Single version source:** the CLI banner, `--version` and the MCP `serverInfo` all read the version from `package.json`. The MCP server previously reported a hardcoded value.
 - **Package contents:** `CHANGELOG.md`, `LICENSE`, `SECURITY.md` and `schemas/` are now published.
+- **TypeScript projects without a NestJS or Express backend:**
+  - A frontend framework in `stack.framework` (`react`, `vue`, `angular`, `nextjs`, `react-native`) generates that stable frontend project.
+  - Other backends (`fastify`, `node-native`) generate contracts and prompts only, and are reported as experimental.
+  - Previously both got a Playwright spec containing only comments. `nest` is accepted as an alias of `nestjs`.
 
 ### Fixed
 - **Credential leak between providers:** a key belonging to another provider could be sent to the selected one (for example, the OpenAI key sent to Anthropic). `--apiKey` was silently ignored.
