@@ -10,15 +10,17 @@
 
 **Using it in a company?** Read [docs/ENTERPRISE.md](docs/ENTERPRISE.md) (org-wide config and policy locks, Azure OpenAI / Bedrock / Vertex / gateways, proxy and custom CA, keychain credentials, exit codes and `--json`, least-privilege MCP, audit export). Upgrading from 2.x: [docs/MIGRATION-3.0.md](docs/MIGRATION-3.0.md).
 
-### Stack support tiers
+### Supported stacks
 
-| Tier | Stacks | What it means |
-|---|---|---|
-| **stable** | TypeScript · NestJS + Prisma, C# · ASP.NET Core + EF Core | Generated code is compiled in CI on every change. |
-| **beta** | Java · Spring Boot, Python · FastAPI, Go, PHP · Laravel, TypeScript · React | Unit-tested generators; output may need manual fixes. |
-| **experimental** | Kotlin, Ruby · Rails, Rust · Axum, Dart · Flutter | Skeletons and step definitions only. |
+All of these are **stable**: CI generates a sample project for each one and builds it and runs its generated tests in the stack's official Docker image.
 
-Run `ghk stacks` for the current list.
+| Kind | Stacks |
+|---|---|
+| Backends | TypeScript (NestJS, Express), C# (ASP.NET Core 8), Java and Kotlin (Spring Boot 3), Python (FastAPI, Django), Go (chi), PHP (Laravel 13), Ruby (Rails 8), Elixir (Phoenix), Rust (Axum), Dart (Flutter) |
+| Frontends | React 19, Vue 3, Angular 22, Next.js 16, React Native (Expo 57), Flutter, Phoenix LiveView |
+| Contracts | gRPC (Protobuf, buf-linted), GraphQL SDL |
+
+Other combinations are experimental. See [docs/ENTERPRISE.md#11-stack-support-tiers](docs/ENTERPRISE.md#11-stack-support-tiers). Run `ghk stacks` for the current list.
 
 ---
 
@@ -77,7 +79,6 @@ ghk verify --isolated --auto-fix --apply
 
 In the interest of transparency, please note the following current limitations:
 - **Experimental Agent Loops:** The `ghk verify --auto-fix` and `ghk autopilot` commands utilize autonomous LLM loops that are strictly experimental. While circuit breakers and Testcontainers are used, they can still exhibit unpredictable behavior or loops if the LLM cannot resolve the compiler error.
-- **Support Matrix Discrepancy:** While the tool scaffolds 15+ stacks, only 5 target stacks (C# .NET, Java Spring Boot, NestJS Prisma, Go pgx, and Python FastAPI) are considered Tier 1 with full compilation verification and outbox/saga implementations. Languages like Ruby, Rust, Elixir, and Flutter are "Community Previews".
 - **Semantic IR Regex Extraction:** The internal IR builder still relies heavily on RegEx pattern matching rather than deep AST interpretation for some advanced semantic features.
 
 ---

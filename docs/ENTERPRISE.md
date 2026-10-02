@@ -216,13 +216,50 @@ The 2.x form `"plugins": ["my-plugin"]` is still accepted as `plugins.load`.
 ghk stacks          # or: ghk stacks --json
 ```
 
-| Tier | Stacks | Guarantee |
-|---|---|---|
-| **stable** | TypeScript · NestJS + Prisma, C# · ASP.NET Core + EF Core | Generated projects compile in CI on every change (golden builds: `scripts/golden-build.js`). |
-| **beta** | Java · Spring Boot, Python · FastAPI, Go, PHP · Laravel, TypeScript · React + Playwright | Generators are unit-tested; generated code may need manual fixes. |
-| **experimental** | Kotlin, Ruby · Rails, Rust · Axum, Dart · Flutter | Skeletons / step definitions; may change at any time. |
+Every target below is **stable**: on every change CI generates a sample project, builds it **and runs its generated test suite** inside the stack's official Docker image (`scripts/golden-build.js`, one CI job per stack). Pending BDD steps are allowed; failing or erroring tests are not.
 
-`ghk init` and `ghk generate` warn when a project uses a beta or experimental stack.
+| Kind | Stack | Build / test toolchain (image) |
+|---|---|---|
+| backend | TypeScript · NestJS + Prisma | npm, Jest, cucumber-js (`node:24`) |
+| backend | TypeScript · Express | npm, Jest, cucumber-js (`node:24`) |
+| backend | C# · ASP.NET Core 8 + EF Core | dotnet, xUnit, Reqnroll (`dotnet/sdk:8.0`) |
+| backend | Java 17 · Spring Boot 3 (Maven) | Maven, JUnit 5, Cucumber-JVM (`maven:3.9-temurin-17`) |
+| backend | Kotlin · Spring Boot 3 (Gradle) | Gradle, JUnit 5, Cucumber-JVM (`gradle:8.10-jdk17`) |
+| backend | Python · FastAPI + SQLAlchemy | pip, pytest, pytest-bdd (`python:3.12`) |
+| backend | Python · Django + DRF | pip, pytest, pytest-bdd (`python:3.12`) |
+| backend | Go · chi | go vet, go test, godog (`golang:1.22`) |
+| backend | PHP · Laravel 13 | Composer, PHPUnit 12, Behat (`composer:2`) |
+| backend | Ruby · Rails 8 (API) | Bundler, RSpec, Cucumber (`ruby:3.3`) |
+| backend | Elixir · Phoenix | mix, ExUnit (`elixir:1.17`) |
+| backend | Rust · Axum | cargo test (`rust:1.99`) |
+| backend | Dart · Flutter (standalone app) | flutter analyze, flutter test |
+| frontend | React 19 · Redux Toolkit · Vite | Vitest (`node:24`) |
+| frontend | Vue 3 · Pinia · Vite | Vitest (`node:24`) |
+| frontend | Angular 22 · NgRx Signals (zoneless) | `@angular/build` unit-test (Vitest) |
+| frontend | Next.js 16 (App Router) | next build, Vitest |
+| frontend | React Native · Expo SDK 57 | jest-expo |
+| frontend | Flutter | flutter test |
+| frontend | Phoenix LiveView (with the Phoenix backend) | LiveViewTest |
+| contracts | gRPC (`contracts.grpc: true`) | `buf build` + `buf lint` |
+| contracts | GraphQL SDL (`contracts.graphql: true`) | graphql-js schema validation |
+
+Every generated project shares one behavioral kernel derived from the feature: an aggregate with one method per command, unit tests (initial state, each command records one event and bumps the version, a command without an id is rejected), an HTTP contract test where the stack exposes an API (`POST /api/v1/<feature>/{id}/<command>` → 201), and BDD step definitions bound to the `.feature` file and generated as *pending*. Saga, outbox, idempotency, multitenancy and telemetry infrastructure is generated on top of that kernel.
+
+Frontends are generated in `./frontend` next to the backend. Contracts are generated in `./contracts`:
+
+```json
+{ "contracts": { "grpc": true, "graphql": true } }
+```
+
+Any other language/framework combination is **experimental** (contracts and prompts only); `ghk init` and `ghk generate` warn about it.
+
+Run the golden builds locally with Docker:
+
+```bash
+npm run build
+node scripts/golden-build.js --list        # stacks and images
+node scripts/golden-build.js java vue      # selected stacks (all when omitted)
+```
 
 ## 12. CI integration
 
