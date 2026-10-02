@@ -22,7 +22,8 @@ export const SECRET_PATTERNS: NamedPattern[] = [
   { name: 'GitHub Token', pattern: /(?:gh[pousr]_[A-Za-z0-9_]{36,}|github_pat_[A-Za-z0-9_]{22,})/g },
   { name: 'Slack Token', pattern: /xox[baprs]-[A-Za-z0-9-]{10,}/g },
   { name: 'JWT Token', pattern: /eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}(?:\.[A-Za-z0-9_-]{10,})?/g },
-  { name: 'Database URL', pattern: /(?:postgres(?:ql)?|mysql|mongodb(?:\+srv)?|redis|amqps?):\/\/[^\s'"]+/gi },
+  // Only URLs that embed credentials (user:password@ or :password@) are secrets; amqp://rabbitmq:5672 is not.
+  { name: 'Database URL', pattern: /(?:postgres(?:ql)?|mysql|mongodb(?:\+srv)?|redis|amqps?):\/\/[^\s'"/@:]*:[^\s'"/@]+@[^\s'"]+/gi },
   { name: 'Generic API Key', pattern: /(?:api[_-]?key|apikey)\s*[=:]\s*['"]?[A-Za-z0-9_-]{20,}['"]?/gi },
   { name: 'Generic Secret', pattern: /(?:secret|password|passwd|pwd)\s*[=:]\s*['"]?[^\s'"]{8,}['"]?/gi },
   { name: 'Generic Token', pattern: /(?:token|bearer)\s*[=:]\s*['"]?[A-Za-z0-9_.-]{20,}['"]?/gi },
