@@ -48,7 +48,7 @@ export function generatePresets(parsed: ParsedFeature, config: GherkinAIConfig, 
   if (lang === 'go') {
     results.push(...generateGoPreset(parsed, config));
   } else if (lang === 'rust') {
-    results.push(...generateRustAxumPreset(parsed));
+    results.push(...generateRustAxumPreset(parsed, config, featureFile));
   } else if (lang === 'elixir') {
     results.push(...generateElixirPhoenixPreset(parsed, config, featureFile));
   } else if (lang === 'ruby') {

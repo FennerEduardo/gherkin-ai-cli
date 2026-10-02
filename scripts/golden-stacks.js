@@ -90,6 +90,13 @@ const STACKS = {
     build: ['mix local.hex --force --if-missing > /dev/null', 'mix local.rebar --force --if-missing > /dev/null', 'mix deps.get > /dev/null', 'mix compile --warnings-as-errors'],
     test: ['mix test']
   },
+  rust: {
+    stack: { ...base, language: 'rust', framework: 'axum', orm: 'none', validation: 'serde', testing: 'cargo-test' },
+    image: 'rust:1.99',
+    caches: [['cargo-registry', '/usr/local/cargo/registry'], ['cargo-git', '/usr/local/cargo/git']],
+    build: ['cargo build --all-targets --quiet'],
+    test: ['cargo test --quiet']
+  },
   laravel: {
     stack: { ...base, language: 'php', framework: 'laravel', orm: 'eloquent', validation: 'laravel-validation', testing: 'phpunit' },
     image: 'composer:2',
