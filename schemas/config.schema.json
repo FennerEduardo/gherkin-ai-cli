@@ -409,6 +409,18 @@
           },
           "additionalProperties": false
         },
+        "contracts": {
+          "type": "object",
+          "properties": {
+            "grpc": {
+              "type": "boolean"
+            },
+            "graphql": {
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false
+        },
         "locked": {
           "type": "array",
           "items": {

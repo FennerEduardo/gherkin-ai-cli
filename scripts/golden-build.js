@@ -46,6 +46,7 @@ function generate(name, def) {
     architecture: 'hexagonal',
     stack: def.stack,
     ...(def.frontendStack ? { frontendStack: def.frontendStack } : {}),
+    ...(def.config || {}),
     rules: {},
     outputDir: './'
   }, null, 2));

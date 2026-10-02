@@ -21,6 +21,7 @@ import { dartPackageName, generateFlutterPreset } from './preset-flutter';
 import { renderFlutterProject } from './frontend/kernel/flutter';
 
 import { buildDomainModel } from './kernel/domain-model';
+import { VALIDATE_CONTRACTS_SCRIPT, renderGraphql, renderProto } from './kernel/api-contracts';
 import { renderReactProject } from './frontend/kernel/react';
 import { renderVueProject } from './frontend/kernel/vue';
 import { renderAngularProject } from './frontend/kernel/angular';
@@ -100,6 +101,16 @@ export function generatePresets(parsed: ParsedFeature, config: GherkinAIConfig, 
       // The frontend package lives in ./frontend; the feature file is one level up.
       const feature = featureFile ? `../${featureFile}` : `../features/${fm.kebab}.feature`;
       results.push(...renderFlutterProject(fm, { root: 'frontend', packageName: `${dartPackageName(config.projectName || fm.snake)}_app`, featurePathFromPackage: feature }));
+    }
+  }
+
+  // Optional non-REST contracts (contracts.grpc / contracts.graphql), from the same domain model.
+  if (config.contracts?.grpc || config.contracts?.graphql) {
+    const cm = buildDomainModel(parsed);
+    if (config.contracts.grpc) results.push(...renderProto(cm));
+    if (config.contracts.graphql) {
+      results.push(renderGraphql(cm));
+      results.push({ filename: 'contracts/validate-graphql.cjs', content: VALIDATE_CONTRACTS_SCRIPT });
     }
   }
 

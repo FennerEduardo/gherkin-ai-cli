@@ -52,6 +52,15 @@ const STACKS = {
     build: ['npm install --no-audit --no-fund --loglevel=error', 'npx prisma generate', 'npm run build'],
     test: ['npm test']
   },
+  'grpc-graphql': {
+    stack: { ...base, language: 'typescript', framework: 'nestjs', orm: 'prisma', validation: 'zod', testing: 'jest' },
+    config: { contracts: { grpc: true, graphql: true } },
+    image: 'node:24-bookworm',
+    workdir: 'contracts',
+    caches: [['npm', '/root/.npm']],
+    build: ['npx --yes @bufbuild/buf@1 build', 'npx --yes @bufbuild/buf@1 lint'],
+    test: ['npm install --no-save --no-audit --no-fund --loglevel=error graphql@16', 'node validate-graphql.cjs']
+  },
   express: {
     stack: { ...base, language: 'typescript', framework: 'express', orm: 'prisma', validation: 'zod', testing: 'jest' },
     image: 'node:20-bookworm',

@@ -163,6 +163,11 @@ export const configShape = {
   telemetry: telemetrySchema.optional(),
   plugins: pluginsSchema.optional(),
   policy: policySchema.optional(),
+  /** Extra API contract formats generated next to OpenAPI/AsyncAPI. */
+  contracts: z.object({
+    grpc: z.boolean().optional(),
+    graphql: z.boolean().optional()
+  }).optional(),
   /**
    * Dot-paths that lower-precedence layers may not override (e.g. "llm.allowedProviders").
    * Only honored when declared in the organization config.
