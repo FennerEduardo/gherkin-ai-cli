@@ -15,6 +15,7 @@ import { buildSpecificationIR } from '../core/ir-builder';
 import { handleCreateCommand } from './create';
 import { fileExistsSync, readFileSync, writeFileSync, ensureDirSync } from '../utils/file-system';
 import { logger } from '../utils/logger';
+import { featurePascalName } from '../utils/naming';
 
 export async function handleAddCommand(options: { feature?: string; target?: string; config?: string; yes?: boolean; nonInteractive?: boolean }): Promise<void> {
   logger.banner();
@@ -60,7 +61,7 @@ export async function handleAddCommand(options: { feature?: string; target?: str
   const gherkinText = readFileSync(featurePath);
   const parsed = parseGherkinText(gherkinText);
 
-  const featurePascal = parsed.featureName.replace(/[^a-zA-Z0-9]/g, '') || 'Feature';
+  const featurePascal = featurePascalName(parsed.featureName) || 'Feature';
   let targetDir = options.target 
     ? path.resolve(process.cwd(), options.target) 
     : path.resolve(process.cwd(), 'src', 'modules', featurePascal.toLowerCase());

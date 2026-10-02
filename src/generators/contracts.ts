@@ -2,6 +2,7 @@
    gherkin-ai-cli - Multi-Language Domain Contracts & OpenAPI Generator
    ========================================================================== */
 
+import { featurePascalName } from '../utils/naming';
 import { CLI_VERSION } from '../version';
 import { renderPom } from './kernel/java';
 import { renderGoMod } from './kernel/go';
@@ -108,7 +109,7 @@ export function generateContracts(parsed: ParsedFeature, ir: SpecificationIR, co
   const spec = getStackSpec(config.stack);
   const isCqrs = config.architecture === 'cqrs';
 
-  const featurePascal = parsed.featureName.replace(/[^a-zA-Z0-9]/g, '');
+  const featurePascal = featurePascalName(parsed.featureName);
 
   const cqrsSection = isCqrs ? `
 // --------------------------------------------------------------------------

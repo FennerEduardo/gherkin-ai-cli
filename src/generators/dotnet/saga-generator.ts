@@ -1,6 +1,7 @@
+import { featurePascalName } from '../../utils/naming';
 export function generateSagaInfrastructure(namespace: string, featureName?: string): string {
   const feature = featureName
-    ? featureName.replace(/[^a-zA-Z0-9]/g, '')
+    ? featurePascalName(featureName)
     : 'Payment';
   const entityId = feature + 'Id';
 

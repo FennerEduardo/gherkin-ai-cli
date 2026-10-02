@@ -5,11 +5,12 @@
 import { ParsedFeature } from '../core/gherkin-parser';
 import { GherkinAIConfig } from '../core/config';
 import { getStackSpec } from '../core/stack-specs';
+import { featurePascalName } from '../utils/naming';
 
 export function generateFixtures(parsed: ParsedFeature, config: GherkinAIConfig): { fixturesTs: string; seedSql: string } {
   const spec = getStackSpec(config.stack);
 
-  const fixtureName = parsed.featureName.replace(/[^a-zA-Z0-9]/g, '') + 'Fixture';
+  const fixtureName = featurePascalName(parsed.featureName) + 'Fixture';
   
   const properties = parsed.domainAnalysis.fields.map(f => {
     let type = f.type === 'number' ? 'number' : 'string';

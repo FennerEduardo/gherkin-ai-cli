@@ -1,3 +1,4 @@
+import { featurePascalName } from '../../utils/naming';
 // --------------------------------------------------------------------------
 // Saga Orchestration Pattern for NestJS + Prisma
 // PARAMETRIZED: Generates saga based on feature name
@@ -5,7 +6,7 @@
 
 export function generateNestJsSagaInfrastructure(featureName?: string): { filename: string; content: string }[] {
   const feature = featureName
-    ? featureName.replace(/[^a-zA-Z0-9\s]/g, '').split(/\s+/).map(w => w.charAt(0).toUpperCase() + w.slice(1)).join('')
+    ? featurePascalName(featureName)
     : 'Payment';
   const featureLower = feature.charAt(0).toLowerCase() + feature.slice(1);
   const entityId = featureLower + 'Id';

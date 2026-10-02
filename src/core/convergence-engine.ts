@@ -13,6 +13,7 @@ import { buildIR } from './ir-builder';
 import { lintSpecification } from './specification-linter';
 import { loadConstitution } from './constitution';
 import { loadConfig } from './config';
+import { featurePascalName } from '../utils/naming';
 
 // ---------------------------------------------------------------------------
 // Convergence Metrics
@@ -216,7 +217,7 @@ function evaluateContractCoverage(
     details.push('TypeScript contracts file found.');
     
     const contractContent = fs.readFileSync(contractsPath, 'utf8');
-    const featureNameNormalized = ir.featureName.replace(/[^a-zA-Z]/g, '');
+    const featureNameNormalized = featurePascalName(ir.featureName);
     if (contractContent.includes(featureNameNormalized)) {
       score += 20;
       details.push('Contracts match current feature specification.');

@@ -5,9 +5,10 @@
 import { ParsedFeature } from '../core/gherkin-parser';
 import { GherkinAIConfig } from '../core/config';
 import { SpecificationIR } from '../core/semantic-ir';
+import { featurePascalName } from '../utils/naming';
 
 export function generateCsharpContracts(parsed: ParsedFeature, ir: SpecificationIR, config: GherkinAIConfig): string {
-  const featurePascal = parsed.featureName.replace(/[^a-zA-Z0-9]/g, '');
+  const featurePascal = featurePascalName(parsed.featureName);
   const namespace = config.projectName ? config.projectName.replace(/[^a-zA-Z0-9]/g, '') : 'Domain';
 
   return `/* ==========================================================================

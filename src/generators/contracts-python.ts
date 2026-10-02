@@ -6,9 +6,10 @@ import { CLI_VERSION } from '../version';
 import { ParsedFeature } from '../core/gherkin-parser';
 import { GherkinAIConfig } from '../core/config';
 import { SpecificationIR } from '../core/semantic-ir';
+import { featurePascalName } from '../utils/naming';
 
 export function generatePythonContracts(parsed: ParsedFeature, ir: SpecificationIR, config: GherkinAIConfig): string {
-  const featurePascal = parsed.featureName.replace(/[^a-zA-Z0-9]/g, '');
+  const featurePascal = featurePascalName(parsed.featureName);
 
   return `# ==========================================================================
 # Generated Domain Contracts & Pydantic DTO Schemas

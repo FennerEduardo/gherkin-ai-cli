@@ -1,10 +1,11 @@
 import { ParsedFeature } from '../core/gherkin-parser';
 import { SpecificationIR } from '../core/semantic-ir';
 import { GherkinAIConfig } from '../core/config';
+import { featurePascalName } from '../utils/naming';
 
 export function generateKotlinContracts(parsed: ParsedFeature, ir: SpecificationIR, config: GherkinAIConfig): string {
   const packageName = config.projectName ? config.projectName.replace(/[^a-zA-Z0-9]/g, '').toLowerCase() : 'com.example.app';
-  const featurePascal = parsed.featureName.replace(/[^a-zA-Z0-9]/g, '');
+  const featurePascal = featurePascalName(parsed.featureName);
 
   let content = `// ==========================================================================
 // Generated Kotlin Domain Contracts & DTOs

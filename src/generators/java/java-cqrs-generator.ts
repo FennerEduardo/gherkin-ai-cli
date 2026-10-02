@@ -1,3 +1,4 @@
+import { featurePascalName } from '../../utils/naming';
 // --------------------------------------------------------------------------
 // CQRS Architecture for Java 21 / Spring Boot 3
 // FIXED: Generates separate files per public class (Java requirement)
@@ -6,7 +7,7 @@
 
 export function generateJavaCQRSInfrastructure(packageName: string, featureName?: string): { filename: string; content: string }[] {
   const feature = featureName
-    ? featureName.replace(/[^a-zA-Z0-9\s]/g, '').split(/\s+/).map(w => w.charAt(0).toUpperCase() + w.slice(1)).join('')
+    ? featurePascalName(featureName)
     : 'Payment';
   const featureLower = feature.charAt(0).toLowerCase() + feature.slice(1);
 

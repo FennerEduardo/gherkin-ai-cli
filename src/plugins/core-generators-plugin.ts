@@ -1,3 +1,4 @@
+import fs from 'fs';
 import path from 'path';
 import { GherkinAIPlugin, GeneratedArtifact, PluginContext } from '../core/plugin-system';
 import { SpecificationIR } from '../core/semantic-ir';
@@ -50,13 +51,24 @@ function irToParsedFeature(ir: SpecificationIR | any): ParsedFeature {
   };
 }
 
-/** The IR's source feature as a project-relative POSIX path (e.g. features/payment.feature), if it is a real file. */
-function featureFileFromIR(ir: SpecificationIR): string | undefined {
+const toPosix = (p: string) => p.split(path.sep).join('/').replace(/^\.\//, '');
+
+/**
+ * Where the generated project finds its feature file, relative to the output directory.
+ * Generated test runners (Maven test resources, Reqnroll, godog, cucumber-js, Behat, ...) expect
+ * features/ inside the project, so a feature that lives outside outputDir is copied verbatim into
+ * <outputDir>/features/ and bound from there.
+ */
+export function resolveFeatureForOutput(ir: SpecificationIR, config: GherkinAIConfig, cwd = process.cwd()): { featureFile?: string; copy?: GeneratedArtifact } {
   const source = ir.sourceFile;
-  if (!source || !source.endsWith('.feature')) return undefined;
-  const rel = path.isAbsolute(source) ? path.relative(process.cwd(), source) : source;
-  if (rel.startsWith('..')) return undefined;
-  return rel.split(path.sep).join('/').replace(/^\.\//, '');
+  if (!source || !source.endsWith('.feature')) return {};
+  const sourceAbs = path.resolve(cwd, source);
+  const outAbs = path.resolve(cwd, config.outputDir || './');
+  const rel = path.relative(outAbs, sourceAbs);
+  if (!rel.startsWith('..') && !path.isAbsolute(rel)) return { featureFile: toPosix(rel) };
+  if (!fs.existsSync(sourceAbs)) return {};
+  const featureFile = `features/${path.basename(sourceAbs)}`;
+  return { featureFile, copy: { filePath: featureFile, content: fs.readFileSync(sourceAbs, 'utf8'), type: 'other' } };
 }
 
 export class CoreContractsPlugin implements GherkinAIPlugin {
@@ -116,12 +128,14 @@ export class CorePresetsPlugin implements GherkinAIPlugin {
 
   generate(ir: SpecificationIR, config: GherkinAIConfig): GeneratedArtifact[] {
     const parsed = irToParsedFeature(ir);
-    const presets = generatePresets(parsed, config, featureFileFromIR(ir));
-    return presets.map((p: any) => ({
+    const { featureFile, copy } = resolveFeatureForOutput(ir, config);
+    const presets = generatePresets(parsed, config, featureFile);
+    const artifacts: GeneratedArtifact[] = presets.map(p => ({
       filePath: p.filename,
       content: p.content,
       type: 'test'
     }));
+    return copy ? [copy, ...artifacts] : artifacts;
   }
 }
 

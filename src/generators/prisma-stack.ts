@@ -2,6 +2,7 @@
    gherkin-ai-cli - Prisma Stack Generator
    ========================================================================== */
 
+import { featurePascalName } from '../utils/naming';
 import { ParsedFeature } from '../core/gherkin-parser';
 import { GherkinAIConfig } from '../core/config';
 
@@ -46,7 +47,7 @@ export function generatePrismaStack(parsed: ParsedFeature, config: GherkinAIConf
   }
 
   const artifacts: { filename: string; content: string }[] = [];
-  const modelName = parsed.featureName.replace(/[^a-zA-Z0-9]/g, '');
+  const modelName = featurePascalName(parsed.featureName);
   // Prisma client delegates are camelCase: model PaymentProcessing -> prisma.paymentProcessing
   const delegate = modelName.charAt(0).toLowerCase() + modelName.slice(1);
   const isNest = config.stack.framework === 'nestjs';

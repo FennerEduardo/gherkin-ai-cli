@@ -48,28 +48,9 @@ export interface DomainModel {
   scenarios: { name: string; steps: KernelStep[] }[];
 }
 
-const words = (s: string) =>
-  s
-    .normalize('NFD')
-    .replace(/\p{M}+/gu, '') // Creación -> Creacion, Ñandú -> Nandu
-    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
-    .replace(/([A-Z])([A-Z][a-z])/g, '$1 $2') // YRenderizado -> Y Renderizado
-    .replace(/[^A-Za-z0-9]+/g, ' ')
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean);
+import { featurePascalName, safeIdent, toCamel, toFlat, toKebab, toPascal, toSnake } from '../../utils/naming';
 
-export const toPascal = (s: string) => words(s).map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join('') || 'App';
-export const toCamel = (s: string) => { const p = toPascal(s); return p.charAt(0).toLowerCase() + p.slice(1); };
-export const toSnake = (s: string) => words(s).map(w => w.toLowerCase()).join('_') || 'app';
-export const toKebab = (s: string) => words(s).map(w => w.toLowerCase()).join('-') || 'app';
-export const toFlat = (s: string) => words(s).map(w => w.toLowerCase()).join('') || 'app';
-
-const IDENT_START = /^[A-Za-z]/;
-
-function safeIdent(raw: string, fallback: string): string {
-  return IDENT_START.test(raw) ? raw : `${fallback}${raw}`;
-}
+export { toPascal, toCamel, toSnake, toKebab, toFlat };
 
 export function buildDomainModel(input: ParsedFeature): DomainModel {
   // Callers (plugins, tests, MCP) sometimes pass partial features: normalize before analysis.
@@ -90,7 +71,7 @@ export function buildDomainModel(input: ParsedFeature): DomainModel {
     }
   };
   const ir = buildIR(parsed, 'feature.feature');
-  const pascal = safeIdent(toPascal(parsed.featureName), 'Feature');
+  const pascal = featurePascalName(parsed.featureName);
 
   const events = [...new Set((ir.events || []).map(e => toPascal(String(e.name).replace(/Event$/, ''))))].filter(Boolean);
   const defaultEvent = `${pascal}Processed`;

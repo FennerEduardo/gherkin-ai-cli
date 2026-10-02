@@ -31,6 +31,7 @@ import {
 } from './semantic-ir';
 import { loadConstitution, Constitution } from './constitution';
 import { resolveDomainProfile } from './profiles/profile-registry';
+import { featurePascalName } from '../utils/naming';
 
 // ---------------------------------------------------------------------------
 // Deterministic ID Generator
@@ -558,7 +559,7 @@ function extractStateMachines(parsed: ParsedFeature, sourceFile: string): StateM
 
   // Scan all steps for state-related words
   const allStates: string[] = [];
-  const entityName = parsed.featureName.replace(/[^a-zA-Z]/g, '');
+  const entityName = featurePascalName(parsed.featureName);
 
   for (const sc of parsed.scenarios) {
     const stepsText = sc.steps.map(s => s.text).join(' ');
@@ -687,7 +688,7 @@ function extractInvariants(
           id: generateId('INV'),
           name: step.text.substring(0, 80),
           expression: step.text,
-          entity: parsed.featureName.replace(/[^a-zA-Z]/g, ''),
+          entity: featurePascalName(parsed.featureName),
           type: 'state',
           source: { file: sourceFile, line: 0 },
           confidence: 0.9,
@@ -768,7 +769,7 @@ function extractAPIEndpoints(
       id: generateId('API'),
       method,
       path,
-      operationId: `${cmd.verb}${parsed.featureName.replace(/[^a-zA-Z]/g, '')}`,
+      operationId: `${cmd.verb}${featurePascalName(parsed.featureName)}`,
       requestFields: method !== 'GET' ? fields : [],
       responseFields: fields,
       httpCodes,

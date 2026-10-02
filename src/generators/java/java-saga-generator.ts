@@ -1,3 +1,4 @@
+import { featurePascalName } from '../../utils/naming';
 // --------------------------------------------------------------------------
 // Saga Orchestration Pattern for Java 21 / Spring Boot 3
 // PARAMETRIZED: Generates saga based on feature name, not hardcoded to Payment
@@ -6,7 +7,7 @@
 export function generateJavaSagaInfrastructure(packageName: string, featureName?: string): { filename: string; content: string }[] {
   // Extract PascalCase feature name, default to 'Payment' for backward compatibility
   const feature = featureName
-    ? featureName.replace(/[^a-zA-Z0-9\s]/g, '').split(/\s+/).map(w => w.charAt(0).toUpperCase() + w.slice(1)).join('')
+    ? featurePascalName(featureName)
     : 'Payment';
   const featureLower = feature.charAt(0).toLowerCase() + feature.slice(1);
 
