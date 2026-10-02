@@ -49,7 +49,7 @@ export function generatePresets(parsed: ParsedFeature, config: GherkinAIConfig, 
   } else if (lang === 'rust') {
     results.push(...generateRustAxumPreset(parsed));
   } else if (lang === 'ruby') {
-    results.push(...generateRubyRailsPreset(parsed));
+    results.push(...generateRubyRailsPreset(parsed, config));
   } else if (lang === 'dart' || framework === 'flutter') {
     results.push(...generateFlutterPreset(parsed));
   } else if (lang === 'kotlin') {

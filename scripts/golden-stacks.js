@@ -74,6 +74,14 @@ const STACKS = {
     build: ['go mod tidy', 'go vet ./...', 'go build ./...'],
     test: ['go test ./...']
   },
+  rails: {
+    stack: { ...base, language: 'ruby', framework: 'rails', orm: 'none', validation: 'active-model', testing: 'rspec' },
+    image: 'ruby:3.3',
+    caches: [['gems', '/usr/local/bundle']],
+    env: { RAILS_ENV: 'test' },
+    build: ['bundle install --quiet --jobs 4', 'ruby -c config/application.rb > /dev/null', 'bin/rails runner "puts Rails.version" > /dev/null'],
+    test: ['bundle exec rspec', 'bundle exec cucumber']
+  },
   laravel: {
     stack: { ...base, language: 'php', framework: 'laravel', orm: 'eloquent', validation: 'laravel-validation', testing: 'phpunit' },
     image: 'composer:2',
