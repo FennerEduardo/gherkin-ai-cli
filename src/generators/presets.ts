@@ -5,6 +5,7 @@
 import { ParsedFeature } from '../core/gherkin-parser';
 import { GherkinAIConfig } from '../core/config';
 import { generateJavaSpringPreset } from './preset-java-spring';
+import { generateKotlinSpringPreset } from './preset-kotlin-spring';
 import { generateReactPlaywrightPreset } from './preset-react-playwright';
 import { generatePythonFastApiPreset } from './preset-python-fastapi';
 import { generatePhpLaravelPreset } from './preset-php-laravel';
@@ -48,7 +49,9 @@ export function generatePresets(parsed: ParsedFeature, config: GherkinAIConfig):
     results.push(...generateRubyRailsPreset(parsed));
   } else if (lang === 'dart' || framework === 'flutter') {
     results.push(...generateFlutterPreset(parsed));
-  } else if (lang === 'java' || lang === 'kotlin') {
+  } else if (lang === 'kotlin') {
+    results.push(...generateKotlinSpringPreset(parsed, config));
+  } else if (lang === 'java') {
     results.push(...generateJavaSpringPreset(parsed, config));
   } else if (lang === 'python') {
     results.push(...generatePythonFastApiPreset(parsed));

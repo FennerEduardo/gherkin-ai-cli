@@ -4,6 +4,7 @@
 
 import { CLI_VERSION } from '../version';
 import { renderPom } from './kernel/java';
+import { renderGradleKts, renderGradleSettings } from './kernel/kotlin';
 import { toKebab } from './kernel/domain-model';
 import { ParsedFeature } from '../core/gherkin-parser';
 import { GherkinAIConfig } from '../core/config';
@@ -426,23 +427,10 @@ docker run --rm -v $(pwd):/app -w /app mcr.microsoft.com/dotnet/sdk:8.0 dotnet b
       content: renderPom(toKebab(config.projectName || 'demo'))
     };
   } else if (config.stack.language === 'kotlin') {
-    projectRootFile = {
-      filename: `build.gradle.kts`,
-      content: `plugins {
-    kotlin("jvm") version "1.9.22"
-}
-
-group = "com.example"
-version = "1.0-SNAPSHOT"
-
-repositories {
-    mavenCentral()
-}
-
-dependencies {
-    implementation(kotlin("stdlib"))
-}`
-    };
+    projectRootFile = [
+      { filename: `build.gradle.kts`, content: renderGradleKts() },
+      { filename: `settings.gradle.kts`, content: renderGradleSettings(toKebab(config.projectName || 'demo')) }
+    ];
   } else if (['typescript', 'javascript', 'node'].includes(config.stack.language || '')) {
     projectRootFile = {
       filename: `package.json`,

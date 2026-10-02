@@ -35,6 +35,14 @@ const STACKS = {
     caches: [['m2', '/root/.m2']],
     build: ['mvn -q -B -ntp -DskipTests package'],
     test: ['mvn -B -ntp test']
+  },
+  kotlin: {
+    stack: { ...base, language: 'kotlin', framework: 'spring-boot', orm: 'hibernate', validation: 'jakarta-validation', testing: 'junit' },
+    image: 'gradle:8.10-jdk17',
+    caches: [['gradle', '/cache/gradle']],
+    env: { GRADLE_USER_HOME: '/cache/gradle' },
+    build: ['gradle -q --no-daemon assemble'],
+    test: ['gradle --no-daemon test']
   }
 };
 
