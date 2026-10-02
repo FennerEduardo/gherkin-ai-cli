@@ -7,6 +7,8 @@
    - Structured JSON run logging for traceability
    ========================================================================== */
 
+import { assertAgentWritesAllowed } from '../core/governance/write-guard';
+import { ExitCode } from '../core/errors';
 import chalk from 'chalk';
 import fs from 'fs';
 import path from 'path';
@@ -23,6 +25,8 @@ export interface AutopilotOptions {
   requirement?: string;
   autonomous?: boolean;
   command?: string;
+  allowUnattendedWrites?: boolean;
+  forceBranch?: boolean;
 }
 
 interface AutopilotRunLog {
@@ -70,7 +74,7 @@ export async function handleAutopilotCommand(options: AutopilotOptions = {}): Pr
     console.log(chalk.yellow(`  → Fix: Provide a valid path with --requirement <file>`));
     console.log(chalk.yellow(`  → Example: ghk autopilot --requirement docs/user-crud.md\n`));
     saveRunLog(runLog);
-    process.exitCode = 1;
+    process.exitCode = ExitCode.USAGE;
     return;
   }
   const reqContent = fs.readFileSync(reqFile, 'utf8');
@@ -89,7 +93,7 @@ export async function handleAutopilotCommand(options: AutopilotOptions = {}): Pr
     }
     console.log(chalk.cyan(`\n  Requirement quality score: ${validation.score}/100`));
     saveRunLog(runLog);
-    process.exitCode = 1;
+    process.exitCode = ExitCode.GATE_FAILED;
     return;
   }
 
@@ -111,7 +115,7 @@ export async function handleAutopilotCommand(options: AutopilotOptions = {}): Pr
     console.log(chalk.red('\n✖ SECURITY ALERT: Prompt Injection Attempt Blocked!'));
     console.log(chalk.red(`  ⚠ Reason: ${securityCheck.reason}`));
     saveRunLog(runLog);
-    process.exitCode = 1;
+    process.exitCode = ExitCode.POLICY_DENIED;
     return;
   }
 
@@ -136,7 +140,7 @@ export async function handleAutopilotCommand(options: AutopilotOptions = {}): Pr
   } catch (error: any) {
     console.log(chalk.red(`\n✖ Spec Agent execution crashed: ${error.message}`));
     saveRunLog(runLog);
-    process.exitCode = 1;
+    process.exitCode = ExitCode.PROVIDER;
     return;
   }
 
@@ -189,7 +193,7 @@ export async function handleAutopilotCommand(options: AutopilotOptions = {}): Pr
     console.log(chalk.yellow(`  Response from Agent:\n${specRes.agentResponse.substring(0, 300)}...\n`));
     console.log(chalk.cyan(`  → Diagnostics log saved to: ${logPath}\n`));
     saveRunLog(runLog);
-    process.exitCode = 1;
+    process.exitCode = ExitCode.PROVIDER;
     return;
   }
 
@@ -213,7 +217,7 @@ export async function handleAutopilotCommand(options: AutopilotOptions = {}): Pr
         }
         console.log(chalk.yellow(`   → Consider improving the requirement document and retrying.\n`));
         saveRunLog(runLog);
-        process.exitCode = 1;
+        process.exitCode = ExitCode.GATE_FAILED;
         return;
       }
 
@@ -248,7 +252,7 @@ export async function handleAutopilotCommand(options: AutopilotOptions = {}): Pr
     console.log(chalk.red(`\n✖ Scaffolding Agent execution crashed: ${error.message}`));
     runLog.scaffoldingResult = 'failed';
     saveRunLog(runLog);
-    process.exitCode = 1;
+    process.exitCode = ExitCode.PROVIDER;
     return;
   }
 
@@ -304,7 +308,7 @@ export async function handleAutopilotCommand(options: AutopilotOptions = {}): Pr
     console.log(chalk.cyan(`  → Diagnostics log saved to: ${logPath}\n`));
     runLog.scaffoldingResult = 'failed';
     saveRunLog(runLog);
-    process.exitCode = 1;
+    process.exitCode = ExitCode.PROVIDER;
     return;
   }
 

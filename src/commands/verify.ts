@@ -2,6 +2,8 @@
    gherkin-ai-cli - 'verify' Command Handler (Closed-Loop Verification Engine)
    ========================================================================== */
 
+import { assertAgentWritesAllowed } from '../core/governance/write-guard';
+import { ExitCode } from '../core/errors';
 import chalk from 'chalk';
 import { executeSandbox, SandboxExecutionOptions } from '../core/execution-sandbox';
 import { parseExecutionFailure } from '../core/error-parser';
@@ -15,6 +17,8 @@ export interface VerifyCommandOptions {
   isolated?: boolean;
   maxRetries?: string | number;
   command?: string;
+  allowUnattendedWrites?: boolean;
+  forceBranch?: boolean;
 }
 
 export async function handleVerifyCommand(options: VerifyCommandOptions = {}): Promise<void> {
@@ -22,6 +26,9 @@ export async function handleVerifyCommand(options: VerifyCommandOptions = {}): P
 
   const maxRetries = parseInt(String(options.maxRetries || '3'), 10);
   const config = loadConfig();
+  if (options.autoFix && process.env.GHK_DRY_RUN !== 'true') {
+    assertAgentWritesAllowed(config, { command: 'verify', allowUnattendedWrites: options.allowUnattendedWrites, forceBranch: options.forceBranch });
+  }
   const sandboxOpts: SandboxExecutionOptions = {
     command: options.command,
     configCommand: config.testCommand,
@@ -88,7 +95,7 @@ services:
       
       // Wait for DB to be ready
       console.log(chalk.gray(`   Waiting 3s for services to initialize...`));
-      execSync('sleep 3');
+      await new Promise(resolve => setTimeout(resolve, 3000)); // portable (no 'sleep' binary on Windows)
     }
 
     while (iteration <= maxRetries && !success) {
@@ -308,7 +315,7 @@ services:
   console.log(chalk.bold.cyan(`\n📊 Closed-Loop Execution metrics saved to: ${logPath}`));
 
   if (!success) {
-    process.exitCode = 1;
+    process.exitCode = ExitCode.GATE_FAILED;
   }
   } finally {
     if (isIsolatedActive) {

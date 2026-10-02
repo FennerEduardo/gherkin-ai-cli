@@ -1,4 +1,8 @@
+import path from 'path';
 import { SpecificationIR } from './semantic-ir';
+import { ConfigError, PolicyError } from './errors';
+import { getTelemetry } from './telemetry';
+import { assertPathInside } from '../utils/path-guard';
 import { GherkinAIConfig } from './config';
 import { Constitution } from './constitution';
 
@@ -56,6 +60,7 @@ export interface GherkinAIPlugin {
 export class PluginRegistry {
   private plugins: GherkinAIPlugin[] = [];
   private context: PluginContext | null = null;
+  private readonly loadedSpecifiers = new Set<string>();
 
   public initialize(context: PluginContext): void {
     this.context = context;
@@ -112,6 +117,45 @@ export class PluginRegistry {
       }
     }
     return results;
+  }
+
+  /**
+   * Loads the plugins listed in `plugins.load`. Enforces the organization allow-list
+   * (`plugins.allow`), keeps relative paths inside the project and audits every load.
+   * A module must export a GherkinAIPlugin (default or `plugin`) or `register(registry)`.
+   */
+  public loadFromConfig(config: GherkinAIConfig, projectDir: string = process.cwd()): string[] {
+    const requested = config.plugins?.load ?? [];
+    const allow = config.plugins?.allow;
+    const loaded: string[] = [];
+    const telemetry = getTelemetry();
+
+    for (const specifier of requested) {
+      if (this.loadedSpecifiers.has(specifier)) continue; // idempotent across runs in one process (MCP server)
+      if (allow && !allow.includes(specifier)) {
+        telemetry.recordAudit({ action: 'plugin:load', resource: specifier, status: 'BLOCKED', details: 'not in plugins.allow' });
+        throw new PolicyError(`Plugin "${specifier}" is not in the organization allow-list (plugins.allow).`);
+      }
+      const isPath = specifier.startsWith('.') || path.isAbsolute(specifier);
+      const resolved = isPath
+        ? assertPathInside(projectDir, specifier, `Plugin path "${specifier}"`)
+        : require.resolve(specifier, { paths: [projectDir] });
+
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const mod = require(resolved);
+      const plugin: GherkinAIPlugin | undefined = mod?.default?.name ? mod.default : mod?.plugin;
+      if (plugin) {
+        this.register(plugin);
+      } else if (typeof mod?.register === 'function') {
+        mod.register(this);
+      } else {
+        throw new ConfigError(`Plugin "${specifier}" does not export a GherkinAIPlugin or a register(registry) function.`);
+      }
+      telemetry.recordAudit({ action: 'plugin:load', resource: specifier, status: 'SUCCESS', details: resolved });
+      this.loadedSpecifiers.add(specifier);
+      loaded.push(specifier);
+    }
+    return loaded;
   }
 
   public getMCPTools(): MCPToolDefinition[] {

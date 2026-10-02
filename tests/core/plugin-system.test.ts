@@ -1,3 +1,8 @@
+import fsMod from 'fs';
+import osMod from 'os';
+import pathMod from 'path';
+import { defaultConfig } from '../../src/core/config';
+import { PolicyError } from '../../src/core/errors';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { PluginRegistry, GherkinAIPlugin } from '../../src/core/plugin-system';
 import { SpecificationIR } from '../../src/core/semantic-ir';
@@ -79,5 +84,36 @@ describe('Plugin System', () => {
     const artifacts = registry.runGeneration(mockIR, mockConfig);
     expect(artifacts.length).toBe(1);
     expect(artifacts[0].filePath).toBe('a.ts');
+  });
+});
+
+describe('PluginRegistry.loadFromConfig (governed loading)', () => {
+
+  function project() {
+    const dir = fsMod.mkdtempSync(pathMod.join(osMod.tmpdir(), 'ghk-plugin-'));
+    fsMod.writeFileSync(pathMod.join(dir, 'my-plugin.js'), "module.exports = { plugin: { name: 'local-plugin', version: '1.0.0' } };");
+    return dir;
+  }
+
+  it('loads a local plugin once, even when called repeatedly', () => {
+    const dir = project();
+    const registry = new PluginRegistry();
+    const config = { ...defaultConfig, plugins: { load: ['./my-plugin.js'] } };
+    expect(registry.loadFromConfig(config, dir)).toEqual(['./my-plugin.js']);
+    expect(registry.loadFromConfig(config, dir)).toEqual([]);
+    expect(registry.getPlugins().map(p => p.name)).toEqual(['local-plugin']);
+  });
+
+  it('enforces the organization allow-list', () => {
+    const dir = project();
+    const registry = new PluginRegistry();
+    const config = { ...defaultConfig, plugins: { load: ['./my-plugin.js'], allow: ['@corp/approved-plugin'] } };
+    expect(() => registry.loadFromConfig(config, dir)).toThrow(PolicyError);
+  });
+
+  it('refuses plugin paths outside the project', () => {
+    const dir = project();
+    const registry = new PluginRegistry();
+    expect(() => registry.loadFromConfig({ ...defaultConfig, plugins: { load: ['../elsewhere/evil.js'] } }, dir)).toThrow(PolicyError);
   });
 });

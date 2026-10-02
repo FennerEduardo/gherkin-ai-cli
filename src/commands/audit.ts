@@ -2,6 +2,8 @@
    gherkin-ai-cli - 'audit' Command Handler (Feature Inventory & Audit Trail)
    ========================================================================== */
 
+import { emitJson } from '../utils/output';
+import { getTelemetry } from '../core/telemetry';
 import fs from 'fs';
 import path from 'path';
 import { logger } from '../utils/logger';
@@ -12,6 +14,8 @@ export async function handleAuditCommand(options: { feature?: string; json?: boo
 
   if (options.clear) {
     manager.clearInventory();
+    // Clearing is itself a security-relevant event: keep a record in the append-only audit trail.
+    getTelemetry().recordAudit({ action: 'audit:clear-inventory', status: 'SUCCESS' });
     logger.success('Feature audit trail inventory cleared successfully.');
     return;
   }
@@ -27,7 +31,7 @@ export async function handleAuditCommand(options: { feature?: string; json?: boo
   const records = manager.getInventory(options.feature);
 
   if (isJson) {
-    console.log(JSON.stringify(records, null, 2));
+    emitJson(records);
     return;
   }
 
