@@ -11,7 +11,21 @@
 
 const base = { database: 'postgresql', auth: 'jwt', messaging: 'none' };
 
+// Frontends are generated next to a backend and built/tested in ./frontend.
+const feBackend = { ...base, language: 'typescript', framework: 'express', orm: 'none', validation: 'zod', testing: 'jest' };
+const nodeFrontend = (framework, extra = {}) => ({
+  stack: feBackend,
+  frontendStack: { framework, language: 'typescript', ...extra },
+  image: 'node:20-bookworm',
+  workdir: 'frontend',
+  caches: [['npm', '/root/.npm']],
+  build: ['npm install --no-audit --no-fund --loglevel=error', 'npm run build'],
+  test: ['npm test']
+});
+
 const STACKS = {
+  react: nodeFrontend('react'),
+  vue: nodeFrontend('vue'),
   nestjs: {
     stack: { ...base, language: 'typescript', framework: 'nestjs', orm: 'prisma', validation: 'zod', messaging: 'rabbitmq', testing: 'jest' },
     image: 'node:20-bookworm',

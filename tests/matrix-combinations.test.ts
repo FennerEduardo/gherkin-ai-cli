@@ -26,8 +26,8 @@ describe('Distributed Multi-Stack & Frontend Matrix Combinations', () => {
   ];
 
   const matrixFrontend = [
-    { name: 'Vue 3 Pinia', framework: 'vue', state: 'pinia', expectedFile: 'frontend/stores/order-management.store.ts' },
-    { name: 'React 18 Redux', framework: 'react', state: 'redux-toolkit', expectedFile: 'frontend/store/order-managementSlice.ts' },
+    { name: 'Vue 3 Pinia', framework: 'vue', state: 'pinia', expectedFile: 'frontend/src/stores/order-management.store.ts' },
+    { name: 'React 18 Redux', framework: 'react', state: 'redux-toolkit', expectedFile: 'frontend/src/store/orderManagementSlice.ts' },
     { name: 'Angular 17 Signals', framework: 'angular', state: 'signals', expectedFile: 'frontend/store/order-management.store.ts' },
     { name: 'Angular Classic NgRx', framework: 'angular', state: 'classic', expectedFile: 'frontend/store/order-management.store.ts' }
   ];

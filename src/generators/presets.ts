@@ -19,8 +19,9 @@ import { generateNodeNestJsPreset } from './preset-node-nestjs';
 import { generateNodeExpressPreset } from './preset-node-express';
 import { generateFlutterPreset } from './preset-flutter';
 
-import { generateVuePiniaStore } from './frontend/vue-pinia-generator';
-import { generateReactReduxInfrastructure } from './frontend/react-generator';
+import { buildDomainModel } from './kernel/domain-model';
+import { renderReactProject } from './frontend/kernel/react';
+import { renderVueProject } from './frontend/kernel/vue';
 import { generateAngularStoreInfrastructure } from './frontend/angular-ngrx-generator';
 import { generateAngularSignalRService } from './frontend/angular-signalr-service';
 
@@ -82,16 +83,11 @@ export function generatePresets(parsed: ParsedFeature, config: GherkinAIConfig, 
     const safeFeatureName = toPascalCase(parsed.featureName);
     const kebabFeatureName = toKebabCase(parsed.featureName);
 
+    const fm = buildDomainModel(parsed);
     if (feFramework === 'vue') {
-      results.push({
-        filename: `frontend/stores/${kebabFeatureName}.store.ts`,
-        content: generateVuePiniaStore(safeFeatureName)
-      });
+      results.push(...renderVueProject(fm));
     } else if (feFramework === 'react') {
-      results.push({
-        filename: `frontend/store/${kebabFeatureName}Slice.ts`,
-        content: generateReactReduxInfrastructure(safeFeatureName)
-      });
+      results.push(...renderReactProject(fm));
     } else if (feFramework === 'angular') {
       const mode = config.frontendStack.stateManagement === 'classic' ? 'classic' : 'signals';
       results.push({
