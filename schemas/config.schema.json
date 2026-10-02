@@ -1,0 +1,423 @@
+{
+  "$id": "https://unpkg.com/gherkin-ai/schemas/config.schema.json",
+  "title": "gherkin-ai configuration",
+  "$ref": "#/definitions/GherkinAIConfig",
+  "definitions": {
+    "GherkinAIConfig": {
+      "type": "object",
+      "properties": {
+        "version": {
+          "type": "string"
+        },
+        "projectName": {
+          "type": "string",
+          "minLength": 1
+        },
+        "projectMode": {
+          "type": "string",
+          "enum": [
+            "greenfield",
+            "brownfield",
+            "monorepo"
+          ]
+        },
+        "architecture": {
+          "type": "string",
+          "enum": [
+            "ddd",
+            "hexagonal",
+            "clean",
+            "cqrs",
+            "microservices",
+            "monolith",
+            "modular",
+            "api-rest",
+            "serverless",
+            "event-driven",
+            "monorepo-workspaces",
+            "desktop"
+          ]
+        },
+        "stack": {
+          "type": "object",
+          "properties": {
+            "language": {
+              "type": "string"
+            },
+            "framework": {
+              "type": "string"
+            },
+            "orm": {
+              "type": "string"
+            },
+            "database": {
+              "type": "string"
+            },
+            "validation": {
+              "type": "string"
+            },
+            "auth": {
+              "type": "string"
+            },
+            "messaging": {
+              "type": "string"
+            },
+            "testing": {
+              "type": "string"
+            },
+            "aiEngine": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        },
+        "frontendStack": {
+          "type": "object",
+          "properties": {
+            "framework": {
+              "type": "string"
+            },
+            "language": {
+              "type": "string"
+            },
+            "bundler": {
+              "type": "string"
+            },
+            "stateManagement": {
+              "type": "string"
+            },
+            "orm": {
+              "type": "string"
+            },
+            "database": {
+              "type": "string"
+            },
+            "validation": {
+              "type": "string"
+            },
+            "testing": {
+              "type": "string"
+            },
+            "unitTesting": {
+              "type": "string"
+            },
+            "e2eTesting": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        },
+        "rules": {
+          "type": "object",
+          "properties": {
+            "bcryptCostFactor": {
+              "type": "integer",
+              "minimum": 4,
+              "maximum": 31
+            },
+            "jwtTtlSeconds": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            },
+            "strictLayerBoundaries": {
+              "type": "boolean"
+            },
+            "coverageTarget": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100
+            }
+          },
+          "additionalProperties": false
+        },
+        "audit": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "maxEntries": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            },
+            "persistInGit": {
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false
+        },
+        "designPatterns": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "codingRules": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "outputDir": {
+          "type": "string"
+        },
+        "specDir": {
+          "type": "string"
+        },
+        "testCommand": {
+          "type": "string"
+        },
+        "domainProfile": {
+          "type": "string"
+        },
+        "channelMapping": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "locale": {
+          "type": "string",
+          "enum": [
+            "en",
+            "es"
+          ]
+        },
+        "llm": {
+          "type": "object",
+          "properties": {
+            "provider": {
+              "type": "string",
+              "enum": [
+                "openai",
+                "openai-compatible",
+                "azure-openai",
+                "anthropic",
+                "bedrock",
+                "gemini",
+                "vertex",
+                "ollama",
+                "ide_delegate"
+              ]
+            },
+            "model": {
+              "type": "string"
+            },
+            "baseUrl": {
+              "type": "string",
+              "format": "uri"
+            },
+            "headers": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              }
+            },
+            "timeoutMs": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            },
+            "maxRetries": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 10
+            },
+            "maxOutputTokens": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            },
+            "azure": {
+              "type": "object",
+              "properties": {
+                "endpoint": {
+                  "type": "string",
+                  "format": "uri"
+                },
+                "deployment": {
+                  "type": "string"
+                },
+                "apiVersion": {
+                  "type": "string"
+                },
+                "useEntraId": {
+                  "type": "boolean"
+                }
+              },
+              "additionalProperties": false
+            },
+            "bedrock": {
+              "type": "object",
+              "properties": {
+                "region": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            },
+            "vertex": {
+              "type": "object",
+              "properties": {
+                "project": {
+                  "type": "string"
+                },
+                "location": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            },
+            "budget": {
+              "type": "object",
+              "properties": {
+                "maxTokensPerRun": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0
+                }
+              },
+              "additionalProperties": false
+            },
+            "allowedProviders": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "openai",
+                  "openai-compatible",
+                  "azure-openai",
+                  "anthropic",
+                  "bedrock",
+                  "gemini",
+                  "vertex",
+                  "ollama",
+                  "ide_delegate"
+                ]
+              }
+            },
+            "allowedModels": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "allowedBaseUrls": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        "mcp": {
+          "type": "object",
+          "properties": {
+            "allowWrite": {
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false
+        },
+        "network": {
+          "type": "object",
+          "properties": {
+            "proxy": {
+              "type": "string",
+              "format": "uri"
+            },
+            "noProxy": {
+              "type": "string"
+            },
+            "caFile": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        },
+        "logging": {
+          "type": "object",
+          "properties": {
+            "level": {
+              "type": "string",
+              "enum": [
+                "silent",
+                "error",
+                "warn",
+                "info",
+                "verbose",
+                "debug"
+              ]
+            },
+            "file": {
+              "type": "string"
+            },
+            "maxSizeMb": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "maxFiles": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            }
+          },
+          "additionalProperties": false
+        },
+        "telemetry": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "dir": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        },
+        "plugins": {
+          "type": "object",
+          "properties": {
+            "load": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "allow": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        "policy": {
+          "type": "object",
+          "properties": {
+            "allowUnattendedWrites": {
+              "type": "boolean"
+            },
+            "protectedBranches": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "redactPii": {
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false
+        },
+        "locked": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}

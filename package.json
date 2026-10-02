@@ -1,7 +1,7 @@
 {
   "name": "gherkin-ai",
-  "version": "2.6.5",
-  "description": "Enterprise-Grade Closed-Loop Agentic Orchestration Engine & Spec-Driven Verification Framework for AI Coding Agents.",
+  "version": "3.0.0-beta.1",
+  "description": "Spec-driven verification, governance and prompt generation for AI coding agents, with org-level policy, multi-provider LLM support and a least-privilege MCP server.",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "bin": {
@@ -14,7 +14,11 @@
     "dist",
     "bin",
     "docs",
-    "README.md"
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE",
+    "SECURITY.md",
+    "schemas"
   ],
   "keywords": [
     "gherkin",
@@ -53,7 +57,9 @@
     "url": "https://github.com/FennerEduardo/gherkin-ai-cli/issues"
   },
   "scripts": {
-    "build": "npx tsc && node -e \"require('fs').cpSync('src/ui/public', 'dist/ui/public', {recursive: true})\"",
+    "prebuild": "node -e \"require('fs').rmSync('dist', {recursive: true, force: true})\"",
+    "build": "tsc && node -e \"require('fs').cpSync('src/ui/public', 'dist/ui/public', {recursive: true})\" && npm run schema",
+    "schema": "node -e \"const {buildConfigJsonSchema}=require('./dist/core/config/json-schema');require('fs').mkdirSync('schemas',{recursive:true});require('fs').writeFileSync('schemas/config.schema.json', JSON.stringify(buildConfigJsonSchema(), null, 2) + '\\n')\"",
     "start": "node ./bin/gherkin-ai.js",
     "dev": "npx tsc --watch",
     "eval": "npx ts-node evals/runner.ts",
@@ -71,27 +77,35 @@
     "node": ">=20.12.0"
   },
   "dependencies": {
+    "@anthropic-ai/bedrock-sdk": "^0.34.2",
+    "@anthropic-ai/sdk": "^0.131.0",
     "@cucumber/gherkin": "^42.0.1",
     "@cucumber/messages": "^34.2.1",
+    "@google/genai": "^2.26.0",
     "@modelcontextprotocol/sdk": "^1.30.0",
     "chalk": "^4.1.2",
     "commander": "^12.1.0",
     "express": "^5.2.1",
     "inquirer": "^8.2.6",
     "openai": "^4.0.0",
-    "@anthropic-ai/sdk": "^0.24.0",
     "ts-morph": "^28.0.0",
-    "yaml": "^2.9.0"
+    "undici": "^6.29.0",
+    "yaml": "^2.9.0",
+    "zod": "^3.25.76",
+    "zod-to-json-schema": "^3.25.2"
   },
   "devDependencies": {
     "@playwright/test": "^1.62.1",
     "@types/express": "^5.0.6",
     "@types/inquirer": "^8.2.10",
     "@types/node": "^20.14.0",
+    "@vitest/coverage-v8": "^4.1.11",
     "commit-and-tag-version": "^12.5.0",
     "ts-node": "^10.9.2",
     "typescript": "^5.4.5",
-    "vitest": "^4.1.11",
-    "@vitest/coverage-v8": "^4.1.11"
+    "vitest": "^4.1.11"
+  },
+  "optionalDependencies": {
+    "@napi-rs/keyring": "^2.1.0"
   }
 }
