@@ -13,21 +13,55 @@ import { parseGherkinText } from '../core/gherkin-parser';
 import { handleQualityCommand } from '../commands/quality';
 import { loadConfig, saveConfig } from '../core/config';
 import { buildSpecificationIR } from '../core/ir-builder';
-import { RealAgentProvider, LLMConfig } from '../core/agent-adapter';
-import { exec } from 'child_process';
+import { RealAgentProvider, LLMConfig, resolveLLMConfig } from '../core/agent-adapter';
+import { PolicyError } from '../core/errors';
+import { execFile } from 'child_process';
+import crypto from 'crypto';
+import { isPathInside } from '../utils/path-guard';
+import { getTelemetry } from '../core/telemetry';
 
-export function startWebServer(port: number): void {
+/** Commands the Web Studio may run. --apply is never accepted from the browser. */
+const WEB_ALLOWED_COMMANDS = new Set(['verify', 'diff', 'generate', 'add', 'lint', 'converge', 'validate']);
+const WEB_FORBIDDEN_FLAGS = new Set(['--apply', '--project', '--config', '-c']);
+
+function specsDirFor(cwd: string): string {
+  if (fs.existsSync(path.join(cwd, 'features'))) return path.join(cwd, 'features');
+  if (fs.existsSync(path.join(cwd, 'specs'))) return path.join(cwd, 'specs');
+  return path.join(cwd, 'features');
+}
+
+export interface WebServerHandle {
+  url: string;
+  token: string;
+  close(): Promise<void>;
+}
+
+export function createWebApp(port: number, token: string): express.Express {
   const app = express();
-  
-  // Localhost-only security check (no cors dependency required)
+  const allowedHosts = new Set([`127.0.0.1:${port}`, `localhost:${port}`]);
+  const allowedOrigins = new Set([`http://127.0.0.1:${port}`, `http://localhost:${port}`]);
+
+  // Exact Host match defeats DNS rebinding ("localhost.attacker.com" no longer passes).
   app.use((req, res, next) => {
-    const host = req.headers.host || '';
-    if (!host.includes('localhost') && !host.includes('127.0.0.1')) {
+    if (!allowedHosts.has(req.headers.host || '')) {
       return res.status(403).json({ success: false, error: 'Access denied: Local connections only.' });
     }
     next();
   });
-  app.use(express.json());
+
+  // Every API call needs the per-session token and, when the browser sends one, a same-origin Origin header.
+  app.use('/api', (req, res, next) => {
+    const origin = req.headers.origin;
+    if (origin && !allowedOrigins.has(origin)) {
+      return res.status(403).json({ success: false, error: 'Access denied: cross-origin request.' });
+    }
+    const presented = req.headers['x-ghk-token'];
+    const valid = typeof presented === 'string' && presented.length === token.length &&
+      crypto.timingSafeEqual(Buffer.from(presented), Buffer.from(token));
+    if (!valid) return res.status(401).json({ success: false, error: 'Missing or invalid session token. Open the URL printed by `ghk web`.' });
+    next();
+  });
+  app.use(express.json({ limit: '2mb' }));
   
   // Static files for frontend
   const publicPath = path.join(__dirname, 'public');
@@ -55,11 +89,9 @@ export function startWebServer(port: number): void {
         return res.status(400).json({ success: false, error: 'Gherkin text is required.' });
       }
 
-      // Save feature file
-      const safeName = (featureName || 'feature').toLowerCase().replace(/\s+/g, '-');
-      const specsDir = fs.existsSync(path.join(process.cwd(), 'features'))
-        ? path.join(process.cwd(), 'features')
-        : (fs.existsSync(path.join(process.cwd(), 'specs')) ? path.join(process.cwd(), 'specs') : path.join(process.cwd(), 'features'));
+      // Save feature file (name reduced to a safe slug: no separators, no "..")
+      const safeName = String(featureName || 'feature').toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9_-]/g, '') || 'feature';
+      const specsDir = specsDirFor(process.cwd());
       if (!fs.existsSync(specsDir)) fs.mkdirSync(specsDir, { recursive: true });
 
       const featurePath = path.join(specsDir, `${safeName}.feature`);
@@ -77,6 +109,9 @@ export function startWebServer(port: number): void {
 
       // Save contracts & prompts
       const outDir = path.join(process.cwd(), config.outputDir || 'generated-specs');
+      if (!isPathInside(process.cwd(), outDir)) {
+        return res.status(403).json({ success: false, error: 'outputDir escapes the workspace' });
+      }
       if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
 
       const promptsDir = path.join(outDir, 'prompts');
@@ -112,9 +147,7 @@ export function startWebServer(port: number): void {
   // API: List Features
   app.get('/api/features', (req, res) => {
     try {
-      const targetDir = fs.existsSync(path.join(process.cwd(), 'features'))
-        ? path.join(process.cwd(), 'features')
-        : (fs.existsSync(path.join(process.cwd(), 'specs')) ? path.join(process.cwd(), 'specs') : path.join(process.cwd(), 'features'));
+      const targetDir = specsDirFor(process.cwd());
       if (!fs.existsSync(targetDir)) {
         return res.json({ success: true, features: [] });
       }
@@ -154,13 +187,14 @@ export function startWebServer(port: number): void {
     }
     
     try {
-      const targetDir = fs.existsSync(path.join(process.cwd(), 'features'))
-        ? path.join(process.cwd(), 'features')
-        : path.join(process.cwd(), 'specs');
-      
+      const targetDir = specsDirFor(process.cwd());
+
       // req.path will be e.g. '/backend/customer_crud.feature'
       const featureName = decodeURIComponent(req.path.replace(/^\//, ''));
-      const featurePath = path.join(targetDir, featureName);
+      const featurePath = path.resolve(targetDir, featureName);
+      if (!isPathInside(targetDir, featurePath) || !featurePath.endsWith('.feature')) {
+        return res.status(403).json({ success: false, error: 'Access denied' });
+      }
       if (!fs.existsSync(featurePath)) {
         return res.status(404).json({ success: false, error: 'Feature not found' });
       }
@@ -176,9 +210,9 @@ export function startWebServer(port: number): void {
     try {
       const filePath = req.query.path as string;
       if (!filePath) return res.status(400).json({ success: false, error: 'Path is required' });
-      const fullPath = path.join(process.cwd(), filePath);
-      if (!fullPath.startsWith(process.cwd())) {
-         return res.status(403).json({ success: false, error: 'Access denied' });
+      const fullPath = path.resolve(process.cwd(), filePath);
+      if (!isPathInside(process.cwd(), fullPath)) {
+        return res.status(403).json({ success: false, error: 'Access denied' });
       }
       if (!fs.existsSync(fullPath)) return res.status(404).json({ success: false, error: 'File not found' });
       const content = fs.readFileSync(fullPath, 'utf8');
@@ -192,13 +226,15 @@ export function startWebServer(port: number): void {
   app.post('/api/suggest', async (req, res) => {
     try {
       const { prompt, context } = req.body;
-      const config: LLMConfig = {
-        provider: (process.env.LLM_PROVIDER as any) || 'ide_delegate',
-        model: process.env.LLM_MODEL,
-        apiKey: process.env.OPENAI_API_KEY || process.env.ANTHROPIC_API_KEY || process.env.LLM_API_KEY,
-        baseUrl: process.env.LLM_BASE_URL
-      };
-      
+      let config: LLMConfig;
+      try {
+        config = resolveLLMConfig();
+      } catch (err) {
+        // Without usable credentials the UI falls back to IDE delegation; policy denials are surfaced.
+        if (err instanceof PolicyError) return res.status(403).json({ success: false, error: err.message });
+        config = { provider: 'ide_delegate' };
+      }
+
       const agent = new RealAgentProvider(config);
       const result = await agent.executeTask({
         id: 'ui-suggest',
@@ -362,33 +398,32 @@ export function startWebServer(port: number): void {
         return res.status(400).json({ success: false, error: 'Command is required and must be a string' });
       }
 
-      // Security: Strict validation against OS command injection
+      // No shell is involved (execFile with an argv array); metacharacters are still
+      // rejected to keep commands unambiguous.
       let safeCmd = command.trim();
-      if (safeCmd.startsWith('ghk ')) {
-        safeCmd = safeCmd.substring(4).trim();
-      }
-
-      // Regex to detect shell metacharacters: &, |, ;, $, >, <, `
-      if (/[&|;$><`]/.test(safeCmd)) {
+      if (safeCmd.startsWith('ghk ')) safeCmd = safeCmd.substring(4).trim();
+      if (/[&|;$><`'"\\]/.test(safeCmd)) {
         return res.status(403).json({ success: false, error: 'Command contains illegal characters' });
       }
 
-      // Allowed CLI root commands
-      const allowedCommands = ['autopilot', 'verify', 'diff', 'generate', 'add', 'lint'];
-      const baseCmd = safeCmd.split(' ')[0];
-      if (!allowedCommands.includes(baseCmd)) {
-        return res.status(403).json({ success: false, error: `Command '${baseCmd}' is not allowed via Web Studio RCE` });
+      const argv = safeCmd.split(/\s+/).filter(Boolean);
+      const baseCmd = argv[0];
+      if (!WEB_ALLOWED_COMMANDS.has(baseCmd)) {
+        return res.status(403).json({ success: false, error: `Command '${baseCmd}' is not allowed from Web Studio` });
       }
-      
-      const cliPath = path.resolve(__dirname, '../../dist/index.js');
-      const fullCmd = `node "${cliPath}" ${safeCmd}`;
+      const forbidden = argv.find(a => WEB_FORBIDDEN_FLAGS.has(a.split('=')[0]));
+      if (forbidden) {
+        return res.status(403).json({ success: false, error: `Flag '${forbidden}' is not allowed from Web Studio` });
+      }
 
-      exec(fullCmd, { cwd: process.cwd() }, (error, stdout, stderr) => {
-        res.json({ 
-          success: !error, 
-          output: stdout || '', 
-          errorOutput: stderr || '', 
-          error: error ? error.message : null 
+      const cliEntry = path.resolve(__dirname, '../../bin/gherkin-ai.js');
+      getTelemetry().recordAudit({ source: 'web', action: `web:execute:${baseCmd}`, status: 'SUCCESS', resource: argv.slice(1).join(' ') });
+      execFile(process.execPath, [cliEntry, ...argv, '--yes'], { cwd: process.cwd(), env: { ...process.env, NO_COLOR: '1' }, timeout: 10 * 60_000 }, (error, stdout, stderr) => {
+        res.json({
+          success: !error,
+          output: stdout || '',
+          errorOutput: stderr || '',
+          error: error ? error.message : null
         });
       });
     } catch (err) {
@@ -396,9 +431,19 @@ export function startWebServer(port: number): void {
     }
   });
 
-  app.listen(port, '127.0.0.1', () => {
-    console.log(chalk.cyan(`\n🚀 Gherkin AI Web UI is running (Bound to 127.0.0.1)`));
-    console.log(chalk.white(`Navigate to: `) + chalk.green.bold(`http://127.0.0.1:${port}`));
-    console.log(chalk.gray(`Press Ctrl+C to stop the server.`));
+  return app;
+}
+
+export function startWebServer(port: number): Promise<WebServerHandle> {
+  const token = crypto.randomBytes(24).toString('hex');
+  const app = createWebApp(port, token);
+  return new Promise(resolve => {
+    const server = app.listen(port, '127.0.0.1', () => {
+      const url = `http://127.0.0.1:${port}/#token=${token}`;
+      console.log(chalk.cyan(`\n🚀 Gherkin AI Web UI is running (Bound to 127.0.0.1)`));
+      console.log(chalk.white(`Navigate to: `) + chalk.green.bold(url));
+      console.log(chalk.gray(`The token in the URL authorizes this browser session. Press Ctrl+C to stop the server.`));
+      resolve({ url, token, close: () => new Promise(r => server.close(() => r())) });
+    });
   });
 }
