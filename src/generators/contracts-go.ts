@@ -23,9 +23,7 @@ package contracts
 import (
 	"context"
 	"time"
-
-	"github.com/google/uuid"
-)
+${ir.events.length ? '\n\t"github.com/google/uuid"\n' : ''})
 
 // --------------------------------------------------------------------------
 // 1. Domain Event Interface
