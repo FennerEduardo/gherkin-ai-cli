@@ -6,33 +6,9 @@ import { Command, CommanderError } from 'commander';
 import { ExitCode, GhkError, UsageError, toGhkError } from './core/errors';
 import { getRunContext, isNonInteractive, setRunContext } from './core/run-context';
 import { logger } from './utils/logger';
-import { configureNetwork } from './core/net';
 import { configureTelemetry, getTelemetry, EXECUTION_ID } from './core/telemetry';
 import { onLLMUsage } from './core/llm';
 import { emitJson, enterJsonMode, hasEmittedOutput } from './utils/output';
-import { handleInitCommand } from './commands/init';
-import { handleGenerateCommand } from './commands/generate';
-import { handleValidateCommand } from './commands/validate';
-import { handleExportCommand } from './commands/export';
-import { handleDetectCommand } from './commands/detect';
-import { handleAddCommand } from './commands/add';
-import { handleCreateCommand } from './commands/create';
-import { handleLangCommand } from './commands/lang';
-import { handleMcpCommand } from './commands/mcp';
-import { handleVerifyCommand } from './commands/verify';
-import { handleContextCommand } from './commands/context';
-import { handleQualityCommand } from './commands/quality';
-import { handleAutopilotCommand } from './commands/autopilot';
-import { handleDiffCommand } from './commands/diff';
-import { handleSkillCommand } from './commands/skill';
-import { handleWebCommand } from './commands/web';
-import { handleEvaluateCommand } from './commands/evaluate';
-import { handleLintCommand } from './commands/lint';
-import { handleConvergeCommand } from './commands/converge';
-import { handleImplementCommand } from './commands/implement';
-import { handleAuditCommand } from './commands/audit';
-import { handleAgentLogCommand } from './commands/agent-log';
-import { handleLoginCommand } from './commands/login';
 
 // Version from package.json (single source of truth)
 import { CLI_VERSION } from './version';
@@ -90,7 +66,7 @@ program
   .option('--provider <name>', 'openai | openai-compatible | azure-openai | anthropic | bedrock | gemini | vertex | ollama | ide_delegate')
   .option('--api-key-stdin', 'Read the API key from standard input (non-interactive)')
   .action(async (options) => {
-    await handleLoginCommand(options);
+    await (await import('./commands/login')).handleLoginCommand(options);
   });
 
 program
@@ -134,7 +110,7 @@ program
   .option('--frontendE2eTesting <testing>', 'Frontend E2E Testing Framework')
   .option('--outputDir <dir>', 'Output directory for generated contracts')
   .action(async (options) => {
-    await handleInitCommand(options);
+    await (await import('./commands/init')).handleInitCommand(options);
   });
 
 program
@@ -142,7 +118,7 @@ program
   .description('Start native Model Context Protocol (MCP) JSON-RPC 2.0 stdio server or auto-install config (`ghk mcp install`)')
   .option('--install', 'Auto-install MCP config into Cursor and Claude Desktop')
   .action(async (subcommand, options) => {
-    await handleMcpCommand(subcommand, options);
+    await (await import('./commands/mcp')).handleMcpCommand(subcommand, options);
   });
 
 program
@@ -162,14 +138,14 @@ program
     if (!options.apply) {
       process.env.GHK_DRY_RUN = 'true';
     }
-    await handleVerifyCommand(options);
+    await (await import('./commands/verify')).handleVerifyCommand(options);
   });
 
 program
   .command('context [subcommand]')
   .description('Build and package project context and conventions into .ghe/')
   .action(async (subcommand) => {
-    await handleContextCommand(subcommand);
+    await (await import('./commands/context')).handleContextCommand(subcommand);
   });
 
 program
@@ -177,7 +153,7 @@ program
   .alias('q')
   .description('Calculate feature quality score index and enterprise gate compliance')
   .action(async () => {
-    await handleQualityCommand();
+    await (await import('./commands/quality')).handleQualityCommand();
   });
 
 program
@@ -192,7 +168,7 @@ program
   .action(async (options) => {
     // Like verify, autopilot only writes LLM output to disk with an explicit --apply.
     if (!options.apply) process.env.GHK_DRY_RUN = 'true';
-    await handleAutopilotCommand(options);
+    await (await import('./commands/autopilot')).handleAutopilotCommand(options);
   });
 
 program
@@ -200,7 +176,9 @@ program
   .description('Run Drift Detection to ensure code DTOs match Gherkin specs')
   .option('-f, --feature <file>', 'Gherkin feature file source of truth')
   .option('-t, --target <file>', 'Target source code file (e.g. DTO or Contract)')
-  .action(handleDiffCommand);
+  .action(async (options) => {
+    await (await import('./commands/diff')).handleDiffCommand(options);
+  });
 
 program
   .command('lang')
@@ -209,7 +187,7 @@ program
   .description('Configure CLI preferred interaction language (English or Spanish)')
   .option('-s, --set <locale>', 'Set language directly (en or es)')
   .action(async (options) => {
-    await handleLangCommand(options);
+    await (await import('./commands/lang')).handleLangCommand(options);
   });
 
 program
@@ -228,7 +206,7 @@ program
   .option('-A, --action <action>', 'Feature action (I want to...)')
   .option('-S, --scenarioName <name>', 'Scenario name')
   .action(async (options) => {
-    await handleCreateCommand(options);
+    await (await import('./commands/create')).handleCreateCommand(options);
   });
 
 
@@ -237,7 +215,7 @@ program
   .alias('d')
   .description('Auto-detect tech stack & architecture of an existing project (Brownfield mode)')
   .action(async () => {
-    await handleDetectCommand();
+    await (await import('./commands/detect')).handleDetectCommand();
   });
 
 program
@@ -248,7 +226,7 @@ program
   .option('-t, --target <directory>', 'Target directory inside existing project')
   .option('-c, --config <file>', 'Path to custom gherkin-ai.config.json file')
   .action(async (options) => {
-    await handleAddCommand(options);
+    await (await import('./commands/add')).handleAddCommand(options);
   });
 
 program
@@ -258,7 +236,7 @@ program
   .option('-f, --feature <file>', 'Path to Gherkin .feature file')
   .option('-c, --config <file>', 'Path to custom gherkin-ai.config.json file')
   .action(async (options) => {
-    await handleGenerateCommand(options);
+    await (await import('./commands/generate')).handleGenerateCommand(options);
   });
 
 program
@@ -270,7 +248,7 @@ program
   .option('--openapi <file>', 'Path to OpenAPI spec file to validate against IR')
   .option('--asyncapi <file>', 'Path to AsyncAPI spec file to validate against IR')
   .action(async (options) => {
-    await handleValidateCommand(options);
+    await (await import('./commands/validate')).handleValidateCommand(options);
   });
 
 program
@@ -281,7 +259,7 @@ program
   .option('--format <type>', 'Export format (json or md)', 'md')
   .option('-o, --output <file>', 'Output destination file path')
   .action(async (options) => {
-    await handleExportCommand(options);
+    await (await import('./commands/export')).handleExportCommand(options);
   });
 
 program
@@ -290,7 +268,7 @@ program
   .description('Configure Gherkin AI as a native tool/skill for AI IDEs like Cursor and Windsurf')
   .action(async () => {
     const { handleSkillCommand } = await import('./commands/skill');
-    await handleSkillCommand();
+    await (await import('./commands/skill')).handleSkillCommand();
   });
 
 program
@@ -308,7 +286,7 @@ program
   .description('Launch local Web UI Server to visually guide the generation process')
   .option('-p, --port <number>', 'Port to run the web server on')
   .action(async (options) => {
-    await handleWebCommand(options);
+    await (await import('./commands/web')).handleWebCommand(options);
   });
 
 program
@@ -318,7 +296,7 @@ program
   .option('--max-file-lines <number>', 'Maximum lines allowed per file (default: 300)')
   .option('--max-class-lines <number>', 'Maximum lines allowed per class (default: 200)')
   .action(async (files, options) => {
-    await handleEvaluateCommand(files, options);
+    await (await import('./commands/evaluate')).handleEvaluateCommand(files, options);
   });
 
 program
@@ -329,7 +307,7 @@ program
   .option('--rules', 'List available lint rules')
   .option('--json', 'Output report as JSON')
   .action(async (options) => {
-    await handleLintCommand(options);
+    await (await import('./commands/lint')).handleLintCommand(options);
   });
 
 program
@@ -341,7 +319,7 @@ program
   .option('--strict', 'Deprecated: the threshold is always enforced')
   .option('--json', 'Output report as JSON')
   .action(async (options) => {
-    await handleConvergeCommand(options);
+    await (await import('./commands/converge')).handleConvergeCommand(options);
   });
 
 program
@@ -355,7 +333,7 @@ program
   .option('--no-audit', 'Disable feature execution audit trail tracking for this run')
   .option('-C, --compact', 'Generate ultra-compact prompt with minimal token footprint for low-cost models')
   .action(async (options) => {
-    await handleImplementCommand(options);
+    await (await import('./commands/implement')).handleImplementCommand(options);
   });
 
 program
@@ -378,7 +356,7 @@ program
       return;
     }
     if (subcommand) throw new UsageError(`Unknown audit subcommand "${subcommand}".`, { hint: 'Use `ghk audit` or `ghk audit export`.' });
-    await handleAuditCommand(options);
+    await (await import('./commands/audit')).handleAuditCommand(options);
   });
 
 program
@@ -390,7 +368,7 @@ program
   .option('--json', 'Output agent logs as JSON')
   .option('--clear', 'Clear agent action logs')
   .action(async (options) => {
-    await handleAgentLogCommand(options);
+    await (await import('./commands/agent-log')).handleAgentLogCommand(options);
   });
 
 program
@@ -425,15 +403,15 @@ program
 // Action fallback for root flags (--init, --create, --generate, --validate, --detect)
 program.action(async (options) => {
   if (options.init) {
-    await handleInitCommand();
+    await (await import('./commands/init')).handleInitCommand();
   } else if (options.create) {
-    await handleCreateCommand({});
+    await (await import('./commands/create')).handleCreateCommand({});
   } else if (options.detect) {
-    await handleDetectCommand();
+    await (await import('./commands/detect')).handleDetectCommand();
   } else if (options.generate) {
-    await handleGenerateCommand({});
+    await (await import('./commands/generate')).handleGenerateCommand({});
   } else if (options.validate) {
-    await handleValidateCommand({});
+    await (await import('./commands/validate')).handleValidateCommand({});
   } else {
     program.help();
   }
@@ -495,7 +473,9 @@ program.hook('preAction', async (_thisCommand, actionCommand) => {
       executionId: EXECUTION_ID
     });
     for (const warning of warnings) logger.verbose(warning);
-    configureNetwork(config.network);
+    if (config.network?.proxy || config.network?.caFile || process.env.HTTPS_PROXY || process.env.https_proxy || process.env.HTTP_PROXY || process.env.http_proxy) {
+      (await import('./core/net')).configureNetwork(config.network);
+    }
     configureTelemetry(process.cwd(), { dir: config.telemetry?.dir, telemetryEnabled: config.telemetry?.enabled, auditEnabled: config.audit?.enabled });
   } catch (err) {
     if (err instanceof GhkError && err.exitCode === ExitCode.CONFIG && commandName !== 'config') throw err;
