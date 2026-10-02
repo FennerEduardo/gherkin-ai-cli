@@ -5,6 +5,41 @@
 import { ParsedFeature } from '../core/gherkin-parser';
 import { GherkinAIConfig } from '../core/config';
 
+/** Tables used by the generated NestJS outbox, idempotency interceptor and saga orchestrator. */
+const NEST_INFRASTRUCTURE_MODELS = `
+model OutboxMessage {
+  id          String    @id @default(uuid())
+  eventType   String
+  payload     String
+  occurredOn  DateTime  @default(now())
+  processedOn DateTime?
+  retryCount  Int       @default(0)
+  lastError   String?
+
+  @@index([processedOn, occurredOn])
+}
+
+model ProcessedEvent {
+  eventId      String   @id
+  status       String
+  responseBody String   @default("")
+  processedAt  DateTime @default(now())
+
+  @@index([status, processedAt])
+}
+
+model SagaInstance {
+  id           String   @id
+  sagaType     String
+  entityId     String
+  currentState String
+  metadata     String?
+  errorReason  String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+`;
+
 export function generatePrismaStack(parsed: ParsedFeature, config: GherkinAIConfig): { filename: string; content: string }[] {
   if (config.stack.orm !== 'prisma') {
     return [];
@@ -12,8 +47,13 @@ export function generatePrismaStack(parsed: ParsedFeature, config: GherkinAIConf
 
   const artifacts: { filename: string; content: string }[] = [];
   const modelName = parsed.featureName.replace(/[^a-zA-Z0-9]/g, '');
+  // Prisma client delegates are camelCase: model PaymentProcessing -> prisma.paymentProcessing
+  const delegate = modelName.charAt(0).toLowerCase() + modelName.slice(1);
+  const isNest = config.stack.framework === 'nestjs';
 
   let fieldsStr = `  id String @id @default(uuid())\n`;
+  // The NestJS PrismaService middleware scopes every domain query by tenantId.
+  if (isNest) fieldsStr += `  tenantId String @default("default")\n`;
   parsed.domainAnalysis.fields.forEach(f => {
     let type = f.type === 'number' ? 'Int' : 'String';
     if (f.name.toLowerCase().includes('date') || f.name.toLowerCase().includes('time')) {
@@ -40,8 +80,10 @@ model ${modelName} {
 ${fieldsStr}
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-}
-`;
+${isNest ? `
+  @@index([tenantId])
+` : ''}}
+${isNest ? NEST_INFRASTRUCTURE_MODELS : ''}`;
 
   artifacts.push({
     filename: `prisma/schema.prisma`,
@@ -50,7 +92,7 @@ ${fieldsStr}
 
   if (config.stack.framework === 'nestjs') {
     const serviceContent = `import { Injectable } from '@nestjs/common';
-import { PrismaService } from './prisma.service';
+import { PrismaService } from '../prisma/prisma.service';
 import { ${modelName} } from '@prisma/client';
 
 @Injectable()
@@ -58,17 +100,17 @@ export class ${modelName}Repository {
   constructor(private prisma: PrismaService) {}
 
   async findById(id: string): Promise<${modelName} | null> {
-    return this.prisma.${modelName.toLowerCase()}.findUnique({ where: { id } });
+    return this.prisma.${delegate}.findUnique({ where: { id } });
   }
 
   async save(data: Omit<${modelName}, 'id' | 'createdAt' | 'updatedAt'>): Promise<${modelName}> {
-    return this.prisma.${modelName.toLowerCase()}.create({
+    return this.prisma.${delegate}.create({
       data,
     });
   }
 
   async delete(id: string): Promise<void> {
-    await this.prisma.${modelName.toLowerCase()}.delete({ where: { id } });
+    await this.prisma.${delegate}.delete({ where: { id } });
   }
 }
 `;

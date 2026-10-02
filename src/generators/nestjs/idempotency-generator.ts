@@ -49,17 +49,25 @@ export class IdempotencyInterceptor implements NestInterceptor {
         );
       }
 
-      // TTL expired for PROCESSING or FAILED status — allow retry
+      // TTL expired for PROCESSING, or FAILED — re-claim with compare-and-set on (status, processedAt):
+      // if a concurrent retry re-claimed the key first, the condition no longer matches and count is 0.
       if (existing.status === 'PROCESSING' || existing.status === 'FAILED') {
-        this.logger.warn(\`Idempotency key \${idempotencyKey} expired/failed — allowing retry\`);
-        await this.prisma.processedEvent.update({
-          where: { eventId: idempotencyKey },
+        const reclaimed = await this.prisma.processedEvent.updateMany({
+          where: {
+            eventId: idempotencyKey,
+            status: existing.status,
+            processedAt: existing.processedAt,
+          },
           data: {
             status: 'PROCESSING',
             processedAt: new Date(),
             responseBody: '',
           },
         });
+        if (reclaimed.count !== 1) {
+          throw new HttpException('Request already in progress', HttpStatus.CONFLICT);
+        }
+        this.logger.warn(\`Idempotency key \${idempotencyKey} expired/failed — retrying\`);
         return this.executeAndStore(next, idempotencyKey);
       }
     }

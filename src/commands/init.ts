@@ -1,3 +1,6 @@
+import { CLI_VERSION } from '../version';
+import { isNonInteractive } from '../core/run-context';
+import { getStackSupport, supportWarning } from '../generators/stack-support';
 import fs from 'fs';
 import path from 'path';
 import YAML from 'yaml';
@@ -21,28 +24,36 @@ on:
   pull_request:
     branches: [ "main", "develop" ]
 
+permissions:
+  contents: read
+
 jobs:
   ghk-governance:
     runs-on: ubuntu-latest
+    env:
+      GHK_NON_INTERACTIVE: 'true'
+      # Pinned on purpose: a quality gate must not change behavior when a new version is published.
+      GHK_VERSION: '${CLI_VERSION}'
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          
-      - name: Install gherkin-ai-cli
-        run: npm install -g gherkin-ai
-        
+
       - name: Run Gherkin Specification Linting
-        run: ghk lint --threshold 85
-        
+        run: npx --yes "gherkin-ai@$GHK_VERSION" lint --threshold 85 --json > ghk-lint.json
+
       - name: Measure Specification Convergence
-        run: ghk converge --threshold 80
-        
-      - name: Audit Agent Logs (Optional)
-        run: ghk agent-log --list
+        run: npx --yes "gherkin-ai@$GHK_VERSION" converge --threshold 80 --json > ghk-converge.json
+
+      - name: Keep reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gherkin-ai-reports
+          path: ghk-*.json
 `;
   if (!fs.existsSync(workflowPath)) {
     fs.writeFileSync(workflowPath, workflowContent, 'utf8');
@@ -343,9 +354,9 @@ export async function handleInitCommand(options?: {
     generateConstitution();
   }
 
-  const isNonInteractive = options?.yes || options?.nonInteractive || process.env.GHK_NON_INTERACTIVE === 'true' || process.env.CI === 'true';
+  const nonInteractive = isNonInteractive(options);
 
-  if (isNonInteractive) {
+  if (nonInteractive) {
     logger.info('Running in non-interactive mode. Using default configuration.');
   }
 
@@ -470,7 +481,7 @@ export async function handleInitCommand(options?: {
   // Step 3: Independent Frontend Stack Configuration (for Monolith / Dual-Stack)
   let frontendAnswers: any = { framework: 'none', language: 'javascript', bundler: 'vite', unitTesting: 'vitest', e2eTesting: 'cypress' };
 
-  if (!isNonInteractive) {
+  if (!nonInteractive) {
     const askFrontend = await promptOrFallback([
       {
         type: 'confirm',
@@ -602,8 +613,10 @@ export async function handleInitCommand(options?: {
 
   saveConfig(newConfig);
   logger.success('Successfully created gherkin-ai.config.json');
+  const tierWarning = supportWarning(getStackSupport(newConfig));
+  if (tierWarning) logger.warn(tierWarning);
 
-  if (step4.enableGovernance || options?.enterprise || isNonInteractive) {
+  if (step4.enableGovernance || options?.enterprise || nonInteractive) {
     const govPath = generateGovernanceConfig(newConfig);
     logger.success(`Successfully created Agent Governance Policy: ${govPath}`);
     // ENTERPRISE GUARANTEES: Inject CI/CD pipeline

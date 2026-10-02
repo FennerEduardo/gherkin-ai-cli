@@ -18,7 +18,7 @@ export function generateNodeNestJsPreset(parsed: ParsedFeature, config?: Gherkin
 
   const stepDefCode = `// cucumber-js Step Definitions for NestJS - ${parsed.featureName}
 import { Given, When, Then, Before, After } from '@cucumber/cucumber';
-import * as request from 'supertest';
+import request from 'supertest';
 
 let app: any;
 let res: any;
@@ -38,20 +38,21 @@ ${sc.steps.map(st => {
   
   // Basic heuristics for step implementation
   if (st.keyword.trim() === 'Given') {
-    stepBody = "  // Set up preconditions\\n  // this.context = { ... };";
+    // Plain JS strings inside a ${} expression: "\n" must be a real newline, not an escaped one.
+    stepBody = "  // Set up preconditions\n  // this.context = { ... };";
   } else if (st.keyword.trim() === 'When') {
     const isPost = /post|create|send/i.test(st.text);
     const method = isPost ? 'post' : 'get';
     const endpointMatch = st.text.match(/(?:\/api\/[\w/-]+)/i);
     const endpoint = endpointMatch ? endpointMatch[0] : '/api/v1/' + moduleName;
     
-    stepBody = "  this.res = await request(app.getHttpServer())\\n    ." + method + "('" + endpoint + "')\\n    .send(this.payload || {});";
+    stepBody = "  this.res = await request(app.getHttpServer())\n    ." + method + "('" + endpoint + "')\n    .send(this.payload || {});";
   } else if (st.keyword.trim() === 'Then') {
     const httpCodeMatch = st.text.match(/HTTP (?:status )?(\d{3})/i);
     if (httpCodeMatch) {
       stepBody = "  expect(this.res.status).toBe(" + httpCodeMatch[1] + ");";
     } else {
-      stepBody = "  // Verify post-conditions\\n  expect(this.res.body).toBeDefined();";
+      stepBody = "  // Verify post-conditions\n  expect(this.res.body).toBeDefined();";
     }
   } else {
     stepBody = "  // Additional context or assertions";

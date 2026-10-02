@@ -27,6 +27,15 @@ describe('TypeScript Ecosystem (NestJS + Vue) Generators & Validators', () => {
     expect(code).toContain('processedEvent.findUnique');
   });
 
+  it('re-claims expired idempotency keys atomically (compare-and-set), never with a blind update', () => {
+    const code = generateNestJsIdempotencyInterceptor();
+    const retryBlock = code.slice(code.indexOf("existing.status === 'PROCESSING' || existing.status === 'FAILED'"), code.indexOf('// New key'));
+    expect(retryBlock).toContain('processedEvent.updateMany');
+    expect(retryBlock).toContain('processedAt: existing.processedAt');
+    expect(retryBlock).toContain('reclaimed.count !== 1');
+    expect(retryBlock).not.toContain('processedEvent.update(');
+  });
+
   it('should generate Vue Pinia Store', () => {
     const code = generateVuePiniaStore('Transactions');
     expect(code).toContain('defineStore');

@@ -113,7 +113,7 @@ using System;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
 using MediatR;
-using ${namespace}.Application.Commands;
+using ${namespace}.Domain.${featurePascal}; // commands, queries and read models live with the contract
 
 [ApiController]
 [Route("api/v1/[controller]")]

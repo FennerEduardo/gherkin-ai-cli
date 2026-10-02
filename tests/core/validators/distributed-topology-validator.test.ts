@@ -73,7 +73,9 @@ describe('Distributed Topology Validator', () => {
         { path: 'dlq.cs', content: 'DLQ DeadLetterQueue; retryCount; maxRetries;' },
         { path: 'projection.cs', content: 'public class PaymentProjection : ReadModel { }' },
         { path: 'command.ts', content: 'export class CreatePaymentCommand { tenantId: string; }' },
-        { path: 'event.ts', content: 'export class PaymentCreatedEvent { tenantId: string; DomainEvent; }' }
+        { path: 'event.ts', content: 'export class PaymentCreatedEvent { tenantId: string; DomainEvent; }' },
+        // Multi-tenant topologies must isolate tenants at the database level (required since 2.6.5).
+        { path: 'migration.sql', content: 'ALTER TABLE payments ENABLE ROW LEVEL SECURITY;' }
       ],
       rules: ['cqrs']
     };

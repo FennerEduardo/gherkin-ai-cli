@@ -2,6 +2,9 @@
    gherkin-ai-cli - 'generate' Command Handler
    ========================================================================== */
 
+import { getStackSupport, supportWarning } from '../generators/stack-support';
+import { ExitCode, GhkError } from '../core/errors';
+import { isNonInteractive } from '../core/run-context';
 import path from 'path';
 import fs from 'fs';
 import { loadConfig } from '../core/config';
@@ -12,7 +15,6 @@ import { registerCorePlugins } from '../plugins/core-generators-plugin';
 import { fileExistsSync, readFileSync, writeFileSync } from '../utils/file-system';
 import { logger } from '../utils/logger';
 import { ensureGitignore } from '../utils/gitignore-manager';
-import { pluginManager } from '../core/hooks';
 import { detectMissingDependencies } from '../core/stack-setup';
 import inquirer from 'inquirer';
 import chalk from 'chalk';
@@ -47,8 +49,10 @@ export async function handleGenerateCommand(options: { feature?: string; config?
   logger.banner();
 
   const config = loadConfig(options.config);
+  const tierWarning = supportWarning(getStackSupport(config));
+  if (tierWarning) logger.warn(tierWarning);
   let gherkinText = buildDynamicFeatureTemplate('sample-feature.feature');
-  const isNonInteractive = options.yes || process.env.GHK_NON_INTERACTIVE === 'true' || !!process.env.CI;
+  const nonInteractive = isNonInteractive(options);
 
   if (options.feature) {
     const featurePath = path.resolve(process.cwd(), options.feature);
@@ -65,7 +69,7 @@ export async function handleGenerateCommand(options: { feature?: string; config?
       const words = baseName.split(/[-_]/).filter(Boolean);
       const title = words.map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ') || 'Domain Feature';
 
-      if (!isNonInteractive) {
+      if (!nonInteractive) {
         logger.warn(`Feature file not found at ${featurePath}.`);
         const { createMode } = await inquirer.prompt([{
           type: 'list',
@@ -129,7 +133,7 @@ Objective: Write detailed Gherkin feature scenarios for ${title}.
   if (!securityCheck.isSafe) {
     logger.error('SECURITY ALERT: Prompt Injection Attempt Blocked!');
     logger.error(`Reason: ${securityCheck.reason}`);
-    process.exitCode = 1;
+    process.exitCode = ExitCode.POLICY_DENIED;
     return;
   }
 
@@ -165,7 +169,7 @@ Objective: Write detailed Gherkin feature scenarios for ${title}.
   }
 
   let confirmContext = true;
-  if (!isNonInteractive) {
+  if (!nonInteractive) {
     const answer = await inquirer.prompt([{
       type: 'confirm',
       name: 'confirmContext',
@@ -176,8 +180,7 @@ Objective: Write detailed Gherkin feature scenarios for ${title}.
   }
 
   if (!confirmContext) {
-    logger.warn('Context rejected. Please update gherkin-ai.config.json or run `ghk detect` and run again.');
-    process.exit(1);
+    throw new GhkError('Context rejected.', ExitCode.GENERIC, { hint: 'Update gherkin-ai.config.json or run `ghk detect`, then run again.' });
   }
 
   // ── Stack Dependency Check ──────────────────────────────────────────
@@ -190,7 +193,7 @@ Objective: Write detailed Gherkin feature scenarios for ${title}.
     }
     console.log('');
 
-    if (isNonInteractive) {
+    if (nonInteractive) {
       logger.info('Run the commands above to install missing dependencies, or use `ghk init` to reconfigure.');
     } else {
       const { autoInstall } = await inquirer.prompt([{
@@ -223,7 +226,7 @@ Objective: Write detailed Gherkin feature scenarios for ${title}.
   }
 
   let selectedAgents = agentChoices.map(c => c.value);
-  if (!isNonInteractive) {
+  if (!nonInteractive) {
     const answer = await inquirer.prompt([{
       type: 'checkbox',
       name: 'selectedAgents',
@@ -237,14 +240,13 @@ Objective: Write detailed Gherkin feature scenarios for ${title}.
     logger.warn('No agents selected. Filtering out prompt generation.');
   }
 
-  pluginManager.loadPlugins(config);
-  await pluginManager.trigger('beforeGenerate', { ir, config, pluginRegistry });
+  const externalPlugins = pluginRegistry.loadFromConfig(config, process.cwd());
+  if (externalPlugins.length) logger.info(`Loaded plugins: ${externalPlugins.join(', ')}`);
 
   // Generate all artifacts via Plugin System
   logger.info('Running Generation Plugins...');
   const artifacts = pluginRegistry.runGeneration(ir, config);
-  
-  await pluginManager.trigger('afterGenerate', { artifacts, config });
+
 
   // Filter out unselected prompts
   const filteredArtifacts = artifacts.filter(a => {
@@ -261,8 +263,7 @@ Objective: Write detailed Gherkin feature scenarios for ${title}.
     logger.error('CRITICAL GUARDRAIL VIOLATION: Generate flow produced artifacts with placeholder code (TODO/FIXME).');
     logger.error('The following generated files contain stubs:');
     stubArtifacts.forEach(a => logger.error(` - ${a.filePath}`));
-    logger.error('Aborting generation to enforce clean architecture and complete implementations.');
-    process.exit(1);
+    throw new GhkError('Aborting generation to enforce clean architecture and complete implementations.', ExitCode.GATE_FAILED);
   }
 
   filteredArtifacts.forEach(artifact => {

@@ -12,6 +12,7 @@ using System.Threading.Tasks;
 using MediatR;
 using Microsoft.Extensions.Logging;
 using ${namespace}.Infrastructure.Data;
+using ${namespace}.Domain.${featurePascal};
 
 namespace ${namespace}.Application.Handlers
 {

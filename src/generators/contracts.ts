@@ -32,6 +32,35 @@ export interface GeneratedContractsOutput {
 
 import { SpecificationIR } from '../core/semantic-ir';
 
+/** Dependencies the generated Node sources import (kept in sync with scripts/golden-build.js). */
+function nodeDependencies(config: GherkinAIConfig): { dependencies: Record<string, string>; devDependencies: Record<string, string> } {
+  if ((config.stack.framework || '').toLowerCase() !== 'nestjs') return { dependencies: {}, devDependencies: {} };
+  return {
+    dependencies: {
+      '@nestjs/common': '^10.4.0',
+      '@nestjs/core': '^10.4.0',
+      '@nestjs/cqrs': '^10.2.0',
+      '@nestjs/platform-express': '^10.4.0',
+      '@nestjs/schedule': '^4.1.0',
+      '@prisma/client': '^5.22.0',
+      'reflect-metadata': '^0.2.0',
+      rxjs: '^7.8.0',
+      zod: '^3.23.0'
+    },
+    devDependencies: {
+      '@cucumber/cucumber': '^10.9.0',
+      '@types/express': '^4.17.21',
+      '@types/jest': '^29.5.0',
+      '@types/node': '^20.0.0',
+      '@types/supertest': '^6.0.0',
+      jest: '^29.7.0',
+      prisma: '^5.22.0',
+      supertest: '^7.0.0',
+      typescript: '^5.4.0'
+    }
+  };
+}
+
 export function generateContracts(parsed: ParsedFeature, ir: SpecificationIR, config: GherkinAIConfig): GeneratedContractsOutput {
   const arch = getArchRule(config.architecture);
   const spec = getStackSpec(config.stack);
@@ -336,6 +365,7 @@ ${effectiveProhibited.map(p => `- \`${p}\``).join('\n')}
         content: `<Project Sdk="Microsoft.NET.Sdk.Web">
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>${(config.projectName || 'MyEnterpriseApp').replace(/[^a-zA-Z0-9.]/g, '') || 'MyEnterpriseApp'}</RootNamespace>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
   </PropertyGroup>
@@ -344,15 +374,28 @@ ${effectiveProhibited.map(p => `- \`${p}\``).join('\n')}
     <PackageReference Include="FluentValidation.AspNetCore" Version="11.3.0" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="8.0.2" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Tools" Version="8.0.2" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore.PostgreSQL" Version="8.0.2" />
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="8.0.2" />
     <PackageReference Include="MassTransit.RabbitMQ" Version="8.1.3" />
     <PackageReference Include="Reqnroll.xUnit" Version="2.0.3" />
     <PackageReference Include="Testcontainers" Version="3.7.0" />
+    <PackageReference Include="Testcontainers.PostgreSql" Version="3.7.0" />
+    <PackageReference Include="Testcontainers.RabbitMq" Version="3.7.0" />
     <PackageReference Include="xunit" Version="2.7.0" />
     <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="8.0.2" />
     <PackageReference Include="Polly.Core" Version="8.3.1" />
     <PackageReference Include="Microsoft.Extensions.Http.Resilience" Version="8.3.0" />
-    <PackageReference Include="OpenTelemetry.Extensions.Hosting" Version="1.7.0" />
+    <PackageReference Include="OpenTelemetry.Extensions.Hosting" Version="1.9.0" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.9.0" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.Http" Version="1.9.0" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.Runtime" Version="1.9.0" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.EntityFrameworkCore" Version="1.0.0-beta.12" />
+    <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.9.0" />
+    <PackageReference Include="Microsoft.Extensions.ServiceDiscovery" Version="8.2.0" />
+    <PackageReference Include="Swashbuckle.AspNetCore" Version="6.5.0" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- The .NET Aspire AppHost is its own project (Aspire SDK); keep it out of this compilation unit. -->
+    <Compile Remove="src/Api/AppHost/**" />
   </ItemGroup>
 </Project>`
       },
@@ -409,7 +452,7 @@ dependencies {
           build: 'tsc',
           test: 'jest'
         },
-        dependencies: {}
+        ...nodeDependencies(config)
       }, null, 2)
     };
   }

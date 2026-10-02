@@ -27,8 +27,8 @@ export class TenantMiddleware implements NestMiddleware {
 `;
 
   const prismaMiddlewareCode = `import { Injectable, OnModuleInit } from '@nestjs/common';
-import { PrismaClient } from '@prisma/client';
-import { tenantLocalStorage } from '../multitenancy/tenant.storage';
+import { Prisma, PrismaClient } from '@prisma/client';
+import { tenantLocalStorage } from '../infrastructure/multitenancy/tenant.storage';
 
 @Injectable()
 export class PrismaService extends PrismaClient implements OnModuleInit {
@@ -43,13 +43,13 @@ export class PrismaService extends PrismaClient implements OnModuleInit {
 
   private addTenantMiddleware() {
     // Prisma $use middleware for automatic tenant filtering
-    this.$use(async (params, next) => {
+    this.$use(async (params: Prisma.MiddlewareParams, next: (params: Prisma.MiddlewareParams) => Promise<unknown>) => {
       const context = tenantLocalStorage.getStore();
       const tenantId = context?.tenantId || 'default';
 
       // Check if the model has a tenantId field (assume yes for demo, adjust as needed)
       // For a real production app, you might want a whitelist of tenant-aware models
-      if (params.model && !['IdempotencyRecord', 'OutboxMessage'].includes(params.model)) {
+      if (params.model && !['OutboxMessage', 'ProcessedEvent', 'SagaInstance'].includes(params.model)) {
         if (params.action === 'findUnique' || params.action === 'findFirst') {
           // Change to findFirst
           params.action = 'findFirst';
@@ -76,8 +76,9 @@ export class PrismaService extends PrismaClient implements OnModuleInit {
 `;
 
   return [
-    { filename: 'infrastructure/multitenancy/tenant.storage.ts', content: asyncLocalStorageCode },
-    { filename: 'infrastructure/multitenancy/tenant.middleware.ts', content: middlewareCode },
-    { filename: 'infrastructure/prisma/prisma.service.ts', content: prismaMiddlewareCode }
+    // Canonical NestJS layout: everything under src/ (infrastructure/ at the root is the AWS CDK app).
+    { filename: 'src/infrastructure/multitenancy/tenant.storage.ts', content: asyncLocalStorageCode },
+    { filename: 'src/infrastructure/multitenancy/tenant.middleware.ts', content: middlewareCode },
+    { filename: 'src/prisma/prisma.service.ts', content: prismaMiddlewareCode }
   ];
 }

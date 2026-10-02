@@ -160,7 +160,7 @@ export class ${feature}SagaEventHandler implements IEventHandler<any> {
 `;
 
   return [
-    { filename: `sagas/${featureLower}-saga.contracts.ts`, content: sagaEventsAndCommands },
-    { filename: `sagas/${featureLower}-saga.orchestrator.ts`, content: sagaOrchestrator }
+    { filename: `src/sagas/${featureLower}-saga.contracts.ts`, content: sagaEventsAndCommands },
+    { filename: `src/sagas/${featureLower}-saga.orchestrator.ts`, content: sagaOrchestrator }
   ];
 }
