@@ -238,7 +238,7 @@ Before do
   @aggregate = ${m.pascal}Aggregate.new("scenario-aggregate")
 end
 ${m.steps.map(s => `
-${toPascal(s.keyword)}(/${stepRegex(s.text).replace(/\//g, '\\/')}/) do
+${toPascal(s.keyword)}(/${stepRegex(s.text)}/) do
   # Pending: drive @aggregate (or the HTTP API) and assert the outcome.
   pending
 end`).join('\n')}

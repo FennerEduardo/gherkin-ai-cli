@@ -10,8 +10,8 @@ export interface ExFile {
 }
 
 const exStr = (s: string) => JSON.stringify(s).replace(/#\{/g, '\\#{');
-// Elixir ~r/.../ sigil with | delimiters: escape the delimiter only.
-const exRegex = (text: string) => `~r|${stepRegex(text).replace(/\|/g, '\\|')}|`;
+// Elixir ~r sigil with | delimiters: stepRegex already escapes | (and { against #{} interpolation).
+const exRegex = (text: string) => `~r|${stepRegex(text)}|`;
 
 export interface ElixirNames {
   /** OTP application name, e.g. golden_elixir */

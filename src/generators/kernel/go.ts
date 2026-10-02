@@ -324,7 +324,7 @@ func initializeScenario(sc *godog.ScenarioContext) {
 		w.aggregate = aggregate
 		return ctx, err
 	})
-${m.steps.map(s => `	sc.Step(\`${stepRegex(s.text).replace(/`/g, '')}\`, w.${toPascal(s.id)})`).join('\n')}
+${m.steps.map(s => `	sc.Step(\`${stepRegex(s.text).replace(/`/g, '\\x60')}\`, w.${toPascal(s.id)})`).join('\n')}
 }
 
 func TestFeatures(t *testing.T) {
