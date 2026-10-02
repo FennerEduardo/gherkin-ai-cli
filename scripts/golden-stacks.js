@@ -47,7 +47,7 @@ const STACKS = {
   },
   nestjs: {
     stack: { ...base, language: 'typescript', framework: 'nestjs', orm: 'prisma', validation: 'zod', messaging: 'rabbitmq', testing: 'jest' },
-    image: 'node:20-bookworm',
+    image: 'node:24-bookworm',
     caches: [['npm', '/root/.npm']],
     build: ['npm install --no-audit --no-fund --loglevel=error', 'npx prisma generate', 'npm run build'],
     test: ['npm test']
@@ -63,7 +63,7 @@ const STACKS = {
   },
   express: {
     stack: { ...base, language: 'typescript', framework: 'express', orm: 'prisma', validation: 'zod', testing: 'jest' },
-    image: 'node:20-bookworm',
+    image: 'node:24-bookworm',
     caches: [['npm', '/root/.npm']],
     build: ['npm install --no-audit --no-fund --loglevel=error', 'npx prisma generate', 'npm run build'],
     test: ['npm test']

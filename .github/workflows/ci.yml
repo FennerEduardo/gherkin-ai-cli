@@ -20,7 +20,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
-        node: ['20', '22']
+        node: ['22', '24']
     steps:
       - uses: actions/checkout@v4
 
@@ -39,7 +39,7 @@ jobs:
         run: npm run build
 
       - name: Config JSON Schema is up to date
-        if: matrix.os == 'ubuntu-latest' && matrix.node == '20'
+        if: matrix.os == 'ubuntu-latest' && matrix.node == '22'
         run: git diff --exit-code -- schemas/config.schema.json
 
       - name: Unit, integration and CLI contract tests (with coverage thresholds)
@@ -51,7 +51,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: npm
       - run: npm ci
       - name: Dependency audit (blocking)
@@ -68,26 +68,40 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: npm
       - run: npm ci
       - run: npx playwright install --with-deps chromium
       - run: npm run build
       - run: npm run test:e2e
 
-  golden-builds:
-    # Generated code for every STABLE stack must compile (see docs/ENTERPRISE.md, "Stack support tiers").
+  golden-matrix:
     runs-on: ubuntu-latest
+    outputs:
+      stacks: ${{ steps.list.outputs.stacks }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: list
+        run: echo "stacks=$(node -p "JSON.stringify(Object.keys(require('./scripts/golden-stacks').STACKS))")" >> "$GITHUB_OUTPUT"
+
+  golden-builds:
+    # Every STABLE stack is generated, built and its generated test suite run inside the
+    # stack's official Docker image (see docs/ENTERPRISE.md, "Stack support tiers").
+    name: golden (${{ matrix.stack }})
+    needs: golden-matrix
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        stack: ${{ fromJson(needs.golden-matrix.outputs.stacks) }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: npm
-      - uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: '8.0.x'
       - run: npm ci
       - run: npm run build
-      - name: Generate and compile stable stacks (NestJS, .NET)
-        run: node scripts/golden-build.js
+      - name: Generate, build and test
+        run: node scripts/golden-build.js ${{ matrix.stack }}
