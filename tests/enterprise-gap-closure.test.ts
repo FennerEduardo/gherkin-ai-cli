@@ -120,7 +120,7 @@ describe('Enterprise Gap Closure & Clean Architecture Suite (.NET + Angular Sign
   });
 
   it('generates Testcontainers E2E Integration test with happy path, inbox deduplication, and compensation flow', () => {
-    const testcontainersFile = files.find(f => f.filename.includes('tests/IntegrationTests/DistributedSystemIntegrationTest.cs'))!;
+    const testcontainersFile = files.find(f => f.filename.endsWith('/Integration/DistributedSystemIntegrationTest.cs'))!;
     expect(testcontainersFile).toBeDefined();
     expect(testcontainersFile.content).toContain('PostgreSqlBuilder');
     expect(testcontainersFile.content).toContain('OutboxAndSaga_HappyPath_ExecutesSuccessfully');

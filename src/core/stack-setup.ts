@@ -86,9 +86,15 @@ export function detectMissingDependencies(
   config: GherkinAIConfig,
   projectDir: string = process.cwd()
 ): StackSetupResult {
-  const installed = getInstalledPackages(projectDir);
   const missing: MissingDependency[] = [];
   const suggestions: string[] = [];
+
+  // The npm package map only applies to Node projects; other stacks declare dependencies in their own manifest.
+  const language = (config.stack?.language || '').toLowerCase();
+  if (!['typescript', 'javascript', 'node', 'nestjs'].includes(language)) {
+    return { hasMissing: false, missing, suggestions };
+  }
+  const installed = getInstalledPackages(projectDir);
 
   // Collect all stack values to check
   const stackValues: { value: string; source: string }[] = [];

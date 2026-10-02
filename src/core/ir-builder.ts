@@ -244,7 +244,7 @@ export function buildIR(
     enrichedScenarios, commands, queries, events, invariants, apiEndpoints
   );
 
-  return {
+  const ir: SpecificationIR = {
     version: '1.0.0',
     generatedAt: new Date().toISOString(),
     sourceFile,
@@ -281,6 +281,15 @@ export function buildIR(
       contradictions,
     },
   };
+  // Generators need the verbatim steps (the IR classifies them and may drop "And" steps).
+  // Non-enumerable so it never appears in serialized IR.
+  Object.defineProperty(ir, 'sourceFeature', { value: parsed, enumerable: false });
+  return ir;
+}
+
+/** The parsed feature an IR was built from, when available. */
+export function getSourceFeature(ir: SpecificationIR): ParsedFeature | undefined {
+  return (ir as SpecificationIR & { sourceFeature?: ParsedFeature }).sourceFeature;
 }
 
 export const buildSpecificationIR = buildIR;

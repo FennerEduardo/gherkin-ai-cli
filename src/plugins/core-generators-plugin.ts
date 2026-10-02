@@ -9,10 +9,13 @@ import { generateAwsCdkInfrastructure } from '../generators/infrastructure/aws-c
 import { generatePresets } from '../generators/presets';
 import { generatePrismaStack } from '../generators/prisma-stack';
 import { ParsedFeature } from '../core/gherkin-parser';
+import { getSourceFeature } from '../core/ir-builder';
 
 // Helper to convert IR back to ParsedFeature for legacy generators
 // In a real refactor, the generators would be updated to accept IR natively.
 function irToParsedFeature(ir: SpecificationIR | any): ParsedFeature {
+  const source = getSourceFeature(ir);
+  if (source) return source;
   return {
     featureName: ir.featureName || 'AppFeature',
     descriptionLines: ir.featureDescription || [],

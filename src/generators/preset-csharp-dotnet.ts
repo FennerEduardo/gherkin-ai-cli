@@ -14,39 +14,14 @@ import { generateDotNetTestcontainersIntegrationTest } from './dotnet/dotnet-tes
 import { generateCqrsHandlers } from './dotnet/cqrs-handlers-generator';
 import { generateInboxInfrastructure } from './dotnet/inbox-generator';
 import { generateResiliencePipelines } from './dotnet/resilience-generator';
+import { buildDomainModel } from './kernel/domain-model';
+import { REQNROLL_JSON, renderCsAggregate, renderCsAggregateTests, renderCsTestProject, renderReqnrollSteps } from './kernel/csharp';
 
 export function generateCsharpDotnetPreset(parsed: ParsedFeature, config?: GherkinAIConfig): { filename: string; content: string }[] {
   const featurePascal = parsed.featureName.replace(/[^a-zA-Z0-9]/g, '');
-  const className = featurePascal + 'StepDefinitions';
   const namespace = config?.projectName ? config.projectName.replace(/[^a-zA-Z0-9.]/g, '') : 'MyEnterpriseApp';
-
-  const generatedMethods = new Set<string>();
-
-  const stepDefCode = `// Reqnroll Step Definitions for ${parsed.featureName}
-using System;
-using Reqnroll;
-
-namespace ${namespace}.Tests.Steps
-{
-    [Binding]
-    public class ${className}
-    {
-${parsed.scenarios.map(sc => `
-        // Scenario: ${sc.name}
-${(sc.steps || []).map(st => {
-    const methodName = `${st.keyword.trim()}${st.text.replace(/[^a-zA-Z0-9]/g, '')}`;
-    if (generatedMethods.has(methodName)) return '';
-    generatedMethods.add(methodName);
-    return `        [${st.keyword.trim()}("${st.text.replace(/"/g, '""')}")]
-        public void ${methodName}()
-        {
-            throw new PendingStepException();
-        }`;
-}).join('\n')}
-`).join('')}
-    }
-}
-`;
+  const m = buildDomainModel(parsed);
+  const testsDir = `tests/${namespace}.Tests`;
 
   const domainEntityCode = `namespace ${namespace}.Domain.Entities;
 
@@ -288,10 +263,11 @@ namespace ${namespace}.Infrastructure.Data
       filename: `src/Api/Program.cs`,
       content: programCode
     },
-    {
-      filename: `tests/Steps/${className}.cs`,
-      content: stepDefCode
-    },
+    { filename: `src/Domain/Kernel/${m.pascal}Aggregate.cs`, content: renderCsAggregate(m, namespace) },
+    { filename: `${testsDir}/${namespace}.Tests.csproj`, content: renderCsTestProject(namespace, `${config?.projectName || 'MyProject'}.csproj`) },
+    { filename: `${testsDir}/reqnroll.json`, content: REQNROLL_JSON },
+    { filename: `${testsDir}/Domain/${m.pascal}AggregateTests.cs`, content: renderCsAggregateTests(m, namespace) },
+    { filename: `${testsDir}/Steps/${m.pascal}StepDefinitions.cs`, content: renderReqnrollSteps(m, namespace) },
     {
       filename: `src/Application/CQRS/${featurePascal}Handlers.cs`,
       content: generateCqrsHandlers(namespace, parsed.featureName)
@@ -333,7 +309,7 @@ namespace ${namespace}.Infrastructure.Data
       content: generateDotNetAspireServiceDefaults(namespace)
     },
     {
-      filename: `tests/IntegrationTests/DistributedSystemIntegrationTest.cs`,
+      filename: `${testsDir}/Integration/DistributedSystemIntegrationTest.cs`,
       content: generateDotNetTestcontainersIntegrationTest(namespace, featurePascal)
     }
   ];
