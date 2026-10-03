@@ -23,7 +23,11 @@ export const LOG_LEVELS = ['silent', 'error', 'warn', 'info', 'verbose', 'debug'
 const stackSchema = z.object({
   language: z.string(),
   framework: z.string(),
+  /** Major version of the framework to generate for (NestJS: "11" default, "12"). */
+  frameworkVersion: z.string().optional().describe('Framework major to generate for. NestJS: "11" (default, CommonJS) or "12" (ES modules).'),
   orm: z.string(),
+  /** Major version of the ORM (Prisma: "6" default, "7"). */
+  ormVersion: z.string().optional().describe('ORM major to generate for. Prisma: "6" (default) or "7" (prisma-client generator, prisma.config.ts, driver adapter).'),
   database: z.string(),
   validation: z.string(),
   auth: z.string(),

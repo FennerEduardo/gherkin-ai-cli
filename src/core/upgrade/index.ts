@@ -180,6 +180,15 @@ export function checkProjectConfig(raw: unknown, file: string): ConfigCheck {
     findings.push({ id: 'config.angular-ngrx-store', area: 'config', severity: 'info', fix: 'none', file, message: 'The classic NgRx store mode was removed; Angular projects are generated with NgRx Signals.' });
   }
 
+  const stack = config.stack as Record<string, unknown> | undefined;
+  const framework = String(stack?.framework ?? '').toLowerCase();
+  const newer: string[] = [];
+  if ((framework === 'nestjs' || framework === 'nest') && !stack?.frameworkVersion) newer.push('NestJS 12 (ES modules): stack.frameworkVersion "12"');
+  if (String(stack?.orm ?? '').toLowerCase() === 'prisma' && !stack?.ormVersion) newer.push('Prisma 7: stack.ormVersion "7"');
+  if (newer.length) {
+    findings.push({ id: 'config.newer-majors', area: 'config', severity: 'info', fix: 'none', file, message: `Newer majors are supported (opt in; the defaults stay NestJS 11 / Prisma 6): ${newer.join('; ')}.` });
+  }
+
   if (findings.every(f => f.severity === 'info')) {
     findings.push({ id: 'config.valid', area: 'config', severity: 'info', fix: 'none', file, message: 'The project configuration validates against the v3 schema.' });
   }

@@ -8,6 +8,7 @@ import { renderPom } from './kernel/java';
 import { renderGoMod } from './kernel/go';
 import { renderGradleKts, renderGradleSettings } from './kernel/kotlin';
 import { toKebab } from './kernel/domain-model';
+import { NEST_DEPENDENCIES, NodeProfile, PRISMA_VERSION, prismaAdapter, resolveNodeProfile } from './node-profile';
 import { ParsedFeature } from '../core/gherkin-parser';
 import { GherkinAIConfig } from '../core/config';
 import { getArchRule } from '../core/arch-rules';
@@ -39,11 +40,10 @@ export interface GeneratedContractsOutput {
 import { SpecificationIR } from '../core/semantic-ir';
 
 /*
- * Dependencies the generated Node sources import (verified by the nestjs/express golden builds).
- * Pinned to the newest majors that still ship CommonJS: NestJS 12 and Prisma 7 are ESM-only, and
- * ts-jest does not support TypeScript 7 yet.
+ * Dependencies the generated Node sources import. NestJS and Prisma majors follow
+ * stack.frameworkVersion / stack.ormVersion (see node-profile.ts); every combination is
+ * verified by a golden build. ts-jest does not support TypeScript 7 yet.
  */
-const PRISMA = '^6.19.0';
 const TS_TEST_TOOLING = {
   '@cucumber/cucumber': '^13.2.0',
   '@types/jest': '^30.0.0',
@@ -56,40 +56,52 @@ const TS_TEST_TOOLING = {
   typescript: '~6.0.0'
 };
 
-function nodeDependencies(config: GherkinAIConfig): { scripts: Record<string, string>; dependencies: Record<string, string>; devDependencies: Record<string, string> } {
+type NodePackage = { type?: 'module'; scripts: Record<string, string>; dependencies: Record<string, string>; devDependencies: Record<string, string> };
+
+/** Unit tests, then BDD scenarios (pending steps do not fail the run). ESM runs Jest with VM modules and Cucumber through tsx. */
+function testScript(esm: boolean): string {
+  return esm
+    ? 'node --experimental-vm-modules node_modules/jest/bin/jest.js && node --import tsx node_modules/@cucumber/cucumber/bin/cucumber.js'
+    : 'jest && cucumber-js';
+}
+
+function prismaDependencies(profile: NodeProfile): { dependencies: Record<string, string>; devDependencies: Record<string, string> } {
+  const version = PRISMA_VERSION[profile.prisma];
+  return {
+    dependencies: {
+      '@prisma/client': version,
+      ...(profile.prisma === '7' ? { [prismaAdapter(profile.database).pkg]: version } : {})
+    },
+    devDependencies: { prisma: version }
+  };
+}
+
+function nodeDependencies(config: GherkinAIConfig): NodePackage {
   const framework = (config.stack.framework || '').toLowerCase();
+  const profile = resolveNodeProfile(config);
+  const prisma = config.stack.orm === 'prisma' ? prismaDependencies(profile) : { dependencies: {}, devDependencies: {} };
   if (framework === 'express') {
     return {
-      scripts: { start: 'node dist/src/server', build: 'tsc -p tsconfig.build.json', test: 'jest && cucumber-js' },
-      dependencies: {
-        express: '^5.1.0',
-        zod: '^4.1.0',
-        ...(config.stack.orm === 'prisma' ? { '@prisma/client': PRISMA } : {})
-      },
-      devDependencies: {
-        ...TS_TEST_TOOLING,
-        '@types/express': '^5.0.0',
-        ...(config.stack.orm === 'prisma' ? { prisma: PRISMA } : {})
-      }
+      scripts: { start: 'node dist/src/server', build: 'tsc -p tsconfig.build.json', test: testScript(false) },
+      dependencies: { express: '^5.1.0', zod: '^4.1.0', ...prisma.dependencies },
+      devDependencies: { ...TS_TEST_TOOLING, '@types/express': '^5.0.0', ...prisma.devDependencies }
     };
   }
   if (framework !== 'nestjs' && framework !== 'nest') {
     return { scripts: { start: 'node dist/main', build: 'tsc', test: 'jest' }, dependencies: {}, devDependencies: {} };
   }
+  // The NestJS preset always persists through Prisma.
+  const nestPrisma = prismaDependencies(profile);
   return {
+    ...(profile.esm ? { type: 'module' as const } : {}),
     scripts: {
-      start: 'node dist/src/main',
+      start: profile.esm ? 'node dist/src/main.js' : 'node dist/src/main',
       build: 'tsc -p tsconfig.build.json',
-      // Unit tests, then BDD scenarios (pending steps do not fail the run).
-      test: 'jest && cucumber-js'
+      test: testScript(profile.esm)
     },
     dependencies: {
-      '@nestjs/common': '^11.1.0',
-      '@nestjs/core': '^11.1.0',
-      '@nestjs/cqrs': '^11.0.0',
-      '@nestjs/platform-express': '^11.1.0',
-      '@nestjs/schedule': '^6.0.0',
-      '@prisma/client': PRISMA,
+      ...NEST_DEPENDENCIES[profile.nest],
+      ...nestPrisma.dependencies,
       'reflect-metadata': '^0.2.0',
       rxjs: '^7.8.0',
       zod: '^4.1.0'
@@ -97,7 +109,7 @@ function nodeDependencies(config: GherkinAIConfig): { scripts: Record<string, st
     devDependencies: {
       ...TS_TEST_TOOLING,
       '@types/express': '^5.0.0',
-      prisma: PRISMA
+      ...nestPrisma.devDependencies
     }
   };
 }

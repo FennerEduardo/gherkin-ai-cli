@@ -3,7 +3,16 @@
 // Uses a Prisma Client extension and AsyncLocalStorage for tenant isolation
 // --------------------------------------------------------------------------
 
-export function generateNestJsMultiTenancyInfrastructure(): { filename: string; content: string }[] {
+import { defaultConfig } from '../../core/config';
+import { NodeProfile, prismaAdapter, prismaClientImport, resolveNodeProfile } from '../node-profile';
+
+export function generateNestJsMultiTenancyInfrastructure(profile: NodeProfile = resolveNodeProfile(defaultConfig)): { filename: string; content: string }[] {
+  // Prisma 7: the client is generated into the sources and needs a driver adapter.
+  const adapter = profile.prisma === '7' ? prismaAdapter(profile.database) : undefined;
+  const clientImports = adapter
+    ? `import { ${adapter.className} } from '${adapter.pkg}';\nimport { PrismaClient } from '${prismaClientImport(profile, 'src/prisma')}';`
+    : `import { PrismaClient } from '@prisma/client';`;
+  const constructor = adapter ? `\n  constructor() {\n    super({ adapter: ${adapter.create} });\n  }\n` : '';
   const asyncLocalStorageCode = `import { AsyncLocalStorage } from 'async_hooks';
 
 export const tenantLocalStorage = new AsyncLocalStorage<{ tenantId: string }>();
@@ -28,7 +37,7 @@ export class TenantMiddleware implements NestMiddleware {
 
   // Prisma removed the $use middleware API in 6.14; tenant scoping is a query extension.
   const prismaMiddlewareCode = `import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
-import { PrismaClient } from '@prisma/client';
+${clientImports}
 import { tenantLocalStorage } from '../infrastructure/multitenancy/tenant.storage';
 
 /** Infrastructure models shared by every tenant (outbox, idempotency keys, sagas). */
@@ -68,7 +77,7 @@ export function withTenantScope(client: PrismaClient) {
 }
 
 @Injectable()
-export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
+export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {${constructor}
   /** Tenant-scoped view of this client: use it for domain models. */
   readonly tenant = withTenantScope(this);
 

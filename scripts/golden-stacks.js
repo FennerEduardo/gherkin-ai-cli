@@ -11,6 +11,16 @@
 
 const base = { database: 'postgresql', auth: 'jwt', messaging: 'none' };
 
+function nestGolden(stack = {}) {
+  return {
+    stack: { ...base, language: 'typescript', framework: 'nestjs', orm: 'prisma', validation: 'zod', messaging: 'rabbitmq', testing: 'jest', ...stack },
+    image: 'node:24-bookworm',
+    caches: [['npm', '/root/.npm']],
+    build: ['npm install --no-audit --no-fund --loglevel=error', 'npx prisma generate', 'npm run build'],
+    test: ['npm test', `node -e "import('./dist/src/app.module.js').then(m => { if (!m.AppModule) process.exit(1); })"`]
+  };
+}
+
 // Frontends are generated next to a backend and built/tested in ./frontend.
 const feBackend = { ...base, language: 'typescript', framework: 'express', orm: 'none', validation: 'zod', testing: 'jest' };
 const nodeFrontend = (framework, extra = {}) => ({
@@ -45,13 +55,12 @@ const STACKS = {
     build: ['flutter pub get', 'flutter analyze --no-fatal-infos'],
     test: ['flutter test']
   },
-  nestjs: {
-    stack: { ...base, language: 'typescript', framework: 'nestjs', orm: 'prisma', validation: 'zod', messaging: 'rabbitmq', testing: 'jest' },
-    image: 'node:24-bookworm',
-    caches: [['npm', '/root/.npm']],
-    build: ['npm install --no-audit --no-fund --loglevel=error', 'npx prisma generate', 'npm run build'],
-    test: ['npm test']
-  },
+  // NestJS / Prisma majors (stack.frameworkVersion / stack.ormVersion, see src/generators/node-profile.ts).
+  // Each also imports the compiled AppModule, which catches module-resolution errors tsc cannot see.
+  nestjs: nestGolden(),
+  'nestjs-12': nestGolden({ frameworkVersion: '12', ormVersion: '7' }),
+  'nestjs-12-prisma6': nestGolden({ frameworkVersion: '12' }),
+  'nestjs-prisma7': nestGolden({ ormVersion: '7', database: 'mysql' }),
   'grpc-graphql': {
     stack: { ...base, language: 'typescript', framework: 'nestjs', orm: 'prisma', validation: 'zod', testing: 'jest' },
     config: { contracts: { grpc: true, graphql: true } },
@@ -63,6 +72,13 @@ const STACKS = {
   },
   express: {
     stack: { ...base, language: 'typescript', framework: 'express', orm: 'prisma', validation: 'zod', testing: 'jest' },
+    image: 'node:24-bookworm',
+    caches: [['npm', '/root/.npm']],
+    build: ['npm install --no-audit --no-fund --loglevel=error', 'npx prisma generate', 'npm run build'],
+    test: ['npm test']
+  },
+  'express-prisma7': {
+    stack: { ...base, language: 'typescript', framework: 'express', orm: 'prisma', ormVersion: '7', validation: 'zod', testing: 'jest' },
     image: 'node:24-bookworm',
     caches: [['npm', '/root/.npm']],
     build: ['npm install --no-audit --no-fund --loglevel=error', 'npx prisma generate', 'npm run build'],

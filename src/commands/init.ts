@@ -334,7 +334,9 @@ export async function handleInitCommand(options?: {
   architecture?: string;
   language?: string;
   framework?: string;
+  frameworkVersion?: string;
   orm?: string;
+  ormVersion?: string;
   database?: string;
   validation?: string;
   messaging?: string;
@@ -593,7 +595,9 @@ export async function handleInitCommand(options?: {
     stack: {
       language: options?.language || step1.language,
       framework: options?.framework || step2.framework,
+      ...(options?.frameworkVersion ? { frameworkVersion: String(options.frameworkVersion) } : {}),
       orm: options?.orm || step2.orm,
+      ...(options?.ormVersion ? { ormVersion: String(options.ormVersion) } : {}),
       database: options?.database || step2.database,
       validation: options?.validation || step2.validation,
       auth: 'jwt-bcrypt',

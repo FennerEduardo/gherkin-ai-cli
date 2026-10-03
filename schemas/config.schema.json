@@ -47,8 +47,16 @@
             "framework": {
               "type": "string"
             },
+            "frameworkVersion": {
+              "type": "string",
+              "description": "Framework major to generate for. NestJS: \"11\" (default, CommonJS) or \"12\" (ES modules)."
+            },
             "orm": {
               "type": "string"
+            },
+            "ormVersion": {
+              "type": "string",
+              "description": "ORM major to generate for. Prisma: \"6\" (default) or \"7\" (prisma-client generator, prisma.config.ts, driver adapter)."
             },
             "database": {
               "type": "string"

@@ -16,7 +16,7 @@ All of these are **stable**: CI generates a sample project for each one and buil
 
 | Kind | Stacks |
 |---|---|
-| Backends | TypeScript (NestJS, Express), C# (ASP.NET Core 8), Java and Kotlin (Spring Boot 3), Python (FastAPI, Django), Go (chi), PHP (Laravel 13), Ruby (Rails 8), Elixir (Phoenix), Rust (Axum), Dart (Flutter) |
+| Backends | TypeScript (NestJS 11 or 12, Express 5; Prisma 6 or 7), C# (ASP.NET Core 8), Java and Kotlin (Spring Boot 3), Python (FastAPI, Django), Go (chi), PHP (Laravel 13), Ruby (Rails 8), Elixir (Phoenix), Rust (Axum), Dart (Flutter) |
 | Frontends | React 19, Vue 3, Angular 22, Next.js 16, React Native (Expo 57), Flutter, Phoenix LiveView |
 | Contracts | gRPC (Protobuf, buf-linted), GraphQL SDL |
 

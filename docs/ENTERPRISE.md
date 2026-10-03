@@ -220,8 +220,11 @@ Every target below is **stable**: on every change CI generates a sample project,
 
 | Kind | Stack | Build / test toolchain (image) |
 |---|---|---|
-| backend | TypeScript · NestJS + Prisma | npm, Jest, cucumber-js (`node:24`) |
-| backend | TypeScript · Express | npm, Jest, cucumber-js (`node:24`) |
+| backend | TypeScript · NestJS 11 + Prisma 6 (default, CommonJS) | npm, Jest, cucumber-js (`node:24`) |
+| backend | TypeScript · NestJS 12 + Prisma 7 (ES modules) | npm, Jest (ESM), cucumber-js via tsx (`node:24`) |
+| backend | TypeScript · NestJS 12 + Prisma 6 (ES modules) | npm, Jest (ESM), cucumber-js via tsx (`node:24`) |
+| backend | TypeScript · NestJS 11 + Prisma 7 (CommonJS, MariaDB adapter) | npm, Jest, cucumber-js (`node:24`) |
+| backend | TypeScript · Express 5 (+ Prisma 6 or 7) | npm, Jest, cucumber-js (`node:24`) |
 | backend | C# · ASP.NET Core 8 + EF Core | dotnet, xUnit, Reqnroll (`dotnet/sdk:8.0`) |
 | backend | Java 17 · Spring Boot 3 (Maven) | Maven, JUnit 5, Cucumber-JVM (`maven:3.9-temurin-17`) |
 | backend | Kotlin · Spring Boot 3 (Gradle) | Gradle, JUnit 5, Cucumber-JVM (`gradle:8.10-jdk17`) |
@@ -244,6 +247,21 @@ Every target below is **stable**: on every change CI generates a sample project,
 | contracts | GraphQL SDL (`contracts.graphql: true`) | graphql-js schema validation |
 
 Every generated project shares one behavioral kernel derived from the feature: an aggregate with one method per command, unit tests (initial state, each command records one event and bumps the version, a command without an id is rejected), an HTTP contract test where the stack exposes an API (`POST /api/v1/<feature>/{id}/<command>` → 201), and BDD step definitions bound to the `.feature` file and generated as *pending*. Saga, outbox, idempotency, multitenancy and telemetry infrastructure is generated on top of that kernel.
+
+### NestJS and Prisma versions
+
+NestJS 11 and Prisma 6 remain the defaults. Projects opt into the newer majors in `stack`:
+
+```json
+{ "stack": { "framework": "nestjs", "frameworkVersion": "12", "orm": "prisma", "ormVersion": "7" } }
+```
+
+| Setting | Values | Effect on the generated project |
+|---|---|---|
+| `frameworkVersion` (NestJS) | `11` (default), `12` | NestJS 12 ships only as ES modules. The project is generated with `"type": "module"` and `.js` import specifiers. Jest runs in ESM mode and cucumber-js loads steps through `tsx`. |
+| `ormVersion` (Prisma) | `6` (default), `7` | The `prisma-client` generator writes the client into `src/generated/prisma` (run `npx prisma generate`). The connection URL moves to `prisma.config.ts`. `PrismaService` gets the driver adapter for `stack.database`: `@prisma/adapter-pg`, `@prisma/adapter-mariadb` (MySQL/MariaDB) or `@prisma/adapter-better-sqlite3`. Prisma 7 does not support MongoDB. |
+
+`ghk init --frameworkVersion 12 --ormVersion 7` sets them, and `ghk upgrade` points out the newer majors without changing the default. Each of the four NestJS combinations, and Express with Prisma 7, has its own golden build.
 
 Frontends are generated in `./frontend` next to the backend. Contracts are generated in `./contracts`:
 

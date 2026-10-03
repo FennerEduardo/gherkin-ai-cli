@@ -101,7 +101,7 @@ Every stack now renders the same kernel from the feature (aggregate, unit tests,
 
 | Stack | What changed |
 |---|---|
-| NestJS | NestJS 11 + Prisma 6.19 + Zod 4. Layout consolidated under `src/` (`src/prisma/prisma.service.ts`, `src/infrastructure/multitenancy/`, `src/sagas/`). `package.json` declares dependencies and `build`/`test` scripts (Jest 30 + cucumber-js via `tsx`). Prisma schema includes `OutboxMessage`, `ProcessedEvent`, `SagaInstance` and `tenantId`. Domain queries go through `prisma.tenant`, a client extension that replaces the removed `$use` middleware. |
+| NestJS | NestJS 11 + Prisma 6.19 + Zod 4. Layout consolidated under `src/` (`src/prisma/prisma.service.ts`, `src/infrastructure/multitenancy/`, `src/sagas/`). `package.json` declares dependencies and `build`/`test` scripts (Jest 30 + cucumber-js via `tsx`). Prisma schema includes `OutboxMessage`, `ProcessedEvent`, `SagaInstance` and `tenantId`. Domain queries go through `prisma.tenant`, a client extension that replaces the removed `$use` middleware. NestJS 12 (ES modules) and Prisma 7 are opt-in with `stack.frameworkVersion` / `stack.ormVersion` ([ENTERPRISE.md §11](./ENTERPRISE.md#nestjs-and-prisma-versions)). |
 | Express | New dedicated preset on Express 5 (previously fell back to the React/Playwright skeleton). |
 | .NET | Tests live in `tests/<Namespace>.Tests/` (xUnit + Reqnroll); the root `.csproj` excludes `tests/**`, `features/**` and the Aspire AppHost, uses `Npgsql.EntityFrameworkCore.PostgreSQL` and adds `RootNamespace`. Integration tests are tagged `Category=Integration`. |
 | Java | Maven project (`pom.xml`, Spring Boot 3.3) with sources under `src/main/java/com/example/<project>/`; one public type per file. |

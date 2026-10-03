@@ -25,6 +25,11 @@ Enterprise-readiness release, driven by the 2.6.5 reviews. Contains breaking cha
   - Reports what the project needs: generated-file versions, config, CI scripts, MCP clients and legacy credential files.
   - With `--apply`, regenerates on a new git branch and removes stale generated files only when they were never edited.
   - `--check` gates CI.
+- **NestJS 12 and Prisma 7 (opt-in):**
+  - New config keys `stack.frameworkVersion` (`"11"` default, `"12"`) and `stack.ormVersion` (`"6"` default, `"7"`), also settable with `ghk init --frameworkVersion/--ormVersion`.
+  - NestJS 12 projects are generated as ES modules.
+  - Prisma 7 projects use the `prisma-client` generator, `prisma.config.ts` and the driver adapter for the configured database.
+  - All four NestJS combinations and Express with Prisma 7 have their own golden build.
 - **`@aggregate:Name` feature tag** sets the type name used by every generator, instead of the name derived from a long feature title.
 
 ### Changed
@@ -44,7 +49,7 @@ Enterprise-readiness release, driven by the 2.6.5 reviews. Contains breaking cha
   - NestJS 11, Express 5, Prisma 6.19, Zod 4 (`z.uuid()`, `z.email()`, `z.iso.datetime()`), Jest 30, Cucumber 13, TypeScript 6 (`module: nodenext`), `@types/node` 22.
   - Step definitions load through `tsx` instead of the unmaintained `ts-node`.
   - Tenant scoping moved from the removed Prisma `$use` middleware to a client extension (`PrismaService.tenant`). The generated repository uses it.
-  - NestJS 12 and Prisma 7 are ESM-only and will follow with an ESM project layout.
+  - NestJS 12 and Prisma 7 are opt-in (see Added). NestJS 11 and Prisma 6 stay the defaults.
 - **TypeScript projects without a NestJS or Express backend:**
   - A frontend framework in `stack.framework` (`react`, `vue`, `angular`, `nextjs`, `react-native`) generates that stable frontend project.
   - Other backends (`fastify`, `node-native`) generate contracts and prompts only, and are reported as experimental.

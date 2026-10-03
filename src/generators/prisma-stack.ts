@@ -5,6 +5,7 @@
 import { featurePascalName } from '../utils/naming';
 import { ParsedFeature } from '../core/gherkin-parser';
 import { GherkinAIConfig } from '../core/config';
+import { prismaClientImport, renderPrismaConfig, renderPrismaHeader, resolveNodeProfile, withEsmImportExtensions } from './node-profile';
 
 /** Tables used by the generated NestJS outbox, idempotency interceptor and saga orchestrator. */
 const NEST_INFRASTRUCTURE_MODELS = `
@@ -50,6 +51,7 @@ export function generatePrismaStack(parsed: ParsedFeature, config: GherkinAIConf
   const modelName = featurePascalName(parsed);
   // Prisma client delegates are camelCase: model PaymentProcessing -> prisma.paymentProcessing
   const delegate = modelName.charAt(0).toLowerCase() + modelName.slice(1);
+  const profile = resolveNodeProfile(config);
   const isNest = ['nestjs', 'nest'].includes((config.stack.framework || '').toLowerCase());
 
   let fieldsStr = `  id String @id @default(uuid())\n`;
@@ -72,15 +74,7 @@ export function generatePrismaStack(parsed: ParsedFeature, config: GherkinAIConf
   const schemaContent = `// This is your Prisma schema file,
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
 
-generator client {
-  provider = "prisma-client-js"
-}
-
-datasource db {
-  provider = "${config.stack.database === 'postgresql' ? 'postgresql' : (config.stack.database === 'mysql' ? 'mysql' : 'sqlite')}"
-  url      = env("DATABASE_URL")
-}
-
+${renderPrismaHeader(profile)}
 model ${modelName} {
 ${fieldsStr}
   createdAt DateTime @default(now())
@@ -94,11 +88,12 @@ ${isNest ? NEST_INFRASTRUCTURE_MODELS : ''}`;
     filename: `prisma/schema.prisma`,
     content: schemaContent
   });
+  if (profile.prisma === '7') artifacts.push({ filename: 'prisma.config.ts', content: renderPrismaConfig() });
 
   if (isNest) {
     const serviceContent = `import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { ${modelName} } from '@prisma/client';
+import type { ${modelName} } from '${prismaClientImport(profile, 'src/persistence')}';
 
 @Injectable()
 export class ${modelName}Repository {
@@ -121,7 +116,7 @@ export class ${modelName}Repository {
 `;
     artifacts.push({
       filename: `src/persistence/${modelName.toLowerCase()}.repository.ts`,
-      content: serviceContent
+      content: profile.esm ? withEsmImportExtensions(serviceContent) : serviceContent
     });
   }
 

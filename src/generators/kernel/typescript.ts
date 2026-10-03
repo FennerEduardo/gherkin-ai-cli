@@ -138,7 +138,18 @@ ${s.keyword}(${q(cucumberExpression(s.text))}, function (this: World) {
 `;
 }
 
-export function renderCucumberJsConfig(stepsGlob: string): string {
+/** `esm`: the project is "type": "module"; steps are imported (tsx is registered by the test script). */
+export function renderCucumberJsConfig(stepsGlob: string, { esm = false } = {}): string {
+  if (esm) {
+    return `// Pending steps are reported but do not fail the run (strict: false).
+export default {
+  paths: ['features/**/*.feature'],
+  import: ['${stepsGlob}'],
+  strict: false,
+  format: ['progress']
+};
+`;
+  }
   return `// Pending steps are reported but do not fail the run (strict: false).
 module.exports = {
   default: {
@@ -152,7 +163,21 @@ module.exports = {
 `;
 }
 
-export function renderJestConfig(roots: string[]): string {
+/** `esm`: ts-jest in ESM mode (run with --experimental-vm-modules); `.js` specifiers map back to the .ts sources. */
+export function renderJestConfig(roots: string[], { esm = false } = {}): string {
+  if (esm) {
+    return `/** @type {import('jest').Config} */
+export default {
+  testEnvironment: 'node',
+  roots: ${JSON.stringify(roots)},
+  testMatch: ['**/*.spec.ts'],
+  extensionsToTreatAsEsm: ['.ts'],
+  moduleNameMapper: { '^(\\\\.{1,2}/.*)\\\\.js$': '$1' },
+  // TS151002: ts-jest suggests isolatedModules for module "nodenext"; that conflicts with decorator metadata.
+  transform: { '^.+\\\\.ts$': ['ts-jest', { useESM: true, diagnostics: { ignoreCodes: [151002] } }] }
+};
+`;
+  }
   return `/** @type {import('jest').Config} */
 module.exports = {
   preset: 'ts-jest',
@@ -169,7 +194,8 @@ export function renderTsConfigs(): GeneratedFile[] {
       filename: 'tsconfig.json',
       content: JSON.stringify({
         compilerOptions: {
-          // CommonJS output via nodenext (TypeScript 6 deprecates moduleResolution "node").
+          // nodenext follows package.json "type": CommonJS by default, ES modules for "type": "module"
+          // (TypeScript 6 deprecates moduleResolution "node").
           target: 'ES2022', module: 'nodenext', moduleResolution: 'nodenext', outDir: 'dist', rootDir: '.',
           strict: true, esModuleInterop: true, experimentalDecorators: true, emitDecoratorMetadata: true,
           skipLibCheck: true, resolveJsonModule: true, types: ['node', 'jest']

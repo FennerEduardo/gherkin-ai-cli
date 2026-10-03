@@ -12,6 +12,7 @@
    ========================================================================== */
 
 import type { GherkinAIConfig } from '../core/config';
+import { resolveNodeProfile } from './node-profile';
 
 export type SupportTier = 'stable' | 'beta' | 'experimental';
 export type StackKind = 'backend' | 'frontend' | 'contracts';
@@ -27,8 +28,12 @@ export interface StackSupport {
 }
 
 export const STACK_SUPPORT: StackSupport[] = [
-  { id: 'typescript/nestjs', label: 'TypeScript · NestJS + Prisma', kind: 'backend', tier: 'stable', golden: 'nestjs' },
-  { id: 'typescript/express', label: 'TypeScript · Express', kind: 'backend', tier: 'stable', golden: 'express' },
+  { id: 'typescript/nestjs', label: 'TypeScript · NestJS 11 + Prisma 6 (CommonJS)', kind: 'backend', tier: 'stable', golden: 'nestjs', notes: 'Default. stack.frameworkVersion "12" and/or stack.ormVersion "7" select the newer majors.' },
+  { id: 'typescript/nestjs-12', label: 'TypeScript · NestJS 12 + Prisma 7 (ES modules)', kind: 'backend', tier: 'stable', golden: 'nestjs-12', notes: 'stack.frameworkVersion "12", stack.ormVersion "7".' },
+  { id: 'typescript/nestjs-12-prisma6', label: 'TypeScript · NestJS 12 + Prisma 6 (ES modules)', kind: 'backend', tier: 'stable', golden: 'nestjs-12-prisma6', notes: 'stack.frameworkVersion "12".' },
+  { id: 'typescript/nestjs-prisma7', label: 'TypeScript · NestJS 11 + Prisma 7 (CommonJS)', kind: 'backend', tier: 'stable', golden: 'nestjs-prisma7', notes: 'stack.ormVersion "7".' },
+  { id: 'typescript/express', label: 'TypeScript · Express 5', kind: 'backend', tier: 'stable', golden: 'express' },
+  { id: 'typescript/express-prisma7', label: 'TypeScript · Express 5 + Prisma 7', kind: 'backend', tier: 'stable', golden: 'express-prisma7', notes: 'stack.ormVersion "7".' },
   { id: 'csharp/dotnet', label: 'C# · ASP.NET Core 8 + EF Core', kind: 'backend', tier: 'stable', golden: 'dotnet' },
   { id: 'java/spring', label: 'Java 17 · Spring Boot 3 (Maven)', kind: 'backend', tier: 'stable', golden: 'java' },
   { id: 'kotlin/spring', label: 'Kotlin · Spring Boot 3 (Gradle)', kind: 'backend', tier: 'stable', golden: 'kotlin', notes: 'Pattern infrastructure is shared Java code compiled alongside Kotlin.' },
@@ -74,8 +79,13 @@ export function getStackSupport(config: Pick<GherkinAIConfig, 'stack'>): StackSu
   if (lang === 'rust') return find('rust/axum');
   if (lang === 'dart' || framework === 'flutter') return find('dart/flutter');
   if (lang === 'typescript' || lang === 'javascript') {
-    if (framework === 'nestjs' || framework === 'nest') return find('typescript/nestjs');
-    if (framework === 'express') return find('typescript/express');
+    if (framework === 'nestjs' || framework === 'nest' || framework === 'express') {
+      const profile = resolveNodeProfile(config);
+      const prisma7 = profile.prisma === '7';
+      if (framework === 'express') return find(prisma7 ? 'typescript/express-prisma7' : 'typescript/express');
+      if (profile.nest === '12') return find(prisma7 ? 'typescript/nestjs-12' : 'typescript/nestjs-12-prisma6');
+      return find(prisma7 ? 'typescript/nestjs-prisma7' : 'typescript/nestjs');
+    }
     // Frontend-only project (see frontendFramework() in presets.ts).
     const frontendOnly = FRONTEND_ALIASES[framework];
     if (frontendOnly) return find(`frontend/${frontendOnly}`);
