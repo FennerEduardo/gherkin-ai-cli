@@ -1,6 +1,6 @@
 // --------------------------------------------------------------------------
 // Multi-tenancy Pattern for NestJS + Prisma
-// Uses Prisma Middleware and AsyncLocalStorage for seamless tenant isolation
+// Uses a Prisma Client extension and AsyncLocalStorage for tenant isolation
 // --------------------------------------------------------------------------
 
 export function generateNestJsMultiTenancyInfrastructure(): { filename: string; content: string }[] {
@@ -26,51 +26,55 @@ export class TenantMiddleware implements NestMiddleware {
 }
 `;
 
-  const prismaMiddlewareCode = `import { Injectable, OnModuleInit } from '@nestjs/common';
-import { Prisma, PrismaClient } from '@prisma/client';
+  // Prisma removed the $use middleware API in 6.14; tenant scoping is a query extension.
+  const prismaMiddlewareCode = `import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { PrismaClient } from '@prisma/client';
 import { tenantLocalStorage } from '../infrastructure/multitenancy/tenant.storage';
 
+/** Infrastructure models shared by every tenant (outbox, idempotency keys, sagas). */
+const SHARED_MODELS = new Set(['OutboxMessage', 'ProcessedEvent', 'SagaInstance']);
+const FILTERED_OPERATIONS = new Set([
+  'findUnique', 'findUniqueOrThrow', 'findFirst', 'findFirstOrThrow', 'findMany', 'count', 'aggregate', 'groupBy',
+  'update', 'updateMany', 'upsert', 'delete', 'deleteMany'
+]);
+
+type Row = Record<string, unknown>;
+
+/** Adds the current tenant (from AsyncLocalStorage) to every query on tenant-owned models. */
+export function withTenantScope(client: PrismaClient) {
+  return client.$extends({
+    name: 'tenant-scope',
+    query: {
+      $allModels: {
+        async $allOperations({ model, operation, args, query }) {
+          if (SHARED_MODELS.has(model)) return query(args);
+          const tenantId = tenantLocalStorage.getStore()?.tenantId ?? 'default';
+          const scoped = { ...(args as Row) };
+          if (FILTERED_OPERATIONS.has(operation)) scoped.where = { ...(scoped.where as Row), tenantId };
+          if (operation === 'create') scoped.data = { ...(scoped.data as Row), tenantId };
+          if (operation === 'upsert') scoped.create = { ...(scoped.create as Row), tenantId };
+          if (operation === 'createMany' || operation === 'createManyAndReturn') {
+            const rows = Array.isArray(scoped.data) ? (scoped.data as Row[]) : [scoped.data as Row];
+            scoped.data = rows.map(row => ({ ...row, tenantId }));
+          }
+          return query(scoped as typeof args);
+        }
+      }
+    }
+  });
+}
+
 @Injectable()
-export class PrismaService extends PrismaClient implements OnModuleInit {
-  constructor() {
-    super();
-    this.addTenantMiddleware();
-  }
+export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
+  /** Tenant-scoped view of this client: use it for domain models. */
+  readonly tenant = withTenantScope(this);
 
   async onModuleInit() {
     await this.$connect();
   }
 
-  private addTenantMiddleware() {
-    // Prisma $use middleware for automatic tenant filtering
-    this.$use(async (params: Prisma.MiddlewareParams, next: (params: Prisma.MiddlewareParams) => Promise<unknown>) => {
-      const context = tenantLocalStorage.getStore();
-      const tenantId = context?.tenantId || 'default';
-
-      // Check if the model has a tenantId field (assume yes for demo, adjust as needed)
-      // For a real production app, you might want a whitelist of tenant-aware models
-      if (params.model && !['OutboxMessage', 'ProcessedEvent', 'SagaInstance'].includes(params.model)) {
-        if (params.action === 'findUnique' || params.action === 'findFirst') {
-          // Change to findFirst
-          params.action = 'findFirst';
-          params.args.where = { ...params.args.where, tenantId };
-        }
-        if (params.action === 'findMany') {
-          params.args.where = { ...params.args.where, tenantId };
-        }
-        if (params.action === 'update' || params.action === 'updateMany' || params.action === 'delete' || params.action === 'deleteMany') {
-          params.args.where = { ...params.args.where, tenantId };
-        }
-        if (params.action === 'create' || params.action === 'createMany') {
-          if (params.action === 'create') {
-            params.args.data = { ...params.args.data, tenantId };
-          } else {
-            params.args.data = params.args.data.map((d: any) => ({ ...d, tenantId }));
-          }
-        }
-      }
-      return next(params);
-    });
+  async onModuleDestroy() {
+    await this.$disconnect();
   }
 }
 `;

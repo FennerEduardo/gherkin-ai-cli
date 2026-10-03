@@ -143,7 +143,7 @@ export function renderCucumberJsConfig(stepsGlob: string): string {
 module.exports = {
   default: {
     paths: ['features/**/*.feature'],
-    requireModule: ['ts-node/register'],
+    requireModule: ['tsx/cjs'],
     require: ['${stepsGlob}'],
     strict: false,
     format: ['progress']
@@ -169,7 +169,8 @@ export function renderTsConfigs(): GeneratedFile[] {
       filename: 'tsconfig.json',
       content: JSON.stringify({
         compilerOptions: {
-          target: 'ES2021', module: 'commonjs', moduleResolution: 'node', outDir: 'dist', rootDir: '.',
+          // CommonJS output via nodenext (TypeScript 6 deprecates moduleResolution "node").
+          target: 'ES2022', module: 'nodenext', moduleResolution: 'nodenext', outDir: 'dist', rootDir: '.',
           strict: true, esModuleInterop: true, experimentalDecorators: true, emitDecoratorMetadata: true,
           skipLibCheck: true, resolveJsonModule: true, types: ['node', 'jest']
         },

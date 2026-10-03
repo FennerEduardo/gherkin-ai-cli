@@ -75,7 +75,9 @@ describe('gherkin-ai CLI unit tests', () => {
       const parsed = parseGherkinText(advancedSpec);
       const ir = buildSpecificationIR(parsed, 'advanced.feature');
       const { contractsTs } = generateContracts(parsed, ir, defaultConfig);
-      expect(contractsTs).toContain('email: z.string().email()');
+      // Zod 4 top-level string formats
+      expect(contractsTs).toContain('email: z.email()');
+      expect(contractsTs).toContain('requestId: z.uuid()');
       expect(contractsTs).toContain('age: z.number().min(18).max(100)');
     });
 

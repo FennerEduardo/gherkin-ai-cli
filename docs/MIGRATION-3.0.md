@@ -101,8 +101,8 @@ Every stack now renders the same kernel from the feature (aggregate, unit tests,
 
 | Stack | What changed |
 |---|---|
-| NestJS | Layout consolidated under `src/` (`src/prisma/prisma.service.ts`, `src/infrastructure/multitenancy/`, `src/sagas/`); `package.json` declares dependencies and `build`/`test` scripts (Jest + cucumber-js); Prisma schema includes `OutboxMessage`, `ProcessedEvent`, `SagaInstance` and `tenantId`. |
-| Express | New dedicated preset (previously fell back to the React/Playwright skeleton). |
+| NestJS | NestJS 11 + Prisma 6.19 + Zod 4. Layout consolidated under `src/` (`src/prisma/prisma.service.ts`, `src/infrastructure/multitenancy/`, `src/sagas/`). `package.json` declares dependencies and `build`/`test` scripts (Jest 30 + cucumber-js via `tsx`). Prisma schema includes `OutboxMessage`, `ProcessedEvent`, `SagaInstance` and `tenantId`. Domain queries go through `prisma.tenant`, a client extension that replaces the removed `$use` middleware. |
+| Express | New dedicated preset on Express 5 (previously fell back to the React/Playwright skeleton). |
 | .NET | Tests live in `tests/<Namespace>.Tests/` (xUnit + Reqnroll); the root `.csproj` excludes `tests/**`, `features/**` and the Aspire AppHost, uses `Npgsql.EntityFrameworkCore.PostgreSQL` and adds `RootNamespace`. Integration tests are tagged `Category=Integration`. |
 | Java | Maven project (`pom.xml`, Spring Boot 3.3) with sources under `src/main/java/com/example/<project>/`; one public type per file. |
 | Kotlin | New Gradle (KTS) project; previously contracts only. |

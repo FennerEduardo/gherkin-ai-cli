@@ -50,10 +50,10 @@ export function generatePrismaStack(parsed: ParsedFeature, config: GherkinAIConf
   const modelName = featurePascalName(parsed);
   // Prisma client delegates are camelCase: model PaymentProcessing -> prisma.paymentProcessing
   const delegate = modelName.charAt(0).toLowerCase() + modelName.slice(1);
-  const isNest = config.stack.framework === 'nestjs';
+  const isNest = ['nestjs', 'nest'].includes((config.stack.framework || '').toLowerCase());
 
   let fieldsStr = `  id String @id @default(uuid())\n`;
-  // The NestJS PrismaService middleware scopes every domain query by tenantId.
+  // PrismaService.tenant (a query extension) scopes every domain query by tenantId.
   if (isNest) fieldsStr += `  tenantId String @default("default")\n`;
   // Feature fields can repeat the columns declared above (or each other); Prisma rejects duplicates.
   const declared = new Set(['id', ...(isNest ? ['tenantid'] : [])]);
@@ -95,7 +95,7 @@ ${isNest ? NEST_INFRASTRUCTURE_MODELS : ''}`;
     content: schemaContent
   });
 
-  if (config.stack.framework === 'nestjs') {
+  if (isNest) {
     const serviceContent = `import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { ${modelName} } from '@prisma/client';
@@ -105,17 +105,17 @@ export class ${modelName}Repository {
   constructor(private prisma: PrismaService) {}
 
   async findById(id: string): Promise<${modelName} | null> {
-    return this.prisma.${delegate}.findUnique({ where: { id } });
+    return this.prisma.tenant.${delegate}.findUnique({ where: { id } });
   }
 
-  async save(data: Omit<${modelName}, 'id' | 'createdAt' | 'updatedAt'>): Promise<${modelName}> {
-    return this.prisma.${delegate}.create({
+  async save(data: Omit<${modelName}, 'id' | 'tenantId' | 'createdAt' | 'updatedAt'>): Promise<${modelName}> {
+    return this.prisma.tenant.${delegate}.create({
       data,
     });
   }
 
   async delete(id: string): Promise<void> {
-    await this.prisma.${delegate}.delete({ where: { id } });
+    await this.prisma.tenant.${delegate}.delete({ where: { id } });
   }
 }
 `;

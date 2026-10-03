@@ -42,7 +42,7 @@ export function createApp(): express.Express {
     res.json({ status: 'ok' });
   });
 
-  app.post('/api/v1/${m.kebab}/:id/:command', (req: Request, res: Response, next: NextFunction) => {
+  app.post('/api/v1/${m.kebab}/:id/:command', (req: Request<{ id: string; command: string }>, res: Response, next: NextFunction) => {
     const handler = COMMANDS[req.params.command];
     if (!handler) {
       res.status(404).json({ detail: \`Unknown command \${req.params.command}\` });

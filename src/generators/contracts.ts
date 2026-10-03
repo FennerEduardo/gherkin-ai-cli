@@ -38,36 +38,42 @@ export interface GeneratedContractsOutput {
 
 import { SpecificationIR } from '../core/semantic-ir';
 
-/** Dependencies the generated Node sources import (kept in sync with scripts/golden-build.js). */
+/*
+ * Dependencies the generated Node sources import (verified by the nestjs/express golden builds).
+ * Pinned to the newest majors that still ship CommonJS: NestJS 12 and Prisma 7 are ESM-only, and
+ * ts-jest does not support TypeScript 7 yet.
+ */
+const PRISMA = '^6.19.0';
+const TS_TEST_TOOLING = {
+  '@cucumber/cucumber': '^13.2.0',
+  '@types/jest': '^30.0.0',
+  '@types/node': '^22.0.0',
+  '@types/supertest': '^6.0.0',
+  jest: '^30.2.0',
+  supertest: '^7.1.0',
+  'ts-jest': '^29.4.0',
+  tsx: '^4.20.0',
+  typescript: '~6.0.0'
+};
+
 function nodeDependencies(config: GherkinAIConfig): { scripts: Record<string, string>; dependencies: Record<string, string>; devDependencies: Record<string, string> } {
   const framework = (config.stack.framework || '').toLowerCase();
-  const tsTestTooling = {
-    '@cucumber/cucumber': '^10.9.0',
-    '@types/jest': '^29.5.0',
-    '@types/node': '^20.0.0',
-    '@types/supertest': '^6.0.0',
-    jest: '^29.7.0',
-    supertest: '^7.0.0',
-    'ts-jest': '^29.2.0',
-    'ts-node': '^10.9.2',
-    typescript: '^5.4.0'
-  };
   if (framework === 'express') {
     return {
       scripts: { start: 'node dist/src/server', build: 'tsc -p tsconfig.build.json', test: 'jest && cucumber-js' },
       dependencies: {
-        express: '^4.21.0',
-        zod: '^3.23.0',
-        ...(config.stack.orm === 'prisma' ? { '@prisma/client': '^5.22.0' } : {})
+        express: '^5.1.0',
+        zod: '^4.1.0',
+        ...(config.stack.orm === 'prisma' ? { '@prisma/client': PRISMA } : {})
       },
       devDependencies: {
-        ...tsTestTooling,
-        '@types/express': '^4.17.21',
-        ...(config.stack.orm === 'prisma' ? { prisma: '^5.22.0' } : {})
+        ...TS_TEST_TOOLING,
+        '@types/express': '^5.0.0',
+        ...(config.stack.orm === 'prisma' ? { prisma: PRISMA } : {})
       }
     };
   }
-  if (framework !== 'nestjs') {
+  if (framework !== 'nestjs' && framework !== 'nest') {
     return { scripts: { start: 'node dist/main', build: 'tsc', test: 'jest' }, dependencies: {}, devDependencies: {} };
   }
   return {
@@ -78,28 +84,20 @@ function nodeDependencies(config: GherkinAIConfig): { scripts: Record<string, st
       test: 'jest && cucumber-js'
     },
     dependencies: {
-      '@nestjs/common': '^10.4.0',
-      '@nestjs/core': '^10.4.0',
-      '@nestjs/cqrs': '^10.2.0',
-      '@nestjs/platform-express': '^10.4.0',
-      '@nestjs/schedule': '^4.1.0',
-      '@prisma/client': '^5.22.0',
+      '@nestjs/common': '^11.1.0',
+      '@nestjs/core': '^11.1.0',
+      '@nestjs/cqrs': '^11.0.0',
+      '@nestjs/platform-express': '^11.1.0',
+      '@nestjs/schedule': '^6.0.0',
+      '@prisma/client': PRISMA,
       'reflect-metadata': '^0.2.0',
       rxjs: '^7.8.0',
-      zod: '^3.23.0'
+      zod: '^4.1.0'
     },
     devDependencies: {
-      '@cucumber/cucumber': '^10.9.0',
-      '@types/express': '^4.17.21',
-      '@types/jest': '^29.5.0',
-      '@types/node': '^20.0.0',
-      '@types/supertest': '^6.0.0',
-      jest: '^29.7.0',
-      prisma: '^5.22.0',
-      supertest: '^7.0.0',
-      'ts-jest': '^29.2.0',
-      'ts-node': '^10.9.2',
-      typescript: '^5.4.0'
+      ...TS_TEST_TOOLING,
+      '@types/express': '^5.0.0',
+      prisma: PRISMA
     }
   };
 }
@@ -164,13 +162,13 @@ ${ir.fields.map(f => `    ${f.name}: ${f.type};`).join('\n')}
 // 2. Command DTO Schemas (Zod Validation)
 // --------------------------------------------------------------------------
 export const ${featurePascal}CommandSchema = z.object({
-  requestId: z.string().uuid(),
-  timestamp: z.string().datetime(),
+  requestId: z.uuid(),
+  timestamp: z.iso.datetime(),
   payload: z.object({
 ${ir.fields.map(f => {
-  let zType = f.type === 'number' ? 'z.number()' : 'z.string()';
+  const email = f.type !== 'number' && f.validations.some((v: any) => v.type === 'email');
+  let zType = f.type === 'number' ? 'z.number()' : email ? 'z.email()' : 'z.string()';
   f.validations.forEach((v: any) => {
-    if (v.type === 'email') zType += '.email()';
     if (v.type === 'range' && v.params) zType += `.min(${v.params.min || 0}).max(${v.params.max || 100})`;
   });
   return `    ${f.name}: ${zType}`;
