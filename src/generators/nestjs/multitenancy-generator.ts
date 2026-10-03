@@ -37,6 +37,9 @@ const FILTERED_OPERATIONS = new Set([
   'findUnique', 'findUniqueOrThrow', 'findFirst', 'findFirstOrThrow', 'findMany', 'count', 'aggregate', 'groupBy',
   'update', 'updateMany', 'upsert', 'delete', 'deleteMany'
 ]);
+// Sets, not literal comparisons: the operation union depends on the database provider
+// (MySQL has no createManyAndReturn, SQLite older releases no createMany).
+const BULK_CREATE_OPERATIONS = new Set(['createMany', 'createManyAndReturn']);
 
 type Row = Record<string, unknown>;
 
@@ -53,7 +56,7 @@ export function withTenantScope(client: PrismaClient) {
           if (FILTERED_OPERATIONS.has(operation)) scoped.where = { ...(scoped.where as Row), tenantId };
           if (operation === 'create') scoped.data = { ...(scoped.data as Row), tenantId };
           if (operation === 'upsert') scoped.create = { ...(scoped.create as Row), tenantId };
-          if (operation === 'createMany' || operation === 'createManyAndReturn') {
+          if (BULK_CREATE_OPERATIONS.has(operation)) {
             const rows = Array.isArray(scoped.data) ? (scoped.data as Row[]) : [scoped.data as Row];
             scoped.data = rows.map(row => ({ ...row, tenantId }));
           }
