@@ -84,7 +84,7 @@ export async function handleGenerateCommand(options: { feature?: string; config?
         }]);
 
         if (createMode === 'wizard') {
-          const { handleCreateCommand } = require('./create');
+          const { handleCreateCommand } = await import('./create');
           await handleCreateCommand({ output: featurePath, yes: false });
           gherkinText = readFileSync(featurePath);
         } else if (createMode === 'ai-assistant') {
@@ -128,7 +128,7 @@ Objective: Write detailed Gherkin feature scenarios for ${title}.
     logger.info('No feature file specified. Using built-in sample feature spec.');
   }
 
-  const { detectPromptInjection } = require('../core/security-sanitizer');
+  const { detectPromptInjection } = await import('../core/security-sanitizer');
   const securityCheck = detectPromptInjection(gherkinText);
   if (!securityCheck.isSafe) {
     logger.error('SECURITY ALERT: Prompt Injection Attempt Blocked!');
@@ -150,7 +150,7 @@ Objective: Write detailed Gherkin feature scenarios for ${title}.
   
   // Auto-sync governance policy to reflect current config
   if (fs.existsSync(path.join(process.cwd(), '.ghkgovernance.yaml'))) {
-    const { generateGovernanceConfig } = require('./init');
+    const { generateGovernanceConfig } = await import('./init');
     generateGovernanceConfig(config, process.cwd());
   }
   
@@ -204,7 +204,7 @@ Objective: Write detailed Gherkin feature scenarios for ${title}.
       }]);
 
       if (autoInstall) {
-        const { executeSetup } = require('../core/stack-setup');
+        const { executeSetup } = await import('../core/stack-setup');
         const result = executeSetup(setupResult.suggestions, { cwd: process.cwd() });
         if (result.success) {
           logger.success('Stack dependencies installed successfully.');
@@ -277,7 +277,7 @@ Objective: Write detailed Gherkin feature scenarios for ${title}.
   });
 
   // Generate traceability inventory
-  const crypto = require('crypto');
+  const crypto = await import('crypto');
   const inventory = {
     version: '1.0',
     generatedAt: new Date().toISOString(),
