@@ -12,7 +12,7 @@ Every generated backend includes a small, framework-neutral runtime next to its 
 | Laravel | `app/Runtime/` | PDO, php-amqplib, OpenTelemetry PHP | `phpunit --group integration` |
 | Rails | `app/runtime/` | pg, bunny, opentelemetry-sdk | `rspec --tag integration` |
 | Phoenix | `lib/<app>/runtime/` | Postgrex, AMQP, opentelemetry | `mix test --only integration` |
-| Axum | `src/runtime/` | tokio-postgres, lapin, opentelemetry-rust | `cargo test --features integration` |
+| Axum | `src/runtime/` | sqlx, lapin, opentelemetry-rust | `cargo test --features integration --test runtime_integration` |
 
 The integration tests read `DATABASE_URL` (`postgres://user:pass@host:5432/db`) and `AMQP_URL` (`amqp://user:pass@host:5672`). The golden builds start `postgres:17-alpine` and `rabbitmq:4-alpine` for them. To run them locally:
 

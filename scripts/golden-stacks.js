@@ -175,7 +175,8 @@ const STACKS = {
     image: 'rust:1.99',
     caches: [['cargo-registry', '/usr/local/cargo/registry'], ['cargo-git', '/usr/local/cargo/git']],
     build: ['cargo build --all-targets --quiet'],
-    test: ['cargo test --quiet']
+    test: ['cargo test --quiet'],
+    integration: ['cargo test --quiet --features integration --test runtime_integration -- --test-threads=1']
   },
   'phoenix-liveview': {
     stack: { ...base, language: 'elixir', framework: 'phoenix', orm: 'none', validation: 'ecto-changeset', testing: 'exunit' },

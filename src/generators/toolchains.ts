@@ -108,7 +108,7 @@ export const TOOLCHAINS: Record<string, Toolchain> = {
     image: 'rust:1.99',
     build: ['cargo build --all-targets --quiet'],
     test: ['cargo test --quiet'],
-    integration: ['cargo test --quiet --features integration -- --test-threads=1'],
+    integration: ['cargo test --quiet --features integration --test runtime_integration -- --test-threads=1'],
     start: 'cargo run'
   },
   'dart/flutter': {
