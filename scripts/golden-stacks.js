@@ -70,6 +70,17 @@ const STACKS = {
     build: ['npx --yes @bufbuild/buf@1 build', 'npx --yes @bufbuild/buf@1 lint'],
     test: ['npm install --no-save --no-audit --no-fund --loglevel=error graphql@16', 'node validate-graphql.cjs']
   },
+  // AWS CDK app (infrastructure.awsCdk): assertion tests + cdk synth, offline (no AWS account needed).
+  'aws-cdk': {
+    stack: feBackend,
+    config: { infrastructure: { awsCdk: true } },
+    image: 'node:24-bookworm',
+    workdir: 'infrastructure',
+    caches: [['npm', '/root/.npm']],
+    env: { CDK_DISABLE_VERSION_CHECK: 'true', CDK_DISABLE_CLI_TELEMETRY: 'true' },
+    build: ['npm install --no-audit --no-fund --loglevel=error', 'npm run build'],
+    test: ['npm test', 'npx cdk synth --quiet']
+  },
   express: {
     stack: { ...base, language: 'typescript', framework: 'express', orm: 'prisma', validation: 'zod', testing: 'jest' },
     image: 'node:24-bookworm',

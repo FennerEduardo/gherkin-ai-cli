@@ -67,6 +67,7 @@ describe('AWS CDK Infrastructure Generator', () => {
     expect(code).toContain('aws-sns');
     expect(code).toContain('aws-sqs');
     expect(code).toContain('aws-dynamodb');
+    expect(code).toContain('aws-cloudwatch');
   });
 });
 

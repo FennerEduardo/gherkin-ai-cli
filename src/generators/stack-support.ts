@@ -15,7 +15,7 @@ import type { GherkinAIConfig } from '../core/config';
 import { resolveNodeProfile } from './node-profile';
 
 export type SupportTier = 'stable' | 'beta' | 'experimental';
-export type StackKind = 'backend' | 'frontend' | 'contracts';
+export type StackKind = 'backend' | 'frontend' | 'contracts' | 'infrastructure';
 
 export interface StackSupport {
   id: string;
@@ -55,7 +55,9 @@ export const STACK_SUPPORT: StackSupport[] = [
   { id: 'frontend/phoenix-liveview', label: 'Phoenix LiveView', kind: 'frontend', tier: 'stable', golden: 'phoenix-liveview', notes: 'Requires the Phoenix backend.' },
 
   { id: 'contracts/grpc', label: 'gRPC (Protobuf, buf-linted)', kind: 'contracts', tier: 'stable', golden: 'grpc-graphql', notes: 'Enable with contracts.grpc: true.' },
-  { id: 'contracts/graphql', label: 'GraphQL SDL', kind: 'contracts', tier: 'stable', golden: 'grpc-graphql', notes: 'Enable with contracts.graphql: true.' }
+  { id: 'contracts/graphql', label: 'GraphQL SDL', kind: 'contracts', tier: 'stable', golden: 'grpc-graphql', notes: 'Enable with contracts.graphql: true.' },
+
+  { id: 'infrastructure/aws-cdk', label: 'AWS CDK v2 (SNS/SQS + DLQ alarm, DynamoDB, Secrets Manager, EKS + IRSA)', kind: 'infrastructure', tier: 'stable', golden: 'aws-cdk', notes: 'Enable with infrastructure.awsCdk: true (default when messaging is sqs/sns). Verified with assertion tests and cdk synth.' }
 ];
 
 const find = (id: string) => STACK_SUPPORT.find(s => s.id === id)!;
