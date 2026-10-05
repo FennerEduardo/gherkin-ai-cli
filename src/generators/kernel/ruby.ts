@@ -3,6 +3,7 @@
    ========================================================================== */
 
 import { DomainModel, stepRegex, toPascal } from './domain-model';
+import { RB_RUNTIME_GEMS } from './runtime/ruby';
 
 export interface RbFile {
   filename: string;
@@ -41,6 +42,14 @@ class ${m.pascal}Aggregate
     @state = ${rbStr(m.initialState)}
     @version = 0
     @pending_events = []
+  end
+
+  # Rebuilds an aggregate from persisted state; no events are recorded.
+  def self.restore(id, state, version)
+    new(id).tap do |aggregate|
+      aggregate.instance_variable_set(:@state, state)
+      aggregate.instance_variable_set(:@version, version)
+    end
   end
 
   # Events recorded since the aggregate was loaded (to be saved via the outbox).
@@ -83,7 +92,7 @@ ruby ">= 3.2"
 
 gem "rails", "~> 8.0.0"
 gem "puma", ">= 6.0"
-
+${RB_RUNTIME_GEMS}
 group :development, :test do
   gem "rspec-rails", "~> 7.1"
 end

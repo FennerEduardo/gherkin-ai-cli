@@ -10,9 +10,15 @@ import { ParsedFeature } from '../core/gherkin-parser';
 import { GherkinAIConfig } from '../core/config';
 import { buildDomainModel, toPascal } from './kernel/domain-model';
 import { renderRailsApp, renderRubyKernel } from './kernel/ruby';
+import { renderRbRuntime } from './kernel/runtime/ruby';
 
 export function generateRubyRailsPreset(parsed: ParsedFeature, config?: GherkinAIConfig): { filename: string; content: string }[] {
   const m = buildDomainModel(parsed);
   const appModule = toPascal(config?.projectName || 'App');
-  return [...renderRubyKernel(m), ...renderRailsApp(m, /^[A-Z]/.test(appModule) ? appModule : `App${appModule}`)];
+  return [
+    ...renderRubyKernel(m),
+    ...renderRailsApp(m, /^[A-Z]/.test(appModule) ? appModule : `App${appModule}`),
+    // Runtime kernel: PostgreSQL + RabbitMQ + OpenTelemetry, verified by rspec --tag integration (docs/RUNTIME-KERNEL.md).
+    ...renderRbRuntime(m)
+  ];
 }

@@ -158,7 +158,8 @@ const STACKS = {
     caches: [['gems', '/usr/local/bundle']],
     env: { RAILS_ENV: 'test' },
     build: ['bundle install --quiet --jobs 4', 'ruby -c config/application.rb > /dev/null', 'bin/rails runner "puts Rails.version" > /dev/null'],
-    test: ['bundle exec rspec', 'bundle exec cucumber']
+    test: ['bundle exec rspec --tag ~integration', 'bundle exec cucumber'],
+    integration: ['bundle exec rspec --tag integration']
   },
   phoenix: {
     stack: { ...base, language: 'elixir', framework: 'phoenix', orm: 'none', validation: 'ecto-changeset', testing: 'exunit' },
