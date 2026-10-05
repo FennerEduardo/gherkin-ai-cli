@@ -40,6 +40,10 @@ public sealed class ${m.pascal}Aggregate
         Id = id;
     }
 
+    /// <summary>Rebuilds an aggregate from persisted state; no events are recorded.</summary>
+    public static ${m.pascal}Aggregate Restore(string id, string state, long version) =>
+        new(id) { State = state, Version = version };
+
     public string Id { get; }
     public string State { get; private set; } = ${m.pascal}States.${m.initialState};
     public long Version { get; private set; }
@@ -160,6 +164,7 @@ export function renderCsTestProject(ns: string, appProject: string): string {
     <PackageReference Include="Testcontainers" Version="3.10.0" />
     <PackageReference Include="Testcontainers.PostgreSql" Version="3.10.0" />
     <PackageReference Include="Testcontainers.RabbitMq" Version="3.10.0" />
+    <PackageReference Include="OpenTelemetry.Exporter.InMemory" Version="1.9.0" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../../${appProject}" />

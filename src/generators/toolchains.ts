@@ -40,7 +40,7 @@ export const TOOLCHAINS: Record<string, Toolchain> = {
   'csharp/dotnet': {
     image: 'mcr.microsoft.com/dotnet/sdk:8.0',
     build: ['dotnet build tests/*/*.Tests.csproj -nologo -v q'],
-    test: ['dotnet test tests/*/*.Tests.csproj -nologo -v q --no-build --filter "Category!=Integration"'],
+    test: ['dotnet test tests/*/*.Tests.csproj -nologo -v q --no-build --filter "Category!=Integration&Category!=Testcontainers"'],
     integration: ['dotnet test tests/*/*.Tests.csproj -nologo -v q --no-build --filter "Category=Integration"'],
     start: 'dotnet run',
     env: { DOTNET_CLI_TELEMETRY_OPTOUT: '1', DOTNET_NOLOGO: '1' }

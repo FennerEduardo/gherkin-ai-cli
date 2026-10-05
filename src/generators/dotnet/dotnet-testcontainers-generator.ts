@@ -20,7 +20,7 @@ using Xunit;
 namespace ${namespace}.IntegrationTests
 {
     // Needs Docker (Testcontainers). Run with: dotnet test --filter Category=Integration
-    [Trait("Category", "Integration")]
+    [Trait("Category", "Testcontainers")] // needs a Docker socket; the runtime suite is Category=Integration
     public class DistributedSystemIntegrationTest : IAsyncLifetime
     {
         private readonly PostgreSqlContainer _postgresContainer = new PostgreSqlBuilder()

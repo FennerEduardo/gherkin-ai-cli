@@ -441,6 +441,8 @@ ${effectiveProhibited.map(p => `- \`${p}\``).join('\n')}
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="8.0.2" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Tools" Version="8.0.2" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="8.0.2" />
+    <PackageReference Include="Npgsql" Version="8.0.5" />
+    <PackageReference Include="RabbitMQ.Client" Version="6.8.1" />
     <PackageReference Include="MassTransit.RabbitMQ" Version="8.1.3" />
     <PackageReference Include="Polly.Core" Version="8.3.1" />
     <PackageReference Include="Microsoft.Extensions.Http.Resilience" Version="8.3.0" />
@@ -473,7 +475,7 @@ ${effectiveProhibited.map(p => `- \`${p}\``).join('\n')}
 set -e
 echo "Running .NET build and tests inside Docker..."
 docker run --rm -v "$(pwd)":/app -w /app -e DOTNET_CLI_TELEMETRY_OPTOUT=1 -e DOTNET_NOLOGO=1 mcr.microsoft.com/dotnet/sdk:8.0 \\
-  sh -c 'dotnet build tests/*/*.Tests.csproj -nologo -v q && dotnet test tests/*/*.Tests.csproj -nologo -v q --no-build --filter "Category!=Integration"'
+  sh -c 'dotnet build tests/*/*.Tests.csproj -nologo -v q && dotnet test tests/*/*.Tests.csproj -nologo -v q --no-build --filter "Category!=Integration&Category!=Testcontainers"'
 `
       }
     ];

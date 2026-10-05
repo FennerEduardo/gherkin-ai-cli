@@ -15,6 +15,7 @@ import { generateCqrsHandlers } from './dotnet/cqrs-handlers-generator';
 import { generateInboxInfrastructure } from './dotnet/inbox-generator';
 import { generateResiliencePipelines } from './dotnet/resilience-generator';
 import { buildDomainModel } from './kernel/domain-model';
+import { renderCsRuntime } from './kernel/runtime/csharp';
 import { REQNROLL_JSON, renderCsAggregate, renderCsAggregateTests, renderCsTestProject, renderReqnrollSteps } from './kernel/csharp';
 
 export function generateCsharpDotnetPreset(parsed: ParsedFeature, config?: GherkinAIConfig): { filename: string; content: string }[] {
@@ -268,6 +269,8 @@ namespace ${namespace}.Infrastructure.Data
     { filename: `${testsDir}/reqnroll.json`, content: REQNROLL_JSON },
     { filename: `${testsDir}/Domain/${m.pascal}AggregateTests.cs`, content: renderCsAggregateTests(m, namespace) },
     { filename: `${testsDir}/Steps/${m.pascal}StepDefinitions.cs`, content: renderReqnrollSteps(m, namespace) },
+    // Runtime kernel: PostgreSQL + RabbitMQ + OpenTelemetry, verified by Category=Integration tests (docs/RUNTIME-KERNEL.md).
+    ...renderCsRuntime(m, namespace, testsDir),
     {
       filename: `src/Application/CQRS/${featurePascal}Handlers.cs`,
       content: generateCqrsHandlers(namespace, m.pascal)

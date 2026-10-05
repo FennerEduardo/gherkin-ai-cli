@@ -104,8 +104,10 @@ const STACKS = {
     env: { DOTNET_CLI_TELEMETRY_OPTOUT: '1', DOTNET_NOLOGO: '1' },
     // The test project references the app project, so this builds both.
     build: ['dotnet build tests/*/*.Tests.csproj -nologo -v q'],
-    // Integration tests need Docker (Testcontainers) and run separately.
-    test: ['dotnet test tests/*/*.Tests.csproj -nologo -v q --no-build --filter "Category!=Integration"']
+    // Testcontainers tests need a Docker socket and run outside the golden build; the runtime
+    // integration tests (Category=Integration) run against the golden PostgreSQL and RabbitMQ.
+    test: ['dotnet test tests/*/*.Tests.csproj -nologo -v q --no-build --filter "Category!=Integration&Category!=Testcontainers"'],
+    integration: ['dotnet test tests/*/*.Tests.csproj -nologo --no-build --filter "Category=Integration" --logger "console;verbosity=normal"']
   },
   java: {
     stack: { ...base, language: 'java', framework: 'spring-boot', orm: 'hibernate', validation: 'jakarta-validation', testing: 'junit' },
