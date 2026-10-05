@@ -23,28 +23,56 @@ export function parseExecutionFailure(result: SandboxResult, agentName?: string)
   const affectedFilesSet = new Set<string>();
   const relevantLines: string[] = [];
 
-  // Match typical test failures across Jest, Vitest, JUnit, Pytest, Playwright
-  const testFailRegex = /(?:✕|FAIL|FAILED|Error:|AssertionError|FAILURES!|expected|received).*/i;
+  // Enhanced regex patterns for capturing language-specific stack traces and core errors
+  const testFailRegex = /(?:✕|FAIL|FAILED|Error:|AssertionError|FAILURES!|expected|received|Exception:|Unhandled Rejection|panic:).*/i;
   const fileRefRegex = /(?:at\s+|in\s+|\.\/|src\/|test\/|specs\/)([\w\-\/\.]+\.(?:ts|js|jsx|tsx|java|py|go|cs)):(\d+)?/g;
+  
+  // Framework noise filters (Mini-RAG technique to shrink context window)
+  const noisyStackRegex = /node_modules|org\.springframework|java\.base|sun\.reflect|pytest|xunit|nunit|mass_transit/i;
+
+  let inStackTrace = false;
+  let currentTrace = [];
 
   for (const line of lines) {
-    if (testFailRegex.test(line)) {
+    // Start of a stack trace or exception block
+    if (testFailRegex.test(line) || line.includes('Traceback (most recent call last):') || line.includes('Exception in thread')) {
+      inStackTrace = true;
       relevantLines.push(line.trim());
       if (line.includes('✕') || line.includes('FAIL') || line.includes('Test')) {
         failedTestCases.push(line.trim());
       }
+    } else if (inStackTrace) {
+      // Capture stack trace lines, filtering out framework internals to compress context
+      const isStackLine = /^\s*(at |File |line |\s+\w+\.\w+\(|\s*--->)/i.test(line);
+      
+      if (isStackLine) {
+        if (!noisyStackRegex.test(line)) {
+          relevantLines.push(line.trim());
+        }
+      } else if (line.trim() === '') {
+        // Empty lines might mean end of stack trace, but we tolerate a few
+        inStackTrace = false; 
+      } else {
+        // If it's a message attached to an exception, keep it
+        relevantLines.push(line.trim());
+      }
     }
 
+    // Extract affected files from the raw line regardless of stack context
     let match;
     while ((match = fileRefRegex.exec(line)) !== null) {
-      if (match[1] && !match[1].includes('node_modules')) {
+      if (match[1] && !noisyStackRegex.test(match[1])) {
         affectedFilesSet.add(match[1]);
       }
     }
   }
 
+  // Deduplicate and limit lines to drastically reduce LLM context window
+  const uniqueRelevantLines = [...new Set(relevantLines)];
   const affectedFiles = Array.from(affectedFilesSet);
-  const cleanedStackTrace = relevantLines.slice(0, 30).join('\n') || combinedLog.slice(0, 1500);
+  
+  // The 'Mini-RAG' compressor: Only keep the most critical 25 lines (e.g. top of the stack)
+  const cleanedStackTrace = uniqueRelevantLines.slice(0, 25).join('\n') || combinedLog.slice(0, 1000);
 
   return {
     summary: `Suite execution failed with exit code ${result.exitCode}. Found ${failedTestCases.length || 1} failure points.`,

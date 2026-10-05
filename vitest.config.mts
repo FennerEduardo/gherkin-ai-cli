@@ -5,16 +5,24 @@ export default defineConfig({
     globals: true,
     environment: 'node',
     testTimeout: 20000,
-    exclude: [...configDefaults.exclude, 'tests/e2e/**', 'tests/integration/web.spec.ts'],
+    exclude: [...configDefaults.exclude, 'tests/e2e/**'],
     coverage: {
       provider: 'v8',
-      reporter: ['text', 'json', 'html'],
-      include: ['src/core/**/*.ts'],
+      reporter: ['text-summary', 'json', 'html'],
+      include: ['src/**/*.ts'],
       thresholds: {
-        lines: 70,
-        functions: 65,
-        branches: 60,
-        statements: 70
+        // Ratchet: whole-codebase floor measured for 3.0 — raise it, never lower it.
+        lines: 49,
+        statements: 49,
+        functions: 55,
+        branches: 47,
+        // The analysis/governance core keeps the stricter historic bar.
+        'src/core/**/*.ts': {
+          lines: 70,
+          functions: 65,
+          branches: 60,
+          statements: 70
+        }
       }
     }
   }

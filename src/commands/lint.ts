@@ -2,6 +2,8 @@
    gherkin-ai-cli - 'lint' Command Handler
    ========================================================================== */
 
+import { emitJson } from '../utils/output';
+import { ExitCode } from '../core/errors';
 import fs from 'fs';
 import path from 'path';
 import chalk from 'chalk';
@@ -128,7 +130,7 @@ export async function handleLintCommand(options: LintCommandOptions = {}): Promi
   }
 
   if (options.json) {
-    console.log(JSON.stringify(allResults, null, 2));
+    emitJson(allResults);
     return;
   }
 
@@ -142,7 +144,7 @@ export async function handleLintCommand(options: LintCommandOptions = {}): Promi
   console.log('');
 
   if (!allPassed) {
-    process.exitCode = 1;
+    process.exitCode = ExitCode.GATE_FAILED;
   }
 }
 

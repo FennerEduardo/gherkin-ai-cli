@@ -2,6 +2,8 @@
    gherkin-ai-cli - 'agent-log' Command Handler
    ========================================================================== */
 
+import { emitJson } from '../utils/output';
+import { getTelemetry } from '../core/telemetry';
 import { AgentLogManager } from '../core/agent-logger';
 import { logger } from '../utils/logger';
 
@@ -17,6 +19,8 @@ export async function handleAgentLogCommand(options: {
 
   if (options.clear) {
     manager.clearLogs();
+    // Clearing is itself a security-relevant event: keep a record in the append-only audit trail.
+    getTelemetry().recordAudit({ action: 'agent-log:clear', status: 'SUCCESS' });
     logger.success('Agent action logs cleared successfully.');
     return;
   }
@@ -32,7 +36,7 @@ export async function handleAgentLogCommand(options: {
   const records = manager.getLogs(options.feature);
   
   if (options.json) {
-    console.log(JSON.stringify(records, null, 2));
+    emitJson(records);
     return;
   }
 

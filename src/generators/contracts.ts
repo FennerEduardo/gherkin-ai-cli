@@ -2,6 +2,14 @@
    gherkin-ai-cli - Multi-Language Domain Contracts & OpenAPI Generator
    ========================================================================== */
 
+import { featurePascalName } from '../utils/naming';
+import { CLI_VERSION } from '../version';
+import { renderPom } from './kernel/java';
+import { renderGoMod } from './kernel/go';
+import { renderGradleKts, renderGradleSettings } from './kernel/kotlin';
+import { toKebab } from './kernel/domain-model';
+import { TS_RUNTIME_DEPENDENCIES, TS_RUNTIME_DEV_DEPENDENCIES } from './kernel/runtime/typescript';
+import { NEST_DEPENDENCIES, NodeProfile, PRISMA_VERSION, prismaAdapter, resolveNodeProfile } from './node-profile';
 import { ParsedFeature } from '../core/gherkin-parser';
 import { GherkinAIConfig } from '../core/config';
 import { getArchRule } from '../core/arch-rules';
@@ -10,6 +18,7 @@ import { generatePythonContracts } from './contracts-python';
 import { generatePhpContracts } from './contracts-php';
 import { generateGoContracts } from './contracts-go';
 import { generateCsharpContracts } from './contracts-csharp';
+import { generateKotlinContracts } from './contracts-kotlin';
 
 export interface GeneratedContractsOutput {
   contractsTs: string;
@@ -31,12 +40,97 @@ export interface GeneratedContractsOutput {
 
 import { SpecificationIR } from '../core/semantic-ir';
 
+/*
+ * Dependencies the generated Node sources import. NestJS and Prisma majors follow
+ * stack.frameworkVersion / stack.ormVersion (see node-profile.ts); every combination is
+ * verified by a golden build. ts-jest does not support TypeScript 7 yet.
+ */
+const TS_TEST_TOOLING = {
+  '@cucumber/cucumber': '^13.2.0',
+  '@types/jest': '^30.0.0',
+  '@types/node': '^22.0.0',
+  '@types/supertest': '^6.0.0',
+  jest: '^30.2.0',
+  supertest: '^7.1.0',
+  'ts-jest': '^29.4.0',
+  tsx: '^4.20.0',
+  typescript: '~6.0.0'
+};
+
+type NodePackage = { type?: 'module'; scripts: Record<string, string>; dependencies: Record<string, string>; devDependencies: Record<string, string> };
+
+/** Unit tests, then BDD scenarios (pending steps do not fail the run). ESM runs Jest with VM modules and Cucumber through tsx. */
+function testScript(esm: boolean): string {
+  return esm
+    ? 'node --experimental-vm-modules node_modules/jest/bin/jest.js && node --import tsx node_modules/@cucumber/cucumber/bin/cucumber.js'
+    : 'jest && cucumber-js';
+}
+
+/** Runs test/integration against DATABASE_URL / AMQP_URL (docs/RUNTIME-KERNEL.md). */
+function integrationScript(esm: boolean): string {
+  return esm
+    ? 'node --experimental-vm-modules node_modules/jest/bin/jest.js -c jest.integration.config.js --runInBand'
+    : 'jest -c jest.integration.config.js --runInBand';
+}
+
+function prismaDependencies(profile: NodeProfile): { dependencies: Record<string, string>; devDependencies: Record<string, string> } {
+  const version = PRISMA_VERSION[profile.prisma];
+  return {
+    dependencies: {
+      '@prisma/client': version,
+      ...(profile.prisma === '7' ? { [prismaAdapter(profile.database).pkg]: version } : {})
+    },
+    devDependencies: { prisma: version }
+  };
+}
+
+function nodeDependencies(config: GherkinAIConfig): NodePackage {
+  const framework = (config.stack.framework || '').toLowerCase();
+  const profile = resolveNodeProfile(config);
+  const prisma = config.stack.orm === 'prisma' ? prismaDependencies(profile) : { dependencies: {}, devDependencies: {} };
+  if (framework === 'express') {
+    return {
+      scripts: { start: 'node dist/src/server', build: 'tsc -p tsconfig.build.json', test: testScript(false), 'test:integration': integrationScript(false) },
+      dependencies: { express: '^5.1.0', zod: '^4.1.0', ...TS_RUNTIME_DEPENDENCIES, ...prisma.dependencies },
+      devDependencies: { ...TS_TEST_TOOLING, ...TS_RUNTIME_DEV_DEPENDENCIES, '@types/express': '^5.0.0', ...prisma.devDependencies }
+    };
+  }
+  if (framework !== 'nestjs' && framework !== 'nest') {
+    return { scripts: { start: 'node dist/main', build: 'tsc', test: 'jest' }, dependencies: {}, devDependencies: {} };
+  }
+  // The NestJS preset always persists through Prisma.
+  const nestPrisma = prismaDependencies(profile);
+  return {
+    ...(profile.esm ? { type: 'module' as const } : {}),
+    scripts: {
+      start: profile.esm ? 'node dist/src/main.js' : 'node dist/src/main',
+      build: 'tsc -p tsconfig.build.json',
+      test: testScript(profile.esm),
+      'test:integration': integrationScript(profile.esm)
+    },
+    dependencies: {
+      ...NEST_DEPENDENCIES[profile.nest],
+      ...nestPrisma.dependencies,
+      ...TS_RUNTIME_DEPENDENCIES,
+      'reflect-metadata': '^0.2.0',
+      rxjs: '^7.8.0',
+      zod: '^4.1.0'
+    },
+    devDependencies: {
+      ...TS_TEST_TOOLING,
+      ...TS_RUNTIME_DEV_DEPENDENCIES,
+      '@types/express': '^5.0.0',
+      ...nestPrisma.devDependencies
+    }
+  };
+}
+
 export function generateContracts(parsed: ParsedFeature, ir: SpecificationIR, config: GherkinAIConfig): GeneratedContractsOutput {
   const arch = getArchRule(config.architecture);
   const spec = getStackSpec(config.stack);
   const isCqrs = config.architecture === 'cqrs';
 
-  const featurePascal = parsed.featureName.replace(/[^a-zA-Z0-9]/g, '');
+  const featurePascal = featurePascalName(parsed);
 
   const cqrsSection = isCqrs ? `
 // --------------------------------------------------------------------------
@@ -66,7 +160,7 @@ export interface ISnapshotStore<T> {
    Feature: ${parsed.featureName}
    Architecture: ${arch.name}
    Stack: ${config.stack.language} + ${config.stack.framework} + ${config.stack.orm}
-   Generated by gherkin-ai CLI v2.6.1
+   Generated by gherkin-ai CLI v${CLI_VERSION}
    ========================================================================== */
 
 import { z } from 'zod';
@@ -91,13 +185,13 @@ ${ir.fields.map(f => `    ${f.name}: ${f.type};`).join('\n')}
 // 2. Command DTO Schemas (Zod Validation)
 // --------------------------------------------------------------------------
 export const ${featurePascal}CommandSchema = z.object({
-  requestId: z.string().uuid(),
-  timestamp: z.string().datetime(),
+  requestId: z.uuid(),
+  timestamp: z.iso.datetime(),
   payload: z.object({
 ${ir.fields.map(f => {
-  let zType = f.type === 'number' ? 'z.number()' : 'z.string()';
+  const email = f.type !== 'number' && f.validations.some((v: any) => v.type === 'email');
+  let zType = f.type === 'number' ? 'z.number()' : email ? 'z.email()' : 'z.string()';
   f.validations.forEach((v: any) => {
-    if (v.type === 'email') zType += '.email()';
     if (v.type === 'range' && v.params) zType += `.min(${v.params.min || 0}).max(${v.params.max || 100})`;
   });
   return `    ${f.name}: ${zType}`;
@@ -305,18 +399,25 @@ ${effectiveProhibited.map(p => `- \`${p}\``).join('\n')}
     };
   } else if (config.stack.language === 'php') {
     nativeContract = {
-      filename: `${featurePascal.toLowerCase()}.contract.php`,
+      // Several declarations in one file (not PSR-4 autoloaded); kept as a reference contract and linted.
+      filename: `contracts/${featurePascal.toLowerCase()}.contract.php`,
       content: generatePhpContracts(parsed, ir, config)
     };
   } else if (config.stack.language === 'go') {
     nativeContract = {
-      filename: `${featurePascal.toLowerCase()}.contract.go`,
+      // Inside the module so `go build ./...` type-checks it.
+      filename: `internal/contracts/${featurePascal.toLowerCase()}.contract.go`,
       content: generateGoContracts(parsed, ir, config)
     };
   } else if (config.stack.language === 'csharp') {
     nativeContract = {
       filename: `${featurePascal.toLowerCase()}.contract.cs`,
       content: generateCsharpContracts(parsed, ir, config)
+    };
+  } else if (config.stack.language === 'kotlin') {
+    nativeContract = {
+      filename: `${featurePascal.toLowerCase()}.contract.kt`,
+      content: generateKotlinContracts(parsed, ir, config)
     };
   }
 
@@ -330,6 +431,7 @@ ${effectiveProhibited.map(p => `- \`${p}\``).join('\n')}
         content: `<Project Sdk="Microsoft.NET.Sdk.Web">
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>${(config.projectName || 'MyEnterpriseApp').replace(/[^a-zA-Z0-9.]/g, '') || 'MyEnterpriseApp'}</RootNamespace>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
   </PropertyGroup>
@@ -338,41 +440,57 @@ ${effectiveProhibited.map(p => `- \`${p}\``).join('\n')}
     <PackageReference Include="FluentValidation.AspNetCore" Version="11.3.0" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="8.0.2" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Tools" Version="8.0.2" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore.PostgreSQL" Version="8.0.2" />
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="8.0.2" />
+    <PackageReference Include="Npgsql" Version="8.0.5" />
+    <PackageReference Include="RabbitMQ.Client" Version="6.8.1" />
     <PackageReference Include="MassTransit.RabbitMQ" Version="8.1.3" />
-    <PackageReference Include="Reqnroll.xUnit" Version="2.0.3" />
-    <PackageReference Include="Testcontainers" Version="3.7.0" />
-    <PackageReference Include="xunit" Version="2.7.0" />
-    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="8.0.2" />
     <PackageReference Include="Polly.Core" Version="8.3.1" />
     <PackageReference Include="Microsoft.Extensions.Http.Resilience" Version="8.3.0" />
-    <PackageReference Include="OpenTelemetry.Extensions.Hosting" Version="1.7.0" />
+    <PackageReference Include="OpenTelemetry.Extensions.Hosting" Version="1.9.0" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.9.0" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.Http" Version="1.9.0" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.Runtime" Version="1.9.0" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.EntityFrameworkCore" Version="1.0.0-beta.12" />
+    <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.9.0" />
+    <PackageReference Include="Microsoft.Extensions.ServiceDiscovery" Version="8.2.0" />
+    <PackageReference Include="Swashbuckle.AspNetCore" Version="6.5.0" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- The .NET Aspire AppHost is its own project (Aspire SDK); keep it out of this compilation unit. -->
+    <Compile Remove="src/Api/AppHost/**" />
+    <!-- Tests are their own project (tests/*.Tests) referencing this one. -->
+    <Compile Remove="tests/**" />
+    <!-- Reqnroll writes feature code-behind next to the .feature files; it belongs to the test project. -->
+    <Compile Remove="features/**" />
+    <None Remove="tests/**" />
+    <Content Remove="tests/**" />
   </ItemGroup>
 </Project>`
       },
       {
         filename: `validate.sh`,
         content: `#!/bin/bash
-echo "Running .NET Build validation inside Docker..."
-docker run --rm -v $(pwd):/app -w /app mcr.microsoft.com/dotnet/sdk:8.0 dotnet build
+# Builds the app and runs the generated unit + BDD tests inside the .NET 8 SDK image.
+# Integration tests (Category=Integration) need Docker/Testcontainers and run separately.
+set -e
+echo "Running .NET build and tests inside Docker..."
+docker run --rm -v "$(pwd)":/app -w /app -e DOTNET_CLI_TELEMETRY_OPTOUT=1 -e DOTNET_NOLOGO=1 mcr.microsoft.com/dotnet/sdk:8.0 \\
+  sh -c 'dotnet build tests/*/*.Tests.csproj -nologo -v q && dotnet test tests/*/*.Tests.csproj -nologo -v q --no-build --filter "Category!=Integration&Category!=Testcontainers"'
 `
       }
     ];
   } else if (config.stack.language === 'java') {
     projectRootFile = {
       filename: `pom.xml`,
-      content: `<?xml version="1.0" encoding="UTF-8"?>
-<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-  xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
-  <modelVersion>4.0.0</modelVersion>
-  <groupId>com.example</groupId>
-  <artifactId>${config.projectName || 'demo'}</artifactId>
-  <version>0.0.1-SNAPSHOT</version>
-  <dependencies>
-    <!-- Add spring boot and persistence dependencies here -->
-  </dependencies>
-</project>`
+      content: renderPom(toKebab(config.projectName || 'demo'))
     };
+  } else if (config.stack.language === 'kotlin') {
+    projectRootFile = [
+      { filename: `build.gradle.kts`, content: renderGradleKts() },
+      { filename: `settings.gradle.kts`, content: renderGradleSettings(toKebab(config.projectName || 'demo')) }
+    ];
+  } else if (config.stack.language === 'go') {
+    projectRootFile = { filename: 'go.mod', content: renderGoMod(toKebab(config.projectName || 'app')) };
   } else if (['typescript', 'javascript', 'node'].includes(config.stack.language || '')) {
     projectRootFile = {
       filename: `package.json`,
@@ -380,12 +498,7 @@ docker run --rm -v $(pwd):/app -w /app mcr.microsoft.com/dotnet/sdk:8.0 dotnet b
         name: config.projectName || 'my-project',
         version: '1.0.0',
         private: true,
-        scripts: {
-          start: 'node dist/main',
-          build: 'tsc',
-          test: 'jest'
-        },
-        dependencies: {}
+        ...nodeDependencies(config)
       }, null, 2)
     };
   }

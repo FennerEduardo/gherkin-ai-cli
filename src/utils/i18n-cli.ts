@@ -2,6 +2,7 @@
    gherkin-ai-cli - Interactive i18n Engine for CLI (EN / ES)
    ========================================================================== */
 
+import { isNonInteractive } from '../core/run-context';
 import os from 'os';
 import path from 'path';
 import inquirer from 'inquirer';
@@ -130,8 +131,8 @@ export function saveGlobalUserLocale(locale: SupportedLocale): void {
 }
 
 export async function promptOrFallback(questions: any[], options?: { yes?: boolean; nonInteractive?: boolean }): Promise<any> {
-  const isNonInteractive = options?.yes || options?.nonInteractive || process.env.CI === 'true' || process.env.GHK_NON_INTERACTIVE === 'true';
-  if (isNonInteractive) {
+  const nonInteractive = isNonInteractive(options);
+  if (nonInteractive) {
     const answers: any = {};
     for (const q of questions) {
       answers[q.name] = q.default !== undefined ? q.default : (q.type === 'confirm' ? true : '');

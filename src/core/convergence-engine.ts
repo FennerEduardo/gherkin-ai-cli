@@ -9,7 +9,8 @@ import fs from 'fs';
 import path from 'path';
 import { ParsedFeature } from './gherkin-parser';
 import { SpecificationIR, EnrichedScenario, ScenarioCategory } from './semantic-ir';
-import { buildIR } from './ir-builder';
+import { buildIR, getSourceFeature } from './ir-builder';
+import { buildDomainModel } from '../generators/kernel/domain-model';
 import { lintSpecification } from './specification-linter';
 import { loadConstitution } from './constitution';
 import { loadConfig } from './config';
@@ -24,6 +25,8 @@ export interface ConvergenceDimension {
   maxScore: number;        // Always 100
   details: string[];
   status: 'pass' | 'warn' | 'fail';
+  /** What the score is computed from: the generated/implemented artifacts, the specification alone, or test reports. */
+  basis?: 'artifacts' | 'specification' | 'reports';
 }
 
 export interface ConvergenceReport {
@@ -43,19 +46,35 @@ export interface ConvergenceReport {
 // Convergence Engine
 // ---------------------------------------------------------------------------
 
+export interface ConvergenceOptions {
+  /** Directory of the generated artifacts (config.outputDir). Defaults to the project config value. */
+  outputDir?: string;
+}
+
+function configuredOutputDir(projectDir: string): string {
+  try {
+    return loadConfig(path.join(projectDir, 'gherkin-ai.config.json')).outputDir || './';
+  } catch {
+    return './generated-specs';
+  }
+}
+
 export function calculateConvergence(
   parsed: ParsedFeature,
   sourceFile: string,
-  projectDir: string = process.cwd()
+  projectDir: string = process.cwd(),
+  options: ConvergenceOptions = {}
 ): ConvergenceReport {
   const ir = buildIR(parsed, sourceFile);
-  return checkConvergence(ir, projectDir);
+  return checkConvergence(ir, projectDir, options);
 }
 
 export function checkConvergence(
   ir: SpecificationIR,
-  projectDir: string = process.cwd()
+  projectDir: string = process.cwd(),
+  options: ConvergenceOptions = {}
 ): ConvergenceReport {
+  const outputDir = options.outputDir ?? configuredOutputDir(projectDir);
   const constitution = loadConstitution(projectDir);
   const dimensions: ConvergenceDimension[] = [];
   const recommendations: string[] = [];
@@ -78,7 +97,7 @@ export function checkConvergence(
   }
 
   // 3. Contract Coverage
-  const contractCoverage = evaluateContractCoverage(ir, projectDir);
+  const contractCoverage = evaluateContractCoverage(ir, projectDir, outputDir);
   dimensions.push(contractCoverage);
 
   // 4. Architecture Compliance
@@ -97,7 +116,7 @@ export function checkConvergence(
   dimensions.push(traceability);
 
   // 7. Code Coverage (reads real coverage reports from test tools)
-  const codeCoverage = evaluateCodeCoverage(projectDir);
+  const codeCoverage = evaluateCodeCoverage(projectDir, outputDir);
   dimensions.push(codeCoverage);
   if (codeCoverage.score < 80 && codeCoverage.score > 0) {
     recommendations.push(`Code coverage is at ${codeCoverage.score}%. Run your test suite with \`--coverage\` to improve.`);
@@ -165,6 +184,7 @@ function evaluateSpecificationQuality(
 
   return {
     name: 'Specification Quality',
+    basis: 'specification',
     score: lintScore,
     maxScore: 100,
     details,
@@ -194,6 +214,7 @@ function evaluateScenarioCompleteness(ir: SpecificationIR): ConvergenceDimension
 
   return {
     name: 'Scenario Completeness',
+    basis: 'specification',
     score,
     maxScore: 100,
     details,
@@ -201,45 +222,85 @@ function evaluateScenarioCompleteness(ir: SpecificationIR): ConvergenceDimension
   };
 }
 
+const SOURCE_EXTENSIONS = /\.(ts|tsx|js|cs|java|kt|py|go|php|rb|ex|exs|rs|dart|proto|graphql)$/;
+const SKIP_DIRS = new Set(['node_modules', '.git', 'dist', 'build', 'bin', 'obj', 'target', '_build', 'deps', 'vendor', '.dart_tool', 'coverage']);
+
+function readSources(dir: string, limit = 3000): string[] {
+  const out: string[] = [];
+  const walk = (d: string) => {
+    let entries: fs.Dirent[];
+    try { entries = fs.readdirSync(d, { withFileTypes: true }); } catch { return; }
+    for (const e of entries) {
+      if (out.length >= limit) return;
+      const full = path.join(d, e.name);
+      if (e.isDirectory()) { if (!SKIP_DIRS.has(e.name)) walk(full); }
+      else if (SOURCE_EXTENSIONS.test(e.name)) { try { out.push(fs.readFileSync(full, 'utf8')); } catch { /* unreadable */ } }
+    }
+  };
+  walk(dir);
+  return out;
+}
+
+/** "/orders/:id" and "/orders/{orderId}" compare equal. */
+const normalizeRoute = (p: string) => p.replace(/:\w+/g, '{}').replace(/\{[^}]+\}/g, '{}').replace(/\/+$/, '').toLowerCase();
+
+const readJson = (file: string): any => { try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return undefined; } };
+
+/**
+ * Contract coverage, checked against the artifacts (not against file names):
+ * - every endpoint the spec implies exists in openapi.json with its method and status codes;
+ * - every domain event has an AsyncAPI channel/message;
+ * - the aggregate, every command and every event of the domain model is declared in the sources.
+ * Checks that do not apply (e.g. no endpoints in the spec) are left out of the score.
+ */
 function evaluateContractCoverage(
   ir: SpecificationIR,
-  projectDir: string
+  projectDir: string,
+  outputDir: string
 ): ConvergenceDimension {
   const details: string[] = [];
-  let score = 0;
+  const parts: { name: string; found: number; total: number }[] = [];
+  const outAbs = path.resolve(projectDir, outputDir);
 
-  const contractsPath = path.join(projectDir, 'generated-specs', 'contracts.ts');
-  const openApiPath = path.join(projectDir, 'generated-specs', 'openapi.json');
-
-  if (fs.existsSync(contractsPath)) {
-    score += 40;
-    details.push('TypeScript contracts file found.');
-    
-    const contractContent = fs.readFileSync(contractsPath, 'utf8');
-    const featureNameNormalized = ir.featureName.replace(/[^a-zA-Z]/g, '');
-    if (contractContent.includes(featureNameNormalized)) {
-      score += 20;
-      details.push('Contracts match current feature specification.');
-    } else {
-      details.push('Contracts may be stale — feature name not found in contracts file.');
+  // 1. OpenAPI: method + path (+ response codes) per inferred endpoint.
+  if (ir.apiEndpoints.length) {
+    const openapi = readJson(path.join(outAbs, 'openapi.json'));
+    const paths: Record<string, Record<string, any>> = openapi?.paths ?? {};
+    const byRoute = new Map(Object.entries(paths).map(([route, ops]) => [normalizeRoute(route), ops]));
+    let found = 0;
+    for (const ep of ir.apiEndpoints) {
+      const op = byRoute.get(normalizeRoute(ep.path))?.[ep.method.toLowerCase()];
+      const missingCodes = op ? ep.httpCodes.map(c => String(c.code)).filter(code => !(code in (op.responses ?? {}))) : [];
+      if (op && missingCodes.length === 0) found++;
+      else details.push(op ? `OpenAPI ${ep.method} ${ep.path} lacks responses ${missingCodes.join(', ')}.` : `OpenAPI has no ${ep.method} ${ep.path}.`);
     }
-  } else {
-    details.push('No contracts file found. Run `ghk generate` to create contracts.');
+    if (!openapi) details.push(`No openapi.json in ${outputDir}. Run \`ghk generate\`.`);
+    parts.push({ name: 'OpenAPI operations', found, total: ir.apiEndpoints.length });
   }
 
-  if (fs.existsSync(openApiPath)) {
-    score += 20;
-    details.push('OpenAPI specification found.');
-  } else {
-    details.push('No OpenAPI spec found.');
+  // 2. AsyncAPI: one message/channel per domain event.
+  if (ir.events.length) {
+    const asyncapiText = (() => { try { return fs.readFileSync(path.join(outAbs, 'asyncapi.json'), 'utf8'); } catch { return ''; } })();
+    const missing = ir.events.map(e => String(e.name)).filter(name => !asyncapiText.includes(name.replace(/[^A-Za-z0-9]/g, '')));
+    parts.push({ name: 'AsyncAPI events', found: ir.events.length - missing.length, total: ir.events.length });
+    if (missing.length) details.push(`AsyncAPI is missing: ${missing.slice(0, 5).join(', ')}${missing.length > 5 ? ', ...' : ''}.`);
   }
 
-  if (ir.apiEndpoints.length > 0) {
-    score += 20;
-    details.push(`${ir.apiEndpoints.length} API endpoint(s) inferred from specification.`);
+  // 3. Domain model types declared in the generated / implemented sources.
+  const source = getSourceFeature(ir);
+  if (source) {
+    const model = buildDomainModel(source);
+    const expected = [`${model.pascal}Aggregate`, ...model.commands.map(c => c.name), ...model.commands.map(c => c.event)];
+    const corpus = readSources(outAbs).join('\n');
+    const missing = [...new Set(expected)].filter(name => !new RegExp(`\\b${name}\\b`).test(corpus));
+    parts.push({ name: 'Domain types', found: new Set(expected).size - missing.length, total: new Set(expected).size });
+    if (missing.length) details.push(`Not found in ${outputDir}: ${missing.slice(0, 6).join(', ')}${missing.length > 6 ? ', ...' : ''}.`);
   }
 
-  score = Math.min(100, score);
+  for (const p of parts) details.unshift(`${p.name}: ${p.found}/${p.total}`);
+  const total = parts.reduce((s, p) => s + p.total, 0);
+  const score = total ? Math.round((parts.reduce((s, p) => s + p.found, 0) / total) * 100) : 0;
+  if (!total) details.push('Nothing to check: the specification implies no endpoints, events or commands.');
 
   return {
     name: 'Contract Coverage',
@@ -247,6 +308,7 @@ function evaluateContractCoverage(
     maxScore: 100,
     details,
     status: score >= 80 ? 'pass' : score >= 50 ? 'warn' : 'fail',
+    basis: 'artifacts'
   };
 }
 
@@ -262,6 +324,7 @@ function evaluateArchitectureCompliance(
     details.push('No constitution found. Architecture compliance cannot be fully evaluated.');
     return {
       name: 'Architecture Compliance',
+      basis: 'artifacts',
       score: 50,
       maxScore: 100,
       details,
@@ -297,6 +360,7 @@ function evaluateArchitectureCompliance(
 
   return {
     name: 'Architecture Compliance',
+    basis: 'artifacts',
     score,
     maxScore: 100,
     details,
@@ -345,6 +409,7 @@ function evaluateSecurityPolicy(
 
   return {
     name: 'Security Policy',
+    basis: 'specification',
     score,
     maxScore: 100,
     details,
@@ -364,6 +429,7 @@ function evaluateTraceability(ir: SpecificationIR): ConvergenceDimension {
 
   return {
     name: 'Traceability',
+    basis: 'specification',
     score: Math.min(100, score),
     maxScore: 100,
     details,
@@ -391,17 +457,23 @@ interface CoverageSummaryReport {
   };
 }
 
-function evaluateCodeCoverage(projectDir: string): ConvergenceDimension {
+function evaluateCodeCoverage(projectDir: string, outputDir = './'): ConvergenceDimension {
   const details: string[] = [];
   const config = loadConfig();
   const target = config.rules?.coverageTarget || 85;
 
-  // Search for coverage report in common locations
-  const candidatePaths = [
-    path.join(projectDir, 'coverage', 'coverage-summary.json'),  // Istanbul/c8/vitest default
-    path.join(projectDir, 'coverage', 'coverage-final.json'),
-    path.join(projectDir, '.nyc_output', 'coverage-summary.json'),
-  ];
+  // Search for coverage reports in common locations, in the project root and in the output directory.
+  const roots = [...new Set([projectDir, path.resolve(projectDir, outputDir)])];
+  const candidatePaths = roots.flatMap(root => [
+    path.join(root, 'coverage', 'coverage-summary.json'),  // Istanbul/c8/vitest default
+    path.join(root, 'coverage', 'coverage-final.json'),
+    path.join(root, '.nyc_output', 'coverage-summary.json'),
+    path.join(root, 'target', 'site', 'jacoco', 'jacoco.xml'), // Java JaCoCo
+    path.join(root, 'coverage', 'jacoco.xml'),
+    path.join(root, 'coverage.cobertura.xml'), // .NET Cobertura
+    path.join(root, 'coverage', 'coverage.cobertura.xml'),
+    path.join(root, 'TestResults', 'coverage.cobertura.xml'), // .NET
+  ]);
 
   let summaryPath: string | null = null;
   for (const p of candidatePaths) {
@@ -416,7 +488,7 @@ function evaluateCodeCoverage(projectDir: string): ConvergenceDimension {
     details.push(`→ Run your test suite with --coverage (e.g., \`vitest run --coverage\`, \`npx jest --coverage\`)`);
     details.push(`→ Expected location: coverage/coverage-summary.json`);
     return {
-      name: 'Code Coverage',
+      name: 'Code Coverage', basis: 'reports',
       score: 0,
       maxScore: 100,
       details,
@@ -426,13 +498,21 @@ function evaluateCodeCoverage(projectDir: string): ConvergenceDimension {
 
   try {
     const raw = fs.readFileSync(summaryPath, 'utf8');
+
+    if (summaryPath.endsWith('jacoco.xml')) {
+       return parseJacoco(raw, target, summaryPath, projectDir);
+    }
+    if (summaryPath.endsWith('cobertura.xml')) {
+       return parseCobertura(raw, target, summaryPath, projectDir);
+    }
+
     const report: CoverageSummaryReport = JSON.parse(raw);
     const total = report.total;
 
     if (!total || !total.lines) {
       details.push('Coverage report found but format is not recognized.');
       return {
-        name: 'Code Coverage',
+        name: 'Code Coverage', basis: 'reports',
         score: 0,
         maxScore: 100,
         details,
@@ -445,11 +525,63 @@ function evaluateCodeCoverage(projectDir: string): ConvergenceDimension {
     const functionsPct = Math.round(total.functions?.pct || 0);
     const statementsPct = Math.round(total.statements?.pct || 0);
 
+    return calculateFinalCoverageScore(linesPct, branchesPct, functionsPct, statementsPct, target, summaryPath, projectDir);
+  } catch (err: any) {
+    details.push(`Failed to parse coverage report: ${err.message}`);
+    return {
+      name: 'Code Coverage', basis: 'reports',
+      score: 0,
+      maxScore: 100,
+      details,
+      status: 'fail',
+    };
+  }
+}
+
+function parseJacoco(raw: string, target: number, summaryPath: string, projectDir: string): ConvergenceDimension {
+  try {
+    const instructionMatch = raw.match(/<counter type="INSTRUCTION" missed="(\d+)" covered="(\d+)"\/>/);
+    const branchMatch = raw.match(/<counter type="BRANCH" missed="(\d+)" covered="(\d+)"\/>/);
+    const methodMatch = raw.match(/<counter type="METHOD" missed="(\d+)" covered="(\d+)"\/>/);
+
+    const calcPct = (missed: string, covered: string) => {
+      const m = parseInt(missed, 10);
+      const c = parseInt(covered, 10);
+      if (m + c === 0) return 0;
+      return Math.round((c / (m + c)) * 100);
+    };
+
+    const linesPct = instructionMatch ? calcPct(instructionMatch[1], instructionMatch[2]) : 0;
+    const branchesPct = branchMatch ? calcPct(branchMatch[1], branchMatch[2]) : 0;
+    const functionsPct = methodMatch ? calcPct(methodMatch[1], methodMatch[2]) : 0;
+
+    return calculateFinalCoverageScore(linesPct, branchesPct, functionsPct, linesPct, target, summaryPath, projectDir);
+  } catch {
+    return { name: 'Code Coverage', basis: 'reports', score: 0, maxScore: 100, details: ['Failed to parse JaCoCo'], status: 'fail' };
+  }
+}
+
+function parseCobertura(raw: string, target: number, summaryPath: string, projectDir: string): ConvergenceDimension {
+  try {
+    const coverageMatch = raw.match(/<coverage[^>]*line-rate="([0-9.]+)"[^>]*branch-rate="([0-9.]+)"/);
+    if (!coverageMatch) throw new Error();
+
+    const linesPct = Math.round(parseFloat(coverageMatch[1]) * 100);
+    const branchesPct = Math.round(parseFloat(coverageMatch[2]) * 100);
+
+    return calculateFinalCoverageScore(linesPct, branchesPct, linesPct, linesPct, target, summaryPath, projectDir);
+  } catch {
+    return { name: 'Code Coverage', basis: 'reports', score: 0, maxScore: 100, details: ['Failed to parse Cobertura'], status: 'fail' };
+  }
+}
+
+function calculateFinalCoverageScore(linesPct: number, branchesPct: number, functionsPct: number, statementsPct: number, target: number, summaryPath: string, projectDir: string): ConvergenceDimension {
     // Weighted average: lines 40%, branches 30%, functions 20%, statements 10%
     const weightedScore = Math.round(
       linesPct * 0.4 + branchesPct * 0.3 + functionsPct * 0.2 + statementsPct * 0.1
     );
 
+    const details: string[] = [];
     details.push(`Lines: ${linesPct}% | Branches: ${branchesPct}% | Functions: ${functionsPct}% | Statements: ${statementsPct}%`);
     details.push(`Weighted score: ${weightedScore}% (target: ${target}%)`);
     details.push(`Source: ${path.relative(projectDir, summaryPath)}`);
@@ -459,20 +591,10 @@ function evaluateCodeCoverage(projectDir: string): ConvergenceDimension {
     }
 
     return {
-      name: 'Code Coverage',
+      name: 'Code Coverage', basis: 'reports',
       score: Math.min(100, weightedScore),
       maxScore: 100,
       details,
       status: weightedScore >= target ? 'pass' : weightedScore >= (target * 0.7) ? 'warn' : 'fail',
     };
-  } catch (err: any) {
-    details.push(`Failed to parse coverage report: ${err.message}`);
-    return {
-      name: 'Code Coverage',
-      score: 0,
-      maxScore: 100,
-      details,
-      status: 'fail',
-    };
-  }
 }

@@ -1,107 +1,60 @@
-# 📖 `gherkin-ai` CLI & Verification Guide (`v2.6.1` Stable)
+# Usage guide
 
-Comprehensive reference guide for using `gherkin-ai` AI agent implementation orchestrator, Docker sandbox isolation, audit trail history, context engineering, quality gates, and multi-agent workflows.
+A typical delivery flow with gherkin-ai and a coding agent. Every command is described in [COMMANDS.md](COMMANDS.md).
 
----
-
-## 📥 Installation & Execution Guide (`v2.6.1`)
-
-### 1. Global Installation via `npm`
-```bash
-npm install -g gherkin-ai
-```
-
-### 2. On-Demand Zero-Install via `npx`
-```bash
-npx -y gherkin-ai <command>
-```
-
-### 3. Project Dev Dependency via `npm`
-```bash
-npm install --save-dev gherkin-ai
-```
-
----
-
-## 📋 Command Summary
-
-| Command | Alias | Description |
-| :--- | :--- | :--- |
-| `ghk implement` | `impl` | Compiles AI Master Implementation Prompt & context package for a feature. |
-| `ghk audit` | `inventory`, `inv` | View developer audit trail history and SHA-256 spec/prompt versions (`--json` export). |
-| `ghk mcp install` | - | Auto-configures MCP server in Cursor and Claude Desktop. |
-| `ghk verify` | `v-loop` | Runs test harness with closed-loop verification and auto-fix. |
-| `ghk context build` | - | Packages project context and rules into `.ghe/`. |
-| `ghk quality` | `q` | Calculates feature quality score and enterprise quality gate. |
-| `ghk lint` | - | Runs 14 specification linting rules on Gherkin feature files. |
-| `ghk converge` | - | Measures specification-to-code alignment across 6 dimensions. |
-| `ghk impact` | - | Calculates blast radius and affected modules of spec changes. |
-| `ghk pr-review` | - | Automated PR review bot for spec and architecture compliance. |
-| `ghk autopilot` | `auto` | Executes end-to-end multi-agent delivery pipeline. |
-| `ghk create` | `c`, `new` | Interactive terminal wizard to write Gherkin specs. |
-| `ghk detect` | `d` | Auto-detects tech stack and architecture in workspace. |
-| `ghk generate` | `g` | Generates contracts, DTOs, fixtures, and agent prompt packages. |
-
----
-
-## 🤖 AI Agent Implementation Package (`ghk implement`)
+## 1. Set up the project
 
 ```bash
-# Generate Master Agent Implementation Prompt
-ghk implement --feature ./features/01-customer-management.feature
-
-# Ultra-Compact Low-Cost Prompt Mode (~90 tokens)
-ghk implement --feature ./features/01-customer-management.feature --compact
-
-# Include Docker Sandbox instructions
-ghk implement --feature ./features/01-customer-management.feature --docker
+npm install --save-dev gherkin-ai     # or install it globally
+ghk init --yes -l java -f spring-boot --frontendFramework vue
+ghk mcp install                       # optional: expose read-only tools to your agent
 ```
 
----
+Commit `gherkin-ai.config.json`. Organization-wide settings belong in the organization layer ([ENTERPRISE.md §1](ENTERPRISE.md#1-configuration-layers-and-organization-policy)).
 
-## 📋 Feature Inventory & Developer Audit Trail (`ghk audit`)
+## 2. Specify
+
+Write features with `ghk create`, by hand, or import them from Spec Kit with `ghk speckit import`. Then check their quality:
 
 ```bash
-# View audit history in CLI terminal table
-ghk audit
-
-# Export audit trail as raw JSON for CI/CD compliance
-ghk audit --json
-
-# Clear/purge audit history
-ghk audit --clear
+ghk lint --threshold 80
+ghk validate -f features/orders.feature
 ```
 
----
+Tag a feature with `@aggregate:Order` to choose the type name, and with `@critical` to raise its business criticality in risk scoring.
 
-## 🔁 Closed-Loop Verification (`ghk verify`)
+## 3. Generate and implement
 
 ```bash
-# Run verification with automatic agent self-healing loop
-ghk verify --auto-fix
-
-# Run inside an isolated Docker sandbox container
-ghk verify --auto-fix --docker
-
-# Custom retry limit
-ghk verify --auto-fix --max-retries 5
+ghk generate -f features/orders.feature     # contracts, domain kernel, tests, runtime
+ghk implement -f features/orders.feature    # prompt and context package for the agent
 ```
 
----
-
-## 📦 Context Engineering (`ghk context`)
+The generated project builds and its tests pass as generated. Its BDD steps are *pending*: the agent, or a developer, implements them. Limit what the agent may change to the feature's scope:
 
 ```bash
-# Generate .ghe/ directory with architecture, conventions, and security policies
-ghk context build
+ghk graph --scope features/orders.feature
+ghk firewall policy --feature features/orders.feature
 ```
 
----
-
-## 📊 Quality Score Index (`ghk quality`)
+## 4. Verify before merging
 
 ```bash
-ghk quality
+ghk verify                                  # project tests (add --docker for the sandbox)
+ghk converge --threshold 80                 # does the code still match the specification?
+ghk risk --base origin/main --fail-on HIGH  # how risky is this change?
+ghk graph                                   # which commands and events lack code or tests
 ```
 
-Evaluates quality dimensions and enforces quality gate before merge.
+In CI, use `--json` and rely on the exit codes. The recommended pipeline is in [ENTERPRISE.md §12](ENTERPRISE.md#12-ci-integration).
+
+## 5. Keep an audit trail
+
+```bash
+ghk audit                        # feature inventory: who generated what, with spec hashes
+ghk audit export --since 30d     # security audit trail (LLM calls, MCP calls, firewall decisions)
+```
+
+## 6. Measure the value
+
+Run `ghk bench` on a representative task to compare your agent with and without the specification and generated contracts ([ENTERPRISE.md §18](ENTERPRISE.md#18-measuring-value-ab-benchmark)).

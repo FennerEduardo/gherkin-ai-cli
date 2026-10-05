@@ -2,6 +2,10 @@ import { describe, it, expect } from 'vitest';
 import { parseGherkinText } from '../../src/core/gherkin-parser';
 import { calculateConvergence, checkConvergence } from '../../src/core/convergence-engine';
 import { buildIR } from '../../src/core/ir-builder';
+import { buildDomainModel } from '../../src/generators/kernel/domain-model';
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -90,6 +94,40 @@ describe('Convergence Engine', () => {
         expect(dim.details).toBeInstanceOf(Array);
         expect(['pass', 'warn', 'fail']).toContain(dim.status);
       }
+    });
+  });
+
+  describe('Contract Coverage dimension (artifact-based)', () => {
+    const write = (root: string, rel: string, content: string) => {
+      fs.mkdirSync(path.dirname(path.join(root, rel)), { recursive: true });
+      fs.writeFileSync(path.join(root, rel), content);
+    };
+    const coverage = (dir: string, outputDir: string) =>
+      calculateConvergence(parseGherkinText(COMPLETE_FEATURE), 'f.feature', dir, { outputDir }).dimensions.find(d => d.name === 'Contract Coverage')!;
+
+    it('reads the configured output directory and checks operations, events and declared types', () => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ghk-conv-'));
+      const ir = buildIR(parseGherkinText(COMPLETE_FEATURE), 'f.feature');
+      const model = buildDomainModel(parseGherkinText(COMPLETE_FEATURE));
+      // An openapi.json that only has the file, not the operations, must not score.
+      write(dir, 'out/openapi.json', JSON.stringify({ openapi: '3.0.3', paths: {} }));
+      const empty = coverage(dir, 'out');
+      expect(empty.basis).toBe('artifacts');
+      expect(empty.score).toBe(0);
+      expect(empty.details.some(d => d.startsWith('OpenAPI has no'))).toBe(true);
+
+      // Real operations with their status codes, plus the domain types in a source file, do.
+      const paths: Record<string, any> = {};
+      for (const ep of ir.apiEndpoints) {
+        paths[ep.path] = { ...(paths[ep.path] ?? {}), [ep.method.toLowerCase()]: { responses: Object.fromEntries(ep.httpCodes.map(c => [String(c.code), {}])) } };
+      }
+      write(dir, 'out/openapi.json', JSON.stringify({ openapi: '3.0.3', paths }));
+      write(dir, 'out/asyncapi.json', JSON.stringify({ messages: ir.events.map(e => e.name) }));
+      write(dir, 'out/src/domain.ts', [`export class ${model.pascal}Aggregate {}`, ...model.commands.flatMap(c => [`export type ${c.name} = {};`, `export type ${c.event} = {};`])].join('\n'));
+      expect(coverage(dir, 'out').score).toBe(100);
+      // The same artifacts outside outputDir are not counted.
+      expect(coverage(dir, 'elsewhere').score).toBe(0);
+      fs.rmSync(dir, { recursive: true, force: true });
     });
   });
 

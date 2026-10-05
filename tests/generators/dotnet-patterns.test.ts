@@ -28,7 +28,7 @@ describe('DotNet Pattern Generators', () => {
     expect(code).toContain('namespace TestNamespace.Application.Sagas');
     expect(code).toContain('public class PaymentSagaState : SagaStateMachineInstance');
     expect(code).toContain('public class PaymentSagaStateMachine : MassTransitStateMachine<PaymentSagaState>');
-    expect(code).toContain('CancelAuthorizationCommand');
+    expect(code).toContain('CompensatePaymentCommand');
   });
 
   it('should generate OpenTelemetry config', () => {

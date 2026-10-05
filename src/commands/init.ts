@@ -1,3 +1,6 @@
+import { CLI_VERSION } from '../version';
+import { isNonInteractive } from '../core/run-context';
+import { getStackSupport, supportWarning } from '../generators/stack-support';
 import fs from 'fs';
 import path from 'path';
 import YAML from 'yaml';
@@ -7,6 +10,56 @@ import { generateConstitution } from '../core/constitution';
 import { logger } from '../utils/logger';
 import { promptOrFallback } from '../utils/i18n-cli';
 import { ensureGitignore } from '../utils/gitignore-manager';
+
+function generateQualityGates(workspaceDir: string) {
+  const workflowDir = path.join(workspaceDir, '.github', 'workflows');
+  if (!fs.existsSync(workflowDir)) {
+    fs.mkdirSync(workflowDir, { recursive: true });
+  }
+
+  const workflowPath = path.join(workflowDir, 'gherkin-ai-gate.yml');
+  const workflowContent = `name: Gherkin-AI Enterprise Quality Gate
+
+on:
+  pull_request:
+    branches: [ "main", "develop" ]
+
+permissions:
+  contents: read
+
+jobs:
+  ghk-governance:
+    runs-on: ubuntu-latest
+    env:
+      GHK_NON_INTERACTIVE: 'true'
+      # Pinned on purpose: a quality gate must not change behavior when a new version is published.
+      GHK_VERSION: '${CLI_VERSION}'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Run Gherkin Specification Linting
+        run: npx --yes "gherkin-ai@$GHK_VERSION" lint --threshold 85 --json > ghk-lint.json
+
+      - name: Measure Specification Convergence
+        run: npx --yes "gherkin-ai@$GHK_VERSION" converge --threshold 80 --json > ghk-converge.json
+
+      - name: Keep reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gherkin-ai-reports
+          path: ghk-*.json
+`;
+  if (!fs.existsSync(workflowPath)) {
+    fs.writeFileSync(workflowPath, workflowContent, 'utf8');
+    logger.info('   ✔ Generated GitHub Actions Quality Gate (.github/workflows/gherkin-ai-gate.yml)');
+  }
+}
 
 const FRAMEWORKS_BY_LANG: Record<string, { name: string; value: string }[]> = {
   php: [
@@ -44,6 +97,10 @@ const FRAMEWORKS_BY_LANG: Record<string, { name: string; value: string }[]> = {
   ruby: [
     { name: 'Ruby on Rails', value: 'rails' },
     { name: 'Sinatra', value: 'sinatra' }
+  ],
+  kotlin: [
+    { name: 'Spring Boot (Kotlin)', value: 'spring-boot' },
+    { name: 'Ktor', value: 'ktor' }
   ]
 };
 
@@ -68,6 +125,10 @@ const ORMS_BY_LANG: Record<string, { name: string; value: string }[]> = {
   csharp: [
     { name: 'Entity Framework Core', value: 'entity-framework-core' },
     { name: 'Dapper', value: 'dapper' }
+  ],
+  kotlin: [
+    { name: 'Hibernate / JPA', value: 'hibernate' },
+    { name: 'Exposed', value: 'exposed' }
   ]
 };
 
@@ -116,6 +177,10 @@ const VALIDATIONS_BY_LANG: Record<string, { name: string; value: string }[]> = {
     { name: 'ActiveModel::Validations', value: 'active-model' },
     { name: 'Dry-Validation', value: 'dry-validation' },
     { name: 'Custom', value: 'custom' }
+  ],
+  kotlin: [
+    { name: 'Jakarta Validation / Hibernate Validator', value: 'jakarta-validation' },
+    { name: 'Custom', value: 'custom' }
   ]
 };
 
@@ -151,6 +216,10 @@ const TESTING_BY_LANG: Record<string, { name: string; value: string }[]> = {
   javascript: [
     { name: 'Vitest (Fast ESM Native Testing Framework)', value: 'vitest' },
     { name: 'Jest', value: 'jest' }
+  ],
+  kotlin: [
+    { name: 'JUnit 5', value: 'junit' },
+    { name: 'Kotest', value: 'kotest' }
   ]
 };
 
@@ -265,7 +334,9 @@ export async function handleInitCommand(options?: {
   architecture?: string;
   language?: string;
   framework?: string;
+  frameworkVersion?: string;
   orm?: string;
+  ormVersion?: string;
   database?: string;
   validation?: string;
   messaging?: string;
@@ -285,9 +356,9 @@ export async function handleInitCommand(options?: {
     generateConstitution();
   }
 
-  const isNonInteractive = options?.yes || options?.nonInteractive || process.env.GHK_NON_INTERACTIVE === 'true' || process.env.CI === 'true';
+  const nonInteractive = isNonInteractive(options);
 
-  if (isNonInteractive) {
+  if (nonInteractive) {
     logger.info('Running in non-interactive mode. Using default configuration.');
   }
 
@@ -320,13 +391,15 @@ export async function handleInitCommand(options?: {
       message: 'Select Backend programming language / runtime:',
       choices: [
         { name: 'PHP (PHP 8.3+)', value: 'php' },
-        { name: 'TypeScript (Node.js)', value: 'typescript' },
+        { name: 'TypeScript (Node.js) - [Enterprise]', value: 'typescript' },
         { name: 'JavaScript (Node.js)', value: 'javascript' },
-        { name: 'Python (Python 3.11+)', value: 'python' },
-        { name: 'Java (Java 17/21)', value: 'java' },
-        { name: 'C# (.NET 8+)', value: 'csharp' },
-        { name: 'Go (Golang)', value: 'go' },
-        { name: 'Ruby (Ruby 3+)', value: 'ruby' }
+        { name: 'Python (Python 3.11+) - [Enterprise]', value: 'python' },
+        { name: 'Java (Java 17/21) - [Enterprise]', value: 'java' },
+        { name: 'Kotlin (JVM) - [Enterprise]', value: 'kotlin' },
+        { name: 'C# (.NET 8+) - [Enterprise]', value: 'csharp' },
+        { name: 'Go (Golang) - [Enterprise]', value: 'go' },
+        { name: 'Ruby (Ruby 3+) - [Community / Stub]', value: 'ruby' },
+        { name: 'Rust - [Community / Stub]', value: 'rust' }
       ],
       default: options?.language || 'php'
     }
@@ -341,6 +414,12 @@ export async function handleInitCommand(options?: {
   const availableOrms = ORMS_BY_LANG[backendLang] || [
     { name: `${backendLang} Default Persistence`, value: `${backendLang}-orm` }
   ];
+
+  if (backendLang === 'ruby' || backendLang === 'rust') {
+    logger.warn(`⚠️  WARNING: The '${backendLang}' stack is currently in Community/Stub tier.`);
+    logger.warn(`   It does not guarantee Enterprise transactionality, CQRS Outbox, or advanced RLS rules.`);
+  }
+
   const availableValidations = VALIDATIONS_BY_LANG[backendLang] || [
     { name: `${backendLang} Default Validation`, value: `${backendLang}-val` }
   ];
@@ -404,7 +483,7 @@ export async function handleInitCommand(options?: {
   // Step 3: Independent Frontend Stack Configuration (for Monolith / Dual-Stack)
   let frontendAnswers: any = { framework: 'none', language: 'javascript', bundler: 'vite', unitTesting: 'vitest', e2eTesting: 'cypress' };
 
-  if (!isNonInteractive) {
+  if (!nonInteractive) {
     const askFrontend = await promptOrFallback([
       {
         type: 'confirm',
@@ -516,7 +595,9 @@ export async function handleInitCommand(options?: {
     stack: {
       language: options?.language || step1.language,
       framework: options?.framework || step2.framework,
+      ...(options?.frameworkVersion ? { frameworkVersion: String(options.frameworkVersion) } : {}),
       orm: options?.orm || step2.orm,
+      ...(options?.ormVersion ? { ormVersion: String(options.ormVersion) } : {}),
       database: options?.database || step2.database,
       validation: options?.validation || step2.validation,
       auth: 'jwt-bcrypt',
@@ -536,10 +617,14 @@ export async function handleInitCommand(options?: {
 
   saveConfig(newConfig);
   logger.success('Successfully created gherkin-ai.config.json');
+  const tierWarning = supportWarning(getStackSupport(newConfig));
+  if (tierWarning) logger.warn(tierWarning);
 
-  if (step4.enableGovernance || options?.enterprise || isNonInteractive) {
+  if (step4.enableGovernance || options?.enterprise || nonInteractive) {
     const govPath = generateGovernanceConfig(newConfig);
     logger.success(`Successfully created Agent Governance Policy: ${govPath}`);
+    // ENTERPRISE GUARANTEES: Inject CI/CD pipeline
+    generateQualityGates(process.cwd());
   }
 
   ensureGitignore(process.cwd());

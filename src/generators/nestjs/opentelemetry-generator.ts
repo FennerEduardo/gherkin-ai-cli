@@ -7,6 +7,9 @@ import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentation
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
 import { OTLPMetricExporter } from '@opentelemetry/exporter-metrics-otlp-http';
 import { PeriodicExportingMetricReader } from '@opentelemetry/sdk-metrics';
+import { W3CTraceContextPropagator } from '@opentelemetry/core';
+import { PrismaInstrumentation } from '@prisma/instrumentation';
+import { AmqplibInstrumentation } from '@opentelemetry/instrumentation-amqplib';
 
 export const otelSDK = new NodeSDK({
   traceExporter: new OTLPTraceExporter({
@@ -17,12 +20,15 @@ export const otelSDK = new NodeSDK({
       url: process.env.OTLP_METRICS_URL || 'http://localhost:4318/v1/metrics',
     }),
   }),
+  textMapPropagator: new W3CTraceContextPropagator(),
   instrumentations: [
     getNodeAutoInstrumentations({
       '@opentelemetry/instrumentation-nestjs-core': { enabled: true },
       '@opentelemetry/instrumentation-express': { enabled: true },
       '@opentelemetry/instrumentation-http': { enabled: true },
     }),
+    new PrismaInstrumentation(),
+    new AmqplibInstrumentation(),
   ],
 });
 

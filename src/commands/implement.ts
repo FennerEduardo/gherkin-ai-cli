@@ -14,6 +14,7 @@ import { getStackDockerDetails } from '../generators/infra';
 import { getAuthorDetails, calculateHash, InventoryManager } from '../core/inventory';
 import { estimateTokens } from '../utils/token-estimator';
 import { t, getGlobalUserLocale } from '../utils/i18n-cli';
+import { featurePascalName } from '../utils/naming';
 
 export async function handleImplementCommand(options: { 
   feature?: string; 
@@ -65,7 +66,7 @@ export async function handleImplementCommand(options: {
   const gherkinText = readFileSync(featurePath);
   const parsed = parseGherkinText(gherkinText);
   const featureName = parsed.featureName || path.basename(featurePath, '.feature');
-  const basePascal = featureName.replace(/[^a-zA-Z0-9]/g, '');
+  const basePascal = featurePascalName({ featureName, tags: parsed.tags });
 
   const outDir = config.outputDir || './generated-specs';
   const dockerDetails = getStackDockerDetails(config);
@@ -246,6 +247,12 @@ Implement the feature "${featureName}" defined in ${relativeFeature}:
 ${record ? `6. AUDIT REGISTRY RECORD: ${record.recordId} (Spec Hash: ${featureVersionHash}, Author: ${author.name} <${author.email}>).` : ''}
 `;
   }
+
+  console.log(chalk.bold.red('\n============================================================'));
+  console.log(chalk.bold.red('⚠️ DEPRECATION WARNING: Manual Prompts are deprecated.'));
+  console.log(chalk.red('Please use the IDE Delegate (ide_delegate provider) to execute implementation automatically.'));
+  console.log(chalk.red('Example: ghk autopilot --provider ide_delegate'));
+  console.log(chalk.bold.red('============================================================\n'));
 
   console.log(chalk.green(quickPrompt));
   console.log(chalk.bold.cyan('------------------------------------------------------------\n'));

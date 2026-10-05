@@ -1,7 +1,8 @@
+import { featurePascalName } from '../../utils/naming';
 // MediatR CommandHandlers, QueryHandlers and Read Model Projectors Generator
 
 export function generateCqrsHandlers(namespace: string, featureName: string): string {
-  const featurePascal = featureName.replace(/[^a-zA-Z0-9]/g, '');
+  const featurePascal = featurePascalName(featureName);
 
   return `// --------------------------------------------------------------------------
 // MediatR CQRS Handlers & Read Model Event Projectors
@@ -12,6 +13,7 @@ using System.Threading.Tasks;
 using MediatR;
 using Microsoft.Extensions.Logging;
 using ${namespace}.Infrastructure.Data;
+using ${namespace}.Domain.${featurePascal};
 
 namespace ${namespace}.Application.Handlers
 {

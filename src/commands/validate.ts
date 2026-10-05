@@ -2,6 +2,7 @@
    gherkin-ai-cli - Architectural Linter & 'validate' Command Handler
    ========================================================================== */
 
+import { ExitCode } from '../core/errors';
 import path from 'path';
 import fs from 'fs';
 import { loadConfig } from '../core/config';
@@ -243,6 +244,6 @@ export async function handleValidateCommand(options: { feature?: string; config?
     logger.success('Architectural validation PASSED with 0 errors.');
   } else {
     logger.error(`Validation completed with ${errorsCount} critical issue(s).`);
-    process.exitCode = 1;
+    process.exitCode = ExitCode.GATE_FAILED;
   }
 }

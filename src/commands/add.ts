@@ -2,6 +2,8 @@
    gherkin-ai-cli - 'add' Command Handler (Brownfield Contract Injector)
    ========================================================================== */
 
+import { PolicyError, UsageError } from '../core/errors';
+import { isPathInside } from '../utils/path-guard';
 import path from 'path';
 import inquirer from 'inquirer';
 import { loadConfig } from '../core/config';
@@ -13,6 +15,7 @@ import { buildSpecificationIR } from '../core/ir-builder';
 import { handleCreateCommand } from './create';
 import { fileExistsSync, readFileSync, writeFileSync, ensureDirSync } from '../utils/file-system';
 import { logger } from '../utils/logger';
+import { featurePascalName } from '../utils/naming';
 
 export async function handleAddCommand(options: { feature?: string; target?: string; config?: string; yes?: boolean; nonInteractive?: boolean }): Promise<void> {
   logger.banner();
@@ -43,7 +46,7 @@ export async function handleAddCommand(options: { feature?: string; target?: str
       await handleCreateCommand({ output: options.feature, target: options.target, yes: options.yes, nonInteractive: options.nonInteractive });
       return;
     } else {
-      process.exit(1);
+      throw new UsageError(`Feature file not found: ${options.feature ?? '(none)'}`, { hint: 'Pass an existing file with --feature or create one with `ghk create`.' });
     }
   }
 
@@ -58,14 +61,13 @@ export async function handleAddCommand(options: { feature?: string; target?: str
   const gherkinText = readFileSync(featurePath);
   const parsed = parseGherkinText(gherkinText);
 
-  const featurePascal = parsed.featureName.replace(/[^a-zA-Z0-9]/g, '') || 'Feature';
+  const featurePascal = featurePascalName(parsed) || 'Feature';
   let targetDir = options.target 
     ? path.resolve(process.cwd(), options.target) 
     : path.resolve(process.cwd(), 'src', 'modules', featurePascal.toLowerCase());
 
-  if (!targetDir.startsWith(process.cwd())) {
-    logger.error(`Security Violation: Target path escapes the current workspace: ${targetDir}`);
-    process.exit(1);
+  if (!isPathInside(process.cwd(), targetDir)) {
+    throw new PolicyError(`Security Violation: Target path escapes the current workspace: ${targetDir}`);
   }
 
   ensureDirSync(targetDir);

@@ -1,4 +1,5 @@
 import { reviewPullRequest } from '../core/pr-reviewer';
+import { ExitCode, GhkError, UsageError } from '../core/errors';
 import { loadConfig } from '../core/config';
 import { logger } from '../utils/logger';
 import fs from 'fs';
@@ -14,8 +15,7 @@ export async function handlePrReviewCommand(options: PrReviewCommandOptions): Pr
   logger.info('Starting CI/CD PR Review AI Bot...');
 
   if (!options.feature) {
-    logger.error('You must specify a feature file with --feature');
-    process.exit(1);
+    throw new UsageError('You must specify a feature file with --feature');
   }
 
   let diffContent = '';
@@ -24,8 +24,7 @@ export async function handlePrReviewCommand(options: PrReviewCommandOptions): Pr
   if (options.diff) {
     const diffPath = path.resolve(process.cwd(), options.diff);
     if (!fs.existsSync(diffPath)) {
-      logger.error(`Diff file not found: ${diffPath}`);
-      process.exit(1);
+      throw new UsageError(`Diff file not found: ${diffPath}`);
     }
     diffContent = fs.readFileSync(diffPath, 'utf8');
   } else {
@@ -33,14 +32,13 @@ export async function handlePrReviewCommand(options: PrReviewCommandOptions): Pr
     try {
       diffContent = fs.readFileSync(0, 'utf8');
     } catch (e) {
-      logger.error('Could not read diff from stdin. Please pipe a git diff or use --diff <file>');
-      process.exit(1);
+      throw new UsageError('Could not read diff from stdin. Please pipe a git diff or use --diff <file>');
     }
   }
 
   if (!diffContent || diffContent.trim() === '') {
     logger.warn('Empty diff provided. Nothing to review.');
-    process.exit(0);
+    return;
   }
 
   const config = loadConfig();
@@ -73,10 +71,10 @@ export async function handlePrReviewCommand(options: PrReviewCommandOptions): Pr
     console.log('\n============================================================\n');
 
     if (!result.approved) {
-      process.exit(1);
+      throw new GhkError('PR review did not approve the change.', ExitCode.GATE_FAILED);
     }
   } catch (error: any) {
-    logger.error(`PR Review failed: ${error.message}`);
-    process.exit(1);
+    if (error instanceof GhkError) throw error;
+    throw new GhkError(`PR Review failed: ${error.message}`, ExitCode.GENERIC, { cause: error });
   }
 }

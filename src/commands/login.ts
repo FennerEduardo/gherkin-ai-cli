@@ -1,122 +1,161 @@
 /* ==========================================================================
-   gherkin-ai-cli - Login & Auth Credentials Command
+   gherkin-ai-cli - `ghk login` / `ghk logout` / `ghk auth status`
+
+   SECURITY: API keys are NEVER written to disk by the CLI.
+   - CI / servers: provider environment variables (OPENAI_API_KEY, ...).
+   - Workstations: `ghk login` stores the key in the OS keychain
+     (macOS Keychain, Windows Credential Manager, Linux Secret Service).
+   The chosen provider (not the key) is saved in ~/.gherkin-ai/config.json.
    ========================================================================== */
 
+import { emitJson } from '../utils/output';
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
-import crypto from 'crypto';
+import inquirer from 'inquirer';
+import { loadConfig, updateUserConfig } from '../core/config';
+import { LLM_PROVIDERS, LLMProviderName } from '../core/config/schema';
+import { ConfigError, GhkError, UsageError } from '../core/errors';
+import { resolveLLMSettings } from '../core/llm';
+import {
+  AMBIENT_CREDENTIAL_PROVIDERS,
+  PROVIDER_KEY_ENV,
+  deleteKeyFromKeychain,
+  isKeychainAvailable,
+  storeKeyInKeychain
+} from '../core/llm/credentials';
+import { getRunContext, isNonInteractive } from '../core/run-context';
 import { logger } from '../utils/logger';
 
-// Machine-specific encryption key based on user and machine info
-const ENCRYPTION_KEY = crypto.scryptSync(
-  process.env.USER || process.env.USERNAME || 'gherkin-ai-user',
-  'ghk-salt-v1',
-  32
-);
-
-function encrypt(text: string): string {
-  const iv = crypto.randomBytes(16);
-  const cipher = crypto.createCipheriv('aes-256-cbc', ENCRYPTION_KEY, iv);
-  let encrypted = cipher.update(text, 'utf8', 'hex');
-  encrypted += cipher.final('hex');
-  return `${iv.toString('hex')}:${encrypted}`;
-}
-
-function decrypt(text: string): string {
-  try {
-    const parts = text.split(':');
-    if (parts.length !== 2) return text; // Possibly unencrypted legacy key
-    const iv = Buffer.from(parts[0], 'hex');
-    const encryptedText = parts[1];
-    const decipher = crypto.createDecipheriv('aes-256-cbc', ENCRYPTION_KEY, iv);
-    let decrypted = decipher.update(encryptedText, 'hex', 'utf8');
-    decrypted += decipher.final('utf8');
-    return decrypted;
-  } catch {
-    return text; // Fallback to raw text if decryption fails
-  }
-}
-
-export interface AuthConfig {
-  token?: string;
-  user?: string;
-  provider?: 'openai' | 'anthropic' | 'gemini' | 'ollama' | 'azure-openai' | 'custom' | string;
-  apiKey?: string;
-  endpoint?: string;
-  serverUrl?: string;
-  loggedInAt?: string;
-}
-
-export function getAuthConfig(workspaceDir: string = process.cwd()): AuthConfig | null {
-  const authPath = path.join(workspaceDir, '.gherkin-ai', 'auth.json');
-  if (!fs.existsSync(authPath)) {
-    return null;
-  }
-  try {
-    const raw = fs.readFileSync(authPath, 'utf8');
-    const auth = JSON.parse(raw) as AuthConfig;
-    if (auth.apiKey && auth.apiKey.includes(':')) {
-      auth.apiKey = decrypt(auth.apiKey);
-    }
-    return auth;
-  } catch {
-    return null;
-  }
-}
-
-export function saveAuthConfig(auth: AuthConfig, workspaceDir: string = process.cwd()): string {
-  const gheDir = path.join(workspaceDir, '.gherkin-ai');
-  if (!fs.existsSync(gheDir)) {
-    fs.mkdirSync(gheDir, { recursive: true });
-  }
-
-  const authPath = path.join(gheDir, 'auth.json');
-  const payload: AuthConfig = {
-    ...auth,
-    apiKey: auth.apiKey ? encrypt(auth.apiKey) : undefined,
-    loggedInAt: new Date().toISOString()
-  };
-
-  fs.writeFileSync(authPath, JSON.stringify(payload, null, 2), 'utf8');
-  return authPath;
-}
-
-export async function handleLoginCommand(options?: {
-  token?: string;
-  user?: string;
-  apiKey?: string;
+export interface LoginOptions {
   provider?: string;
-  endpoint?: string;
-  server?: string;
+  apiKeyStdin?: boolean;
   yes?: boolean;
   nonInteractive?: boolean;
-}): Promise<AuthConfig> {
+}
+
+const AMBIENT_HINTS: Partial<Record<LLMProviderName, string>> = {
+  bedrock: 'Uses the standard AWS credential chain (AWS_PROFILE, SSO, environment, instance/IRSA role). Set AWS_REGION or llm.bedrock.region.',
+  vertex: 'Uses Google Application Default Credentials (`gcloud auth application-default login` or workload identity). Set GOOGLE_CLOUD_PROJECT or llm.vertex.project.',
+  ollama: 'No credentials needed. Set LLM_BASE_URL or llm.baseUrl if Ollama is not on localhost:11434.',
+  ide_delegate: 'No model is called; prompts are handed to your IDE agent.'
+};
+
+function parseProvider(value: string | undefined): LLMProviderName | undefined {
+  if (!value) return undefined;
+  const normalized = value === 'azure' ? 'azure-openai' : value;
+  if (!(LLM_PROVIDERS as readonly string[]).includes(normalized)) {
+    throw new UsageError(`Unknown provider "${value}".`, { hint: `Use one of: ${LLM_PROVIDERS.join(', ')}.` });
+  }
+  return normalized as LLMProviderName;
+}
+
+async function readStdin(): Promise<string> {
+  if (process.stdin.isTTY) throw new UsageError('--api-key-stdin expects the key on standard input (e.g. `printenv KEY | ghk login --api-key-stdin`).');
+  const chunks: Buffer[] = [];
+  for await (const chunk of process.stdin) chunks.push(Buffer.from(chunk));
+  return Buffer.concat(chunks).toString('utf8').trim();
+}
+
+export async function handleLoginCommand(options: LoginOptions = {}): Promise<{ provider: LLMProviderName; stored: 'keychain' | 'none'; configPath: string }> {
   logger.banner();
-  logger.info('🔑 Configurando credenciales de autenticación y proveedores de IA...');
+  const nonInteractive = isNonInteractive(options);
 
-  const token = options?.token || process.env.GHK_AUTH_TOKEN || 'tok_agent_synthetic_' + Date.now().toString(36);
-  const user = options?.user || process.env.GHK_USER || process.env.USER || 'agent-ai@local';
-  const provider = options?.provider || process.env.GHK_AI_PROVIDER || 'openai';
-  const apiKey = options?.apiKey || process.env.OPENAI_API_KEY || process.env.ANTHROPIC_API_KEY || process.env.GEMINI_API_KEY || 'sk-synthetic-key';
-  const endpoint = options?.endpoint || process.env.GHK_AI_ENDPOINT || 'https://api.openai.com/v1';
-  const serverUrl = options?.server || process.env.GHK_SERVER_URL || 'https://api.gherkin-ai.local';
+  let provider = parseProvider(options.provider);
+  if (!provider) {
+    if (nonInteractive) throw new UsageError('--provider is required in non-interactive mode.');
+    const answer = await inquirer.prompt([{ type: 'list', name: 'provider', message: 'LLM provider:', choices: LLM_PROVIDERS.filter(p => p !== 'ide_delegate') }]);
+    provider = answer.provider as LLMProviderName;
+  }
 
-  const authData: AuthConfig = {
-    token,
-    user,
-    provider,
-    apiKey,
-    endpoint,
-    serverUrl
+  let stored: 'keychain' | 'none' = 'none';
+  if (!AMBIENT_CREDENTIAL_PROVIDERS.has(provider)) {
+    let apiKey: string | undefined;
+    if (options.apiKeyStdin) {
+      apiKey = await readStdin();
+    } else if (!nonInteractive) {
+      const answer = await inquirer.prompt([{ type: 'password', name: 'apiKey', mask: '*', message: `API key for ${provider} (leave empty to use ${PROVIDER_KEY_ENV[provider][0]}):` }]);
+      apiKey = String(answer.apiKey || '').trim() || undefined;
+    }
+
+    if (apiKey) {
+      if (!isKeychainAvailable() || !storeKeyInKeychain(provider, apiKey)) {
+        throw new ConfigError('The OS keychain is not available, so the key cannot be stored securely.', {
+          hint: `Set ${PROVIDER_KEY_ENV[provider][0]} in the environment instead (recommended for CI and servers).`
+        });
+      }
+      stored = 'keychain';
+    }
+  }
+
+  const configPath = updateUserConfig({ llm: { provider } });
+
+  logger.success(`✔ Provider set to ${provider} in ${configPath}`);
+  if (stored === 'keychain') {
+    logger.info('   🔒 API key stored in the OS keychain (never on disk).');
+  } else if (AMBIENT_HINTS[provider]) {
+    logger.info(`   ${AMBIENT_HINTS[provider]}`);
+  } else {
+    logger.info(`   🔑 Set ${PROVIDER_KEY_ENV[provider].join(' or ')} in the environment, or re-run \`ghk login --provider ${provider}\` interactively.`);
+  }
+  warnLegacyAuthFile();
+
+  return { provider, stored, configPath };
+}
+
+export async function handleLogoutCommand(options: { provider?: string; all?: boolean } = {}): Promise<{ removed: LLMProviderName[] }> {
+  const providers: LLMProviderName[] = options.all || !options.provider
+    ? LLM_PROVIDERS.filter(p => !AMBIENT_CREDENTIAL_PROVIDERS.has(p))
+    : [parseProvider(options.provider) as LLMProviderName];
+  const removed = providers.filter(p => deleteKeyFromKeychain(p));
+  if (getRunContext().json) {
+    emitJson({ ok: true, removed });
+  } else if (removed.length) {
+    logger.success(`✔ Removed keychain credentials for: ${removed.join(', ')}`);
+  } else {
+    logger.info('No keychain credentials found.');
+  }
+  return { removed };
+}
+
+export async function handleAuthStatusCommand(): Promise<Record<string, unknown>> {
+  const config = loadConfig();
+  const status: Record<string, unknown> = {
+    keychainAvailable: isKeychainAvailable(),
+    proxy: config.network?.proxy || process.env.HTTPS_PROXY || process.env.https_proxy || null,
+    caFile: config.network?.caFile || process.env.NODE_EXTRA_CA_CERTS || null
   };
+  try {
+    const llm = resolveLLMSettings({ config });
+    Object.assign(status, {
+      ok: true,
+      provider: llm.provider,
+      model: llm.model,
+      credentialSource: llm.credentialSource,
+      endpoint: llm.provider === 'azure-openai' ? llm.azure?.endpoint : llm.baseUrl ?? null,
+      timeoutMs: llm.timeoutMs,
+      maxRetries: llm.maxRetries
+    });
+  } catch (err) {
+    if (!(err instanceof GhkError)) throw err;
+    Object.assign(status, { ok: false, error: err.message, hint: err.hint });
+  }
 
-  const savedPath = saveAuthConfig(authData);
+  if (getRunContext().json) {
+    emitJson(status);
+  } else {
+    for (const [key, value] of Object.entries(status)) {
+      if (key === 'ok') continue;
+      logger.info(`${key.padEnd(18)} ${value ?? '-'}`);
+    }
+  }
+  if (status.ok === false) process.exitCode = 3;
+  return status;
+}
 
-  logger.success(`✔ Credenciales guardadas exitosamente en: ${savedPath}`);
-  logger.info(`   👤 Usuario / Agente: ${user}`);
-  logger.info(`   🤖 Proveedor de IA:  ${provider.toUpperCase()}`);
-  logger.info(`   🔗 Endpoint Server:  ${endpoint}`);
-  logger.info(`   🔑 Token de Sesión:  ${token.substring(0, 10)}...`);
-
-  return authData;
+function warnLegacyAuthFile(): void {
+  const legacy = path.join(os.homedir(), '.gherkin-ai', 'auth.json');
+  if (fs.existsSync(legacy)) {
+    logger.warn(`⚠️  ${legacy} is no longer used (provider now lives in config.json). You can delete it.`);
+  }
 }

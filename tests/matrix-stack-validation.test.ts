@@ -247,7 +247,7 @@ Feature: Customer Management
     expect(output.adrMd).toContain('**Frontend E2E Testing**: cypress');
 
     expect(output.nativeContract).toBeDefined();
-    expect(output.nativeContract?.filename).toBe('customermanagement.contract.php');
+    expect(output.nativeContract?.filename).toBe('contracts/customermanagement.contract.php');
     expect(output.nativeContract?.content).toContain('namespace App\\Domain\\Contracts');
   });
 
@@ -259,7 +259,7 @@ Feature: Customer Management
       lang: 'php',
       testing: 'phpunit',
       database: 'mysql',
-      expectedImage: 'php:8.3-cli-alpine',
+      expectedImage: 'composer:2',
       expectedTestCmd: 'vendor/bin/phpunit',
       expectedDbImage: 'mysql:8.0'
     },
@@ -275,15 +275,15 @@ Feature: Customer Management
       lang: 'java',
       testing: 'junit',
       database: 'postgresql',
-      expectedImage: 'eclipse-temurin:21-jdk-alpine',
-      expectedTestCmd: './gradlew test',
+      expectedImage: 'maven:3.9-eclipse-temurin-17',
+      expectedTestCmd: 'mvn -B -ntp test',
       expectedDbImage: 'postgres:16-alpine'
     },
     {
       lang: 'python',
       testing: 'pytest',
       database: 'postgresql',
-      expectedImage: 'python:3.11-slim',
+      expectedImage: 'python:3.12-slim',
       expectedTestCmd: 'pytest',
       expectedDbImage: 'postgres:16-alpine'
     },
@@ -291,7 +291,7 @@ Feature: Customer Management
       lang: 'go',
       testing: 'testing',
       database: 'mongodb',
-      expectedImage: 'golang:1.22-alpine',
+      expectedImage: 'golang:1.22',
       expectedTestCmd: 'go test ./...',
       expectedDbImage: 'mongo:7.0'
     },
@@ -299,7 +299,7 @@ Feature: Customer Management
       lang: 'ruby',
       testing: 'rspec',
       database: 'postgresql',
-      expectedImage: 'ruby:3.3-alpine',
+      expectedImage: 'ruby:3.3',
       expectedTestCmd: 'bundle exec rspec',
       expectedDbImage: 'postgres:16-alpine'
     },
@@ -307,8 +307,8 @@ Feature: Customer Management
       lang: 'typescript',
       testing: 'vitest',
       database: 'postgresql',
-      expectedImage: 'node:20-alpine',
-      expectedTestCmd: 'npx vitest run',
+      expectedImage: 'node:24-bookworm',
+      expectedTestCmd: 'npm test',
       expectedDbImage: 'postgres:16-alpine'
     }
   ];
@@ -333,7 +333,8 @@ Feature: Customer Management
       // 1. Verify getStackDockerDetails helper
       const dockerDetails = getStackDockerDetails(config);
       expect(dockerDetails.image).toBe(item.expectedImage);
-      expect(dockerDetails.testCmd).toBe(item.expectedTestCmd);
+      // Verified toolchain commands (src/generators/toolchains.ts); several are chained.
+      expect(dockerDetails.testCmd).toContain(item.expectedTestCmd);
 
       // 2. Verify generateInfra docker-compose.yml output
       const infra = generateInfra(config);

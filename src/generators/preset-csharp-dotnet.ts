@@ -14,39 +14,15 @@ import { generateDotNetTestcontainersIntegrationTest } from './dotnet/dotnet-tes
 import { generateCqrsHandlers } from './dotnet/cqrs-handlers-generator';
 import { generateInboxInfrastructure } from './dotnet/inbox-generator';
 import { generateResiliencePipelines } from './dotnet/resilience-generator';
+import { buildDomainModel } from './kernel/domain-model';
+import { renderCsRuntime } from './kernel/runtime/csharp';
+import { REQNROLL_JSON, renderCsAggregate, renderCsAggregateTests, renderCsTestProject, renderReqnrollSteps } from './kernel/csharp';
 
 export function generateCsharpDotnetPreset(parsed: ParsedFeature, config?: GherkinAIConfig): { filename: string; content: string }[] {
-  const featurePascal = parsed.featureName.replace(/[^a-zA-Z0-9]/g, '');
-  const className = featurePascal + 'StepDefinitions';
+  const featurePascal = buildDomainModel(parsed).pascal;
   const namespace = config?.projectName ? config.projectName.replace(/[^a-zA-Z0-9.]/g, '') : 'MyEnterpriseApp';
-
-  const generatedMethods = new Set<string>();
-
-  const stepDefCode = `// Reqnroll Step Definitions for ${parsed.featureName}
-using System;
-using Reqnroll;
-
-namespace ${namespace}.Tests.Steps
-{
-    [Binding]
-    public class ${className}
-    {
-${parsed.scenarios.map(sc => `
-        // Scenario: ${sc.name}
-${(sc.steps || []).map(st => {
-    const methodName = `${st.keyword.trim()}${st.text.replace(/[^a-zA-Z0-9]/g, '')}`;
-    if (generatedMethods.has(methodName)) return '';
-    generatedMethods.add(methodName);
-    return `        [${st.keyword.trim()}("${st.text.replace(/"/g, '""')}")]
-        public void ${methodName}()
-        {
-            throw new PendingStepException();
-        }`;
-}).join('\n')}
-`).join('')}
-    }
-}
-`;
+  const m = buildDomainModel(parsed);
+  const testsDir = `tests/${namespace}.Tests`;
 
   const domainEntityCode = `namespace ${namespace}.Domain.Entities;
 
@@ -58,6 +34,7 @@ public abstract class AggregateRoot<TId>
 {
     public TId Id { get; protected set; } = default!;
     public long Version { get; protected set; }
+    public string TenantId { get; protected set; } = string.Empty;
 }
 
 public abstract class ValueObject
@@ -74,10 +51,11 @@ public class ${featurePascal} : AggregateRoot<Guid>
 {
     public string ReferenceCode { get; private set; } = string.Empty;
 
-    public ${featurePascal}(string referenceCode)
+    public ${featurePascal}(string referenceCode, string tenantId = "default")
     {
         Id = Guid.NewGuid();
         ReferenceCode = referenceCode;
+        TenantId = tenantId;
     }
 }
 `;
@@ -111,7 +89,7 @@ using System;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
 using MediatR;
-using ${namespace}.Application.Commands;
+using ${namespace}.Domain.${featurePascal}; // commands, queries and read models live with the contract
 
 [ApiController]
 [Route("api/v1/[controller]")]
@@ -139,26 +117,38 @@ using ${namespace}.Infrastructure.Outbox;
 
 namespace ${namespace}.Infrastructure.Data
 {
+    public interface ITenantService
+    {
+        string GetCurrentTenantId();
+    }
+
     public class ApplicationDbContext : DbContext
     {
-        public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options) : base(options) { }
+        private readonly ITenantService _tenantService;
 
-        public DbSet<${featurePascal}Aggregate> ${featurePascal}s { get; set; } = null!;
+        public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options, ITenantService tenantService) : base(options) 
+        {
+            _tenantService = tenantService;
+        }
+
+        public DbSet<${featurePascal}> ${featurePascal}s { get; set; } = null!;
         public DbSet<OutboxMessage> OutboxMessages { get; set; } = null!;
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
             
-            modelBuilder.Entity<${featurePascal}Aggregate>(entity =>
+            modelBuilder.Entity<${featurePascal}>(entity =>
             {
                 entity.HasKey(e => e.Id);
-                // Additional configurations can be added here
+                entity.HasIndex(e => e.ReferenceCode).IsUnique();
+                entity.HasQueryFilter(e => EF.Property<string>(e, "TenantId") == _tenantService.GetCurrentTenantId());
             });
             
             modelBuilder.Entity<OutboxMessage>(entity =>
             {
                 entity.HasKey(e => e.Id);
+                entity.HasIndex(e => e.ProcessedOn).HasFilter("[ProcessedOn] IS NULL");
             });
         }
     }
@@ -178,6 +168,10 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
+
+// Configure Tenant Service
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<ITenantService, HttpHeaderTenantService>();
 
 // Configure DbContext
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
@@ -221,6 +215,31 @@ app.MapControllers();
 app.Run();
 
 public partial class Program { } // For integration testing
+
+namespace ${namespace}.Infrastructure.Data
+{
+    using Microsoft.AspNetCore.Http;
+    
+    public class HttpHeaderTenantService : ITenantService
+    {
+        private readonly IHttpContextAccessor _httpContextAccessor;
+
+        public HttpHeaderTenantService(IHttpContextAccessor httpContextAccessor)
+        {
+            _httpContextAccessor = httpContextAccessor;
+        }
+
+        public string GetCurrentTenantId()
+        {
+            var context = _httpContextAccessor.HttpContext;
+            if (context != null && context.Request.Headers.TryGetValue("X-Tenant-Id", out var tenantId))
+            {
+                return tenantId.ToString();
+            }
+            return "default"; // Fallback
+        }
+    }
+}
 `;
 
   return [
@@ -245,17 +264,20 @@ public partial class Program { } // For integration testing
       filename: `src/Api/Program.cs`,
       content: programCode
     },
-    {
-      filename: `tests/Steps/${className}.cs`,
-      content: stepDefCode
-    },
+    { filename: `src/Domain/Kernel/${m.pascal}Aggregate.cs`, content: renderCsAggregate(m, namespace) },
+    { filename: `${testsDir}/${namespace}.Tests.csproj`, content: renderCsTestProject(namespace, `${config?.projectName || 'MyProject'}.csproj`) },
+    { filename: `${testsDir}/reqnroll.json`, content: REQNROLL_JSON },
+    { filename: `${testsDir}/Domain/${m.pascal}AggregateTests.cs`, content: renderCsAggregateTests(m, namespace) },
+    { filename: `${testsDir}/Steps/${m.pascal}StepDefinitions.cs`, content: renderReqnrollSteps(m, namespace) },
+    // Runtime kernel: PostgreSQL + RabbitMQ + OpenTelemetry, verified by Category=Integration tests (docs/RUNTIME-KERNEL.md).
+    ...renderCsRuntime(m, namespace, testsDir),
     {
       filename: `src/Application/CQRS/${featurePascal}Handlers.cs`,
-      content: generateCqrsHandlers(namespace, parsed.featureName)
+      content: generateCqrsHandlers(namespace, m.pascal)
     },
     {
-      filename: `src/Application/Sagas/PaymentSagaStateMachine.cs`,
-      content: generateSagaInfrastructure(namespace)
+      filename: `src/Application/Sagas/${featurePascal}SagaStateMachine.cs`,
+      content: generateSagaInfrastructure(namespace, m.pascal)
     },
     {
       filename: `src/Application/Behaviors/IdempotencyInfrastructure.cs`,
@@ -290,7 +312,7 @@ public partial class Program { } // For integration testing
       content: generateDotNetAspireServiceDefaults(namespace)
     },
     {
-      filename: `tests/IntegrationTests/DistributedSystemIntegrationTest.cs`,
+      filename: `${testsDir}/Integration/DistributedSystemIntegrationTest.cs`,
       content: generateDotNetTestcontainersIntegrationTest(namespace, featurePascal)
     }
   ];

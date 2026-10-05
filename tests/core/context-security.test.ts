@@ -39,6 +39,13 @@ describe('Context Security Layer', () => {
       const report = scanContextSecurity(content);
       expect(report.secretCount).toBeGreaterThan(0);
       expect(report.findings.some(f => f.name === 'Database URL')).toBe(true);
+      expect(scanContextSecurity('redis://:s3cret@cache:6379').findings.some(f => f.name === 'Database URL')).toBe(true);
+    });
+
+    it('does not flag connection URLs without credentials', () => {
+      for (const url of ['amqp://rabbitmq:5672', 'postgres://db:5432/app', 'mongodb+srv://cluster0.example.net/db']) {
+        expect(scanContextSecurity(`broker at \`${url}\``).findings.some(f => f.name === 'Database URL'), url).toBe(false);
+      }
     });
 
     it('should detect JWT tokens', () => {

@@ -1,13 +1,37 @@
-name: 'gherkin-ai Audit Gatekeeper'
-description: 'Audits Pull Requests for Gherkin scenario coverage, @ignore tags, and quality gates.'
+name: 'gherkin-ai quality gate'
+description: 'Lint Gherkin specifications and enforce spec-to-implementation convergence in CI.'
 author: 'Fenner Eduardo'
 
 inputs:
-  min-quality-score:
-    description: 'Minimum required quality score percentage to pass the gate'
+  version:
+    description: 'gherkin-ai version to run (pin it; never use "latest" in a gate)'
+    required: true
+  lint-threshold:
+    description: 'Minimum lint score (0-100)'
     required: false
-    default: '90'
+    default: '70'
+  converge-threshold:
+    description: 'Minimum convergence (0-100)'
+    required: false
+    default: '80'
+  working-directory:
+    description: 'Project directory'
+    required: false
+    default: '.'
 
 runs:
-  using: 'node20'
-  main: 'dist/index.js'
+  using: 'composite'
+  steps:
+    - name: Lint specifications
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: npx --yes "gherkin-ai@${{ inputs.version }}" lint --threshold "${{ inputs.lint-threshold }}" --json > ghk-lint.json
+      env:
+        GHK_NON_INTERACTIVE: 'true'
+
+    - name: Check convergence
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: npx --yes "gherkin-ai@${{ inputs.version }}" converge --threshold "${{ inputs.converge-threshold }}" --json > ghk-converge.json
+      env:
+        GHK_NON_INTERACTIVE: 'true'

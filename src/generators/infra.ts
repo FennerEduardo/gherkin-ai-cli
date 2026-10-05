@@ -3,6 +3,7 @@
    ========================================================================== */
 
 import { GherkinAIConfig } from '../core/config';
+import { resolveToolchain } from './toolchains';
 
 export interface StackDockerDetails {
   image: string;
@@ -10,60 +11,11 @@ export interface StackDockerDetails {
   testCmd: string;
 }
 
+/** Image and commands for the stack, from the verified toolchain registry (toolchains.ts). */
 export function getStackDockerDetails(config: GherkinAIConfig): StackDockerDetails {
-  const lang = (config.stack.language || 'typescript').toLowerCase();
-  const testing = (config.stack.testing || '').toLowerCase();
-
-  switch (lang) {
-    case 'csharp':
-    case 'c#':
-    case '.net':
-    case 'dotnet':
-      return {
-        image: 'mcr.microsoft.com/dotnet/sdk:8.0',
-        defaultCmd: 'dotnet run',
-        testCmd: 'dotnet test'
-      };
-    case 'java':
-      return {
-        image: 'eclipse-temurin:21-jdk-alpine',
-        defaultCmd: './gradlew bootRun',
-        testCmd: './gradlew test'
-      };
-    case 'php':
-      return {
-        image: 'php:8.3-cli-alpine',
-        defaultCmd: 'php -S 0.0.0.0:8000',
-        testCmd: testing.includes('pest') ? 'vendor/bin/pest' : 'vendor/bin/phpunit'
-      };
-    case 'python':
-      return {
-        image: 'python:3.11-slim',
-        defaultCmd: 'python main.py',
-        testCmd: 'pytest'
-      };
-    case 'go':
-    case 'golang':
-      return {
-        image: 'golang:1.22-alpine',
-        defaultCmd: 'go run main.go',
-        testCmd: 'go test ./...'
-      };
-    case 'ruby':
-      return {
-        image: 'ruby:3.3-alpine',
-        defaultCmd: 'bundle exec rails s -b 0.0.0.0',
-        testCmd: 'bundle exec rspec'
-      };
-    case 'typescript':
-    case 'javascript':
-    default:
-      return {
-        image: 'node:20-alpine',
-        defaultCmd: 'npm start',
-        testCmd: testing.includes('vitest') ? 'npx vitest run' : 'npm test'
-      };
-  }
+  const toolchain = resolveToolchain(config);
+  if (!toolchain) return { image: 'node:24-bookworm', defaultCmd: 'npm start', testCmd: 'npm test' };
+  return { image: toolchain.image, defaultCmd: toolchain.start, testCmd: toolchain.test.join(' && ') };
 }
 
 export function generateInfra(config: GherkinAIConfig): { dockerComposeYaml: string; serverlessYml: string; envExample: string } {

@@ -1,4 +1,6 @@
 import path from 'path';
+import { emitJson } from '../utils/output';
+import { ExitCode, GhkError, UsageError } from '../core/errors';
 import { logger } from '../utils/logger';
 import { analyzeImpact } from '../core/impact-analyzer';
 
@@ -14,8 +16,7 @@ export async function handleImpactCommand(options: ImpactCommandOptions): Promis
   }
 
   if (!options.feature) {
-    logger.error('Feature file is required. Use -f or --feature.');
-    process.exit(1);
+    throw new UsageError('Feature file is required. Use -f or --feature.');
   }
 
   const featurePath = path.resolve(process.cwd(), options.feature);
@@ -24,7 +25,7 @@ export async function handleImpactCommand(options: ImpactCommandOptions): Promis
     const report = analyzeImpact(featurePath, process.cwd());
 
     if (options.json) {
-      console.log(JSON.stringify(report, null, 2));
+      emitJson(report);
       return;
     }
 
@@ -58,8 +59,8 @@ export async function handleImpactCommand(options: ImpactCommandOptions): Promis
       logger.success('Impact analysis completed.');
     }
   } catch (error: any) {
-    logger.error(`Failed to analyze impact: ${error.message}`);
-    process.exit(1);
+    if (error instanceof GhkError) throw error;
+    throw new GhkError(`Failed to analyze impact: ${error.message}`, ExitCode.GENERIC, { cause: error });
   }
 }
 

@@ -1,3 +1,5 @@
+import fs from 'fs';
+import path from 'path';
 import { GherkinAIPlugin, GeneratedArtifact, PluginContext } from '../core/plugin-system';
 import { SpecificationIR } from '../core/semantic-ir';
 import { GherkinAIConfig } from '../core/config';
@@ -5,14 +7,21 @@ import { generateContracts } from '../generators/contracts';
 import { generateFixtures } from '../generators/fixtures';
 import { generatePrompts } from '../generators/prompts';
 import { generateInfra } from '../generators/infra';
-import { generateAwsCdkInfrastructure } from '../generators/infrastructure/aws-cdk-generator';
+import { generateAwsCdkApp } from '../generators/infrastructure/aws-cdk-generator';
+
+export function awsCdkEnabled(config: GherkinAIConfig): boolean {
+  return config.infrastructure?.awsCdk ?? ['sqs', 'sns'].includes((config.stack.messaging || '').toLowerCase());
+}
 import { generatePresets } from '../generators/presets';
 import { generatePrismaStack } from '../generators/prisma-stack';
 import { ParsedFeature } from '../core/gherkin-parser';
+import { getSourceFeature } from '../core/ir-builder';
 
 // Helper to convert IR back to ParsedFeature for legacy generators
 // In a real refactor, the generators would be updated to accept IR natively.
 function irToParsedFeature(ir: SpecificationIR | any): ParsedFeature {
+  const source = getSourceFeature(ir);
+  if (source) return source;
   return {
     featureName: ir.featureName || 'AppFeature',
     descriptionLines: ir.featureDescription || [],
@@ -44,6 +53,26 @@ function irToParsedFeature(ir: SpecificationIR | any): ParsedFeature {
       fixtures: []
     }
   };
+}
+
+const toPosix = (p: string) => p.split(path.sep).join('/').replace(/^\.\//, '');
+
+/**
+ * Where the generated project finds its feature file, relative to the output directory.
+ * Generated test runners (Maven test resources, Reqnroll, godog, cucumber-js, Behat, ...) expect
+ * features/ inside the project, so a feature that lives outside outputDir is copied verbatim into
+ * <outputDir>/features/ and bound from there.
+ */
+export function resolveFeatureForOutput(ir: SpecificationIR, config: GherkinAIConfig, cwd = process.cwd()): { featureFile?: string; copy?: GeneratedArtifact } {
+  const source = ir.sourceFile;
+  if (!source || !source.endsWith('.feature')) return {};
+  const sourceAbs = path.resolve(cwd, source);
+  const outAbs = path.resolve(cwd, config.outputDir || './');
+  const rel = path.relative(outAbs, sourceAbs);
+  if (!rel.startsWith('..') && !path.isAbsolute(rel)) return { featureFile: toPosix(rel) };
+  if (!fs.existsSync(sourceAbs)) return {};
+  const featureFile = `features/${path.basename(sourceAbs)}`;
+  return { featureFile, copy: { filePath: featureFile, content: fs.readFileSync(sourceAbs, 'utf8'), type: 'other' } };
 }
 
 export class CoreContractsPlugin implements GherkinAIPlugin {
@@ -103,12 +132,14 @@ export class CorePresetsPlugin implements GherkinAIPlugin {
 
   generate(ir: SpecificationIR, config: GherkinAIConfig): GeneratedArtifact[] {
     const parsed = irToParsedFeature(ir);
-    const presets = generatePresets(parsed, config);
-    return presets.map((p: any) => ({
+    const { featureFile, copy } = resolveFeatureForOutput(ir, config);
+    const presets = generatePresets(parsed, config, featureFile);
+    const artifacts: GeneratedArtifact[] = presets.map(p => ({
       filePath: p.filename,
       content: p.content,
       type: 'test'
     }));
+    return copy ? [copy, ...artifacts] : artifacts;
   }
 }
 
@@ -144,37 +175,10 @@ export class CoreInfraPlugin implements GherkinAIPlugin {
     }
     artifacts.push({ filePath: '.env.example', content: result.envExample, type: 'config' });
 
-    // Ensure AWS CDK is connected to the central pipeline
-    // This addresses the gap reported in the Java+Spring+AWS scenario
-    const cdkStack = generateAwsCdkInfrastructure(config.projectName);
-    artifacts.push({ filePath: `infrastructure/lib/${config.projectName}-stack.ts`, content: cdkStack, type: 'config' });
-    
-    artifacts.push({
-      filePath: `infrastructure/cdk.json`,
-      content: JSON.stringify({ app: `npx ts-node bin/${config.projectName}.ts` }, null, 2),
-      type: 'config'
-    });
-    
-    artifacts.push({
-      filePath: `infrastructure/package.json`,
-      content: JSON.stringify({
-        name: `${config.projectName}-infra`,
-        version: "0.1.0",
-        dependencies: {
-          "aws-cdk-lib": "2.100.0",
-          "constructs": "10.0.0"
-        },
-        devDependencies: {
-          "aws-cdk": "2.100.0",
-          "ts-node": "^10.9.1",
-          "typescript": "~5.2.2"
-        },
-        scripts: {
-          "synth": "cdk synth"
-        }
-      }, null, 2),
-      type: 'config'
-    });
+    // AWS CDK app: opt-in (infrastructure.awsCdk), on by default when messaging targets SQS/SNS.
+    if (awsCdkEnabled(config)) {
+      for (const file of generateAwsCdkApp(config.projectName)) artifacts.push({ filePath: file.filename, content: file.content, type: 'config' });
+    }
 
     return artifacts;
   }

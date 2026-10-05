@@ -2,6 +2,8 @@
    gherkin-ai-cli - 'converge' Command Handler
    ========================================================================== */
 
+import { emitJson } from '../utils/output';
+import { ExitCode } from '../core/errors';
 import fs from 'fs';
 import path from 'path';
 import chalk from 'chalk';
@@ -87,7 +89,8 @@ export async function handleConvergeCommand(options: ConvergeCommandOptions = {}
       const bar = barColor('█'.repeat(filledWidth)) + chalk.gray('░'.repeat(emptyWidth));
       const scoreStr = `${dim.score}%`.padStart(4);
 
-      console.log(`     ${dim.name.padEnd(25)} ${bar}  ${barColor(scoreStr)}`);
+      // The basis says whether a score is checked against artifacts, test reports, or the spec alone.
+      console.log(`     ${dim.name.padEnd(25)} ${bar}  ${barColor(scoreStr)}  ${chalk.gray(dim.basis ?? '')}`);
 
       if (dim.status !== 'pass') {
         for (const detail of dim.details.slice(0, 2)) {
@@ -113,7 +116,7 @@ export async function handleConvergeCommand(options: ConvergeCommandOptions = {}
   }
 
   if (options.json) {
-    console.log(JSON.stringify(allReports, null, 2));
+    emitJson(allReports);
     return;
   }
 
@@ -130,6 +133,6 @@ export async function handleConvergeCommand(options: ConvergeCommandOptions = {}
   console.log('');
 
   if (avgConvergence < threshold) {
-    process.exitCode = 1;
+    process.exitCode = ExitCode.DRIFT;
   }
 }

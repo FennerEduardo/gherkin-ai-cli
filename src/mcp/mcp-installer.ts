@@ -6,6 +6,7 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import chalk from 'chalk';
+import { CLI_VERSION } from '../version';
 
 export interface McpInstallOptions {
   global?: boolean;
@@ -17,7 +18,8 @@ export function installMcpConfig(options: McpInstallOptions = { global: true, pr
 
   const mcpConfigEntry = {
     command: 'npx',
-    args: ['-y', 'gherkin-ai', 'mcp']
+    // Pinned to the installed version: an unpinned npx spec would pull whatever is latest on every start.
+    args: ['-y', `gherkin-ai@${CLI_VERSION}`, 'mcp']
   };
 
   let installedCount = 0;

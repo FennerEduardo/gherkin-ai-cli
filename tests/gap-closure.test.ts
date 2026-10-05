@@ -1,10 +1,13 @@
+import path from 'path';
+import os from 'os';
+import fs from 'fs';
 import { describe, it, expect } from 'vitest';
 import { parseGherkinText } from '../src/core/gherkin-parser';
 import { buildSpecificationIR } from '../src/core/ir-builder';
 import { lintSpecification } from '../src/core/specification-linter';
 import { checkConvergence } from '../src/core/convergence-engine';
 import { scanContextSecurity } from '../src/core/context-security';
-import { telemetry } from '../src/core/telemetry';
+import { TelemetryManager } from '../src/core/telemetry';
 
 describe('GAP Closure Core Modules', () => {
   const sampleGherkin = `
@@ -62,6 +65,11 @@ Feature: User Transfer Payment
   });
 
   it('should record telemetry and audit events', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ghk-telemetry-'));
+    const telemetry = new TelemetryManager(dir);
+    telemetry.recordAudit({ action: 'test', status: 'SUCCESS', details: 'password=supersecret123' });
+    expect(telemetry.readAudit()[0]).toMatchObject({ action: 'test', status: 'SUCCESS' });
+    expect(JSON.stringify(telemetry.readAudit())).not.toContain('supersecret123');
     telemetry.recordEvent({
       eventType: 'SPEC_LINT',
       durationMs: 42,

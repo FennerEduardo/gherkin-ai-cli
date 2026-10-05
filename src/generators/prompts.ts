@@ -11,6 +11,7 @@ import { PromptTemplateContext } from './prompt-templates/base';
 import { getGlobalUserLocale } from '../utils/i18n-cli';
 import { StepIndexer } from '../core/step-indexer';
 import { ContextExtractor } from '../core/context-extractor';
+import { loadConstitution } from '../core/constitution';
 
 export function generatePrompts(parsed: ParsedFeature, config: GherkinAIConfig): Record<string, string> {
   const arch = getArchRule(config.architecture);
@@ -42,7 +43,7 @@ export function generatePrompts(parsed: ParsedFeature, config: GherkinAIConfig):
   };
 
   // Inject Security & Compliance Guardrails
-  const { loadConstitution } = require('../core/constitution');
+
   const constitution = loadConstitution();
   
   let securityGuardrails = `\n## [MANDATORY] Enterprise Security & Compliance\n- SAST Guidelines: Do NOT generate code susceptible to SQL injection, XSS, or CSRF. Use parameterized queries and ORM functions securely.\n- Secret Scanning: NEVER generate or suggest default hardcoded passwords, API keys, or JWT secrets in code or fixtures. Always use environment variables.\n`;

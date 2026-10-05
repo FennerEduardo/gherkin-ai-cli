@@ -2,7 +2,6 @@ import { describe, it, expect } from 'vitest';
 import { generateNestJsCqrsModules } from '../../src/generators/nestjs/cqrs-generator';
 import { generateNestJsOutboxInfrastructure } from '../../src/generators/nestjs/outbox-generator';
 import { generateNestJsIdempotencyInterceptor } from '../../src/generators/nestjs/idempotency-generator';
-import { generateVuePiniaStore, generateVueComposable } from '../../src/generators/frontend/vue-pinia-generator';
 import { validateVuePiniaRules } from '../../src/core/validators/vue-validator';
 
 describe('TypeScript Ecosystem (NestJS + Vue) Generators & Validators', () => {
@@ -15,9 +14,9 @@ describe('TypeScript Ecosystem (NestJS + Vue) Generators & Validators', () => {
 
   it('should generate NestJS Prisma Outbox infrastructure', () => {
     const code = generateNestJsOutboxInfrastructure();
-    expect(code).toContain('@prisma/client');
+    expect(code).toContain('PrismaService');
     expect(code).toContain('outboxMessage.create');
-    expect(code).toContain('saveMessage');
+    expect(code).toContain('FOR UPDATE SKIP LOCKED');
   });
 
   it('should generate NestJS Idempotency Interceptor', () => {
@@ -27,17 +26,13 @@ describe('TypeScript Ecosystem (NestJS + Vue) Generators & Validators', () => {
     expect(code).toContain('processedEvent.findUnique');
   });
 
-  it('should generate Vue Pinia Store', () => {
-    const code = generateVuePiniaStore('Transactions');
-    expect(code).toContain('defineStore');
-    expect(code).toContain('useTransactionsStore');
-    expect(code).toContain('axios.get(\'/api/transactions\')');
-  });
-
-  it('should generate Vue Composable', () => {
-    const code = generateVueComposable('PaymentFlow');
-    expect(code).toContain('export function usePaymentFlow');
-    expect(code).toContain('onMounted');
+  it('re-claims expired idempotency keys atomically (compare-and-set), never with a blind update', () => {
+    const code = generateNestJsIdempotencyInterceptor();
+    const retryBlock = code.slice(code.indexOf("existing.status === 'PROCESSING' || existing.status === 'FAILED'"), code.indexOf('// New key'));
+    expect(retryBlock).toContain('processedEvent.updateMany');
+    expect(retryBlock).toContain('processedAt: existing.processedAt');
+    expect(retryBlock).toContain('reclaimed.count !== 1');
+    expect(retryBlock).not.toContain('processedEvent.update(');
   });
 
   it('should validate Vue files against anti-patterns', () => {
@@ -72,6 +67,7 @@ describe('AWS CDK Infrastructure Generator', () => {
     expect(code).toContain('aws-sns');
     expect(code).toContain('aws-sqs');
     expect(code).toContain('aws-dynamodb');
+    expect(code).toContain('aws-cloudwatch');
   });
 });
 

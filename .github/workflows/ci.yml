@@ -2,37 +2,106 @@ name: CI
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [main, master]
   pull_request:
-    branches: [ main, master ]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  build-and-test:
+  test:
+    name: test (${{ matrix.os }}, node ${{ matrix.node }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        node: ['22', '24']
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+
+      - run: npm ci
+
+      - name: Type check
+        run: npx tsc --noEmit
+
+      # Builds dist/ (used by the CLI contract tests) and regenerates schemas/config.schema.json.
+      - name: Build
+        run: npm run build
+
+      - name: Config JSON Schema is up to date
+        if: matrix.os == 'ubuntu-latest' && matrix.node == '22'
+        run: git diff --exit-code -- schemas/config.schema.json
+
+      - name: Unit, integration and CLI contract tests (with coverage thresholds)
+        run: npx vitest run --coverage
+
+  security:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
-    
-    - name: Use Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: '20.x'
-        cache: 'npm'
-        
-    - name: Install dependencies
-      run: npm ci
-      
-    - name: Type Check & Build
-      run: npm run build
-      
-    - name: Run Tests with Coverage
-      run: npx vitest run --coverage
-      
-    - name: Check Coverage Threshold
-      run: npx vitest run --coverage --coverage.thresholds.lines=70
-      
-    - name: Security Audit
-      run: npm audit --audit-level=high
-      continue-on-error: true
-      
-    - name: Lint Own Specs
-      run: node bin/gherkin-ai.js lint || true
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: Dependency audit (blocking)
+        run: npm audit --audit-level=high
+      - name: Package contents (no secrets, no stray files)
+        run: |
+          npm pack --dry-run --json > pack.json
+          node -e "const files=require('./pack.json')[0].files.map(f=>f.path); const bad=files.filter(f=>/(^|\/)(\.env|auth\.json|.*\.pem|.*\.key)$/.test(f)); if(bad.length){console.error('Forbidden files in package:',bad);process.exit(1)} console.log(files.length+' files OK')"
+
+  e2e:
+    # Web Studio in a real browser, with network isolation checks (no CDN requests).
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run build
+      - run: npm run test:e2e
+
+  golden-matrix:
+    runs-on: ubuntu-latest
+    outputs:
+      stacks: ${{ steps.list.outputs.stacks }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: list
+        run: echo "stacks=$(node -p "JSON.stringify(Object.keys(require('./scripts/golden-stacks').STACKS))")" >> "$GITHUB_OUTPUT"
+
+  golden-builds:
+    # Every STABLE stack is generated, built and its generated test suite run inside the
+    # stack's official Docker image (see docs/ENTERPRISE.md, "Stack support tiers").
+    name: golden (${{ matrix.stack }})
+    needs: golden-matrix
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        stack: ${{ fromJson(needs.golden-matrix.outputs.stacks) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Generate, build and test
+        run: node scripts/golden-build.js ${{ matrix.stack }}

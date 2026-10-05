@@ -2,13 +2,13 @@
    gherkin-ai-cli - 'web' Command Handler (Local UI Server)
    ========================================================================== */
 
+import { PolicyError, UsageError } from '../core/errors';
 import { startWebServer } from '../ui/server';
 import inquirer from 'inquirer';
 
 export async function handleWebCommand(options: any): Promise<void> {
   if (process.env.CI === 'true') {
-    console.error('❌ Web Studio is disabled in CI environments for security reasons.');
-    process.exit(1);
+    throw new PolicyError('Web Studio is disabled in CI environments for security reasons.');
   }
 
   let port = options.port;
@@ -26,8 +26,7 @@ export async function handleWebCommand(options: any): Promise<void> {
   const portNum = parseInt(port, 10);
   
   if (isNaN(portNum) || portNum <= 0 || portNum > 65535) {
-    console.error('❌ Invalid port number.');
-    process.exit(1);
+    throw new UsageError(`Invalid port number: ${port}`);
   }
 
   startWebServer(portNum);

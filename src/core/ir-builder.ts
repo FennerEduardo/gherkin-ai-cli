@@ -5,7 +5,7 @@
    analysis with optional LLM enrichment for brownfield projects.
    ========================================================================== */
 
-import { ParsedFeature, ScenarioModel, StepModel } from './gherkin-parser';
+import { ParsedFeature, ScenarioModel, StepModel } from './parsers/specification-interface';
 import {
   SpecificationIR,
   IRBuildOptions,
@@ -31,6 +31,7 @@ import {
 } from './semantic-ir';
 import { loadConstitution, Constitution } from './constitution';
 import { resolveDomainProfile } from './profiles/profile-registry';
+import { featurePascalName } from '../utils/naming';
 
 // ---------------------------------------------------------------------------
 // Deterministic ID Generator
@@ -244,7 +245,7 @@ export function buildIR(
     enrichedScenarios, commands, queries, events, invariants, apiEndpoints
   );
 
-  return {
+  const ir: SpecificationIR = {
     version: '1.0.0',
     generatedAt: new Date().toISOString(),
     sourceFile,
@@ -281,6 +282,15 @@ export function buildIR(
       contradictions,
     },
   };
+  // Generators need the verbatim steps (the IR classifies them and may drop "And" steps).
+  // Non-enumerable so it never appears in serialized IR.
+  Object.defineProperty(ir, 'sourceFeature', { value: parsed, enumerable: false });
+  return ir;
+}
+
+/** The parsed feature an IR was built from, when available. */
+export function getSourceFeature(ir: SpecificationIR): ParsedFeature | undefined {
+  return (ir as SpecificationIR & { sourceFeature?: ParsedFeature }).sourceFeature;
 }
 
 export const buildSpecificationIR = buildIR;
@@ -549,7 +559,7 @@ function extractStateMachines(parsed: ParsedFeature, sourceFile: string): StateM
 
   // Scan all steps for state-related words
   const allStates: string[] = [];
-  const entityName = parsed.featureName.replace(/[^a-zA-Z]/g, '');
+  const entityName = featurePascalName(parsed);
 
   for (const sc of parsed.scenarios) {
     const stepsText = sc.steps.map(s => s.text).join(' ');
@@ -678,7 +688,7 @@ function extractInvariants(
           id: generateId('INV'),
           name: step.text.substring(0, 80),
           expression: step.text,
-          entity: parsed.featureName.replace(/[^a-zA-Z]/g, ''),
+          entity: featurePascalName(parsed),
           type: 'state',
           source: { file: sourceFile, line: 0 },
           confidence: 0.9,
@@ -759,7 +769,7 @@ function extractAPIEndpoints(
       id: generateId('API'),
       method,
       path,
-      operationId: `${cmd.verb}${parsed.featureName.replace(/[^a-zA-Z]/g, '')}`,
+      operationId: `${cmd.verb}${featurePascalName(parsed)}`,
       requestFields: method !== 'GET' ? fields : [],
       responseFields: fields,
       httpCodes,

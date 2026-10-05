@@ -5,9 +5,10 @@
 import { ParsedFeature } from '../core/gherkin-parser';
 import { GherkinAIConfig } from '../core/config';
 import { SpecificationIR } from '../core/semantic-ir';
+import { featurePascalName } from '../utils/naming';
 
 export function generateCsharpContracts(parsed: ParsedFeature, ir: SpecificationIR, config: GherkinAIConfig): string {
-  const featurePascal = parsed.featureName.replace(/[^a-zA-Z0-9]/g, '');
+  const featurePascal = featurePascalName(parsed);
   const namespace = config.projectName ? config.projectName.replace(/[^a-zA-Z0-9]/g, '') : 'Domain';
 
   return `/* ==========================================================================
@@ -71,17 +72,12 @@ public abstract class ValueObject
 // --------------------------------------------------------------------------
 // 2. Strongly-Typed Domain Event Records
 // --------------------------------------------------------------------------
-${ir.events.length > 0 ? ir.events.map((ev, i) => `public record ${ev.name.replace(/[^a-zA-Z0-9]/g, '')}Event(
+${[...new Set([...ir.events.map(ev => ev.name.replace(/[^a-zA-Z0-9]/g, '')), `${featurePascal}Processed`])].map(name => `public record ${name}Event(
     Guid EventId,
     DateTime OccurredOn,
     Guid AggregateId,
     string Details
-) : IDomainEvent { public string EventType => nameof(${ev.name.replace(/[^a-zA-Z0-9]/g, '')}Event); }`).join('\n\n') : `public record ${featurePascal}ProcessedEvent(
-    Guid EventId,
-    DateTime OccurredOn,
-    Guid AggregateId,
-    string Details
-) : IDomainEvent { public string EventType => nameof(${featurePascal}ProcessedEvent); }`}
+) : IDomainEvent { public string EventType => nameof(${name}Event); }`).join('\n\n')}
 
 // --------------------------------------------------------------------------
 // 3. Strongly-Typed Command & Query Records

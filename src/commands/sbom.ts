@@ -2,6 +2,7 @@
    gherkin-ai-cli - 'sbom' Command Handler (Supply Chain Security)
    ========================================================================== */
 
+import { ExitCode } from '../core/errors';
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
@@ -15,7 +16,7 @@ export async function handleSbomCommand(): Promise<void> {
   const pkgPath = path.join(process.cwd(), 'package.json');
   if (!fs.existsSync(pkgPath)) {
     logger.error('No package.json found in current directory. Cannot generate SBOM.');
-    process.exitCode = 1;
+    process.exitCode = ExitCode.USAGE;
     return;
   }
 

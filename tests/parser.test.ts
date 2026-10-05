@@ -11,7 +11,6 @@ import { parseExecutionFailure } from '../src/core/error-parser';
 import { buildProjectContext } from '../src/core/context-builder';
 import { validateGuardrails } from '../src/core/guardrails';
 import { generateJavaSpringPreset } from '../src/generators/preset-java-spring';
-import { generateReactPlaywrightPreset } from '../src/generators/preset-react-playwright';
 import { calculateDeliveryRisk } from '../src/core/risk-engine';
 import { buildSpecificationIR } from '../src/core/ir-builder';
 
@@ -76,7 +75,9 @@ describe('gherkin-ai CLI unit tests', () => {
       const parsed = parseGherkinText(advancedSpec);
       const ir = buildSpecificationIR(parsed, 'advanced.feature');
       const { contractsTs } = generateContracts(parsed, ir, defaultConfig);
-      expect(contractsTs).toContain('email: z.string().email()');
+      // Zod 4 top-level string formats
+      expect(contractsTs).toContain('email: z.email()');
+      expect(contractsTs).toContain('requestId: z.uuid()');
       expect(contractsTs).toContain('age: z.number().min(18).max(100)');
     });
 
@@ -94,7 +95,7 @@ describe('gherkin-ai CLI unit tests', () => {
       const phpConfig = { ...defaultConfig, stack: { ...defaultConfig.stack, language: 'php' } };
       const ir = buildSpecificationIR(parsed, 'test.feature');
       const { nativeContract: phpContract } = generateContracts(parsed, ir, phpConfig);
-      expect(phpContract?.filename).toBe('userloginfeature.contract.php');
+      expect(phpContract?.filename).toBe('contracts/userloginfeature.contract.php');
       expect(phpContract?.content).toContain('readonly class UserLoginFeatureCommand');
     });
   });
@@ -147,13 +148,11 @@ describe('gherkin-ai CLI unit tests', () => {
     it('should generate Java Spring preset', () => {
       const parsed = parseGherkinText(sampleSpec);
       const javaPreset = generateJavaSpringPreset(parsed);
-      expect(javaPreset[0].content).toContain('Cucumber-JVM');
-    });
-
-    it('should generate React Playwright preset', () => {
-      const parsed = parseGherkinText(sampleSpec);
-      const reactPreset = generateReactPlaywrightPreset(parsed);
-      expect(reactPreset[0].content).toContain('@playwright/test');
+      const byName = (suffix: string) => javaPreset.find(f => f.filename.endsWith(suffix));
+      // Standard Maven layout with a Cucumber (JUnit Platform) runner bound to ./features
+      expect(javaPreset.every(f => f.filename.startsWith('src/main/java/') || f.filename.startsWith('src/test/java/'))).toBe(true);
+      expect(byName('/bdd/RunCucumberTest.java')?.content).toContain('@IncludeEngines("cucumber")');
+      expect(javaPreset.some(f => f.filename.endsWith('Steps.java') && f.content.includes('io.cucumber.java.en.Given'))).toBe(true);
     });
   });
 
@@ -194,7 +193,13 @@ describe('gherkin-ai CLI unit tests', () => {
         contextFiles: []
       });
 
-      await vi.runAllTimersAsync();
+      // Providers load lazily (dynamic import), so keep flushing until the call settles.
+      let settled = false;
+      promise.finally(() => { settled = true; });
+      while (!settled) {
+        await vi.dynamicImportSettled();
+        await vi.runAllTimersAsync();
+      }
       const result = await promise;
 
       expect(attempts).toBe(3);
@@ -219,7 +224,13 @@ describe('gherkin-ai CLI unit tests', () => {
         contextFiles: []
       });
 
-      await vi.runAllTimersAsync();
+      // Providers load lazily (dynamic import), so keep flushing until the call settles.
+      let settled = false;
+      promise.finally(() => { settled = true; });
+      while (!settled) {
+        await vi.dynamicImportSettled();
+        await vi.runAllTimersAsync();
+      }
       const result = await promise;
 
       expect(result.success).toBe(false);

@@ -7,11 +7,14 @@
    - Structured JSON run logging for traceability
    ========================================================================== */
 
+import { assertAgentWritesAllowed, reportAgentWrite, writeAgentFile } from '../core/governance/write-guard';
+import { AgentFirewall } from '../core/governance/agent-firewall';
+import { ExitCode } from '../core/errors';
 import chalk from 'chalk';
 import fs from 'fs';
 import path from 'path';
 import { buildProjectContext } from '../core/context-builder';
-import { calculateDeliveryRisk } from '../core/risk-engine';
+import { assessDeliveryRisk } from '../core/risk-engine';
 import { RealAgentProvider, LLMConfig } from '../core/agent-adapter';
 import { handleVerifyCommand } from './verify';
 import { loadConfig } from '../core/config';
@@ -23,6 +26,8 @@ export interface AutopilotOptions {
   requirement?: string;
   autonomous?: boolean;
   command?: string;
+  allowUnattendedWrites?: boolean;
+  forceBranch?: boolean;
 }
 
 interface AutopilotRunLog {
@@ -70,7 +75,7 @@ export async function handleAutopilotCommand(options: AutopilotOptions = {}): Pr
     console.log(chalk.yellow(`  → Fix: Provide a valid path with --requirement <file>`));
     console.log(chalk.yellow(`  → Example: ghk autopilot --requirement docs/user-crud.md\n`));
     saveRunLog(runLog);
-    process.exitCode = 1;
+    process.exitCode = ExitCode.USAGE;
     return;
   }
   const reqContent = fs.readFileSync(reqFile, 'utf8');
@@ -89,7 +94,7 @@ export async function handleAutopilotCommand(options: AutopilotOptions = {}): Pr
     }
     console.log(chalk.cyan(`\n  Requirement quality score: ${validation.score}/100`));
     saveRunLog(runLog);
-    process.exitCode = 1;
+    process.exitCode = ExitCode.GATE_FAILED;
     return;
   }
 
@@ -111,11 +116,15 @@ export async function handleAutopilotCommand(options: AutopilotOptions = {}): Pr
     console.log(chalk.red('\n✖ SECURITY ALERT: Prompt Injection Attempt Blocked!'));
     console.log(chalk.red(`  ⚠ Reason: ${securityCheck.reason}`));
     saveRunLog(runLog);
-    process.exitCode = 1;
+    process.exitCode = ExitCode.POLICY_DENIED;
     return;
   }
 
   const configInstance = loadConfig();
+  if (process.env.GHK_DRY_RUN !== 'true') {
+    assertAgentWritesAllowed(configInstance, { command: 'autopilot', allowUnattendedWrites: options.allowUnattendedWrites, forceBranch: options.forceBranch });
+  }
+  const firewall = AgentFirewall.forWorkspace(process.cwd(), configInstance);
 
   console.log(chalk.blue(`1. Analyzing repository & building context package...`));
   const context = buildProjectContext();
@@ -136,7 +145,7 @@ export async function handleAutopilotCommand(options: AutopilotOptions = {}): Pr
   } catch (error: any) {
     console.log(chalk.red(`\n✖ Spec Agent execution crashed: ${error.message}`));
     saveRunLog(runLog);
-    process.exitCode = 1;
+    process.exitCode = ExitCode.PROVIDER;
     return;
   }
 
@@ -172,9 +181,7 @@ export async function handleAutopilotCommand(options: AutopilotOptions = {}): Pr
           console.log(chalk.yellow(`   [DRY RUN] Saved proposed spec to ${patchPath}`));
         }
       } else {
-        fs.mkdirSync(path.dirname(fullPath), { recursive: true });
-        fs.writeFileSync(fullPath, mod.content);
-        console.log(chalk.green(`   ✓ Wrote specification to ${p}`));
+        reportAgentWrite(writeAgentFile(firewall, fullPath, mod.content, 'autopilot'), p, 'specification');
       }
       
       if (mod.filePath.endsWith('.feature')) {
@@ -189,7 +196,7 @@ export async function handleAutopilotCommand(options: AutopilotOptions = {}): Pr
     console.log(chalk.yellow(`  Response from Agent:\n${specRes.agentResponse.substring(0, 300)}...\n`));
     console.log(chalk.cyan(`  → Diagnostics log saved to: ${logPath}\n`));
     saveRunLog(runLog);
-    process.exitCode = 1;
+    process.exitCode = ExitCode.PROVIDER;
     return;
   }
 
@@ -213,7 +220,7 @@ export async function handleAutopilotCommand(options: AutopilotOptions = {}): Pr
         }
         console.log(chalk.yellow(`   → Consider improving the requirement document and retrying.\n`));
         saveRunLog(runLog);
-        process.exitCode = 1;
+        process.exitCode = ExitCode.GATE_FAILED;
         return;
       }
 
@@ -248,7 +255,7 @@ export async function handleAutopilotCommand(options: AutopilotOptions = {}): Pr
     console.log(chalk.red(`\n✖ Scaffolding Agent execution crashed: ${error.message}`));
     runLog.scaffoldingResult = 'failed';
     saveRunLog(runLog);
-    process.exitCode = 1;
+    process.exitCode = ExitCode.PROVIDER;
     return;
   }
 
@@ -291,9 +298,7 @@ export async function handleAutopilotCommand(options: AutopilotOptions = {}): Pr
           console.log(chalk.yellow(`   [DRY RUN] Saved proposed bindings to ${patchPath}`));
         }
       } else {
-        fs.mkdirSync(path.dirname(fullPath), { recursive: true });
-        fs.writeFileSync(fullPath, mod.content);
-        console.log(chalk.green(`   ✓ Wrote bindings to ${mod.filePath}`));
+        reportAgentWrite(writeAgentFile(firewall, fullPath, mod.content, 'autopilot'), mod.filePath, 'bindings');
       }
     }
   } else {
@@ -304,15 +309,15 @@ export async function handleAutopilotCommand(options: AutopilotOptions = {}): Pr
     console.log(chalk.cyan(`  → Diagnostics log saved to: ${logPath}\n`));
     runLog.scaffoldingResult = 'failed';
     saveRunLog(runLog);
-    process.exitCode = 1;
+    process.exitCode = ExitCode.PROVIDER;
     return;
   }
 
   console.log(chalk.blue(`4. Invoking Verification Agent & Closed-Loop Repair...`));
-  await handleVerifyCommand({ autoFix: true, maxRetries: 2, command: options.command });
+  await handleVerifyCommand({ autoFix: true, maxRetries: 2, command: options.command, allowUnattendedWrites: options.allowUnattendedWrites, forceBranch: options.forceBranch });
 
   console.log(chalk.blue(`5. Evaluating Enterprise Quality Score Gate...`));
-  const riskCard = calculateDeliveryRisk(process.cwd(), configInstance.specDir);
+  const riskCard = assessDeliveryRisk(process.cwd(), { config: configInstance });
   runLog.riskLevel = riskCard.riskLevel;
   runLog.riskScore = riskCard.overallRiskScore;
 
