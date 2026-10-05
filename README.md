@@ -123,4 +123,4 @@ See [SUPPORT.md](SUPPORT.md) for the support and versioning policy and for how t
 
 ## License
 
-[MIT](LICENSE)
+[MIT](LICENSE). Published on npm by the [fenner](https://www.npmjs.com/org/fenner) organization. Product page: <https://fennereduardo.com/pages/gherkin-ai-agent-architect>.

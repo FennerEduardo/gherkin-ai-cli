@@ -47,9 +47,12 @@
     "react",
     "graphql"
   ],
-  "author": "Fenner Eduardo <contact@fennereduardo.com> (https://fennereduardo.com)",
+  "author": "Fenner <contact@fennereduardo.com> (https://www.npmjs.com/org/fenner)",
   "license": "MIT",
   "homepage": "https://fennereduardo.com/pages/gherkin-ai-agent-architect",
+  "publishConfig": {
+    "access": "public"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/FennerEduardo/gherkin-ai-cli.git"

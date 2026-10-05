@@ -51,4 +51,4 @@ Releases are cut from CI with npm provenance and a CycloneDX SBOM. Each release 
 
 ## Commercial and organizational use
 
-The package is MIT-licensed and published by the gherkin-ai organization on npm. For organization-wide rollout (central configuration, policy locks, providers, proxies, audit), see [docs/ENTERPRISE.md](docs/ENTERPRISE.md).
+The package is MIT-licensed and published on npm by the [fenner](https://www.npmjs.com/org/fenner) organization. Product page: <https://fennereduardo.com/pages/gherkin-ai-agent-architect>. For organization-wide rollout (central configuration, policy locks, providers, proxies, audit), see [docs/ENTERPRISE.md](docs/ENTERPRISE.md).
