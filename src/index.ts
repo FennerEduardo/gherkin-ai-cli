@@ -418,6 +418,18 @@ program
   });
 
 program
+  .command('speckit <direction>')
+  .description('GitHub Spec Kit interop: `import` specs/NNN-*/spec.md into .feature files, or `export` .feature files as Spec Kit specs')
+  .option('--dir <dir>', 'import: Spec Kit specs directory (default: specs or .specify/specs)')
+  .option('--out <dir>', 'Output directory (import: features, export: specs)')
+  .option('--force', 'Overwrite existing files')
+  .option('--json', 'Output as JSON')
+  .action(async (direction, options) => {
+    const { handleSpeckitCommand } = await import('./commands/speckit');
+    await handleSpeckitCommand(direction, options);
+  });
+
+program
   .command('risk')
   .description('Delivery risk of a change (LOW / MEDIUM / HIGH / CRITICAL): security, business criticality, change radius, tests, contract and architecture drift')
   .option('--base <ref>', 'Assess the diff against this git ref (e.g. origin/main); default: the working tree')
