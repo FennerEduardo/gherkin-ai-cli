@@ -16,6 +16,7 @@ import { generateJavaOpenTelemetryInfrastructure } from './java/java-opentelemet
 import { generateJavaCQRSInfrastructure } from './java/java-cqrs-generator';
 import { generateJavaMultiTenancyInfrastructure } from './java/java-multitenancy-generator';
 import { buildDomainModel, toFlat, toPascal } from './kernel/domain-model';
+import { renderJvmRuntime } from './kernel/runtime/jvm';
 import { javaPackagePath, renderJavaKernel, renderJavaKernelTests, renderSpringApplication } from './kernel/java';
 
 /** Base package for generated JVM projects: com.example.<projectname>. */
@@ -37,6 +38,8 @@ export function generateJavaSpringPreset(parsed: ParsedFeature, config?: Gherkin
     renderSpringApplication(pkg),
     ...renderJavaKernel(m, pkg),
     ...renderJavaKernelTests(m, pkg),
+    // Runtime kernel: PostgreSQL + RabbitMQ + OpenTelemetry, verified with -Pintegration (docs/RUNTIME-KERNEL.md).
+    ...renderJvmRuntime(m, pkg),
     ...underBasePackage([
       ...generateJavaOutboxInfrastructure(pkg),
       ...generateJavaSagaInfrastructure(pkg, m.pascal),

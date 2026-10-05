@@ -86,6 +86,14 @@ public class ${m.pascal}Aggregate {
         this.id = id;
     }
 
+    /** Rebuilds an aggregate from persisted state; no events are recorded. */
+    public static ${m.pascal}Aggregate restore(String id, ${m.pascal}State state, long version) {
+        var aggregate = new ${m.pascal}Aggregate(id);
+        aggregate.state = state;
+        aggregate.version = version;
+        return aggregate;
+    }
+
     public String getId() { return id; }
     public ${m.pascal}State getState() { return state; }
     public long getVersion() { return version; }
@@ -173,7 +181,7 @@ import org.junit.platform.suite.api.SelectClasspathResource;
 import org.junit.platform.suite.api.Suite;
 
 /** Runs the feature files (copied from ./features as test resources). Pending steps are reported as skipped. */
-@Suite
+@Suite(failIfNoTests = false) // the runtime integration run (tag "integration") selects no scenarios
 @IncludeEngines("cucumber")
 @SelectClasspathResource("features")
 @ConfigurationParameter(key = GLUE_PROPERTY_NAME, value = "${pkg}.bdd")
@@ -255,6 +263,9 @@ export function renderPom(artifactId: string): string {
     <java.version>17</java.version>
     <cucumber.version>7.20.1</cucumber.version>
     <opentelemetry.version>1.43.0</opentelemetry.version>
+    <!-- Runtime integration tests (tag "integration") need DATABASE_URL / AMQP_URL: mvn test -Pintegration -->
+    <test.groups></test.groups>
+    <test.excludedGroups>integration</test.excludedGroups>
   </properties>
 
   <dependencyManagement>
@@ -306,10 +317,19 @@ export function renderPom(artifactId: string): string {
       <groupId>io.opentelemetry</groupId>
       <artifactId>opentelemetry-exporter-otlp</artifactId>
     </dependency>
+    <dependency>
+      <groupId>com.rabbitmq</groupId>
+      <artifactId>amqp-client</artifactId>
+    </dependency>
 
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-test</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>io.opentelemetry</groupId>
+      <artifactId>opentelemetry-sdk-testing</artifactId>
       <scope>test</scope>
     </dependency>
     <dependency>
@@ -345,8 +365,26 @@ export function renderPom(artifactId: string): string {
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-maven-plugin</artifactId>
       </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <configuration>
+          <groups>\${test.groups}</groups>
+          <excludedGroups>\${test.excludedGroups}</excludedGroups>
+        </configuration>
+      </plugin>
     </plugins>
   </build>
+
+  <profiles>
+    <profile>
+      <id>integration</id>
+      <properties>
+        <test.groups>integration</test.groups>
+        <test.excludedGroups></test.excludedGroups>
+      </properties>
+    </profile>
+  </profiles>
 </project>
 `;
 }

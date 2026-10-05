@@ -12,6 +12,7 @@ import { ParsedFeature } from '../core/gherkin-parser';
 import { GherkinAIConfig } from '../core/config';
 import { generateJavaSpringPreset, jvmBasePackage } from './preset-java-spring';
 import { buildDomainModel } from './kernel/domain-model';
+import { renderJvmRuntime } from './kernel/runtime/jvm';
 import { renderKotlinApplication, renderKotlinKernel, renderKotlinKernelTests } from './kernel/kotlin';
 
 export function generateKotlinSpringPreset(parsed: ParsedFeature, config?: GherkinAIConfig): { filename: string; content: string }[] {
@@ -27,6 +28,8 @@ export function generateKotlinSpringPreset(parsed: ParsedFeature, config?: Gherk
     renderKotlinApplication(pkg),
     ...renderKotlinKernel(m, pkg),
     ...renderKotlinKernelTests(m, pkg),
+    // Runtime kernel (Java, shared with the Java preset): verified with gradle integrationTest (docs/RUNTIME-KERNEL.md).
+    ...renderJvmRuntime(m, pkg, { kotlin: true }),
     ...sharedInfra
   ];
 }

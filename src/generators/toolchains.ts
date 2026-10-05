@@ -49,7 +49,7 @@ export const TOOLCHAINS: Record<string, Toolchain> = {
     image: 'maven:3.9-eclipse-temurin-17',
     build: ['mvn -q -B -ntp -DskipTests package'],
     test: ['mvn -B -ntp test'],
-    integration: ['mvn -B -ntp verify -Pintegration'],
+    integration: ['mvn -B -ntp test -Pintegration'],
     start: 'mvn -B -ntp spring-boot:run'
   },
   'kotlin/spring': {

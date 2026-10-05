@@ -112,7 +112,8 @@ const STACKS = {
     image: 'maven:3.9-eclipse-temurin-17',
     caches: [['m2', '/root/.m2']],
     build: ['mvn -q -B -ntp -DskipTests package'],
-    test: ['mvn -B -ntp test']
+    test: ['mvn -B -ntp test'],
+    integration: ['mvn -B -ntp test -Pintegration']
   },
   kotlin: {
     stack: { ...base, language: 'kotlin', framework: 'spring-boot', orm: 'hibernate', validation: 'jakarta-validation', testing: 'junit' },
@@ -120,7 +121,8 @@ const STACKS = {
     caches: [['gradle', '/cache/gradle']],
     env: { GRADLE_USER_HOME: '/cache/gradle' },
     build: ['gradle -q --no-daemon assemble'],
-    test: ['gradle --no-daemon test']
+    test: ['gradle --no-daemon test'],
+    integration: ['gradle --no-daemon integrationTest']
   },
   fastapi: {
     stack: { ...base, language: 'python', framework: 'fastapi', orm: 'sqlalchemy', validation: 'pydantic', testing: 'pytest' },
