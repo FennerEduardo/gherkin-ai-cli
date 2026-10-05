@@ -95,7 +95,8 @@ const STACKS = {
     image: 'node:24-bookworm',
     caches: [['npm', '/root/.npm']],
     build: ['npm install --no-audit --no-fund --loglevel=error', 'npx prisma generate', 'npm run build'],
-    test: ['npm test']
+    test: ['npm test'],
+    integration: ['npm run test:integration']
   },
   dotnet: {
     stack: { ...base, language: 'csharp', framework: 'dotnet-aspnetcore', orm: 'efcore', validation: 'fluentvalidation', messaging: 'rabbitmq', testing: 'xunit' },
