@@ -1,0 +1,67 @@
+name: Bug report
+description: Something in gherkin-ai does not work as documented.
+labels: [bug, triage]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Security vulnerabilities must **not** be reported here: see SECURITY.md.
+        Remove secrets, tokens and internal hostnames from everything you paste.
+  - type: input
+    id: version
+    attributes:
+      label: gherkin-ai version
+      description: Output of `ghk --version`.
+      placeholder: 3.0.0
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Specification (lint, validate, create, speckit)
+        - Code generation (init, generate, upgrade)
+        - Generated project (build, tests, runtime kernel)
+        - Verification (verify, converge, diff, risk)
+        - Agents (MCP server, firewall, implement, autopilot)
+        - Configuration, credentials, providers, network
+        - Audit, telemetry, CI integration
+        - Web Studio
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: stack
+    attributes:
+      label: Stack (if generation-related)
+      placeholder: "e.g. java / spring-boot + vue"
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      placeholder: "OS, Node.js version, CI provider, LLM provider (if relevant)"
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Commands you ran, and a minimal .feature file or configuration if possible.
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: Include the exit code and the output of the command with `--verbose` (or `--json`).
+      render: text
+    validations:
+      required: true

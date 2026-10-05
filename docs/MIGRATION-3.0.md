@@ -72,6 +72,28 @@ To validate the configuration layers on their own: `ghk config validate`.
   - in CI, unless you pass `--allow-unattended-writes` (or set `policy.allowUnattendedWrites`);
   - on `main` or `master`, unless you pass `--force-branch` (or configure `policy.protectedBranches`).
 - File paths returned by the model that point outside the workspace are dropped.
+- Every file goes through the **agent firewall** ([ENTERPRISE.md §14](./ENTERPRISE.md#14-agent-firewall)). Files it does not ALLOW are saved as `.ghe/patches/<file>.proposed` instead of being written. This covers secrets and `.env*`, `.ghkgovernance.yaml`, an existing `gherkin-ai.config.json`, CI workflows, migrations, infrastructure and `package.json`, plus anything listed in `policy.firewall`.
+- `.ghkgovernance.yaml` is still read, and its `allowedPaths` are now **enforced**. In 2.x only `protectedPaths` and `requireHumanApprovalOn` were checked, so an existing file may now block writes outside `allowedPaths`. Its `protectedPaths` and `requireHumanApprovalOn` feed the firewall too. Without a policy, the whole workspace is writable except the built-in denied and approval paths.
+
+## Delivery risk
+
+`ghk quality`, `ghk autopilot` and the MCP risk tool use the rebuilt risk engine:
+
+- it scores the git change set, not only the specs, across six weighted dimensions with evidence;
+- the fixed architecture-drift baseline of 30 is gone;
+- scores and levels therefore differ from 2.x.
+
+The scorecard keeps `blastRadius`, `testStrength`, `securitySensitivity`, `architectureDrift`, `overallRiskScore`, `riskLevel`, `requiresHumanApproval` and `factors`, and adds `basis`, `changedFiles`, `dimensions` and `approvalThreshold`. Set the approval level with `policy.risk.requireApprovalAt`. New command: `ghk risk`.
+
+## Test sandbox
+
+`verify --docker` now runs in the stack's toolchain image:
+
+- without network access by default;
+- with memory, CPU and process limits;
+- with all capabilities dropped and a read-only root filesystem.
+
+Tests that download dependencies need `--docker-network bridge`, or `sandbox.network: "bridge"`. The image and limits can be set in `sandbox.*`.
 
 ## MCP server
 
@@ -114,6 +136,19 @@ Every stack now renders the same kernel from the feature (aggregate, unit tests,
 | Rust | Axum 0.7 crate (requires a recent stable toolchain). |
 | Frontends | Generated as a separate project in `./frontend`: React 19 + Redux Toolkit, Vue 3 + Pinia, **Angular 22** (zoneless, NgRx Signals; the classic NgRx store mode was removed), Next.js 16, React Native (Expo 57), Flutter. |
 | Contracts | gRPC and GraphQL are opt-in: `"contracts": { "grpc": true, "graphql": true }`. |
+
+**Runtime kernel.** Every backend also gets the runtime kernel ([RUNTIME-KERNEL.md](./RUNTIME-KERNEL.md)):
+
+- PostgreSQL persistence with idempotent commands and an outbox;
+- a RabbitMQ relay and an inbox consumer with a dead-letter queue;
+- sagas;
+- OpenTelemetry trace propagation.
+
+Its integration tests are excluded from the default test command and run with the stack's integration command, for example `npm run test:integration` or `mvn verify -Pintegration`, given `DATABASE_URL` and `AMQP_URL`.
+
+**Frontend API clients** send a W3C `traceparent` header. Pass `traceparent: false` (Dart: `traceparent: () => null`) to disable it, or a function to propagate an existing trace. Cross-origin deployments must allow the header in CORS.
+
+**AWS CDK** (`./infrastructure`) is generated when `infrastructure.awsCdk` is `true`, or by default when `stack.messaging` is SQS or SNS.
 
 Identifiers are derived from the feature name with diacritics removed (`Creación de Pedidos` → `CreacionDePedidos`). To choose a shorter name, tag the feature with `@aggregate:Pedido` (or `@aggregate(Pedido)`); every generator then emits `PedidoAggregate`, `CreatePedidoCommand`, `pedido.aggregate.ts` and so on. Localized features (`# language: es`) are parsed as Gherkin. Command names come from identifiers quoted in `When` steps (`"CreateOrderCommand"` → `CreateOrder`) or, for English features, from the step's verb; otherwise a single `Process<Feature>` command is generated.
 

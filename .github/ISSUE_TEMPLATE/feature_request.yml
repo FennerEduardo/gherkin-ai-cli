@@ -1,0 +1,33 @@
+name: Feature request
+description: Propose a capability, a stack, or a change to existing behavior.
+labels: [enhancement, triage]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What are you trying to achieve, and what stops you today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Commands, flags, configuration or generated output you would expect.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+  - type: dropdown
+    id: contract
+    attributes:
+      label: Does this change existing behavior?
+      description: Changes to the public contract (see SUPPORT.md) can only ship in a major version.
+      options:
+        - No, it is additive
+        - Yes, it changes documented behavior
+        - Not sure
+    validations:
+      required: true

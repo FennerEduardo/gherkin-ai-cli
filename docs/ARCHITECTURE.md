@@ -1,78 +1,46 @@
-# 🏗️ `gherkin-ai` CLI Architecture & Agent Pipeline Design (`v3.0`)
+# Architecture
 
-This document details the internal design, closed-loop verification engine, MCP protocol integration, guardrails policy engine, and multi-agent delivery orchestration in `gherkin-ai`.
-
----
-
-## 1. System Architecture Diagram
+gherkin-ai is a Node.js (TypeScript) CLI. It is deterministic by default: only `verify --auto-fix`, `autopilot` and the optional LLM-backed suggestions call a model. Everything else — parsing, generation, verification, risk, graph and firewall decisions — is computed from files, specifications and git.
 
 ```text
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                              PRODUCT INPUT                                  │
-│             (User Story / GraphQL Schema / JIRA Acceptance Spec)            │
-└──────────────────────────────────────┬──────────────────────────────────────┘
-                                       ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                    PHASE 1: AGENTIC SPEC GENERATOR (MCP)                    │
-│   • Semantic Boundary Edge-Case Synthesis                                    │
-│   • Multi-Persona Scenario Splitting (Frontend UI vs. Backend API)          │
-│   • Model Context Protocol (MCP) Stdio JSON-RPC 2.0 Interface               │
-└──────────────────────────────────────┬──────────────────────────────────────┘
-                                       ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│              PHASE 2: DUAL-TARGET STEP BINDING & SCAFFOLDING                │
-│    ┌───────────────────────────────┐     ┌──────────────────────────────┐   │
-│    │     Java / Spring Backend     │     │     React / Playwright UI    │   │
-│    │ Cucumber-JVM + REST / GraphQL │     │  Component & E2E Step Binds  │   │
-│    └───────────────────────────────┘     └──────────────────────────────┘   │
-└──────────────────────────────────────┬──────────────────────────────────────┘
-                                       ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                 PHASE 3: CLOSED-LOOP VERIFICATION HARNESS                   │
-│   1. Agent executes implementation                                          │
-│   2. Test runner fires (JUnit 5 / Playwright CLI / Vitest / Local / Docker) │
-│   3. Build/Runtime feedback captured into structured agent context          │
-│   4. Self-Healing iteration until all assertions pass (Exit code: 0)        │
-└──────────────────────────────────────┬──────────────────────────────────────┘
-                                       ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                 PHASE 4: ENTERPRISE CI/CD & MULTI-AGENT SWARM               │
-│   • Sub-agent parallel feature execution (`ghk autopilot`)                  │
-│   • GitHub Action PR Gatekeeper & Quality Score (`ghk quality`)             │
-└─────────────────────────────────────────────────────────────────────────────┘
+ requirements ──► .feature files ◄── Spec Kit (speckit import/export)
+                      │
+                      ▼
+   Gherkin parser (@cucumber/gherkin) ─► semantic IR ─► lint / validate
+   commands · events · endpoints · states · invariants · policies
+                      │
+       ┌──────────────┼──────────────────────────┬─────────────────────────┐
+       ▼              ▼                          ▼                         ▼
+  generators     agent context            verification              governance
+  (20+ stacks)   (implement, MCP)         (converge, diff,          (firewall, risk,
+  domain kernel                            verify --docker)          graph, audit)
+  runtime kernel                                 ▲                         │
+       │                                         │                         │
+       └────────── generated project ────────────┴──── agents (MCP, IDE hooks, CLI loops)
 ```
 
----
+## Main modules
 
-## 2. Core Components
+| Area | Location | Notes |
+|---|---|---|
+| CLI entry, exit codes, `--json` | `src/index.ts`, `src/core/errors.ts`, `src/utils/output.ts` | Commands are loaded lazily. One error handler maps errors to exit codes. |
+| Configuration | `src/core/config/` | zod schema → JSON Schema. Layers: organization, user, project, environment, with `locked` keys. |
+| Parsing and IR | `src/core/gherkin-parser.ts`, `src/core/ir-builder.ts`, `src/core/semantic-ir.ts` | Official Cucumber parser with every Gherkin dialect. The IR elements carry source locations. |
+| Generators | `src/generators/` | One preset per stack, built on a shared domain model (`kernel/domain-model.ts`). The runtime kernel per language lives in `kernel/runtime/` and the toolchain registry in `toolchains.ts`. |
+| Verification | `src/core/convergence-engine.ts`, `src/commands/verify.ts`, `src/core/execution-sandbox.ts` | Convergence compares the specification with the generated contracts. The Docker sandbox runs without network, with resource limits and a read-only root filesystem. |
+| Governance | `src/core/governance/` (firewall, write guard, spec hashes), `src/core/risk-engine.ts`, `src/core/graph/` | The firewall is the single decision point for agent actions. Risk and the graph are deterministic. |
+| LLM layer | `src/core/llm/` | One adapter per provider, a single retry layer, timeouts, budgets, a proxy-aware dispatcher and redaction before sending. |
+| MCP server | `src/mcp/` | Official SDK. Tools are grouped by safety level and run in-process. |
+| Audit and telemetry | `src/core/telemetry.ts` | Local JSONL only, redacted, with an execution id per run. |
+| Interop and benchmark | `src/core/interop/speckit.ts`, `src/core/bench/` | Spec Kit conversion and the A/B harness. |
 
-### 2.1 Closed-Loop Verification Harness (`src/core/execution-sandbox.ts` & `src/commands/verify.ts`)
-Executes local test harnesses deterministically. Supports:
-- Native system process execution (npm test, vitest, pytest, maven, gradle, go test).
-- Containerized execution inside isolated Docker sandboxes (`--docker`).
-- Smart stack trace parsing and context noise reduction (`src/core/error-parser.ts`).
+## How generated code is verified
 
-### 2.2 Model Context Protocol (MCP) Server (`src/mcp/mcp-server.ts` & `src/mcp/mcp-installer.ts`)
-Exposes stdio JSON-RPC 2.0 tools for Cursor, Claude Desktop, Antigravity, and Windsurf:
-- `gherkin_spec_generate`
-- `gherkin_verify_diff`
-- `gherkin_scaffold_bindings`
-- `gherkin_context_build`
-- Auto-installer via `ghk mcp install`.
+`scripts/golden-build.js` checks every stack in the registry (`scripts/golden-stacks.js`):
 
-### 2.3 Context Engineering & Guardrails Engine (`src/core/context-builder.ts` & `src/core/guardrails.ts`)
-Packages repository context into `.ghe/` and enforces path protection limits (`infrastructure/**`, `migrations/**`).
+1. generates a sample project from `scripts/golden-feature.feature`;
+2. builds it in the stack's official image;
+3. runs its unit, contract and BDD tests;
+4. for backends, runs the runtime integration suite against PostgreSQL 17 and RabbitMQ 4 containers (`scripts/golden-services.js`).
 
----
-
-## 3. Quality & Metrics Engine (`src/core/metrics-engine.ts`, `ghk quality`)
-
-> The former `quality-score.ts` module no longer exists; these axes are computed by `MetricsEngine` and `ghk quality`. Percentages below are illustrative.
-
-Calculates 6-axis feature compliance before PR merge:
-- Specification AST Completeness (95%)
-- Unit Test Coverage (92%)
-- Integration Test Coverage (90%)
-- E2E Playwright Score (88%)
-- Type Safety Strictness (100%)
-- Security Policy Compliance (94%)
+CI runs one job per stack. See [EVALUATION_REPORT.md](EVALUATION_REPORT.md) for the evidence, and [RUNTIME-KERNEL.md](RUNTIME-KERNEL.md) for the runtime contract.
