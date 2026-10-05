@@ -417,6 +417,37 @@
           },
           "additionalProperties": false
         },
+        "sandbox": {
+          "type": "object",
+          "properties": {
+            "network": {
+              "type": "string"
+            },
+            "memory": {
+              "type": "string"
+            },
+            "cpus": {
+              "type": "string"
+            },
+            "pidsLimit": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            },
+            "image": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        },
+        "infrastructure": {
+          "type": "object",
+          "properties": {
+            "awsCdk": {
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false
+        },
         "contracts": {
           "type": "object",
           "properties": {

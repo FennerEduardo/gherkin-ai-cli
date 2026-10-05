@@ -167,7 +167,8 @@ const STACKS = {
     caches: [['mix', '/root/.mix'], ['hex', '/root/.hex']],
     env: { MIX_ENV: 'test' },
     build: ['mix local.hex --force --if-missing > /dev/null', 'mix local.rebar --force --if-missing > /dev/null', 'mix deps.get > /dev/null', 'mix compile --warnings-as-errors'],
-    test: ['mix test']
+    test: ['mix test'],
+    integration: ['mix test --only integration']
   },
   rust: {
     stack: { ...base, language: 'rust', framework: 'axum', orm: 'none', validation: 'serde', testing: 'cargo-test' },
@@ -183,7 +184,8 @@ const STACKS = {
     caches: [['mix', '/root/.mix'], ['hex', '/root/.hex']],
     env: { MIX_ENV: 'test' },
     build: ['mix local.hex --force --if-missing > /dev/null', 'mix local.rebar --force --if-missing > /dev/null', 'mix deps.get > /dev/null', 'mix compile --warnings-as-errors'],
-    test: ['mix test']
+    test: ['mix test'],
+    integration: ['mix test --only integration']
   },
   laravel: {
     stack: { ...base, language: 'php', framework: 'laravel', orm: 'eloquent', validation: 'laravel-validation', testing: 'phpunit' },

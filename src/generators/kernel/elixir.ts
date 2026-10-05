@@ -3,6 +3,7 @@
    ========================================================================== */
 
 import { DomainModel, stepRegex } from './domain-model';
+import { EX_RUNTIME_CONFIG, EX_RUNTIME_DEPS, renderExRuntime } from './runtime/elixir';
 
 export interface ExFile {
   filename: string;
@@ -53,7 +54,7 @@ export function renderElixirProject(m: DomainModel, n: ElixirNames, featureFile:
     [
       {:phoenix, "~> 1.7.14"},
       {:jason, "~> 1.4"},
-      {:bandit, "~> 1.5"}${lv ? `,
+      {:bandit, "~> 1.5"}${EX_RUNTIME_DEPS}${lv ? `,
       {:phoenix_live_view, "~> 1.0"},
       {:phoenix_html, "~> 4.1"},
       {:lazy_html, ">= 0.1.0", only: :test}` : ''}
@@ -76,7 +77,7 @@ config :${n.otp}, ${web}.Endpoint,
 
 config :phoenix, :json_library, Jason
 config :logger, level: if(config_env() == :test, do: :warning, else: :info)
-`
+${EX_RUNTIME_CONFIG}`
     },
     {
       filename: `lib/${n.otp}/application.ex`,
@@ -116,6 +117,10 @@ end
   end
 
   def new(_), do: {:error, "${m.pascal} id is required"}
+
+  @doc "Rebuilds an aggregate from persisted state; no events are recorded."
+  @spec restore(String.t(), String.t(), non_neg_integer()) :: t()
+  def restore(id, state, version), do: %__MODULE__{id: id, state: state, version: version}
 ${m.commands.map(c => `
   @spec ${c.snake}(t(), map()) :: {:ok, t(), event()} | {:error, String.t()}
   def ${c.snake}(%__MODULE__{} = aggregate, command), do: execute(aggregate, command, ${exStr(c.event)})`).join('\n')}
@@ -221,7 +226,8 @@ ${m.commands.map(c => `    "${c.snake}" => &${m.pascal}Aggregate.${c.snake}/2`).
 end
 `
     },
-    { filename: 'test/test_helper.exs', content: `ExUnit.start()\n` },
+    // Runtime integration tests (tag :integration) need DATABASE_URL / AMQP_URL: mix test --only integration
+    { filename: 'test/test_helper.exs', content: `ExUnit.start(exclude: [:integration])\n` },
     {
       filename: `test/${n.otp}/domain/${m.snake}_aggregate_test.exs`,
       content: `defmodule ${agg}Test do
@@ -366,6 +372,8 @@ end
     }
   ];
 
+  // Runtime kernel: PostgreSQL + RabbitMQ + OpenTelemetry (docs/RUNTIME-KERNEL.md).
+  files.push(...renderExRuntime(m, n.otp, n.mod));
   if (lv) files.push(...renderLiveView(m, n, agg, web));
   return files;
 }
