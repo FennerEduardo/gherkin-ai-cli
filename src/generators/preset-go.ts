@@ -15,6 +15,7 @@ import { generateGoIdempotencyInfrastructure } from './go/go-idempotency-generat
 import { generateGoMultiTenancyInfrastructure } from './go/go-multitenancy-generator';
 import { buildDomainModel, toKebab } from './kernel/domain-model';
 import { renderGoKernel } from './kernel/go';
+import { renderGoRuntime } from './kernel/runtime/go';
 
 export function goModulePath(config?: GherkinAIConfig): string {
   return toKebab(config?.projectName || 'app');
@@ -29,6 +30,8 @@ export function generateGoPreset(parsed: ParsedFeature, config?: GherkinAIConfig
 
   return [
     ...renderGoKernel(m, module),
+    // Runtime kernel: PostgreSQL + RabbitMQ + OpenTelemetry, verified with -tags integration (docs/RUNTIME-KERNEL.md).
+    ...renderGoRuntime(m, module),
     ...under('internal/infrastructure/outbox', generateGoOutboxInfrastructure('outbox')),
     ...under('internal/infrastructure/idempotency', generateGoIdempotencyInfrastructure('idempotency')),
     ...under('internal/infrastructure/multitenancy', generateGoMultiTenancyInfrastructure('multitenancy')),

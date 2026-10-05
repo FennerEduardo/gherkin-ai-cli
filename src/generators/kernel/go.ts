@@ -70,6 +70,17 @@ func New${m.pascal}Aggregate(id string) (*${m.pascal}Aggregate, error) {
 	return &${m.pascal}Aggregate{ID: id, State: ${stateConst(m.initialState)}}, nil
 }
 
+// Restore${m.pascal}Aggregate rebuilds an aggregate from persisted state; no events are recorded.
+func Restore${m.pascal}Aggregate(id string, state State, version int64) (*${m.pascal}Aggregate, error) {
+	a, err := New${m.pascal}Aggregate(id)
+	if err != nil {
+		return nil, err
+	}
+	a.State = state
+	a.Version = version
+	return a, nil
+}
+
 // PendingEvents returns the events recorded since the aggregate was loaded (to be saved via the outbox).
 func (a *${m.pascal}Aggregate) PendingEvents() []DomainEvent {
 	return append([]DomainEvent(nil), a.pendingEvents...)
@@ -356,6 +367,10 @@ require (
 	github.com/go-chi/chi/v5 v5.1.0
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.7.1
+	github.com/rabbitmq/amqp091-go v1.10.0
+	go.opentelemetry.io/otel v1.31.0
+	go.opentelemetry.io/otel/sdk v1.31.0
+	go.opentelemetry.io/otel/trace v1.31.0
 )
 `;
 }

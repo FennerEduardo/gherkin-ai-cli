@@ -144,8 +144,9 @@ const STACKS = {
     stack: { ...base, language: 'go', framework: 'chi', orm: 'pgx', validation: 'go-playground', testing: 'testing' },
     image: 'golang:1.22',
     caches: [['gomod', '/go/pkg/mod'], ['gobuild', '/root/.cache/go-build']],
-    build: ['go mod tidy', 'go vet ./...', 'go build ./...'],
-    test: ['go test ./...']
+    build: ['go mod tidy', 'go vet ./...', 'go vet -tags integration ./internal/runtime/...', 'go build ./...'],
+    test: ['go test ./...'],
+    integration: ['go test -tags integration -count=1 -v ./internal/runtime/...']
   },
   rails: {
     stack: { ...base, language: 'ruby', framework: 'rails', orm: 'none', validation: 'active-model', testing: 'rspec' },

@@ -77,7 +77,7 @@ export const TOOLCHAINS: Record<string, Toolchain> = {
     image: 'golang:1.22',
     build: ['go mod tidy', 'go vet ./...', 'go build ./...'],
     test: ['go test ./...'],
-    integration: ['go test -tags integration -count=1 ./...'],
+    integration: ['go test -tags integration -count=1 ./internal/runtime/...'],
     start: 'go run ./cmd/server'
   },
   'php/laravel': {
