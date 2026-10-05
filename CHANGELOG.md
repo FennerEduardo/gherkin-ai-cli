@@ -2,11 +2,47 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
-## [3.0.0-beta.1] - Unreleased
+## [3.0.0] - 2026-10-05
 
-Enterprise-readiness release, driven by the 2.6.5 reviews. Contains breaking changes: see `docs/MIGRATION-3.0.md`. For operators: `docs/ENTERPRISE.md`.
+Enterprise-readiness release, driven by the reviews of 2.6.x. Contains breaking changes: see `docs/MIGRATION-3.0.md`. For operators: `docs/ENTERPRISE.md`. Support and versioning policy: `SUPPORT.md`.
 
 ### Added
+- **Runtime kernel for every backend:**
+  - **What it is.** A verified path for persistence, messaging and tracing (`docs/RUNTIME-KERNEL.md`):
+    - a PostgreSQL command service with idempotency claims and a transactional outbox;
+    - an outbox relay with `FOR UPDATE SKIP LOCKED` leases and publisher confirms;
+    - an inbox consumer with deduplication and a dead-letter queue;
+    - a saga orchestrator with reverse compensation;
+    - W3C trace context across the command, publish and consume spans.
+  - **Where.** Implemented with each language's standard driver, AMQP client and OpenTelemetry SDK: NestJS, Express, ASP.NET Core, Spring Boot (Java, Kotlin), FastAPI, Django, Go, Laravel, Rails, Phoenix and Axum.
+  - **Verification.** The integration suite (IT1–IT7) runs in every backend golden build against PostgreSQL 17 and RabbitMQ 4.
+- **OpenTelemetry in the frontends:** the generated API clients (React, Vue, Angular, Next.js, React Native, Flutter) send a `traceparent` header, and their generated tests assert it.
+- **Agent firewall:**
+  - **What it decides.** One decision point for agent writes, commands, network access, secrets and MCP tools: ALLOW, REQUIRE_APPROVAL or DENY.
+  - **Policy sources.** Built-in rules, `policy.firewall`, `.ghkgovernance.yaml` and the impact scope of the feature being implemented.
+  - **Where it applies.** The MCP server, `verify --auto-fix --apply` and `autopilot --apply` (blocked files become proposals), and `ghk firewall check|policy|hook`, including a Claude Code `PreToolUse` hook.
+  - **Self-protection.** Agents cannot edit `.ghkgovernance.yaml`.
+- **Delivery risk (`ghk risk`):**
+  - **Input.** The git change set, an explicit file list or the working tree.
+  - **Scoring.** LOW to CRITICAL across six weighted dimensions, each with evidence: security, business criticality, change radius, test weakness, contract drift and architecture drift.
+  - **Policy and CI.** `policy.risk.requireApprovalAt` and `policy.risk.criticalPaths` configure approval; `--fail-on` gates CI with exit code 4.
+- **Traceability graph (`ghk graph`):**
+  - **What it links.** Feature → scenario → command / event / endpoint, connected to the files and tests that reference them.
+  - **Output.** A summary, JSON, Mermaid or DOT; `--trace` for one symbol and `--scope` for a feature's change scope.
+- **GitHub Spec Kit interop:** `ghk speckit import` (spec.md → .feature) and `ghk speckit export`, round-tripping user stories, priorities and FR-### requirements.
+- **A/B benchmark harness (`ghk bench`):**
+  - **What it compares.** The same agent on the same task, with and without gherkin-ai.
+  - **Scoring.** Deterministic: build, tests, hidden acceptance tests (copied in after the agent finishes), convergence, files changed and time.
+  - **Cost.** No LLM is called by the harness itself.
+- **Hardened Docker sandbox for `verify --docker`:**
+  - no network by default (`--docker-network`);
+  - memory, CPU and process limits;
+  - all capabilities dropped, `no-new-privileges` and a read-only root filesystem;
+  - the stack's verified toolchain image;
+  - configurable in `sandbox.*`.
+- **AWS CDK infrastructure is opt-in** (`infrastructure.awsCdk`, default on for SQS/SNS messaging). The generated app (EKS with IRSA, DLQ alarm) has its own golden build with CDK assertions and `cdk synth`.
+- **`converge` measures generated contracts:** OpenAPI operations and status codes, AsyncAPI events, and domain types in the generated sources. Each dimension reports its basis (`artifacts`, `specification` or `reports`).
+- `SUPPORT.md` (semver contract and support windows) and issue templates.
 - **Layered, validated configuration:** defaults → organization (`GHK_ORG_CONFIG`) → user → project → environment, validated with zod; organization `locked` paths; published JSON Schema (`schemas/config.schema.json`); `ghk config show|validate|schema`.
 - **LLM providers:** Azure OpenAI (API key or Entra ID), Amazon Bedrock, Google Gemini and Vertex AI, OpenAI-compatible gateways (`llm.baseUrl` + `llm.headers`), alongside OpenAI, Anthropic and Ollama. Per-request timeouts, a single retry layer honoring `Retry-After`, per-run token budgets, and allow-lists for providers, models and endpoints.
 - **Corporate networking:** `HTTPS_PROXY`/`NO_PROXY` and `network.proxy` for all providers; extra trusted CAs via `network.caFile`.
@@ -56,6 +92,9 @@ Enterprise-readiness release, driven by the 2.6.5 reviews. Contains breaking cha
   - Previously both got a Playwright spec containing only comments. `nest` is accepted as an alias of `nestjs`.
 
 ### Fixed
+- **`autopilot --apply` skipped the CI and protected-branch guards.** It imported the write guard but never called it, and did not pass `--allow-unattended-writes` / `--force-branch` on to its verify step.
+- **`.ghkgovernance.yaml` `allowedPaths` was never enforced.** Only protected paths were checked. The glob matcher also accepted any path containing the pattern text.
+- **Documentation:** the architecture page listed MCP tools that do not exist; the README listed container images the CLI does not use; the evaluation report was a self-scored rubric. They were replaced by documents that match the code and by reproducible evidence (`docs/EVALUATION_REPORT.md`).
 - **Credential leak between providers:** a key belonging to another provider could be sent to the selected one (for example, the OpenAI key sent to Anthropic). `--apiKey` was silently ignored.
 - **NestJS idempotency race:** expired or failed keys could be re-claimed by two concurrent requests.
 - **Generated NestJS projects did not compile:**

@@ -232,10 +232,10 @@ Every target below is **stable**: on every change CI generates a sample project,
 | backend | TypeScript · NestJS 11 + Prisma 7 (CommonJS, MariaDB adapter) | npm, Jest, cucumber-js (`node:24`) |
 | backend | TypeScript · Express 5 (+ Prisma 6 or 7) | npm, Jest, cucumber-js (`node:24`) |
 | backend | C# · ASP.NET Core 8 + EF Core | dotnet, xUnit, Reqnroll (`dotnet/sdk:8.0`) |
-| backend | Java 17 · Spring Boot 3 (Maven) | Maven, JUnit 5, Cucumber-JVM (`maven:3.9-temurin-17`) |
+| backend | Java 17 · Spring Boot 3 (Maven) | Maven, JUnit 5, Cucumber-JVM (`maven:3.9-eclipse-temurin-17`) |
 | backend | Kotlin · Spring Boot 3 (Gradle) | Gradle, JUnit 5, Cucumber-JVM (`gradle:8.10-jdk17`) |
-| backend | Python · FastAPI + SQLAlchemy | pip, pytest, pytest-bdd (`python:3.12`) |
-| backend | Python · Django + DRF | pip, pytest, pytest-bdd (`python:3.12`) |
+| backend | Python · FastAPI + SQLAlchemy | pip, pytest, pytest-bdd (`python:3.12-slim`) |
+| backend | Python · Django + DRF | pip, pytest, pytest-bdd (`python:3.12-slim`) |
 | backend | Go · chi | go vet, go test, godog (`golang:1.22`) |
 | backend | PHP · Laravel 13 | Composer, PHPUnit 12, Behat (`composer:2`) |
 | backend | Ruby · Rails 8 (API) | Bundler, RSpec, Cucumber (`ruby:3.3`) |
