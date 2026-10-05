@@ -430,6 +430,20 @@ program
   });
 
 program
+  .command('bench <subcommand> [dir]')
+  .description('A/B benchmark: run your coding agent on the same task with and without gherkin-ai and score both deterministically (init | run)')
+  .option('--agent <command>', 'Agent command ({prompt_file}, {workspace}, {arm} are substituted); overrides bench.json')
+  .option('--repetitions <n>', 'Runs per arm (default: bench.json or 1)')
+  .option('--arms <list>', 'Comma-separated arms to run (default: control,ghk)')
+  .option('--out <dir>', 'Report directory (default: <dir>/results/<timestamp>)')
+  .option('--dry-run', 'Prepare the workspaces without running the agent')
+  .option('--json', 'Output as JSON')
+  .action(async (subcommand, dir, options) => {
+    const { handleBenchCommand } = await import('./commands/bench');
+    await handleBenchCommand(subcommand, dir, { ...options, dryRun: options.dryRun || program.opts().dryRun });
+  });
+
+program
   .command('risk')
   .description('Delivery risk of a change (LOW / MEDIUM / HIGH / CRITICAL): security, business criticality, change radius, tests, contract and architecture drift')
   .option('--base <ref>', 'Assess the diff against this git ref (e.g. origin/main); default: the working tree')
