@@ -133,6 +133,24 @@ const pluginsSchema = z.preprocess(
   })
 );
 
+const sandboxSchema = z.object({
+  /** Docker network for `verify --docker`. "none" (default) blocks network access; use "bridge" when tests download dependencies. */
+  network: z.string().optional(),
+  /** Container memory limit (docker --memory). Default "2g". */
+  memory: z.string().optional(),
+  /** Container CPU limit (docker --cpus). Default "2". */
+  cpus: z.string().optional(),
+  /** Maximum processes in the container (docker --pids-limit). Default 512. */
+  pidsLimit: z.number().int().positive().optional(),
+  /** Overrides the toolchain image for the stack. */
+  image: z.string().optional()
+});
+
+const infrastructureSchema = z.object({
+  /** Generate the AWS CDK app in ./infrastructure (TypeScript, verified with `cdk synth`). Default: false. */
+  awsCdk: z.boolean().optional()
+});
+
 const policySchema = z.object({
   /** Allow --apply / --auto-fix / autopilot writes when running in CI. Default: false. */
   allowUnattendedWrites: z.boolean().optional(),
@@ -167,6 +185,8 @@ export const configShape = {
   telemetry: telemetrySchema.optional(),
   plugins: pluginsSchema.optional(),
   policy: policySchema.optional(),
+  sandbox: sandboxSchema.optional(),
+  infrastructure: infrastructureSchema.optional(),
   /** Extra API contract formats generated next to OpenAPI/AsyncAPI. */
   contracts: z.object({
     grpc: z.boolean().optional(),

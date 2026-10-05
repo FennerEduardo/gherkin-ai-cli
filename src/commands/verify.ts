@@ -5,7 +5,8 @@
 import { assertAgentWritesAllowed } from '../core/governance/write-guard';
 import { ExitCode } from '../core/errors';
 import chalk from 'chalk';
-import { executeSandbox, SandboxExecutionOptions } from '../core/execution-sandbox';
+import { DEFAULT_CONTAINER_LIMITS, executeSandbox, SandboxExecutionOptions } from '../core/execution-sandbox';
+import { resolveToolchain } from '../generators/toolchains';
 import { parseExecutionFailure } from '../core/error-parser';
 import { RealAgentProvider, LLMConfig } from '../core/agent-adapter';
 import { loadConfig } from '../core/config';
@@ -14,6 +15,8 @@ import { MetricsEngine } from '../core/metrics-engine';
 export interface VerifyCommandOptions {
   autoFix?: boolean;
   docker?: boolean;
+  /** Docker network for --docker (default "none"). */
+  dockerNetwork?: string;
   isolated?: boolean;
   maxRetries?: string | number;
   command?: string;
@@ -29,11 +32,24 @@ export async function handleVerifyCommand(options: VerifyCommandOptions = {}): P
   if (options.autoFix && process.env.GHK_DRY_RUN !== 'true') {
     assertAgentWritesAllowed(config, { command: 'verify', allowUnattendedWrites: options.allowUnattendedWrites, forceBranch: options.forceBranch });
   }
+  // In a container, default to the stack's verified toolchain image and test commands.
+  const toolchain = options.docker ? resolveToolchain(config) : undefined;
   const sandboxOpts: SandboxExecutionOptions = {
     command: options.command,
-    configCommand: config.testCommand,
-    docker: options.docker || false
+    configCommand: config.testCommand ?? (toolchain ? toolchain.test.join(' && ') : undefined),
+    docker: options.docker || false,
+    dockerImage: config.sandbox?.image ?? toolchain?.image,
+    limits: {
+      network: options.dockerNetwork ?? config.sandbox?.network,
+      memory: config.sandbox?.memory,
+      cpus: config.sandbox?.cpus,
+      pidsLimit: config.sandbox?.pidsLimit
+    }
   };
+  if (options.docker) {
+    const limits = { ...DEFAULT_CONTAINER_LIMITS, ...Object.fromEntries(Object.entries(sandboxOpts.limits ?? {}).filter(([, v]) => v !== undefined)) };
+    console.log(chalk.gray(`   Container: ${sandboxOpts.dockerImage} (network=${limits.network}, memory=${limits.memory}, cpus=${limits.cpus}, read-only root)\n`));
+  }
 
   let iteration = 1;
   let success = false;

@@ -1,10 +1,24 @@
 /* ==========================================================================
-   gherkin-ai-cli - Execution Sandbox for Closed-Loop Verification
+   gherkin-ai-cli - Test execution for closed-loop verification
+
+   On the host, or with `docker` in a disposable, resource-limited container
+   (see dockerRunArgs). The container is an isolation and reproducibility
+   boundary for test runs, not a defense against a malicious project: the
+   project directory is mounted read-write.
    ========================================================================== */
 
 import { execSync, spawnSync } from 'child_process';
 import path from 'path';
 import fs from 'fs';
+import { TOOLCHAINS } from '../generators/toolchains';
+
+export interface ContainerLimits {
+  /** Docker network ("none" by default: tests cannot reach the network or exfiltrate data). */
+  network?: string;
+  memory?: string;
+  cpus?: string;
+  pidsLimit?: number;
+}
 
 export interface SandboxExecutionOptions {
   command?: string;
@@ -12,7 +26,38 @@ export interface SandboxExecutionOptions {
   cwd?: string;
   docker?: boolean;
   dockerImage?: string;
+  limits?: ContainerLimits;
   timeoutMs?: number;
+}
+
+export const DEFAULT_CONTAINER_LIMITS: Required<ContainerLimits> = { network: 'none', memory: '2g', cpus: '2', pidsLimit: 512 };
+
+/**
+ * `docker run` arguments for a hardened, disposable test container: no network by default,
+ * CPU/memory/process limits, no Linux capabilities, no privilege escalation, read-only root
+ * filesystem with a writable /tmp. Only the project directory is mounted (read-write, so
+ * builds can write their outputs). The command runs through `sh -c` inside the container,
+ * never through a host shell.
+ */
+export function dockerRunArgs(cwd: string, image: string, command: string, limits: ContainerLimits = {}): string[] {
+  const l = { ...DEFAULT_CONTAINER_LIMITS, ...limits };
+  return [
+    'run', '--rm',
+    '--network', l.network,
+    '--memory', l.memory,
+    '--cpus', l.cpus,
+    '--pids-limit', String(l.pidsLimit),
+    '--cap-drop', 'ALL',
+    '--security-opt', 'no-new-privileges',
+    '--read-only',
+    '--tmpfs', '/tmp:rw,exec,size=1g',
+    '-e', 'HOME=/tmp',
+    '-e', 'CI=true',
+    '-v', `${cwd}:/work`,
+    '-w', '/work',
+    image,
+    'sh', '-c', command
+  ];
 }
 
 export interface SandboxResult {
@@ -30,11 +75,20 @@ export function executeSandbox(options: SandboxExecutionOptions = {}): SandboxRe
   const timeout = options.timeoutMs || 300000;
   const startTime = Date.now();
 
-  let commandToRun = options.command || options.configCommand || detectDefaultTestCommand(cwd);
+  const commandToRun = options.command || options.configCommand || detectDefaultTestCommand(cwd);
 
   if (options.docker) {
-    const imageName = options.dockerImage || 'node:24-alpine';
-    commandToRun = `docker run --rm -v "${cwd}:/app" -w /app ${imageName} ${commandToRun}`;
+    const image = options.dockerImage || 'node:24-bookworm';
+    const args = dockerRunArgs(cwd, image, commandToRun, options.limits);
+    const res = spawnSync('docker', args, { cwd, timeout, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+    return {
+      success: res.status === 0,
+      exitCode: res.status ?? 1,
+      stdout: res.stdout || '',
+      stderr: res.stderr || (res.error ? res.error.message : ''),
+      durationMs: Date.now() - startTime,
+      commandExecuted: ['docker', ...args].join(' ')
+    };
   }
 
   try {
@@ -121,33 +175,18 @@ export function validateStackCompilation(projectDir: string, stack: 'java' | 'do
   let command = '';
   let dockerImage = '';
 
-  if (stack === 'java') {
-    hasLocalSdk = isToolAvailable('mvn');
-    command = 'mvn compile && mvn test';
-    dockerImage = 'maven:3.9-eclipse-temurin-21-alpine';
-  } else if (stack === 'dotnet') {
-    hasLocalSdk = isToolAvailable('dotnet');
-    command = 'dotnet build --no-restore && dotnet test --no-build';
-    dockerImage = 'mcr.microsoft.com/dotnet/sdk:8.0-alpine';
-  } else if (stack === 'python') {
-    hasLocalSdk = isToolAvailable('python3') || isToolAvailable('python');
-    command = 'python -m py_compile $(find . -name "*.py") && pytest';
-    dockerImage = 'python:3.12-alpine';
-  } else if (stack === 'go') {
-    hasLocalSdk = isToolAvailable('go');
-    command = 'go build ./... && go test ./...';
-    dockerImage = 'golang:1.23-alpine';
-  } else {
-    hasLocalSdk = isToolAvailable('npx');
-    command = 'npx tsc --noEmit && npm test';
-    dockerImage = 'node:24-alpine';
-  }
+  const toolchainId = { java: 'java/spring', dotnet: 'csharp/dotnet', python: 'python/fastapi', go: 'go/chi', node: 'typescript/nestjs' }[stack];
+  const toolchain = TOOLCHAINS[toolchainId];
+  const tool = { java: 'mvn', dotnet: 'dotnet', python: 'python3', go: 'go', node: 'npx' }[stack];
+  hasLocalSdk = isToolAvailable(tool);
+  command = [...toolchain.build, ...toolchain.test].join(' && ');
+  dockerImage = toolchain.image;
 
   if (hasLocalSdk) {
     return executeSandbox({ cwd: projectDir, command });
-  } else {
-    return executeSandbox({ cwd: projectDir, command, docker: true, dockerImage });
   }
+  // Building restores dependencies, so this container needs network access.
+  return executeSandbox({ cwd: projectDir, command, docker: true, dockerImage, limits: { network: 'bridge' } });
 }
 
 function isToolAvailable(toolName: string): boolean {

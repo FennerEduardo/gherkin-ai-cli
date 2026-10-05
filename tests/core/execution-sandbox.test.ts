@@ -132,19 +132,32 @@ describe('Execution Sandbox', () => {
       expect(result.stderr).toContain('Error trace');
     });
 
-    it('should wrap command in docker if requested', () => {
-      vi.mocked(childProcess.execSync).mockReturnValue('' as any);
-      
-      executeSandbox({ command: 'npm test', docker: true, cwd: testDir });
-      
-      expect(childProcess.execSync).toHaveBeenCalledWith(
-        expect.stringContaining('docker run --rm'),
-        expect.any(Object)
-      );
-      expect(childProcess.execSync).toHaveBeenCalledWith(
-        expect.stringContaining('npm test'),
-        expect.any(Object)
-      );
+    it('runs docker without a host shell, in a hardened container with the requested image', () => {
+      vi.mocked(childProcess.spawnSync).mockReturnValue({ status: 0, stdout: 'ok', stderr: '' } as any);
+
+      const result = executeSandbox({ command: 'go test ./...', docker: true, dockerImage: 'golang:1.22', cwd: testDir });
+
+      expect(result.success).toBe(true);
+      expect(childProcess.execSync).not.toHaveBeenCalled();
+      const [bin, args] = vi.mocked(childProcess.spawnSync).mock.calls[0] as [string, string[]];
+      expect(bin).toBe('docker');
+      const flag = (name: string) => args[args.indexOf(name) + 1];
+      expect(flag('--network')).toBe('none');
+      expect(flag('--memory')).toBe('2g');
+      expect(flag('--pids-limit')).toBe('512');
+      expect(flag('--cap-drop')).toBe('ALL');
+      expect(flag('--security-opt')).toBe('no-new-privileges');
+      expect(args).toContain('--read-only');
+      expect(args.slice(-4)).toEqual(['golang:1.22', 'sh', '-c', 'go test ./...']);
+    });
+
+    it('lets the caller relax the network and limits', () => {
+      vi.mocked(childProcess.spawnSync).mockReturnValue({ status: 1, stdout: '', stderr: 'fail' } as any);
+      const result = executeSandbox({ command: 'npm test', docker: true, cwd: testDir, limits: { network: 'bridge', memory: '4g' } });
+      const args = vi.mocked(childProcess.spawnSync).mock.calls[0][1] as string[];
+      expect(args[args.indexOf('--network') + 1]).toBe('bridge');
+      expect(args[args.indexOf('--memory') + 1]).toBe('4g');
+      expect(result).toMatchObject({ success: false, exitCode: 1, stderr: 'fail' });
     });
 
     it('should respect custom timeout', () => {
