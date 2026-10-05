@@ -4,7 +4,7 @@
 
 import { ExitCode } from '../core/errors';
 import chalk from 'chalk';
-import { calculateDeliveryRisk } from '../core/risk-engine';
+import { assessDeliveryRisk } from '../core/risk-engine';
 import { loadConfig } from '../core/config';
 import { runCoverage } from '../core/coverage-integration';
 
@@ -12,7 +12,7 @@ export async function handleQualityCommand(): Promise<void> {
   console.log(chalk.bold.cyan('\n📊 Calculating Feature Quality Index Score...\n'));
 
   const config = loadConfig();
-  const riskCard = calculateDeliveryRisk(process.cwd(), config.specDir);
+  const riskCard = assessDeliveryRisk(process.cwd(), { config });
 
   console.log('\n======================================================');
   console.log(chalk.bold('  Risk & Quality Evaluation (Risk Engine v3)'));

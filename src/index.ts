@@ -418,6 +418,18 @@ program
   });
 
 program
+  .command('risk')
+  .description('Delivery risk of a change (LOW / MEDIUM / HIGH / CRITICAL): security, business criticality, change radius, tests, contract and architecture drift')
+  .option('--base <ref>', 'Assess the diff against this git ref (e.g. origin/main); default: the working tree')
+  .option('--files <list>', 'Comma-separated change set instead of git')
+  .option('--fail-on <level>', 'Exit with code 4 when the risk is at least this level (for CI)')
+  .option('--json', 'Output as JSON')
+  .action(async (options) => {
+    const { handleRiskCommand } = await import('./commands/risk');
+    await handleRiskCommand(options);
+  });
+
+program
   .command('firewall [subcommand]')
   .description('Agent firewall: check whether an agent may write a path, run a command, reach a host, read a secret or call a tool (check | policy | hook)')
   .option('--write <path>', 'check: a file the agent wants to write')

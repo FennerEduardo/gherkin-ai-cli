@@ -11,7 +11,7 @@ import { ARCHITECTURES, loadConfig } from '../../core/config';
 import { buildIR, buildSpecificationIR } from '../../core/ir-builder';
 import { lintSpecification } from '../../core/specification-linter';
 import { calculateConvergence } from '../../core/convergence-engine';
-import { calculateDeliveryRisk } from '../../core/risk-engine';
+import { assessDeliveryRisk } from '../../core/risk-engine';
 import { loadConstitution, getConstraintsByLevel } from '../../core/constitution';
 import { detectPromptInjection, scanContextSecurity } from '../../core/security';
 import { SpecHashBaseline } from '../../core/governance/spec-hash-baseline';
@@ -137,7 +137,7 @@ export const analysisTools: ToolSpec[] = [
     level: 'safe',
     description: 'Deployment risk assessment: risk level, blast radius, test strength and security sensitivity.',
     input: {},
-    run: async () => calculateDeliveryRisk()
+    run: async (_args, ctx) => assessDeliveryRisk(ctx.workspace, { config: loadConfig() })
   }),
   defineTool<{ content: string; redact?: boolean }>({
     name: 'scan_security',

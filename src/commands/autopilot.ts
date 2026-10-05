@@ -14,7 +14,7 @@ import chalk from 'chalk';
 import fs from 'fs';
 import path from 'path';
 import { buildProjectContext } from '../core/context-builder';
-import { calculateDeliveryRisk } from '../core/risk-engine';
+import { assessDeliveryRisk } from '../core/risk-engine';
 import { RealAgentProvider, LLMConfig } from '../core/agent-adapter';
 import { handleVerifyCommand } from './verify';
 import { loadConfig } from '../core/config';
@@ -317,7 +317,7 @@ export async function handleAutopilotCommand(options: AutopilotOptions = {}): Pr
   await handleVerifyCommand({ autoFix: true, maxRetries: 2, command: options.command, allowUnattendedWrites: options.allowUnattendedWrites, forceBranch: options.forceBranch });
 
   console.log(chalk.blue(`5. Evaluating Enterprise Quality Score Gate...`));
-  const riskCard = calculateDeliveryRisk(process.cwd(), configInstance.specDir);
+  const riskCard = assessDeliveryRisk(process.cwd(), { config: configInstance });
   runLog.riskLevel = riskCard.riskLevel;
   runLog.riskScore = riskCard.overallRiskScore;
 
