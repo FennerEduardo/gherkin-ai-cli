@@ -413,6 +413,78 @@
             },
             "redactPii": {
               "type": "boolean"
+            },
+            "firewall": {
+              "type": "object",
+              "properties": {
+                "allowPaths": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "denyPaths": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "approvalPaths": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "allowCommands": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "denyCommands": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "allowHosts": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "allowSecrets": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "enforceFeatureScope": {
+                  "type": "boolean"
+                }
+              },
+              "additionalProperties": false
+            },
+            "risk": {
+              "type": "object",
+              "properties": {
+                "requireApprovalAt": {
+                  "type": "string",
+                  "enum": [
+                    "LOW",
+                    "MEDIUM",
+                    "HIGH",
+                    "CRITICAL"
+                  ]
+                },
+                "criticalPaths": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
+              "additionalProperties": false
             }
           },
           "additionalProperties": false

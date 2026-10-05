@@ -7,7 +7,8 @@
    - Structured JSON run logging for traceability
    ========================================================================== */
 
-import { assertAgentWritesAllowed } from '../core/governance/write-guard';
+import { assertAgentWritesAllowed, reportAgentWrite, writeAgentFile } from '../core/governance/write-guard';
+import { AgentFirewall } from '../core/governance/agent-firewall';
 import { ExitCode } from '../core/errors';
 import chalk from 'chalk';
 import fs from 'fs';
@@ -120,6 +121,10 @@ export async function handleAutopilotCommand(options: AutopilotOptions = {}): Pr
   }
 
   const configInstance = loadConfig();
+  if (process.env.GHK_DRY_RUN !== 'true') {
+    assertAgentWritesAllowed(configInstance, { command: 'autopilot', allowUnattendedWrites: options.allowUnattendedWrites, forceBranch: options.forceBranch });
+  }
+  const firewall = AgentFirewall.forWorkspace(process.cwd(), configInstance);
 
   console.log(chalk.blue(`1. Analyzing repository & building context package...`));
   const context = buildProjectContext();
@@ -176,9 +181,7 @@ export async function handleAutopilotCommand(options: AutopilotOptions = {}): Pr
           console.log(chalk.yellow(`   [DRY RUN] Saved proposed spec to ${patchPath}`));
         }
       } else {
-        fs.mkdirSync(path.dirname(fullPath), { recursive: true });
-        fs.writeFileSync(fullPath, mod.content);
-        console.log(chalk.green(`   ✓ Wrote specification to ${p}`));
+        reportAgentWrite(writeAgentFile(firewall, fullPath, mod.content, 'autopilot'), p, 'specification');
       }
       
       if (mod.filePath.endsWith('.feature')) {
@@ -295,9 +298,7 @@ export async function handleAutopilotCommand(options: AutopilotOptions = {}): Pr
           console.log(chalk.yellow(`   [DRY RUN] Saved proposed bindings to ${patchPath}`));
         }
       } else {
-        fs.mkdirSync(path.dirname(fullPath), { recursive: true });
-        fs.writeFileSync(fullPath, mod.content);
-        console.log(chalk.green(`   ✓ Wrote bindings to ${mod.filePath}`));
+        reportAgentWrite(writeAgentFile(firewall, fullPath, mod.content, 'autopilot'), mod.filePath, 'bindings');
       }
     }
   } else {
@@ -313,7 +314,7 @@ export async function handleAutopilotCommand(options: AutopilotOptions = {}): Pr
   }
 
   console.log(chalk.blue(`4. Invoking Verification Agent & Closed-Loop Repair...`));
-  await handleVerifyCommand({ autoFix: true, maxRetries: 2, command: options.command });
+  await handleVerifyCommand({ autoFix: true, maxRetries: 2, command: options.command, allowUnattendedWrites: options.allowUnattendedWrites, forceBranch: options.forceBranch });
 
   console.log(chalk.blue(`5. Evaluating Enterprise Quality Score Gate...`));
   const riskCard = calculateDeliveryRisk(process.cwd(), configInstance.specDir);

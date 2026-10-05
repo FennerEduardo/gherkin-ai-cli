@@ -404,6 +404,36 @@ program
   });
 
 program
+  .command('graph')
+  .description('Semantic repository graph: links features, scenarios, commands, events and endpoints to the files and tests that implement them')
+  .option('--format <format>', 'summary (default) | json | mermaid | dot')
+  .option('-o, --output <file>', 'Write the graph to a file (default format: json)')
+  .option('--trace <symbol>', 'Traceability for one command, event, endpoint, scenario, feature or file')
+  .option('--depth <hops>', 'Hops to follow for --trace (default: 3)')
+  .option('--scope <feature>', 'Files and directories a change to this feature may touch (used by the agent firewall)')
+  .option('--json', 'Output as JSON')
+  .action(async (options) => {
+    const { handleGraphCommand } = await import('./commands/graph');
+    await handleGraphCommand(options);
+  });
+
+program
+  .command('firewall [subcommand]')
+  .description('Agent firewall: check whether an agent may write a path, run a command, reach a host, read a secret or call a tool (check | policy | hook)')
+  .option('--write <path>', 'check: a file the agent wants to write')
+  .option('--exec <command>', 'check: a command line the agent wants to run')
+  .option('--network <host>', 'check: a host or URL the agent wants to reach')
+  .option('--secret <name>', 'check: a secret or environment variable the agent wants to read')
+  .option('--tool <name>', 'check: an MCP tool the agent wants to call')
+  .option('-f, --feature <file>', 'Limit writes to the impact scope of this feature')
+  .option('--agent <name>', 'Agent name recorded in the audit trail')
+  .option('--json', 'Output as JSON')
+  .action(async (subcommand, options) => {
+    const { handleFirewallCommand } = await import('./commands/firewall');
+    await handleFirewallCommand(subcommand, options);
+  });
+
+program
   .command('doc')
   .alias('site')
   .description('Generate Living Documentation (Static Site) from Gherkin specifications')
@@ -440,7 +470,7 @@ program.action(async (options) => {
 });
 
 /** Commands that must not trigger workspace detection (it may prompt or change directory). */
-const WORKSPACE_FREE_COMMANDS = new Set(['config', 'stacks', 'login', 'logout', 'auth', 'lang', 'mcp', 'web']);
+const WORKSPACE_FREE_COMMANDS = new Set(['config', 'stacks', 'login', 'logout', 'auth', 'lang', 'mcp', 'web', 'firewall']);
 
 program.hook('preAction', async (_thisCommand, actionCommand) => {
   const globals = program.opts();

@@ -5,12 +5,17 @@
    LLM-generated code must not land unattended:
    - in CI, unless policy.allowUnattendedWrites or --allow-unattended-writes,
    - on a protected branch (policy.protectedBranches, default main/master),
-     unless --force-branch.
+     unless --force-branch,
+   - on a path the agent firewall does not ALLOW (saved as a proposal instead).
    Every decision is written to the audit trail.
    ========================================================================== */
 
 import { execFileSync } from 'child_process';
+import fs from 'fs';
+import path from 'path';
 import type { GherkinAIConfig } from '../config';
+import type { AgentFirewall, FirewallDecision } from './agent-firewall';
+import { logger } from '../../utils/logger';
 import { PolicyError } from '../errors';
 import { isCI } from '../run-context';
 import { getTelemetry } from '../telemetry';
@@ -33,6 +38,30 @@ export function currentGitBranch(cwd = process.cwd()): string | null {
   } catch {
     return null; // not a git repository
   }
+}
+
+/**
+ * Writes one agent-generated file if the agent firewall allows it. Anything else (DENY or
+ * REQUIRE_APPROVAL) is saved as a proposal in .ghe/patches for a human to review instead.
+ * Returns the decision so the caller can report it.
+ */
+export function writeAgentFile(firewall: AgentFirewall, fullPath: string, content: string, command: string): FirewallDecision & { proposalPath?: string } {
+  const decision = firewall.check({ kind: 'write', target: fullPath, agent: command });
+  if (decision.verdict === 'ALLOW') {
+    fs.mkdirSync(path.dirname(fullPath), { recursive: true });
+    fs.writeFileSync(fullPath, content, 'utf8');
+    return decision;
+  }
+  const patchDir = path.join(firewall.policy.workspace, '.ghe', 'patches');
+  fs.mkdirSync(patchDir, { recursive: true });
+  const proposalPath = path.join(patchDir, `${path.basename(fullPath)}.proposed`);
+  fs.writeFileSync(proposalPath, content, 'utf8');
+  return { ...decision, proposalPath };
+}
+
+export function reportAgentWrite(result: ReturnType<typeof writeAgentFile>, displayPath: string, what = 'changes'): void {
+  if (result.verdict === 'ALLOW') logger.success(`Wrote ${what} to ${displayPath}`);
+  else logger.warn(`Agent firewall: ${result.verdict} for ${displayPath} — ${result.reason} Proposal saved to ${result.proposalPath} for review.`);
 }
 
 export function assertAgentWritesAllowed(config: GherkinAIConfig, options: AgentWriteOptions): void {

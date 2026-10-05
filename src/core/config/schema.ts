@@ -151,13 +151,43 @@ const infrastructureSchema = z.object({
   awsCdk: z.boolean().optional()
 });
 
+const firewallSchema = z.object({
+  /** Globs agents may write. Default: anything in the workspace that is not denied. */
+  allowPaths: z.array(z.string()).optional(),
+  /** Globs agents may never write (added to the built-in list: .env*, keys, .git, CI secrets). */
+  denyPaths: z.array(z.string()).optional(),
+  /** Globs whose modification requires human approval (migrations, auth, infrastructure...). */
+  approvalPaths: z.array(z.string()).optional(),
+  /** Command prefixes agents may run without approval. The configured test command is always allowed. */
+  allowCommands: z.array(z.string()).optional(),
+  /** Command patterns that are always denied (added to the built-in list: sudo, git push, npm publish...). */
+  denyCommands: z.array(z.string()).optional(),
+  /** Hosts agents may reach (exact or *.domain). Default: none. */
+  allowHosts: z.array(z.string()).optional(),
+  /** Secret / environment variable names agents may read. Default: none. */
+  allowSecrets: z.array(z.string()).optional(),
+  /** When a feature is given, deny writes outside its impact scope (`ghk graph --scope`). Default: true. */
+  enforceFeatureScope: z.boolean().optional()
+});
+
+const riskSchema = z.object({
+  /** Risk level from which a change requires human approval. Default: HIGH. */
+  requireApprovalAt: z.enum(['LOW', 'MEDIUM', 'HIGH', 'CRITICAL']).optional(),
+  /** Globs of business-critical code (payments, billing...): touching them raises business criticality. */
+  criticalPaths: z.array(z.string()).optional()
+});
+
 const policySchema = z.object({
   /** Allow --apply / --auto-fix / autopilot writes when running in CI. Default: false. */
   allowUnattendedWrites: z.boolean().optional(),
   /** Branches on which agent-driven writes are refused unless --force-branch is passed. */
   protectedBranches: z.array(z.string()).optional(),
   /** Also redact PII (emails, card numbers, SSNs, IPs) from prompts. Secrets are always redacted. */
-  redactPii: z.boolean().optional()
+  redactPii: z.boolean().optional(),
+  /** Agent firewall: what agents (MCP clients, autopilot, IDE hooks) may write, run, reach and read. */
+  firewall: firewallSchema.optional(),
+  /** Delivery risk scoring (`ghk risk`) and its approval threshold. */
+  risk: riskSchema.optional()
 });
 
 export const configShape = {

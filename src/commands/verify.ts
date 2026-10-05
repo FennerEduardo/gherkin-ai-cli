@@ -2,7 +2,8 @@
    gherkin-ai-cli - 'verify' Command Handler (Closed-Loop Verification Engine)
    ========================================================================== */
 
-import { assertAgentWritesAllowed } from '../core/governance/write-guard';
+import { assertAgentWritesAllowed, reportAgentWrite, writeAgentFile } from '../core/governance/write-guard';
+import { AgentFirewall } from '../core/governance/agent-firewall';
 import { ExitCode } from '../core/errors';
 import chalk from 'chalk';
 import { DEFAULT_CONTAINER_LIMITS, executeSandbox, SandboxExecutionOptions } from '../core/execution-sandbox';
@@ -32,6 +33,7 @@ export async function handleVerifyCommand(options: VerifyCommandOptions = {}): P
   if (options.autoFix && process.env.GHK_DRY_RUN !== 'true') {
     assertAgentWritesAllowed(config, { command: 'verify', allowUnattendedWrites: options.allowUnattendedWrites, forceBranch: options.forceBranch });
   }
+  const firewall = AgentFirewall.forWorkspace(process.cwd(), config);
   // In a container, default to the stack's verified toolchain image and test commands.
   const toolchain = options.docker ? resolveToolchain(config) : undefined;
   const sandboxOpts: SandboxExecutionOptions = {
@@ -311,9 +313,7 @@ services:
              fileBackups[fullPath] = backupPath;
           }
           
-          fs.mkdirSync(path.dirname(fullPath), { recursive: true });
-          fs.writeFileSync(fullPath, mod.content, 'utf8');
-          console.log(chalk.green(`     ✓ ${mod.filePath} updated.`));
+          reportAgentWrite(writeAgentFile(firewall, fullPath, mod.content, 'verify'), mod.filePath);
         } catch (e: any) {
           console.log(chalk.red(`     ✖ Failed to process ${mod.filePath}: ${e.message}`));
         }

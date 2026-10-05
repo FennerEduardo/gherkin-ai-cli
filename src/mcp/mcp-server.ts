@@ -9,7 +9,7 @@
    Tools that are not permitted are not registered at all.
 
    Every call goes through one middleware: workspace path containment,
-   AgentPolicyEngine (.ghkgovernance.yaml) for written paths, stdout capture
+   the agent firewall for written paths (policy.firewall, .ghkgovernance.yaml), stdout capture
    (stdout is the protocol channel) and an audit record.
    ========================================================================== */
 
@@ -19,7 +19,7 @@ import type { ZodRawShape } from 'zod';
 import { CLI_VERSION } from '../version';
 import { loadConfig } from '../core/config';
 import { GhkError, PolicyError } from '../core/errors';
-import { AgentPolicyEngine } from '../core/governance/agent-policy-engine';
+import { AgentFirewall } from '../core/governance/agent-firewall';
 import { setRunContext } from '../core/run-context';
 import { getTelemetry } from '../core/telemetry';
 import { assertPathInside } from '../utils/path-guard';
@@ -90,8 +90,10 @@ export async function invokeTool(tool: ToolSpec, args: Record<string, unknown>, 
     const writes = tool.writes?.(args) ?? [];
     if (writes.length) {
       for (const target of writes) assertPathInside(perms.workspace, target, 'Write target');
-      const evaluation = new AgentPolicyEngine(perms.workspace).evaluateFileModifications(writes);
-      if (!evaluation.allowed) return deny(`Operation '${tool.name}' violates the agent policy:\n${evaluation.violations.join('\n')}`);
+      // MCP has no human-approval channel: anything short of ALLOW is refused (run it from the CLI instead).
+      const firewall = AgentFirewall.forWorkspace(perms.workspace, loadConfig());
+      const blocked = writes.map(target => firewall.check({ kind: 'write', target, agent: 'mcp' })).filter(d => d.verdict !== 'ALLOW');
+      if (blocked.length) return deny(`Operation '${tool.name}' is blocked by the agent firewall:\n${blocked.map(d => `- ${d.verdict} ${d.target}: ${d.reason} [${d.rule}]`).join('\n')}`);
     }
   } catch (err) {
     if (err instanceof PolicyError) return deny(err.message);
