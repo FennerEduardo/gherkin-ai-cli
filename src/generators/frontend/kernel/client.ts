@@ -3,7 +3,7 @@
 
    Targets the contract every generated backend exposes:
      POST /api/v1/<feature>/{id}/{command}  ->  201 { type, aggregateId, version }
-   with optional X-Tenant-Id and X-Idempotency-Key headers.
+   with optional X-Tenant-Id and X-Idempotency-Key headers and a W3C traceparent.
    ========================================================================== */
 
 import { DomainModel } from '../../kernel/domain-model';
@@ -38,11 +38,29 @@ export interface ClientOptions {
   baseUrl?: string;
   tenantId?: string;
   fetch?: typeof fetch;
+  /**
+   * W3C trace context sent as the traceparent header, so the backend's spans join the caller's trace.
+   * Default: a new sampled root context per request. Pass a function to propagate an existing trace
+   * (e.g. from @opentelemetry/api), or false to send none.
+   */
+  traceparent?: false | (() => string | undefined);
 }
 
 export interface ExecuteOptions {
   /** Sent as X-Idempotency-Key so retries are safe. */
   idempotencyKey?: string;
+}
+
+const hex = (bytes: number) => {
+  const values = new Uint8Array(bytes);
+  if (globalThis.crypto?.getRandomValues) globalThis.crypto.getRandomValues(values);
+  else for (let i = 0; i < bytes; i++) values[i] = Math.floor(Math.random() * 256);
+  return Array.from(values, v => v.toString(16).padStart(2, '0')).join('');
+};
+
+/** A new sampled W3C traceparent (version 00) for a request that starts a trace. */
+export function newTraceparent(): string {
+  return \`00-\${hex(16)}-\${hex(8)}-01\`;
 }
 
 export function create${m.pascal}Client(options: ClientOptions = {}) {
@@ -53,6 +71,8 @@ export function create${m.pascal}Client(options: ClientOptions = {}) {
     const headers: Record<string, string> = { 'Content-Type': 'application/json', Accept: 'application/json' };
     if (options.tenantId) headers['X-Tenant-Id'] = options.tenantId;
     if (opts.idempotencyKey) headers['X-Idempotency-Key'] = opts.idempotencyKey;
+    const traceparent = options.traceparent === false ? undefined : (options.traceparent ?? newTraceparent)();
+    if (traceparent) headers.traceparent = traceparent;
 
     const res = await doFetch(\`\${baseUrl}/api/v1/${m.kebab}/\${encodeURIComponent(id)}/\${command}\`, {
       method: 'POST',
@@ -78,7 +98,7 @@ export type ${m.pascal}Client = ReturnType<typeof create${m.pascal}Client>;
 export function renderApiClientTest(m: DomainModel, importPath: string, mockFn: 'vi' | 'jest'): string {
   const first = m.commands[0];
   const mockImport = mockFn === 'vi' ? `import { describe, expect, it, vi } from 'vitest';\n` : '';
-  return `${mockImport}import { ApiError, COMMANDS, create${m.pascal}Client } from '${importPath}';
+  return `${mockImport}import { ApiError, COMMANDS, create${m.pascal}Client, newTraceparent } from '${importPath}';
 
 function fakeFetch(status: number, body: unknown) {
   return ${mockFn}.fn(async (_url: RequestInfo | URL, _init?: RequestInit) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } }));
@@ -102,6 +122,30 @@ describe('${m.pascal} API client', () => {
     expect((init?.headers as Record<string, string>)['X-Tenant-Id']).toBe('acme');
     expect((init?.headers as Record<string, string>)['X-Idempotency-Key']).toBe('key-1');
     expect(JSON.parse(String(init?.body))).toEqual({ amount: 100 });
+  });
+
+  it('sends a W3C traceparent that starts a new trace per request', async () => {
+    const fetch = fakeFetch(201, { type: '${first.event}', aggregateId: 'agg-1', version: 1 });
+    const client = create${m.pascal}Client({ fetch });
+
+    await client.execute('agg-1', '${first.snake}');
+    await client.execute('agg-1', '${first.snake}');
+
+    const sent = fetch.mock.calls.map(([, init]) => (init?.headers as Record<string, string>).traceparent);
+    for (const traceparent of sent) expect(traceparent).toMatch(/^00-[0-9a-f]{32}-[0-9a-f]{16}-01$/);
+    expect(sent[0]).not.toBe(sent[1]);
+    expect(newTraceparent()).toMatch(/^00-[0-9a-f]{32}-[0-9a-f]{16}-01$/);
+  });
+
+  it('propagates the caller trace context or none when disabled', async () => {
+    const traced = fakeFetch(201, {});
+    const parent = '00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01';
+    await create${m.pascal}Client({ fetch: traced, traceparent: () => parent }).execute('agg-1', '${first.snake}');
+    expect((traced.mock.calls[0][1]?.headers as Record<string, string>).traceparent).toBe(parent);
+
+    const untraced = fakeFetch(201, {});
+    await create${m.pascal}Client({ fetch: untraced, traceparent: false }).execute('agg-1', '${first.snake}');
+    expect((untraced.mock.calls[0][1]?.headers as Record<string, string>).traceparent).toBeUndefined();
   });
 
   it('raises ApiError with the server detail on failure', async () => {

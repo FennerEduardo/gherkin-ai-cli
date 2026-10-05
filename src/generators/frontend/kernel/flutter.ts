@@ -137,17 +137,28 @@ class ApiException implements Exception {
   String toString() => message;
 }
 
+String _hex(int bytes) => List.generate(bytes, (_) => Random.secure().nextInt(256).toRadixString(16).padLeft(2, '0')).join();
+
+/// A new sampled W3C traceparent (version 00) for a request that starts a trace.
+String newTraceparent() => '00-\${_hex(16)}-\${_hex(8)}-01';
+
 class ${m.pascal}Client {
-  ${m.pascal}Client({http.Client? httpClient, this.baseUrl = '', this.tenantId}) : _http = httpClient ?? http.Client();
+  /// [traceparent] supplies the W3C trace context sent with each request, so the backend's spans join
+  /// the caller's trace. Default: a new sampled root context per request; return null to send none.
+  ${m.pascal}Client({http.Client? httpClient, this.baseUrl = '', this.tenantId, String? Function()? traceparent})
+      : _http = httpClient ?? http.Client(),
+        _traceparent = traceparent ?? newTraceparent;
 
   final http.Client _http;
   final String baseUrl;
   final String? tenantId;
+  final String? Function() _traceparent;
 
   static String _newKey() => List.generate(16, (_) => Random.secure().nextInt(16).toRadixString(16)).join();
 
   Future<CommandResult> execute(String id, String command, {Map<String, Object?> payload = const {}, String? idempotencyKey}) async {
     final uri = Uri.parse('\${baseUrl.replaceAll(RegExp(r'/$'), '')}/api/v1/${m.kebab}/\${Uri.encodeComponent(id)}/\$command');
+    final traceparent = _traceparent();
     final res = await _http.post(
       uri,
       headers: {
@@ -155,6 +166,7 @@ class ${m.pascal}Client {
         'Accept': 'application/json',
         if (tenantId != null) 'X-Tenant-Id': tenantId!,
         'X-Idempotency-Key': idempotencyKey ?? _newKey(),
+        if (traceparent != null) 'traceparent': traceparent,
       },
       body: jsonEncode(payload),
     );
@@ -299,6 +311,36 @@ void main() {
     expect(sent.headers['X-Tenant-Id'], 'acme');
     expect(sent.headers['X-Idempotency-Key'], 'key-1');
     expect(jsonDecode(sent.body), {'amount': 100});
+  });
+
+  test('sends a W3C traceparent that starts a new trace per request', () async {
+    final sent = <String?>[];
+    final client = ${m.pascal}Client(httpClient: MockClient((req) async {
+      sent.add(req.headers['traceparent']);
+      return http.Response(jsonEncode({'type': '${first.event}', 'aggregateId': 'agg-1', 'version': 1}), 201);
+    }));
+
+    await client.execute('agg-1', '${first.snake}');
+    await client.execute('agg-1', '${first.snake}');
+
+    final pattern = RegExp(r'^00-[0-9a-f]{32}-[0-9a-f]{16}-01$');
+    expect(sent.every((tp) => tp != null && pattern.hasMatch(tp)), isTrue, reason: '$sent');
+    expect(sent[0], isNot(sent[1]));
+  });
+
+  test('propagates the caller trace context or none when disabled', () async {
+    const parent = '00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01';
+    Future<String?> received(String? Function() traceparent) async {
+      String? value = 'unset';
+      await ${m.pascal}Client(traceparent: traceparent, httpClient: MockClient((req) async {
+        value = req.headers['traceparent'];
+        return http.Response(jsonEncode({'type': '${first.event}', 'aggregateId': 'agg-1', 'version': 1}), 201);
+      })).execute('agg-1', '${first.snake}');
+      return value;
+    }
+
+    expect(await received(() => parent), parent);
+    expect(await received(() => null), isNull);
   });
 
   test('throws ApiException with the server detail on failure', () async {
