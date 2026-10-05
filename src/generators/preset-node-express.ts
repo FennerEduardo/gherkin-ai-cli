@@ -17,6 +17,7 @@ import {
   renderTsAggregateSpec,
   renderTsConfigs
 } from './kernel/typescript';
+import { renderTsRuntime } from './kernel/runtime/typescript';
 
 export function generateNodeExpressPreset(parsed: ParsedFeature, _config?: GherkinAIConfig): { filename: string; content: string }[] {
   const m = buildDomainModel(parsed);
@@ -105,6 +106,9 @@ describe('HTTP API', () => {
     { filename: `test/steps/${m.kebab}.steps.ts`, content: renderCucumberJsSteps(m, `../../${domain}`) },
     { filename: 'cucumber.js', content: renderCucumberJsConfig('test/steps/**/*.ts') },
     { filename: 'jest.config.js', content: renderJestConfig(['<rootDir>/src']) },
+    { filename: 'jest.integration.config.js', content: renderJestConfig(['<rootDir>/test/integration'], { testMatch: '**/*.int-spec.ts', testTimeout: 60000 }) },
+    // Runtime kernel: PostgreSQL + RabbitMQ + OpenTelemetry, verified by test/integration (docs/RUNTIME-KERNEL.md).
+    ...renderTsRuntime(m, `../domain/${m.kebab}.aggregate`),
     ...renderTsConfigs()
   ];
 }

@@ -17,7 +17,8 @@ function nestGolden(stack = {}) {
     image: 'node:24-bookworm',
     caches: [['npm', '/root/.npm']],
     build: ['npm install --no-audit --no-fund --loglevel=error', 'npx prisma generate', 'npm run build'],
-    test: ['npm test', `node -e "import('./dist/src/app.module.js').then(m => { if (!m.AppModule) process.exit(1); })"`]
+    test: ['npm test', `node -e "import('./dist/src/app.module.js').then(m => { if (!m.AppModule) process.exit(1); })"`],
+    integration: ['npm run test:integration']
   };
 }
 
@@ -86,7 +87,8 @@ const STACKS = {
     image: 'node:24-bookworm',
     caches: [['npm', '/root/.npm']],
     build: ['npm install --no-audit --no-fund --loglevel=error', 'npx prisma generate', 'npm run build'],
-    test: ['npm test']
+    test: ['npm test'],
+    integration: ['npm run test:integration']
   },
   'express-prisma7': {
     stack: { ...base, language: 'typescript', framework: 'express', orm: 'prisma', ormVersion: '7', validation: 'zod', testing: 'jest' },
@@ -126,7 +128,8 @@ const STACKS = {
     caches: [['pip', '/root/.cache/pip']],
     env: { PIP_DISABLE_PIP_VERSION_CHECK: '1' },
     build: ['pip install -q -e ".[test]"', 'python -m compileall -q app'],
-    test: ['pytest -q -rs']
+    test: ['pytest -q -rs -m "not integration"'],
+    integration: ['pytest -q -rs -m integration']
   },
   django: {
     stack: { ...base, language: 'python', framework: 'django', orm: 'django-orm', validation: 'drf', testing: 'pytest' },
@@ -134,7 +137,8 @@ const STACKS = {
     caches: [['pip', '/root/.cache/pip']],
     env: { PIP_DISABLE_PIP_VERSION_CHECK: '1' },
     build: ['pip install -q -e ".[test]"', 'python -m compileall -q app config', 'python manage.py check'],
-    test: ['pytest -q -rs']
+    test: ['pytest -q -rs -m "not integration"'],
+    integration: ['pytest -q -rs -m integration']
   },
   go: {
     stack: { ...base, language: 'go', framework: 'chi', orm: 'pgx', validation: 'go-playground', testing: 'testing' },

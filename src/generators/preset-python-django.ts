@@ -12,6 +12,7 @@ import { ParsedFeature } from '../core/gherkin-parser';
 import { GherkinAIConfig } from '../core/config';
 import { buildDomainModel, toKebab } from './kernel/domain-model';
 import { PyFile, pyModulesOf, renderPyImportSmokeTest, renderPyKernel, renderPyKernelTests, renderPytestBdd, withInitFiles } from './kernel/python';
+import { PY_INTEGRATION_MARKER, PY_RUNTIME_DEPENDENCIES, renderPyRuntime } from './kernel/runtime/python';
 import { PY_EVENT_BUS, pyEventBusTest, pyFeatureFile, renderPyproject } from './python/python-common';
 
 export function generatePythonDjangoPreset(parsed: ParsedFeature, config?: GherkinAIConfig, featureFile?: string): { filename: string; content: string }[] {
@@ -183,6 +184,7 @@ def test_unknown_command_returns_404(client):
     assert client.post("/api/v1/${m.kebab}/agg-api/does_not_exist").status_code == 404
 `;
 
+  const runtime = renderPyRuntime(m);
   const appFiles: PyFile[] = withInitFiles([
     { filename: 'config/settings.py', content: settings },
     {
@@ -204,7 +206,9 @@ urlpatterns = [
     { filename: 'app/outbox.py', content: outboxService },
     { filename: 'app/views.py', content: views },
     { filename: 'app/infrastructure/event_bus.py', content: PY_EVENT_BUS },
-    ...renderPyKernel(m)
+    ...renderPyKernel(m),
+    // Runtime kernel: PostgreSQL + RabbitMQ + OpenTelemetry, verified by tests/integration (docs/RUNTIME-KERNEL.md).
+    ...runtime.filter(f => f.filename.startsWith('app/'))
   ]);
 
   return [
@@ -223,6 +227,7 @@ if __name__ == "__main__":
 `
     },
     ...renderPyKernelTests(m),
+    ...runtime.filter(f => f.filename.startsWith('tests/')),
     ...renderPytestBdd(m, pyFeatureFile(m, featureFile)),
     pyEventBusTest(),
     { filename: 'tests/test_api.py', content: apiTest },
@@ -231,9 +236,9 @@ if __name__ == "__main__":
       filename: 'pyproject.toml',
       content: renderPyproject(
         toKebab(config?.projectName || m.kebab),
-        ['django>=5.0,<6', 'djangorestframework>=3.15'],
+        ['django>=5.0,<6', 'djangorestframework>=3.15', ...PY_RUNTIME_DEPENDENCIES],
         ['pytest>=8.3', 'pytest-django>=4.9', 'pytest-bdd>=7.3'],
-        ['DJANGO_SETTINGS_MODULE = "config.settings"']
+        ['DJANGO_SETTINGS_MODULE = "config.settings"', PY_INTEGRATION_MARKER]
       )
     }
   ];

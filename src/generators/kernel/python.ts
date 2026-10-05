@@ -74,6 +74,14 @@ class ${m.pascal}Aggregate:
         self.version = 0
         self._pending_events: List[${m.pascal}DomainEvent] = []
 
+    @classmethod
+    def restore(cls, id: str, state: ${m.pascal}State, version: int) -> "${m.pascal}Aggregate":
+        """Rebuilds an aggregate from persisted state; no events are recorded."""
+        aggregate = cls(id)
+        aggregate.state = state
+        aggregate.version = version
+        return aggregate
+
     @property
     def pending_events(self) -> List[${m.pascal}DomainEvent]:
         """Events recorded since the aggregate was loaded (to be saved via the outbox)."""

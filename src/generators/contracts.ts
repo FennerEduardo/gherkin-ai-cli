@@ -8,6 +8,7 @@ import { renderPom } from './kernel/java';
 import { renderGoMod } from './kernel/go';
 import { renderGradleKts, renderGradleSettings } from './kernel/kotlin';
 import { toKebab } from './kernel/domain-model';
+import { TS_RUNTIME_DEPENDENCIES, TS_RUNTIME_DEV_DEPENDENCIES } from './kernel/runtime/typescript';
 import { NEST_DEPENDENCIES, NodeProfile, PRISMA_VERSION, prismaAdapter, resolveNodeProfile } from './node-profile';
 import { ParsedFeature } from '../core/gherkin-parser';
 import { GherkinAIConfig } from '../core/config';
@@ -65,6 +66,13 @@ function testScript(esm: boolean): string {
     : 'jest && cucumber-js';
 }
 
+/** Runs test/integration against DATABASE_URL / AMQP_URL (docs/RUNTIME-KERNEL.md). */
+function integrationScript(esm: boolean): string {
+  return esm
+    ? 'node --experimental-vm-modules node_modules/jest/bin/jest.js -c jest.integration.config.js --runInBand'
+    : 'jest -c jest.integration.config.js --runInBand';
+}
+
 function prismaDependencies(profile: NodeProfile): { dependencies: Record<string, string>; devDependencies: Record<string, string> } {
   const version = PRISMA_VERSION[profile.prisma];
   return {
@@ -82,9 +90,9 @@ function nodeDependencies(config: GherkinAIConfig): NodePackage {
   const prisma = config.stack.orm === 'prisma' ? prismaDependencies(profile) : { dependencies: {}, devDependencies: {} };
   if (framework === 'express') {
     return {
-      scripts: { start: 'node dist/src/server', build: 'tsc -p tsconfig.build.json', test: testScript(false) },
-      dependencies: { express: '^5.1.0', zod: '^4.1.0', ...prisma.dependencies },
-      devDependencies: { ...TS_TEST_TOOLING, '@types/express': '^5.0.0', ...prisma.devDependencies }
+      scripts: { start: 'node dist/src/server', build: 'tsc -p tsconfig.build.json', test: testScript(false), 'test:integration': integrationScript(false) },
+      dependencies: { express: '^5.1.0', zod: '^4.1.0', ...TS_RUNTIME_DEPENDENCIES, ...prisma.dependencies },
+      devDependencies: { ...TS_TEST_TOOLING, ...TS_RUNTIME_DEV_DEPENDENCIES, '@types/express': '^5.0.0', ...prisma.devDependencies }
     };
   }
   if (framework !== 'nestjs' && framework !== 'nest') {
@@ -97,17 +105,20 @@ function nodeDependencies(config: GherkinAIConfig): NodePackage {
     scripts: {
       start: profile.esm ? 'node dist/src/main.js' : 'node dist/src/main',
       build: 'tsc -p tsconfig.build.json',
-      test: testScript(profile.esm)
+      test: testScript(profile.esm),
+      'test:integration': integrationScript(profile.esm)
     },
     dependencies: {
       ...NEST_DEPENDENCIES[profile.nest],
       ...nestPrisma.dependencies,
+      ...TS_RUNTIME_DEPENDENCIES,
       'reflect-metadata': '^0.2.0',
       rxjs: '^7.8.0',
       zod: '^4.1.0'
     },
     devDependencies: {
       ...TS_TEST_TOOLING,
+      ...TS_RUNTIME_DEV_DEPENDENCIES,
       '@types/express': '^5.0.0',
       ...nestPrisma.devDependencies
     }

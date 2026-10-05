@@ -50,6 +50,14 @@ export class ${m.pascal}Aggregate {
     if (!id || !id.trim()) throw new DomainValidationError('${m.pascal} id is required');
   }
 
+  /** Rebuilds an aggregate from persisted state; no events are recorded. */
+  static restore(id: string, state: ${m.pascal}State, version: number): ${m.pascal}Aggregate {
+    const aggregate = new ${m.pascal}Aggregate(id);
+    aggregate._state = state;
+    aggregate._version = version;
+    return aggregate;
+  }
+
   get state(): ${m.pascal}State {
     return this._state;
   }
@@ -164,13 +172,15 @@ module.exports = {
 }
 
 /** `esm`: ts-jest in ESM mode (run with --experimental-vm-modules); `.js` specifiers map back to the .ts sources. */
-export function renderJestConfig(roots: string[], { esm = false } = {}): string {
+export function renderJestConfig(roots: string[], { esm = false, testMatch = '**/*.spec.ts', testTimeout = 0 } = {}): string {
+  const timeout = testTimeout ? `
+  testTimeout: ${testTimeout},` : '';
   if (esm) {
     return `/** @type {import('jest').Config} */
 export default {
   testEnvironment: 'node',
   roots: ${JSON.stringify(roots)},
-  testMatch: ['**/*.spec.ts'],
+  testMatch: [${q(testMatch)}],${timeout}
   extensionsToTreatAsEsm: ['.ts'],
   moduleNameMapper: { '^(\\\\.{1,2}/.*)\\\\.js$': '$1' },
   // TS151002: ts-jest suggests isolatedModules for module "nodenext"; that conflicts with decorator metadata.
@@ -183,7 +193,7 @@ module.exports = {
   preset: 'ts-jest',
   testEnvironment: 'node',
   roots: ${JSON.stringify(roots)},
-  testMatch: ['**/*.spec.ts']
+  testMatch: [${q(testMatch)}],${timeout}
 };
 `;
 }

@@ -16,6 +16,7 @@ import { generatePythonIdempotencyInfrastructure } from './python/python-idempot
 import { generatePythonMultiTenancyInfrastructure } from './python/python-multitenancy-generator';
 import { buildDomainModel, toKebab } from './kernel/domain-model';
 import { PyFile, pyModulesOf, renderPyImportSmokeTest, renderPyKernel, renderPyKernelTests, renderPytestBdd, withInitFiles } from './kernel/python';
+import { PY_INTEGRATION_MARKER, PY_RUNTIME_DEPENDENCIES, renderPyRuntime } from './kernel/runtime/python';
 import { PY_DATABASE, PY_EVENT_BUS, pyEventBusTest, pyFeatureFile, renderPyproject, underAppPackage } from './python/python-common';
 
 export function generatePythonFastApiPreset(parsed: ParsedFeature, config?: GherkinAIConfig, featureFile?: string): { filename: string; content: string }[] {
@@ -78,11 +79,14 @@ def test_unknown_command_returns_404():
     assert client.post("/api/v1/${m.kebab}/agg-api/does_not_exist").status_code == 404
 `;
 
+  const runtime = renderPyRuntime(m);
   const appFiles: PyFile[] = withInitFiles([
     { filename: 'app/database.py', content: PY_DATABASE },
     { filename: 'app/infrastructure/event_bus.py', content: PY_EVENT_BUS },
     { filename: 'app/main.py', content: main },
     ...renderPyKernel(m),
+    // Runtime kernel: PostgreSQL + RabbitMQ + OpenTelemetry, verified by tests/integration (docs/RUNTIME-KERNEL.md).
+    ...runtime.filter(f => f.filename.startsWith('app/')),
     ...underAppPackage([
       ...generatePythonOutboxInfrastructure(),
       ...generatePythonSagaInfrastructure(m.pascal),
@@ -94,6 +98,7 @@ def test_unknown_command_returns_404():
   return [
     ...appFiles,
     ...renderPyKernelTests(m),
+    ...runtime.filter(f => f.filename.startsWith('tests/')),
     ...renderPytestBdd(m, pyFeatureFile(m, featureFile)),
     pyEventBusTest(),
     { filename: 'tests/test_api.py', content: apiTest },
@@ -102,8 +107,9 @@ def test_unknown_command_returns_404():
       filename: 'pyproject.toml',
       content: renderPyproject(
         toKebab(config?.projectName || m.kebab),
-        ['fastapi>=0.115', 'uvicorn>=0.30', 'sqlalchemy>=2.0', 'pydantic>=2.7'],
-        ['pytest>=8.3', 'pytest-bdd>=7.3', 'httpx>=0.27']
+        ['fastapi>=0.115', 'uvicorn>=0.30', 'sqlalchemy>=2.0', 'pydantic>=2.7', ...PY_RUNTIME_DEPENDENCIES],
+        ['pytest>=8.3', 'pytest-bdd>=7.3', 'httpx>=0.27'],
+        [PY_INTEGRATION_MARKER]
       )
     }
   ];

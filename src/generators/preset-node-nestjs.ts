@@ -18,6 +18,7 @@ import { generateNestJsSagaInfrastructure } from './nestjs/saga-generator';
 import { generateNestJsMultiTenancyInfrastructure } from './nestjs/multitenancy-generator';
 import { buildDomainModel } from './kernel/domain-model';
 import { resolveNodeProfile, withEsmImportExtensions } from './node-profile';
+import { renderTsRuntime } from './kernel/runtime/typescript';
 import {
   renderCucumberJsConfig,
   renderCucumberJsSteps,
@@ -62,6 +63,9 @@ void bootstrap();
     { filename: `test/steps/${m.kebab}.steps.ts`, content: renderCucumberJsSteps(m, `../../${domainDir}/${m.kebab}.aggregate`) },
     { filename: 'cucumber.js', content: renderCucumberJsConfig('test/steps/**/*.ts', { esm }) },
     { filename: 'jest.config.js', content: renderJestConfig(['<rootDir>/src'], { esm }) },
+    { filename: 'jest.integration.config.js', content: renderJestConfig(['<rootDir>/test/integration'], { esm, testMatch: '**/*.int-spec.ts', testTimeout: 60000 }) },
+    // Runtime kernel: PostgreSQL + RabbitMQ + OpenTelemetry, verified by test/integration (docs/RUNTIME-KERNEL.md).
+    ...renderTsRuntime(m, `../${m.kebab}/domain/${m.kebab}.aggregate`),
     ...renderTsConfigs(),
     { filename: 'src/app.module.ts', content: appModule },
     { filename: 'src/main.ts', content: main },

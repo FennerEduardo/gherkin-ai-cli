@@ -4,7 +4,11 @@
    built CLI, then compile it AND run its generated test suite inside the
    stack's official Docker image.
 
-   Usage:  npm run build && node scripts/golden-build.js [stack ...] [--keep] [--list]
+   Usage:  npm run build && node scripts/golden-build.js [stack ...] [--keep] [--list] [--no-integration]
+
+   Backends also run their runtime integration tests (docs/RUNTIME-KERNEL.md)
+   against PostgreSQL and RabbitMQ containers on a private network. The full
+   log of each stack is written to <tmp>/ghk-golden-<stack>.log.
 
    A stack passes when the generated project builds and its tests exit 0
    (pending BDD steps are allowed; failing or erroring tests are not).
@@ -18,11 +22,13 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { STACKS } = require('./golden-stacks');
+const { startServices } = require('./golden-services');
 
 const ROOT = path.resolve(__dirname, '..');
 const CLI = path.join(ROOT, 'bin', 'gherkin-ai.js');
 const args = process.argv.slice(2);
 const keep = args.includes('--keep');
+const skipIntegration = args.includes('--no-integration');
 const selected = args.filter(a => !a.startsWith('--'));
 
 if (args.includes('--list')) {
@@ -63,16 +69,30 @@ function dockerPath(p) {
   return p;
 }
 
-function buildInDocker(dir, def) {
+/**
+ * Builds and tests the project in the toolchain image. Stacks with `integration` commands
+ * also run the runtime integration tests against PostgreSQL and RabbitMQ (golden-services.js).
+ */
+function buildInDocker(dir, def, name) {
   const volumes = (def.caches || []).flatMap(([vol, target]) => ['-v', `ghk-cache-${vol}:${target}`]);
-  const script = [...(def.build || []), ...(def.test || [])].join(' && ');
-  return run('docker', [
-    'run', '--rm',
-    '-v', `${dockerPath(dir)}:/work`, '-w', `/work${def.workdir ? `/${def.workdir}` : ''}`,
-    ...volumes,
-    ...(def.env ? Object.entries(def.env).flatMap(([k, v]) => ['-e', `${k}=${v}`]) : []),
-    def.image, 'sh', '-c', script
-  ], { env: { ...process.env, MSYS_NO_PATHCONV: '1' } });
+  const integration = def.integration && !skipIntegration ? def.integration : [];
+  const services = integration.length ? startServices(name) : undefined;
+  // Only the integration step sees DATABASE_URL / AMQP_URL: unit tests stay hermetic.
+  const exports = services ? Object.entries(services.env).map(([k, v]) => `export ${k}='${v}'`) : [];
+  const script = [...(def.build || []), ...(def.test || []), ...exports, ...integration].join(' && ');
+  try {
+    const env = { ...(def.env || {}) };
+    return run('docker', [
+      'run', '--rm',
+      ...(services ? ['--network', services.network] : []),
+      '-v', `${dockerPath(dir)}:/work`, '-w', `/work${def.workdir ? `/${def.workdir}` : ''}`,
+      ...volumes,
+      ...Object.entries(env).flatMap(([k, v]) => ['-e', `${k}=${v}`]),
+      def.image, 'sh', '-c', script
+    ], { env: { ...process.env, MSYS_NO_PATHCONV: '1' } });
+  } finally {
+    if (services) services.stop();
+  }
 }
 
 function summarize(log) {
@@ -90,8 +110,9 @@ for (const [name, def] of Object.entries(STACKS)) {
   const started = Date.now();
   try {
     dir = generate(name, def);
-    process.stdout.write(`  building and testing in ${dir} (${def.image})\n`);
-    const res = buildInDocker(dir, def);
+    process.stdout.write(`  building and testing in ${dir} (${def.image}${def.integration && !skipIntegration ? ' + PostgreSQL + RabbitMQ' : ''})\n`);
+    const res = buildInDocker(dir, def, name);
+    fs.writeFileSync(path.join(os.tmpdir(), `ghk-golden-${name}.log`), res.out);
     const secs = ((Date.now() - started) / 1000).toFixed(0);
     if (res.code === 0) {
       process.stdout.write(`  ✔ ${name} builds and tests pass (${secs}s)\n`);
