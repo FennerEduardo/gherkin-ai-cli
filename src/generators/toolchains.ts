@@ -9,6 +9,7 @@
 
 import type { GherkinAIConfig } from '../core/config';
 import { getStackSupport } from './stack-support';
+import { PHP_RUNTIME_EXTENSIONS } from './kernel/runtime/php';
 
 export interface Toolchain {
   /** Official image the generated project is built and tested in. */
@@ -82,7 +83,7 @@ export const TOOLCHAINS: Record<string, Toolchain> = {
   },
   'php/laravel': {
     image: 'composer:2',
-    build: ['composer install --no-progress --prefer-dist -q'],
+    build: [PHP_RUNTIME_EXTENSIONS, 'composer install --no-progress --prefer-dist -q'],
     test: ['vendor/bin/phpunit --exclude-group integration', 'vendor/bin/behat --no-colors --format=progress'],
     integration: ['vendor/bin/phpunit --group integration'],
     start: 'php artisan serve --host 0.0.0.0'

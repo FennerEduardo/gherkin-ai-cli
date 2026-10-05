@@ -191,11 +191,14 @@ const STACKS = {
     caches: [['composer', '/tmp/composer-cache']],
     env: { COMPOSER_CACHE_DIR: '/tmp/composer-cache', COMPOSER_NO_INTERACTION: '1' },
     build: [
+      // pdo_pgsql and sockets for the runtime kernel (docs/RUNTIME-KERNEL.md).
+      'apk add --no-cache $PHPIZE_DEPS postgresql-dev linux-headers > /dev/null && docker-php-ext-install pdo_pgsql sockets > /dev/null',
       'composer install --no-progress --prefer-dist -q',
       'find app routes tests features contracts bootstrap -name "*.php" -print0 | xargs -0 -n1 php -l > /dev/null',
       'php artisan --version'
     ],
-    test: ['vendor/bin/phpunit', 'vendor/bin/behat --no-colors --format=progress']
+    test: ['vendor/bin/phpunit --exclude-group integration', 'vendor/bin/behat --no-colors --format=progress'],
+    integration: ['vendor/bin/phpunit --group integration']
   }
 };
 

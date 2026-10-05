@@ -9,6 +9,7 @@
 import { ParsedFeature } from '../core/gherkin-parser';
 import { GherkinAIConfig } from '../core/config';
 import { buildDomainModel, toKebab } from './kernel/domain-model';
+import { renderPhpRuntime } from './kernel/runtime/php';
 import { renderLaravelSkeleton, renderPhpController, renderPhpKernel, renderPhpTests } from './kernel/php';
 
 export function generatePhpLaravelPreset(parsed: ParsedFeature, config?: GherkinAIConfig): { filename: string; content: string }[] {
@@ -17,6 +18,8 @@ export function generatePhpLaravelPreset(parsed: ParsedFeature, config?: Gherkin
     ...renderLaravelSkeleton(m, toKebab(config?.projectName || m.kebab)),
     ...renderPhpKernel(m),
     renderPhpController(m),
-    ...renderPhpTests(m)
+    ...renderPhpTests(m),
+    // Runtime kernel: PostgreSQL + RabbitMQ + OpenTelemetry, verified by phpunit --group integration (docs/RUNTIME-KERNEL.md).
+    ...renderPhpRuntime(m)
   ];
 }

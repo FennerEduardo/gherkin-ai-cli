@@ -2,6 +2,7 @@
    gherkin-ai-cli - PHP domain kernel (Laravel 13, PHPUnit 12, Behat)
    ========================================================================== */
 
+import { PHP_RUNTIME_REQUIRE } from './runtime/php';
 import { DomainModel, stepRegex, toPascal } from './domain-model';
 
 export interface PhpFile {
@@ -69,6 +70,15 @@ final class ${m.pascal}Aggregate
         if (trim($id) === '') {
             throw new DomainValidationException('${m.pascal} id is required');
         }
+    }
+
+    /** Rebuilds an aggregate from persisted state; no events are recorded. */
+    public static function restore(string $id, ${m.pascal}State $state, int $version): self
+    {
+        $aggregate = new self($id);
+        $aggregate->state = $state;
+        $aggregate->version = $version;
+        return $aggregate;
     }
 
     public function id(): string { return $this->id; }
@@ -286,11 +296,12 @@ export function renderLaravelSkeleton(m: DomainModel, name: string): PhpFile[] {
       content: JSON.stringify({
         name: `app/${name}`,
         type: 'project',
-        require: { php: '^8.3', 'laravel/framework': '^13.17' },
+        require: { php: '^8.3', 'laravel/framework': '^13.17', ...PHP_RUNTIME_REQUIRE },
         'require-dev': { 'phpunit/phpunit': '^12.5', 'behat/behat': '^3.34' },
         autoload: { 'psr-4': { 'App\\': 'app/' } },
         'autoload-dev': { 'psr-4': { 'Tests\\': 'tests/' } },
-        config: { 'optimize-autoloader': true, 'sort-packages': true },
+        // php-http/discovery (pulled in by OpenTelemetry) is a Composer plugin; it is not needed to run.
+        config: { 'optimize-autoloader': true, 'sort-packages': true, 'allow-plugins': { 'php-http/discovery': false } },
         'minimum-stability': 'stable',
         'prefer-stable': true
       }, null, 2) + '\n'
@@ -374,6 +385,10 @@ Route::post('/v1/${m.kebab}/{id}/{command}', [${m.pascal}Controller::class, 'exe
         </testsuite>
         <testsuite name="Feature">
             <directory>tests/Feature</directory>
+        </testsuite>
+        <!-- Runtime integration tests (group "integration") need DATABASE_URL / AMQP_URL. -->
+        <testsuite name="Integration">
+            <directory>tests/Integration</directory>
         </testsuite>
     </testsuites>
     <source>
