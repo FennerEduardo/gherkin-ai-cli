@@ -17,6 +17,26 @@ const GHK_DEFAULT_IGNORES = [
   '.env.local'
 ];
 
+/**
+ * Build outputs of the generated stacks. Kept narrow on purpose: Rails keeps real code in bin/,
+ * so only the .NET bin/Debug and bin/Release folders are ignored.
+ */
+const BUILD_OUTPUT_IGNORES = [
+  'target/',
+  'build/',
+  '.gradle/',
+  '**/bin/Debug/',
+  '**/bin/Release/',
+  '**/obj/',
+  '_build/',
+  'deps/',
+  '.dart_tool/',
+  '__pycache__/',
+  '.pytest_cache/',
+  '.next/',
+  'dist/'
+];
+
 export function ensureGitignore(workspaceDir: string = process.cwd()): string {
   const gitignorePath = path.join(workspaceDir, '.gitignore');
   
@@ -35,6 +55,9 @@ telemetry.jsonl
 node_modules/
 vendor/
 coverage/
+
+# Build outputs
+${BUILD_OUTPUT_IGNORES.join('\n')}
 
 # OS Files
 .DS_Store
@@ -60,13 +83,14 @@ Thumbs.db
 
   const lines = existingContent.split(/\r?\n/).map(l => l.trim());
   const missing = GHK_DEFAULT_IGNORES.filter(entry => !lines.includes(entry));
+  const missingBuild = BUILD_OUTPUT_IGNORES.filter(entry => !lines.includes(entry));
 
-  if (missing.length > 0) {
-    let appendContent = '\n# gherkin-ai CLI Logs, Telemetry & Secrets\n';
-    missing.forEach(m => {
-      appendContent += `${m}\n`;
-    });
-    writeFileSync(gitignorePath, existingContent + appendContent);
+  if (missing.length > 0 || missingBuild.length > 0) {
+    let appendContent = '';
+    if (missing.length) appendContent += '\n# gherkin-ai CLI Logs, Telemetry & Secrets\n' + missing.map(m => `${m}\n`).join('');
+    if (missingBuild.length) appendContent += '\n# Build outputs\n' + missingBuild.map(m => `${m}\n`).join('');
+    writeFileSync(gitignorePath, existingContent.replace(/\n*$/, '\n') + appendContent);
+    missing.push(...missingBuild);
     logger.info(`Updated existing .gitignore with missing entries (${missing.join(', ')}) at: ${gitignorePath}`);
   }
 
