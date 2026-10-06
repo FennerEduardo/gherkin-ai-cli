@@ -27,6 +27,15 @@ export function writeFileSync(filePath: string, content: string): void {
   fs.writeFileSync(filePath, content, 'utf-8');
 }
 
+/**
+ * Writes a generated file. Scripts (content starting with a shebang, e.g. bin/rails, validate.sh)
+ * are made executable, so generated projects run on Linux and macOS without a manual chmod.
+ */
+export function writeGeneratedFile(filePath: string, content: string): void {
+  writeFileSync(filePath, content);
+  if (content.startsWith('#!')) fs.chmodSync(filePath, 0o755);
+}
+
 export function readFileSync(filePath: string): string {
   return fs.readFileSync(filePath, 'utf-8');
 }

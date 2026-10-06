@@ -12,7 +12,7 @@ import { parseGherkinText } from '../core/gherkin-parser';
 import { buildIR } from '../core/ir-builder';
 import { pluginRegistry } from '../core/plugin-system';
 import { registerCorePlugins } from '../plugins/core-generators-plugin';
-import { fileExistsSync, readFileSync, writeFileSync } from '../utils/file-system';
+import { fileExistsSync, readFileSync, writeFileSync, writeGeneratedFile } from '../utils/file-system';
 import { logger } from '../utils/logger';
 import { ensureGitignore } from '../utils/gitignore-manager';
 import { detectMissingDependencies } from '../core/stack-setup';
@@ -272,7 +272,7 @@ Objective: Write detailed Gherkin feature scenarios for ${title}.
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true });
     }
-    writeFileSync(fullPath, artifact.content);
+    writeGeneratedFile(fullPath, artifact.content);
     logger.success(`[Plugin ${artifact.type}] Generated: ${artifact.filePath}`);
   });
 
