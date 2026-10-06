@@ -94,7 +94,7 @@ Fifteen reference projects (`ghk-test-projects`, branch `v3`) cover realistic mu
 
 | Check | Result |
 |---|---|
-| Unit and integration tests (`vitest`) | 519 tests, all passing |
+| Unit and integration tests (`vitest`) | 523 tests, all passing |
 | Type check (`tsc --noEmit`) | clean |
 | CI matrix | Linux, macOS and Windows × Node.js 22 and 24 |
 | CLI contract tests | the built binary is run with `--json` for each command; exit codes and the JSON envelope are asserted |
