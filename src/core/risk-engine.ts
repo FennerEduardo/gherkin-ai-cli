@@ -90,15 +90,14 @@ export function resolveChangeSet(cwd: string, options: Pick<RiskOptions, 'change
     const local = git(cwd, ['diff', '--name-only', '--relative', 'HEAD']);
     return { basis: 'git-diff', files: [...new Set([...lines(diff), ...lines(local)])].sort() };
   }
-  const status = git(cwd, ['status', '--porcelain', '--untracked-files=all', '--', '.']);
-  const files = lines(status).map(l => l.slice(3).replace(/^.* -> /, '').replace(/^"|"$/g, ''));
-  if (status !== undefined && files.length > 0) {
-    // porcelain paths are relative to the repository root; make them relative to cwd.
-    const root = git(cwd, ['rev-parse', '--show-toplevel'])?.trim();
-    const rel = root ? files.map(f => path.relative(cwd, path.join(root, f)).replace(/\\/g, '/')) : files;
-    return { basis: 'working-tree', files: rel.filter(f => !f.startsWith('..')).sort() };
-  }
-  return { basis: 'specification', files: [] };
+  // Both commands print paths relative to cwd. (git status --porcelain is relative to the repository
+  // root, and converting it breaks on symlinked temp dirs on macOS and 8.3 short paths on Windows.)
+  const tracked = git(cwd, ['-c', 'core.quotepath=off', 'diff', '--name-only', '--relative', 'HEAD']) ??
+    git(cwd, ['-c', 'core.quotepath=off', 'ls-files', '--cached']); // repository without commits
+  const untracked = git(cwd, ['-c', 'core.quotepath=off', 'ls-files', '--others', '--exclude-standard']);
+  if (tracked === undefined && untracked === undefined) return { basis: 'specification', files: [] };
+  const files = [...new Set([...lines(tracked), ...lines(untracked)])].sort();
+  return files.length > 0 ? { basis: 'working-tree', files } : { basis: 'specification', files: [] };
 }
 
 interface SpecFacts {

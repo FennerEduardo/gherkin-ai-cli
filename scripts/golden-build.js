@@ -84,6 +84,8 @@ function buildInDocker(dir, def, name) {
     const env = { ...(def.env || {}) };
     return run('docker', [
       'run', '--rm',
+      // Bounded open-files limit: Erlang (Phoenix) stalls under the "infinite" limit some CI hosts set.
+      '--ulimit', 'nofile=65536:65536',
       ...(services ? ['--network', services.network] : []),
       '-v', `${dockerPath(dir)}:/work`, '-w', `/work${def.workdir ? `/${def.workdir}` : ''}`,
       ...volumes,
@@ -123,7 +125,8 @@ for (const [name, def] of Object.entries(STACKS)) {
       process.stdout.write(`  ✖ ${name} failed (${secs}s)\n`);
       const errs = summarize(res.out);
       process.stdout.write((errs.length ? errs.join('\n') : res.out.slice(-6000)) + '\n');
-      if (process.env.GHK_GOLDEN_VERBOSE) process.stdout.write(res.out.slice(-20000) + '\n');
+      // In CI the temp log file is gone with the runner: print the end of the build output too.
+      if (process.env.GHK_GOLDEN_VERBOSE || process.env.CI) process.stdout.write(`--- last lines of the build output ---\n${res.out.split('\n').slice(-150).join('\n')}\n`);
     }
   } catch (err) {
     failed++;

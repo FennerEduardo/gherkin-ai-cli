@@ -10,6 +10,11 @@ const { spawnSync } = require('child_process');
 
 const POSTGRES_IMAGE = 'postgres:17-alpine';
 const RABBITMQ_IMAGE = 'rabbitmq:4-alpine';
+/**
+ * Some hosts (GitHub-hosted runners among them) give containers an "infinite" open-files limit,
+ * which makes the Erlang VM (RabbitMQ, Phoenix tests) allocate for it and start extremely slowly.
+ */
+const ULIMIT = ['--ulimit', 'nofile=65536:65536'];
 
 function docker(args) {
   const res = spawnSync('docker', args, { encoding: 'utf8', env: { ...process.env, MSYS_NO_PATHCONV: '1' } });
@@ -20,13 +25,15 @@ function sleep(ms) {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 }
 
-function waitFor(description, check, timeoutMs = 180000) {
+function waitFor(description, check, container, timeoutMs = 180000) {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
     if (check()) return;
     sleep(1000);
   }
-  throw new Error(`Timed out waiting for ${description}`);
+  // Include the service's own log so a CI failure explains itself.
+  const logs = container ? docker(['logs', '--tail', '60', container]).out : '';
+  throw new Error(`Timed out waiting for ${description} after ${timeoutMs / 1000}s${logs ? `\n--- ${description} log (last 60 lines) ---\n${logs}` : ''}`);
 }
 
 /** Starts PostgreSQL and RabbitMQ on a fresh network. Returns the env for the test container and a stop(). */
@@ -41,12 +48,12 @@ function startServices(label) {
   };
   try {
     if (docker(['network', 'create', network]).code !== 0) throw new Error(`cannot create network ${network}`);
-    const pgRun = docker(['run', '-d', '--name', pg, '--network', network, '--network-alias', 'postgres', '-e', 'POSTGRES_PASSWORD=ghk', POSTGRES_IMAGE]);
+    const pgRun = docker(['run', '-d', '--name', pg, '--network', network, '--network-alias', 'postgres', ...ULIMIT, '-e', 'POSTGRES_PASSWORD=ghk', POSTGRES_IMAGE]);
     if (pgRun.code !== 0) throw new Error(`cannot start PostgreSQL: ${pgRun.out}`);
-    const mqRun = docker(['run', '-d', '--name', mq, '--network', network, '--network-alias', 'rabbitmq', '-e', 'RABBITMQ_DEFAULT_USER=ghk', '-e', 'RABBITMQ_DEFAULT_PASS=ghk', RABBITMQ_IMAGE]);
+    const mqRun = docker(['run', '-d', '--name', mq, '--network', network, '--network-alias', 'rabbitmq', ...ULIMIT, '-e', 'RABBITMQ_DEFAULT_USER=ghk', '-e', 'RABBITMQ_DEFAULT_PASS=ghk', RABBITMQ_IMAGE]);
     if (mqRun.code !== 0) throw new Error(`cannot start RabbitMQ: ${mqRun.out}`);
-    waitFor('PostgreSQL', () => docker(['exec', pg, 'pg_isready', '-U', 'postgres', '-h', '127.0.0.1']).code === 0);
-    waitFor('RabbitMQ', () => docker(['exec', mq, 'rabbitmq-diagnostics', '-q', 'check_port_connectivity']).code === 0);
+    waitFor('PostgreSQL', () => docker(['exec', pg, 'pg_isready', '-U', 'postgres', '-h', '127.0.0.1']).code === 0, pg);
+    waitFor('RabbitMQ', () => docker(['exec', mq, 'rabbitmq-diagnostics', '-q', 'check_port_connectivity']).code === 0, mq);
   } catch (err) {
     stop();
     throw err;
