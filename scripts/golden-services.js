@@ -10,11 +10,6 @@ const { spawnSync } = require('child_process');
 
 const POSTGRES_IMAGE = 'postgres:17-alpine';
 const RABBITMQ_IMAGE = 'rabbitmq:4-alpine';
-/**
- * Some hosts (GitHub-hosted runners among them) give containers an "infinite" open-files limit,
- * which makes the Erlang VM (RabbitMQ, Phoenix tests) allocate for it and start extremely slowly.
- */
-const ULIMIT = ['--ulimit', 'nofile=65536:65536'];
 
 function docker(args) {
   const res = spawnSync('docker', args, { encoding: 'utf8', env: { ...process.env, MSYS_NO_PATHCONV: '1' } });
@@ -48,12 +43,14 @@ function startServices(label) {
   };
   try {
     if (docker(['network', 'create', network]).code !== 0) throw new Error(`cannot create network ${network}`);
-    const pgRun = docker(['run', '-d', '--name', pg, '--network', network, '--network-alias', 'postgres', ...ULIMIT, '-e', 'POSTGRES_PASSWORD=ghk', POSTGRES_IMAGE]);
+    const pgRun = docker(['run', '-d', '--name', pg, '--network', network, '--network-alias', 'postgres', '-e', 'POSTGRES_PASSWORD=ghk', POSTGRES_IMAGE]);
     if (pgRun.code !== 0) throw new Error(`cannot start PostgreSQL: ${pgRun.out}`);
-    const mqRun = docker(['run', '-d', '--name', mq, '--network', network, '--network-alias', 'rabbitmq', ...ULIMIT, '-e', 'RABBITMQ_DEFAULT_USER=ghk', '-e', 'RABBITMQ_DEFAULT_PASS=ghk', RABBITMQ_IMAGE]);
+    const mqRun = docker(['run', '-d', '--name', mq, '--network', network, '--network-alias', 'rabbitmq', '-e', 'RABBITMQ_DEFAULT_USER=ghk', '-e', 'RABBITMQ_DEFAULT_PASS=ghk', RABBITMQ_IMAGE]);
     if (mqRun.code !== 0) throw new Error(`cannot start RabbitMQ: ${mqRun.out}`);
     waitFor('PostgreSQL', () => docker(['exec', pg, 'pg_isready', '-U', 'postgres', '-h', '127.0.0.1']).code === 0, pg);
-    waitFor('RabbitMQ', () => docker(['exec', mq, 'rabbitmq-diagnostics', '-q', 'check_port_connectivity']).code === 0, mq);
+    // Probe as the rabbitmq user: the image sets HOME=/var/lib/rabbitmq, so a root probe that runs before
+    // the server creates .erlang.cookie writes it root-only and the server then fails to start (eacces).
+    waitFor('RabbitMQ', () => docker(['exec', '-u', 'rabbitmq', mq, 'rabbitmq-diagnostics', '-q', 'check_port_connectivity']).code === 0, mq);
   } catch (err) {
     stop();
     throw err;

@@ -84,8 +84,6 @@ function buildInDocker(dir, def, name) {
     const env = { ...(def.env || {}) };
     return run('docker', [
       'run', '--rm',
-      // Bounded open-files limit: Erlang (Phoenix) stalls under the "infinite" limit some CI hosts set.
-      '--ulimit', 'nofile=65536:65536',
       ...(services ? ['--network', services.network] : []),
       '-v', `${dockerPath(dir)}:/work`, '-w', `/work${def.workdir ? `/${def.workdir}` : ''}`,
       ...volumes,
