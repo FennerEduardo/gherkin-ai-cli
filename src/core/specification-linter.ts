@@ -8,6 +8,9 @@
 
 import { ParsedFeature, ScenarioModel, StepModel } from './gherkin-parser';
 import { Constitution, loadConstitution } from './constitution';
+import { withoutQuotedText } from '../utils/quoted-text';
+import { featurePascalName } from '../utils/naming';
+import { buildIR } from './ir-builder';
 
 // ---------------------------------------------------------------------------
 // Lint Rule Definitions
@@ -39,12 +42,7 @@ export interface LintOptions {
   disabledRules?: string[];
 }
 
-/** Step text with quoted values ("x", “x”, «x», `x`, 'x') blanked out. Apostrophes inside words are kept. */
-export function withoutQuotedText(text: string): string {
-  return text
-    .replace(/"[^"]*"|“[^”]*”|«[^»]*»|`[^`]*`/g, '""')
-    .replace(/(^|[^\p{L}\p{N}])'[^']*'(?=[^\p{L}\p{N}]|$)/gu, '$1\'\'');
-}
+export { withoutQuotedText };
 
 // ---------------------------------------------------------------------------
 // Lint Rule Registry
@@ -519,6 +517,45 @@ const LINT_RULES: LintRule[] = [
           severity: 'error',
           message: 'Feature has no scenarios defined.',
           suggestion: 'Add at least one Scenario with Given-When-Then steps.',
+        });
+      }
+      return diags;
+    },
+  },
+
+  // GHK015: Unclear domain names (generated code would be named after example data)
+  {
+    id: 'GHK015',
+    name: 'Unclear command or aggregate name',
+    severity: 'warning',
+    check: (parsed) => {
+      const diags: LintDiagnostic[] = [];
+      const unclear = (name: string) =>
+        /\d/.test(name) ? 'contains digits' :
+        /@|example|https?|www/i.test(name) ? 'looks like example data' :
+        name.split(/[_\s]+|(?=[A-Z])/).filter(Boolean).length > 4 ? 'has more than 4 words' : undefined;
+
+      const aggregate = featurePascalName(parsed);
+      const aggReason = unclear(aggregate);
+      if (aggReason) {
+        diags.push({
+          ruleId: 'GHK015',
+          severity: 'warning',
+          message: `Aggregate name "${aggregate}" ${aggReason}.`,
+          suggestion: 'Name the aggregate with a feature tag, e.g. @aggregate:Enrollment.',
+        });
+      }
+
+      const seen = new Set<string>();
+      for (const cmd of buildIR(parsed, 'lint.feature').commands) {
+        const reason = unclear(cmd.name);
+        if (!reason || seen.has(cmd.name)) continue;
+        seen.add(cmd.name);
+        diags.push({
+          ruleId: 'GHK015',
+          severity: 'warning',
+          message: `Command "${cmd.name}" ${reason}.`,
+          suggestion: 'Name the command explicitly in the When step, e.g. When the student enrolls ("EnrollStudentCommand").',
         });
       }
       return diags;

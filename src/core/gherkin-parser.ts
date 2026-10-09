@@ -24,6 +24,21 @@ function looksLikeGherkin(text: string): boolean {
   });
 }
 
+/** Articles, prepositions, conjunctions and common step verbs (en/es) that precede a quoted value without naming a field. */
+const NOT_A_FIELD = new Set([
+  'a', 'an', 'the', 'this', 'that', 'its', 'their', 'his', 'her', 'my', 'our', 'your',
+  'with', 'is', 'are', 'was', 'were', 'be', 'been', 'for', 'of', 'to', 'in', 'on', 'at', 'from', 'by', 'as', 'into', 'onto', 'than', 'via', 'and', 'or', 'not', 'no',
+  'become', 'becomes', 'became', 'equals', 'contains', 'shows', 'show', 'displays', 'display', 'reads', 'read', 'says', 'see', 'sees', 'has', 'have', 'had',
+  'named', 'called', 'titled', 'labeled', 'labelled', 'set', 'sets', 'enter', 'enters', 'type', 'types', 'select', 'selects', 'choose', 'chooses', 'click', 'clicks',
+  'register', 'registers', 'create', 'creates', 'add', 'adds', 'submit', 'submits', 'send', 'sends', 'receive', 'receives', 'publish', 'publishes', 'request', 'requests',
+  'el', 'la', 'los', 'las', 'un', 'una', 'unos', 'unas', 'lo', 'su', 'sus', 'este', 'esta',
+  'con', 'de', 'del', 'en', 'para', 'por', 'como', 'al', 'y', 'o', 'es', 'son', 'era', 'que', 'se', 'sin',
+  'registra', 'crea', 'ingresa', 'tiene', 've', 'muestra', 'recibe', 'envia', 'envía', 'llamado', 'llamada', 'titulado', 'titulada'
+]);
+
+/** Nouns that end like verb forms but are fields. */
+const KNOWN_FIELD_NOUNS = new Set(['setting', 'heading', 'rating', 'ranking', 'billing', 'shipping', 'building', 'listing', 'booking', 'meeting', 'seed', 'speed', 'feed', 'need', 'bed']);
+
 export function parseGherkinText(gherkinText: string): ParsedFeature {
   const trimmed = gherkinText.trim();
   if ((trimmed.startsWith('#') || trimmed.match(/^[-*]\s+/)) && !looksLikeGherkin(gherkinText)) {
@@ -152,19 +167,17 @@ export function parseGherkinText(gherkinText: string): ParsedFeature {
         }
       }
 
-      // Enhanced semantic field extraction, especially from DataTables
-      const lines = st.text.split('\n');
-      for (const line of lines) {
-        if (line.startsWith('|')) {
-          const cells = line.split('|').map(c => c.trim()).filter(c => c);
-          cells.forEach(cell => {
-            const fieldName = cell.toLowerCase().replace(/[^a-z0-9_]/g, '_');
-            if (fieldName && fieldName.length > 2) {
-              if (!fieldsMap.has(fieldName)) {
-                fieldsMap.set(fieldName, { name: fieldName, type: 'string', validations: [] });
-              }
-            }
-          });
+      // Fields from DataTables come from the header row only (the other rows are values). A two-column
+      // "| field | value |" table lists its fields down the first column instead.
+      const rows = st.text.split('\n').filter(l => l.startsWith('|')).map(l => l.split('|').map(c => c.trim()).filter(c => c));
+      if (rows.length) {
+        const vertical = rows[0].length === 2 && /^(field|campo|name|nombre|attribute|atributo|property|propiedad)$/i.test(rows[0][0]);
+        const names = vertical ? rows.slice(1).map(r => r[0]) : rows[0];
+        for (const cell of names) {
+          const fieldName = cell.toLowerCase().replace(/[^a-z0-9_]/g, '_');
+          if (fieldName && fieldName.length > 2 && !/^_*\d/.test(fieldName) && !fieldsMap.has(fieldName)) {
+            fieldsMap.set(fieldName, { name: fieldName, type: 'string', validations: [] });
+          }
         }
       }
 
@@ -175,8 +188,9 @@ export function parseGherkinText(gherkinText: string): ParsedFeature {
       while ((qMatch = quoteRegex.exec(st.text)) !== null) {
         const fieldName = qMatch[1].toLowerCase();
         
-        // Ignore stop words (articles)
-        if (['a', 'an', 'the', 'el', 'la', 'un', 'una', 'with', 'is', 'for', 'of'].includes(fieldName)) continue;
+        // The word before a quoted value is a field only when it is a noun: `email "ana@x.org"` yes,
+        // `becomes "active"` / `in "Spring 2026"` / `registers "Ana"` no.
+        if (NOT_A_FIELD.has(fieldName) || /^\w+(ed|ing)$/.test(fieldName) && !KNOWN_FIELD_NOUNS.has(fieldName)) continue;
 
         let type = 'string';
         if (!isNaN(Number(qMatch[2]))) type = 'number';

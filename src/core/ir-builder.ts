@@ -32,6 +32,7 @@ import {
 import { loadConstitution, Constitution } from './constitution';
 import { resolveDomainProfile } from './profiles/profile-registry';
 import { featurePascalName } from '../utils/naming';
+import { withoutQuotedText } from '../utils/quoted-text';
 
 // ---------------------------------------------------------------------------
 // Deterministic ID Generator
@@ -389,6 +390,9 @@ function extractActors(parsed: ParsedFeature, sourceFile: string): Actor[] {
 // Command Extraction
 // ---------------------------------------------------------------------------
 
+/** Words that end a noun phrase ("the course for spring" -> "course"). */
+const PHRASE_BOUNDARIES = new Set(['for', 'in', 'on', 'at', 'of', 'by', 'as', 'and', 'or', 'into', 'onto', 'via', 'using', 'without', 'within', 'per', 'para', 'por', 'con', 'sin', 'del', 'de', 'en', 'y', 'o']);
+
 function extractCommands(
   parsed: ParsedFeature,
   sourceFile: string,
@@ -414,20 +418,23 @@ function extractCommands(
       // Try to extract subject from step text
       // Skip stop words
       const stopWords = new Set(['a', 'an', 'the', 'el', 'la', 'un', 'una', 'is', 'to', 'from', 'with']);
-      const words = step.text.replace(/[^a-zA-Z0-9\s]/g, '').split(/\s+/).map(w => w.toLowerCase());
-      
+      // The subject is a noun phrase of the step, never example data: quoted values ("ana@example.edu"),
+      // numbers, data tables and doc strings are left out, and the phrase ends at a preposition.
+      const phrase = withoutQuotedText(step.text.split('\n')[0]).replace(/["'`“”«»]/g, ' ');
+      const words = phrase.replace(/[^a-zA-Z0-9\s]/g, '').split(/\s+/).filter(w => w && !/^\d+$/.test(w)).map(w => w.toLowerCase());
+
       const verbIdx = words.findIndex(w => VERB_PATTERNS[verb]?.test(w));
       if (verbIdx !== -1 && verbIdx < words.length - 1) {
         // Try to find the next meaningful noun after the verb
         const nextWords = words.slice(verbIdx + 1).filter(w => !stopWords.has(w));
         if (nextWords.length > 0) {
           subject = nextWords[0];
-          if (nextWords.length > 1 && nextWords[1].length > 2) {
+          if (nextWords.length > 1 && nextWords[1].length > 2 && !PHRASE_BOUNDARIES.has(nextWords[1])) {
              subject += `_${nextWords[1]}`;
           }
         }
       } else {
-        const subjectMatch = step.text.match(/(?:the|an?|el|la|un|una)\s+(\w+(?:\s+\w+)?)/i);
+        const subjectMatch = phrase.match(/(?:the|an?|el|la|un|una)\s+(\w+(?:\s+\w+)?)/i);
         if (subjectMatch) {
           subject = subjectMatch[1].toLowerCase().replace(/\s+/g, '_');
         }

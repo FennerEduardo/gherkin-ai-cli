@@ -42,18 +42,9 @@ model SagaInstance {
 }
 `;
 
-export function generatePrismaStack(parsed: ParsedFeature, config: GherkinAIConfig): { filename: string; content: string }[] {
-  if (config.stack.orm !== 'prisma') {
-    return [];
-  }
-
-  const artifacts: { filename: string; content: string }[] = [];
+/** One model per feature aggregate, with the feature's fields. */
+function renderAggregateModel(parsed: ParsedFeature, isNest: boolean): string {
   const modelName = featurePascalName(parsed);
-  // Prisma client delegates are camelCase: model PaymentProcessing -> prisma.paymentProcessing
-  const delegate = modelName.charAt(0).toLowerCase() + modelName.slice(1);
-  const profile = resolveNodeProfile(config);
-  const isNest = ['nestjs', 'nest'].includes((config.stack.framework || '').toLowerCase());
-
   let fieldsStr = `  id String @id @default(uuid())\n`;
   // PrismaService.tenant (a query extension) scopes every domain query by tenantId.
   if (isNest) fieldsStr += `  tenantId String @default("default")\n`;
@@ -70,19 +61,41 @@ export function generatePrismaStack(parsed: ParsedFeature, config: GherkinAIConf
     }
     fieldsStr += `  ${f.name} ${type}\n`;
   });
-
-  const schemaContent = `// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-${renderPrismaHeader(profile)}
-model ${modelName} {
+  return `model ${modelName} {
 ${fieldsStr}
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 ${isNest ? `
   @@index([tenantId])
 ` : ''}}
-${isNest ? NEST_INFRASTRUCTURE_MODELS : ''}`;
+`;
+}
+
+/**
+ * Prisma schema and repository for a feature. The schema is service-wide: it has one model per feature
+ * of the project (`otherFeatures`), so generating one feature keeps the models of the others.
+ */
+export function generatePrismaStack(parsed: ParsedFeature, config: GherkinAIConfig, otherFeatures: ParsedFeature[] = []): { filename: string; content: string }[] {
+  if (config.stack.orm !== 'prisma') {
+    return [];
+  }
+
+  const artifacts: { filename: string; content: string }[] = [];
+  const modelName = featurePascalName(parsed);
+  // Prisma client delegates are camelCase: model PaymentProcessing -> prisma.paymentProcessing
+  const delegate = modelName.charAt(0).toLowerCase() + modelName.slice(1);
+  const profile = resolveNodeProfile(config);
+  const isNest = ['nestjs', 'nest'].includes((config.stack.framework || '').toLowerCase());
+
+  const models = new Map<string, string>();
+  for (const f of [...otherFeatures, parsed]) models.set(featurePascalName(f), renderAggregateModel(f, isNest));
+  const modelsStr = [...models.keys()].sort().map(k => models.get(k)).join('\n');
+
+  const schemaContent = `// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+${renderPrismaHeader(profile)}
+${modelsStr}${isNest ? NEST_INFRASTRUCTURE_MODELS : ''}`;
 
   artifacts.push({
     filename: `prisma/schema.prisma`,

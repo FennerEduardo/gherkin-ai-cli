@@ -18,6 +18,8 @@ import { ParsedFeature } from '../core/gherkin-parser';
 import { getSourceFeature } from '../core/ir-builder';
 import { CONTRACTS_DIR, collectFeatureContracts, featureContractSlug, mergeAsyncApi, mergeOpenApi } from '../core/contracts/merge';
 import { featurePascalName } from '../utils/naming';
+import { parseGherkinText } from '../core/gherkin-parser';
+import { projectFeatureFiles } from '../core/workspace-projects';
 
 // Helper to convert IR back to ParsedFeature for legacy generators
 // In a real refactor, the generators would be updated to accept IR natively.
@@ -58,6 +60,25 @@ function irToParsedFeature(ir: SpecificationIR | any): ParsedFeature {
 }
 
 const toPosix = (p: string) => p.split(path.sep).join('/').replace(/^\.\//, '');
+
+/**
+ * The project's other features (spec directory), for service-wide files that must describe every feature
+ * (Prisma schema). Unreadable or unparseable features are skipped; `ghk lint` reports them.
+ */
+export function otherProjectFeatures(ir: SpecificationIR, current: ParsedFeature, cwd = process.cwd()): ParsedFeature[] {
+  let files: string[] = [];
+  try { files = projectFeatureFiles(cwd); } catch { return []; }
+  const self = ir.sourceFile ? path.resolve(cwd, ir.sourceFile) : '';
+  const others: ParsedFeature[] = [];
+  for (const file of files) {
+    if (path.resolve(file) === self) continue;
+    try {
+      const parsed = parseGherkinText(fs.readFileSync(file, 'utf8'));
+      if (featurePascalName(parsed) !== featurePascalName(current)) others.push(parsed);
+    } catch { /* skipped */ }
+  }
+  return others;
+}
 
 /**
  * Where the generated project finds its feature file, relative to the output directory.
@@ -165,7 +186,7 @@ export class CorePrismaPlugin implements GherkinAIPlugin {
     if (config.stack.orm !== 'prisma') return [];
     
     const parsed = irToParsedFeature(ir);
-    const prismaArtifacts = generatePrismaStack(parsed, config);
+    const prismaArtifacts = generatePrismaStack(parsed, config, otherProjectFeatures(ir, parsed));
     return prismaArtifacts.map((p: any) => ({
       filePath: p.filename,
       content: p.content,

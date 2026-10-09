@@ -9,8 +9,6 @@
 
 import { ParsedFeature } from '../core/gherkin-parser';
 import { GherkinAIConfig, defaultConfig } from '../core/config';
-import { buildIR } from '../core/ir-builder';
-import { generatePrismaSchema } from './prisma-generator';
 import { generateNestJsCqrsModules } from './nestjs/cqrs-generator';
 import { generateNestJsOutboxInfrastructure } from './nestjs/outbox-generator';
 import { generateNestJsIdempotencyInterceptor } from './nestjs/idempotency-generator';
@@ -76,10 +74,7 @@ void bootstrap();
     ...generateNestJsMultiTenancyInfrastructure(profile)
   ];
 
-  if (config) {
-    const ir = buildIR(parsed, 'feature.feature');
-    results.push({ filename: 'prisma/schema.prisma', content: generatePrismaSchema(ir, config) });
-  }
+  // prisma/schema.prisma comes from the Prisma plugin (prisma-stack.ts), with one model per feature.
 
   // ES modules: Node resolves relative imports only with the emitted extension.
   return esm ? results.map(f => (f.filename.endsWith('.ts') ? { ...f, content: withEsmImportExtensions(f.content) } : f)) : results;

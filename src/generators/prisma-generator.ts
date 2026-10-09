@@ -8,6 +8,7 @@ import { execSync } from 'child_process';
 import { SpecificationIR } from '../core/semantic-ir';
 import { GherkinAIConfig } from '../core/config';
 import { renderPrismaHeader, resolveNodeProfile } from './node-profile';
+import { aggregateTagName, featurePascalName } from '../utils/naming';
 
 export function generatePrismaSchema(ir: SpecificationIR, config: GherkinAIConfig): string {
   const dbProvider = config.stack.database === 'mysql' ? 'mysql' :
@@ -55,11 +56,14 @@ ${header}
     ];
   }
 
-  // Infer entities from Commands
+  // One model per aggregate (not one per command): the @aggregate tag, else the state machine's entity,
+  // else the feature. Its columns are the input fields of all its commands.
   if (ir.commands && ir.commands.length > 0) {
-    for (const cmd of ir.commands) {
-      const entityName = toPascalCase(cmd.subject || cmd.name.replace(/^(create|update|delete|cancel|place|process)/i, ''));
-      if (entityName && entityName.length > 2 && !entityMap[entityName]) {
+    const tags: string[] = (ir as SpecificationIR & { tags?: string[] }).tags ?? [];
+    const tagged = aggregateTagName(tags);
+    const entityName = toPascalCase(tagged ?? ir.stateMachines?.[0]?.entity ?? featurePascalName({ featureName: ir.featureName, tags }));
+    const inputFields = [...new Map(ir.commands.flatMap(c => c.inputFields ?? []).map(f => [f.name, f])).values()];
+    if (entityName && !entityMap[entityName]) {
         const fields: { name: string; type: string; isId?: boolean; isUnique?: boolean; isOptional?: boolean; relationTarget?: string }[] = [
           { name: 'id', type: 'String', isId: true }
         ];
@@ -67,8 +71,8 @@ ${header}
         // Ensure multi-tenancy isolation field
         fields.push({ name: 'tenantId', type: 'String' });
 
-        if (cmd.inputFields && cmd.inputFields.length > 0) {
-          for (const f of cmd.inputFields) {
+        if (inputFields.length > 0) {
+          for (const f of inputFields) {
             if (f.name !== 'id' && f.name !== 'tenantId') {
               let fieldType = f.type === 'number' ? 'Int' :
                                 f.type === 'boolean' ? 'Boolean' :
@@ -99,7 +103,6 @@ ${header}
         fields.push({ name: 'updatedAt', type: 'DateTime' });
 
         entityMap[entityName] = fields;
-      }
     }
   }
 
@@ -133,7 +136,7 @@ ${header}
     }
 
     if (relations.length > 0) {
-      prismaContent += '\\n' + relations.join('\\n') + '\\n';
+      prismaContent += '\n' + relations.join('\n') + '\n';
     }
 
     // Compound Indexes
