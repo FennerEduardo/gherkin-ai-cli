@@ -30,6 +30,8 @@ import {
 import { emitJson } from '../utils/output';
 import { logger } from '../utils/logger';
 import { CLI_NAME, CLI_VERSION } from '../version';
+import { KernelRefreshResult, refreshKernel } from '../core/upgrade/kernel-refresh';
+import { findGhkProjects } from '../core/workspace-projects';
 
 export interface UpgradeOptions {
   config?: string;
@@ -405,4 +407,42 @@ export async function handleUpgradeCommand(options: UpgradeOptions = {}): Promis
     throw new GhkError(`${summary.required} required upgrade change(s) pending.`, ExitCode.GATE_FAILED, { hint: 'Run `ghk upgrade` locally to review and apply them.' });
   }
   return report;
+}
+
+export interface KernelRefreshOptions {
+  /** Every gherkin-ai project under the working directory. */
+  all?: boolean;
+  /** Only report what would change. */
+  dryRun?: boolean;
+  json?: boolean;
+}
+
+/**
+ * `ghk upgrade --kernel`: regenerates the runtime kernel with this CLI. Unedited kernel files are replaced,
+ * edited ones get <file>.ghk-new; the rest of the project is not touched.
+ */
+export async function handleKernelRefresh(options: KernelRefreshOptions = {}): Promise<KernelRefreshResult[]> {
+  const cwd = process.cwd();
+  const projects = options.all ? findGhkProjects(cwd) : [cwd];
+  const dryRun = Boolean(options.dryRun || getRunContext().dryRun);
+  const results = projects.map(dir => refreshKernel(dir, { dryRun }));
+  const json = Boolean(options.json || getRunContext().json);
+
+  if (json) {
+    emitJson(results.map(r => ({
+      project: path.relative(cwd, r.project).replace(/\\/g, '/') || '.',
+      error: r.error,
+      files: r.plans.map(p => ({ file: p.filePath, action: p.action, reason: p.reason }))
+    })));
+  } else {
+    for (const r of results) {
+      const name = path.relative(cwd, r.project).replace(/\\/g, '/') || '.';
+      if (r.error) { logger.error(`${name}: ${r.error}`); continue; }
+      const count = (a: string) => r.plans.filter(p => p.action === a).length;
+      logger.info(`${name}: ${r.plans.length} kernel file(s): ${count('update') + count('overwrite')} updated, ${count('create')} created, ${count('unchanged')} unchanged, ${count('side-by-side')} kept (edited)${dryRun ? ' [dry run]' : ''}`);
+      for (const p of r.plans.filter(p => p.action === 'side-by-side')) logger.warn(`  ${p.filePath}: ${p.reason}; new version in ${p.filePath}.ghk-new`);
+    }
+  }
+  if (results.some(r => r.error)) process.exitCode = ExitCode.GENERIC;
+  return results;
 }

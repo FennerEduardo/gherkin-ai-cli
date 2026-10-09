@@ -61,9 +61,16 @@ program
   .option('--cli', 'Also check the npm registry for a newer CLI version')
   .option('--force', 'Allow uncommitted changes in the working tree')
   .option('--json', 'Output the report as JSON')
+  .option('--kernel', 'Only refresh the runtime kernel: unedited kernel files are replaced, edited ones get <file>.ghk-new')
+  .option('--all', 'With --kernel: every gherkin-ai project under the current directory')
+  .option('--dry-run', 'With --kernel: report what would change without writing')
   .action(async (options) => {
-    const { handleUpgradeCommand } = await import('./commands/upgrade');
-    await handleUpgradeCommand({ ...options, yes: program.opts().yes || program.opts().nonInteractive });
+    const upgrade = await import('./commands/upgrade');
+    if (options.kernel) {
+      await upgrade.handleKernelRefresh({ all: options.all, dryRun: options.dryRun, json: options.json });
+      return;
+    }
+    await upgrade.handleUpgradeCommand({ ...options, yes: program.opts().yes || program.opts().nonInteractive });
   });
 
 program
