@@ -36,6 +36,60 @@ export interface InventoryRecord {
   status: 'PROMPT_GENERATED' | 'IMPLEMENTED' | 'VERIFIED';
 }
 
+/** A file written by `ghk generate`, with the checksum of the content it wrote. */
+export interface ArtifactEntry {
+  filePath: string;
+  type?: string;
+  checksum?: string;
+  /** Feature file that last produced it. */
+  feature?: string;
+  generatedAt?: string;
+}
+
+/**
+ * `.ghe/inventory.json`. One file holds both the generated-artifact checksums (used by
+ * `ghk upgrade` to prove a file is untouched) and the prompt-execution audit records
+ * (`ghk implement`, `ghk audit`). Earlier versions wrote either a bare array of records
+ * or `{ version: '1.0', artifacts }`; both are read and upgraded on the next write.
+ */
+export interface InventoryFile {
+  version: '2';
+  artifacts: ArtifactEntry[];
+  executions: InventoryRecord[];
+}
+
+export function readInventoryFile(file: string): InventoryFile {
+  const empty: InventoryFile = { version: '2', artifacts: [], executions: [] };
+  let json: unknown;
+  try {
+    json = JSON.parse(fs.readFileSync(file, 'utf8'));
+  } catch {
+    return empty;
+  }
+  if (Array.isArray(json)) return { ...empty, executions: json.filter(r => r && typeof r === 'object' && typeof r.featurePath === 'string') };
+  if (json && typeof json === 'object') {
+    const obj = json as Partial<InventoryFile>;
+    return {
+      version: '2',
+      artifacts: Array.isArray(obj.artifacts) ? obj.artifacts.filter(a => a && typeof a.filePath === 'string') : [],
+      executions: Array.isArray(obj.executions) ? obj.executions : []
+    };
+  }
+  return empty;
+}
+
+export function writeInventoryFile(file: string, inventory: InventoryFile): void {
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, JSON.stringify(inventory, null, 2) + '\n', 'utf8');
+}
+
+/** Adds or replaces artifact entries by path; entries of other features are kept. */
+export function mergeArtifacts(existing: ArtifactEntry[], incoming: ArtifactEntry[]): ArtifactEntry[] {
+  const byPath = new Map(existing.map(a => [a.filePath.replace(/\\/g, '/'), a]));
+  for (const a of incoming) byPath.set(a.filePath.replace(/\\/g, '/'), { ...a, filePath: a.filePath.replace(/\\/g, '/') });
+  return [...byPath.values()].sort((a, b) => a.filePath.localeCompare(b.filePath));
+}
+
 let cachedAuthorDetails: AuthorDetails | null = null;
 
 export function getAuthorDetails(): AuthorDetails {
@@ -104,13 +158,7 @@ export class InventoryManager {
       : (fs.existsSync(this.specsInventoryPath) ? this.specsInventoryPath : undefined);
 
     if (!sourcePath) return [];
-
-    try {
-      const data = fs.readFileSync(sourcePath, 'utf8');
-      records = JSON.parse(data);
-    } catch {
-      records = [];
-    }
+    records = readInventoryFile(sourcePath).executions;
 
     if (filterFeaturePath) {
       const normTarget = path.normalize(filterFeaturePath).toLowerCase();
@@ -148,30 +196,24 @@ export class InventoryManager {
     return record;
   }
 
+  /** Clears the execution records. Artifact checksums are kept: `ghk upgrade` needs them. */
   public clearInventory(): void {
-    if (fs.existsSync(this.gheInventoryPath)) {
-      try { fs.unlinkSync(this.gheInventoryPath); } catch {}
-    }
+    this.saveInventory([]);
     if (fs.existsSync(this.specsInventoryPath)) {
       try { fs.unlinkSync(this.specsInventoryPath); } catch {}
     }
   }
 
   private saveInventory(records: InventoryRecord[]): void {
-    const content = JSON.stringify(records, null, 2);
-
-    // Save internally in .ghe/inventory.json (keeps root clean)
-    const gheDir = path.dirname(this.gheInventoryPath);
-    if (!fs.existsSync(gheDir)) {
-      try { fs.mkdirSync(gheDir, { recursive: true }); } catch {}
-    }
-    try { fs.writeFileSync(this.gheInventoryPath, content, 'utf8'); } catch {}
+    // Only the execution records are owned here; artifacts written by `ghk generate` are preserved.
+    const inventory = { ...readInventoryFile(this.gheInventoryPath), executions: records };
+    try { writeInventoryFile(this.gheInventoryPath, inventory); } catch {}
 
     // Only mirror to generated-specs/inventory.json if explicitly configured
     if (this.config.audit?.persistInGit === true) {
       const specsDir = path.dirname(this.specsInventoryPath);
       if (fs.existsSync(specsDir)) {
-        try { fs.writeFileSync(this.specsInventoryPath, content, 'utf8'); } catch {}
+        try { writeInventoryFile(this.specsInventoryPath, inventory); } catch {}
       }
     }
   }

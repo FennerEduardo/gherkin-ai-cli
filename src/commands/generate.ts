@@ -276,22 +276,23 @@ Objective: Write detailed Gherkin feature scenarios for ${title}.
     logger.success(`[Plugin ${artifact.type}] Generated: ${artifact.filePath}`);
   });
 
-  // Generate traceability inventory
+  // Traceability inventory: checksums of what this run wrote, merged with earlier features' entries.
   const crypto = await import('crypto');
-  const inventory = {
-    version: '1.0',
-    generatedAt: new Date().toISOString(),
-    createdBy: 'gherkin-ai-cli',
-    artifacts: filteredArtifacts.map(a => ({
+  const { readInventoryFile, writeInventoryFile, mergeArtifacts } = await import('../core/inventory');
+  const gheDir = path.join(process.cwd(), '.ghe');
+  const inventoryPath = path.join(gheDir, 'inventory.json');
+  const generatedAt = new Date().toISOString();
+  const previous = readInventoryFile(inventoryPath);
+  writeInventoryFile(inventoryPath, {
+    ...previous,
+    artifacts: mergeArtifacts(previous.artifacts, filteredArtifacts.map(a => ({
       filePath: a.filePath,
       type: a.type,
-      checksum: crypto.createHash('sha256').update(a.content).digest('hex')
-    }))
-  };
-  
-  const gheDir = path.join(process.cwd(), '.ghe');
-  if (!fs.existsSync(gheDir)) fs.mkdirSync(gheDir, { recursive: true });
-  writeFileSync(path.join(gheDir, 'inventory.json'), JSON.stringify(inventory, null, 2));
+      checksum: crypto.createHash('sha256').update(a.content).digest('hex'),
+      feature: options.feature ? path.relative(process.cwd(), path.resolve(process.cwd(), options.feature)).replace(/\\/g, '/') : undefined,
+      generatedAt
+    })))
+  });
   logger.success(`[Audit] Traceability inventory saved to .ghe/inventory.json`);
 
   // Generate Suggested Commit Message

@@ -238,10 +238,14 @@ async function applyUpgrade(analysis: Analysis, options: UpgradeOptions, cwd: st
     const previousInventory = readInventory(cwd);
     const generated = new Set<string>();
     const { handleGenerateCommand } = await import('./generate');
+    // The inventory accumulates entries across features: only those written by this run count as regenerated.
+    const runStartedAt = new Date().toISOString();
     for (const feature of analysis.features) {
       logger.info(`Regenerating from ${feature} ...`);
       await handleGenerateCommand({ feature, config: options.config, yes: true });
-      for (const entry of readInventory(cwd)) generated.add(entry.filePath.replace(/\\/g, '/'));
+      for (const entry of readInventory(cwd)) {
+        if (entry.generatedAt && entry.generatedAt >= runStartedAt) generated.add(entry.filePath.replace(/\\/g, '/'));
+      }
       applied.regenerated.push(feature);
     }
 

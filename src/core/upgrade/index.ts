@@ -15,6 +15,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { partialConfigSchema } from '../config/schema';
+import { readInventoryFile } from '../inventory';
 import { CONFIG_SCHEMA_ID } from '../config/json-schema';
 
 export type FindingSeverity = 'required' | 'recommended' | 'info';
@@ -353,15 +354,10 @@ export function scanLegacyFiles(cwd: string, home = os.homedir()): UpgradeFindin
 // Stale generated files
 // ---------------------------------------------------------------------------
 
-export interface InventoryEntry { filePath: string; checksum?: string }
+export interface InventoryEntry { filePath: string; checksum?: string; generatedAt?: string }
 
 export function readInventory(cwd: string): InventoryEntry[] {
-  try {
-    const json = JSON.parse(fs.readFileSync(path.join(cwd, '.ghe', 'inventory.json'), 'utf8'));
-    return Array.isArray(json?.artifacts) ? json.artifacts.filter((a: any) => typeof a?.filePath === 'string') : [];
-  } catch {
-    return [];
-  }
+  return readInventoryFile(path.join(cwd, '.ghe', 'inventory.json')).artifacts;
 }
 
 export const sha256 = (content: string | Buffer) => crypto.createHash('sha256').update(content).digest('hex');

@@ -311,12 +311,9 @@ export function createWebApp(port: number, token: string): express.Express {
   // API: Get Inventory
   app.get('/api/inventory', (req, res) => {
     try {
+      const { readInventoryFile } = require('../core/inventory');
       const inventoryPath = path.join(process.cwd(), '.ghe', 'inventory.json');
-      if (!fs.existsSync(inventoryPath)) {
-        return res.json({ success: true, inventory: [] });
-      }
-      const data = fs.readFileSync(inventoryPath, 'utf8');
-      res.json({ success: true, inventory: JSON.parse(data) });
+      res.json({ success: true, inventory: readInventoryFile(inventoryPath).executions });
     } catch (err) {
       res.status(500).json({ success: false, error: (err as Error).message });
     }
