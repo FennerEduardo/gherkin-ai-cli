@@ -172,3 +172,13 @@ describe('Execution Sandbox', () => {
     });
   });
 });
+
+describe('dockerRunArgs', () => {
+  it('keeps the defaults for limits that are present but undefined', async () => {
+    const { dockerRunArgs } = await import('../../src/core/execution-sandbox');
+    const args = dockerRunArgs('/p', 'node:22', 'npm test', { network: undefined, memory: '4g' } as any);
+    expect(args.join(' ')).toContain('--network none');
+    expect(args.join(' ')).toContain('--memory 4g');
+    expect(args).not.toContain('undefined');
+  });
+});

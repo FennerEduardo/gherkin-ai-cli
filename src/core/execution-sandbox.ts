@@ -40,7 +40,9 @@ export const DEFAULT_CONTAINER_LIMITS: Required<ContainerLimits> = { network: 'n
  * never through a host shell.
  */
 export function dockerRunArgs(cwd: string, image: string, command: string, limits: ContainerLimits = {}): string[] {
-  const l = { ...DEFAULT_CONTAINER_LIMITS, ...limits };
+  // A limit that is present but undefined (e.g. an unset config key) keeps its default, never "--network undefined".
+  const set = Object.fromEntries(Object.entries(limits).filter(([, v]) => v !== undefined && v !== null && v !== ''));
+  const l: Required<ContainerLimits> = { ...DEFAULT_CONTAINER_LIMITS, ...set };
   return [
     'run', '--rm',
     '--network', l.network,
