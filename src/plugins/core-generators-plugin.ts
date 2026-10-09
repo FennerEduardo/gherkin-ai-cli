@@ -16,6 +16,8 @@ import { generatePresets } from '../generators/presets';
 import { generatePrismaStack } from '../generators/prisma-stack';
 import { ParsedFeature } from '../core/gherkin-parser';
 import { getSourceFeature } from '../core/ir-builder';
+import { CONTRACTS_DIR, collectFeatureContracts, featureContractSlug, mergeAsyncApi, mergeOpenApi } from '../core/contracts/merge';
+import { featurePascalName } from '../utils/naming';
 
 // Helper to convert IR back to ParsedFeature for legacy generators
 // In a real refactor, the generators would be updated to accept IR natively.
@@ -82,10 +84,20 @@ export class CoreContractsPlugin implements GherkinAIPlugin {
   generate(ir: SpecificationIR, config: GherkinAIConfig): GeneratedArtifact[] {
     const parsed = irToParsedFeature(ir);
     const result = generateContracts(parsed, ir, config);
-    
+
+    // Each feature owns contracts/<feature>/; the root openapi.json / asyncapi.json are the union of all
+    // features, so generating one feature no longer drops the routes and channels of the others.
+    const slug = featureContractSlug(ir.sourceFile, parsed.featureName);
+    const outDir = path.resolve(process.cwd(), config.outputDir || './');
+    const featureDir = `${CONTRACTS_DIR}/${slug}`;
+    const openApi = JSON.parse(result.openApiJson);
+    const mergedOpenApi = mergeOpenApi(collectFeatureContracts(outDir, 'openapi.json', slug, openApi), config.projectName);
+
     const artifacts: GeneratedArtifact[] = [
       { filePath: 'ADR-001-architecture-decisions.md', content: result.adrMd, type: 'other' },
-      { filePath: 'openapi.json', content: result.openApiJson, type: 'openapi' }
+      { filePath: `${featureDir}/ADR-${featurePascalName(parsed) || 'Feature'}.md`, content: result.adrMd, type: 'other' },
+      { filePath: `${featureDir}/openapi.json`, content: result.openApiJson, type: 'openapi' },
+      { filePath: 'openapi.json', content: JSON.stringify(mergedOpenApi, null, 2), type: 'openapi' }
     ];
 
     if (config.stack.language === 'node' || config.stack.language === 'typescript' || config.stack.language === 'javascript' || config.stack.language === 'nest' || config.stack.language === 'nestjs') {
@@ -93,7 +105,9 @@ export class CoreContractsPlugin implements GherkinAIPlugin {
     }
 
     if (result.asyncApiJson) {
-      artifacts.push({ filePath: 'asyncapi.json', content: result.asyncApiJson, type: 'contract' });
+      const mergedAsyncApi = mergeAsyncApi(collectFeatureContracts(outDir, 'asyncapi.json', slug, JSON.parse(result.asyncApiJson)), config.projectName);
+      artifacts.push({ filePath: `${featureDir}/asyncapi.json`, content: result.asyncApiJson, type: 'contract' });
+      artifacts.push({ filePath: 'asyncapi.json', content: JSON.stringify(mergedAsyncApi, null, 2), type: 'contract' });
     }
 
     if (result.nativeContract) {

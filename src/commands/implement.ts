@@ -15,6 +15,8 @@ import { getAuthorDetails, calculateHash, InventoryManager } from '../core/inven
 import { estimateTokens } from '../utils/token-estimator';
 import { t, getGlobalUserLocale } from '../utils/i18n-cli';
 import { featurePascalName } from '../utils/naming';
+import { buildIR } from '../core/ir-builder';
+import { CONTRACTS_DIR, featureContractSlug } from '../core/contracts/merge';
 
 export async function handleImplementCommand(options: { 
   feature?: string; 
@@ -81,28 +83,30 @@ export async function handleImplementCommand(options: {
     ? '.ghkgovernance.yaml'
     : undefined;
 
-  let nativeContractPath: string | undefined;
-  const contractExts = ['.contract.php', '.contract.py', '.contract.go', '.contract.cs', 'contracts.ts'];
-  
-  for (const ext of contractExts) {
-    const candidate = path.join(outDir, `${basePascal.toLowerCase()}${ext}`);
-    if (fileExistsSync(candidate)) {
-      nativeContractPath = path.relative(process.cwd(), candidate);
-      break;
-    }
-  }
+  // The feature's own contracts (contracts/<feature>/) come first; the service-wide files are the fallback.
+  const featureDir = path.join(outDir, CONTRACTS_DIR, featureContractSlug(featurePath, featureName));
+  const firstExisting = (...candidates: string[]) => {
+    const hit = candidates.find(c => fileExistsSync(c));
+    return hit ? path.relative(process.cwd(), hit) : undefined;
+  };
 
-  if (!nativeContractPath && fileExistsSync(path.join(outDir, 'contracts.ts'))) {
-    nativeContractPath = path.relative(process.cwd(), path.join(outDir, 'contracts.ts'));
-  }
+  const base = basePascal.toLowerCase();
+  const nativeContractPath = firstExisting(
+    ...['.contract.php', '.contract.py', '.contract.go', '.contract.cs', '.contract.ts'].map(ext => path.join(outDir, `${base}${ext}`)),
+    path.join(outDir, 'contracts.ts')
+  );
+  const adrPath = firstExisting(path.join(featureDir, `ADR-${basePascal}.md`), path.join(outDir, 'ADR-001-architecture-decisions.md'));
+  const openApiPath = firstExisting(path.join(featureDir, 'openapi.json'), path.join(outDir, 'openapi.json'));
+  const asyncApiPath = firstExisting(path.join(featureDir, 'asyncapi.json'), path.join(outDir, 'asyncapi.json'));
 
-  const adrPath = fileExistsSync(path.join(outDir, 'ADR-001-architecture-decisions.md'))
-    ? path.relative(process.cwd(), path.join(outDir, 'ADR-001-architecture-decisions.md'))
-    : undefined;
-
-  const openApiPath = fileExistsSync(path.join(outDir, 'openapi.json'))
-    ? path.relative(process.cwd(), path.join(outDir, 'openapi.json'))
-    : undefined;
+  // What this feature asks for, from the IR (not a generic checklist).
+  const ir = buildIR(parsed, relativeFeature, { domainProfile: config.domainProfile });
+  const scopeLines = [
+    ir.commands.length ? `- **Commands**: ${ir.commands.map(c => c.name).join(', ')}` : '',
+    ir.events.length ? `- **Domain events**: ${ir.events.map(e => e.name).join(', ')}` : '',
+    ir.apiEndpoints.length ? `- **Endpoints**: ${ir.apiEndpoints.map(e => `${e.method} ${e.path} (${e.httpCodes.map(c => c.code).join('/')})`).join('; ')}` : '',
+    `- **Scenarios** (${parsed.scenarios.length}): ${parsed.scenarios.map(s => `"${s.name}"`).join(', ')}`
+  ].filter(Boolean);
 
   const dockerComposePath = fileExistsSync(path.join(outDir, 'docker-compose.yml'))
     ? path.relative(process.cwd(), path.join(outDir, 'docker-compose.yml'))
@@ -115,12 +119,16 @@ export async function handleImplementCommand(options: {
   if (nativeContractPath) refFiles.push(`@${nativeContractPath}`);
   if (adrPath) refFiles.push(`@${adrPath}`);
   if (openApiPath) refFiles.push(`@${openApiPath}`);
+  if (asyncApiPath) refFiles.push(`@${asyncApiPath}`);
   if (dockerComposePath) refFiles.push(`@${dockerComposePath}`);
 
   // Draft prompt content for hash calculation
   const promptBody = `
 ### 📌 Context Files to Read & Follow:
 ${refFiles.map(f => `- ${f}`).join('\n')}
+
+### 🧭 Feature Scope:
+${scopeLines.join('\n')}
 
 ### 🛠️ Technical Guardrails & Stack Specifications:
 - **Language**: ${config.stack.language} (${config.stack.framework})
@@ -197,7 +205,8 @@ ${refFiles.map(f => `- ${f}`).join('\n')}
   const tokenStats = estimateTokens(masterPromptContent);
 
   // Write Master Prompt file
-  const promptFile = path.join(outDir, 'prompts', 'implement-master-prompt.md');
+  // One prompt per feature, so implementing feature B does not replace feature A's prompt.
+  const promptFile = path.join(outDir, 'prompts', featureContractSlug(featurePath, featureName), 'implement-master-prompt.md');
   const promptDir = path.dirname(promptFile);
   if (!fs.existsSync(promptDir)) {
     fs.mkdirSync(promptDir, { recursive: true });

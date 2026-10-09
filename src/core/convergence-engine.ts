@@ -16,6 +16,7 @@ import { loadConstitution } from './constitution';
 import { loadConfig } from './config';
 import { COVERAGE_REPORT_PATHS, findCoverage } from './coverage-reports';
 import { findLayerDirs } from './arch-rules';
+import { CONTRACTS_DIR, featureContractSlug } from './contracts/merge';
 
 // ---------------------------------------------------------------------------
 // Convergence Metrics
@@ -268,10 +269,13 @@ function evaluateContractCoverage(
   const details: string[] = [];
   const parts: { name: string; found: number; total: number }[] = [];
   const outAbs = path.resolve(projectDir, outputDir);
+  // The feature's own contracts (contracts/<feature>/), else the service-wide merged ones.
+  const featureDir = path.join(outAbs, CONTRACTS_DIR, featureContractSlug(ir.sourceFile, ir.featureName));
+  const contractFile = (name: string) => (fs.existsSync(path.join(featureDir, name)) ? path.join(featureDir, name) : path.join(outAbs, name));
 
   // 1. OpenAPI: method + path (+ response codes) per inferred endpoint.
   if (ir.apiEndpoints.length) {
-    const openapi = readJson(path.join(outAbs, 'openapi.json'));
+    const openapi = readJson(contractFile('openapi.json'));
     const paths: Record<string, Record<string, any>> = openapi?.paths ?? {};
     const byRoute = new Map(Object.entries(paths).map(([route, ops]) => [normalizeRoute(route), ops]));
     let found = 0;
@@ -287,7 +291,7 @@ function evaluateContractCoverage(
 
   // 2. AsyncAPI: one message/channel per domain event.
   if (ir.events.length) {
-    const asyncapiText = (() => { try { return fs.readFileSync(path.join(outAbs, 'asyncapi.json'), 'utf8'); } catch { return ''; } })();
+    const asyncapiText = (() => { try { return fs.readFileSync(contractFile('asyncapi.json'), 'utf8'); } catch { return ''; } })();
     const missing = ir.events.map(e => String(e.name)).filter(name => !asyncapiText.includes(name.replace(/[^A-Za-z0-9]/g, '')));
     parts.push({ name: 'AsyncAPI events', found: ir.events.length - missing.length, total: ir.events.length });
     if (missing.length) details.push(`AsyncAPI is missing: ${missing.slice(0, 5).join(', ')}${missing.length > 5 ? ', ...' : ''}.`);
