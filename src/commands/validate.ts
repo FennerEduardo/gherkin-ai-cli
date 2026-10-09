@@ -16,6 +16,36 @@ import { validateAsyncAPIAgainstIR, validateAsyncAPISpec } from '../core/asyncap
 import { runAllValidators, ValidatorContext } from '../core/validators/index';
 import { buildIR } from '../core/ir-builder';
 
+/** Dependencies and build output are not the project's code. */
+export const VALIDATE_SKIP_DIRS = new Set(['node_modules', 'dist', 'build', 'target', '.git', 'bin', 'obj', 'coverage', '.gradle', '_build', 'deps', 'vendor', '.venv', '__pycache__', '.next', '.dart_tool']);
+
+const CORE_LAYER_DIRS = new Set(['domain', 'model', 'core', 'application', 'usecases', 'use-cases', 'usecase']);
+const EDGE_LAYER_DIRS = new Set(['infrastructure', 'infra', 'adapters', 'adapter', 'persistence', 'presentation', 'controllers', 'controller', 'api', 'http', 'web', 'runtime', 'modules']);
+
+/**
+ * Only domain and application code must stay free of frameworks and drivers. Infrastructure, adapters,
+ * controllers, Nest modules and the entry point are where those imports belong.
+ */
+export function isCoreLayerFile(filePath: string): boolean {
+  const segments = filePath.replace(/\\/g, '/').toLowerCase().split('/');
+  const name = segments.pop() ?? '';
+  if (/^main\.|\.module\.|\.controller\.|\.repository\.|\.adapter\.|\.gateway\./.test(name)) return false;
+  if (segments.some(s => EDGE_LAYER_DIRS.has(s))) return false;
+  return segments.some(s => CORE_LAYER_DIRS.has(s));
+}
+
+/** The AsyncAPI document of this feature (contracts/<feature>/asyncapi.*), else the root one, else any. */
+export function pickAsyncApiFile(files: string[], root: string, featureFile?: string): string | undefined {
+  const specs = files.filter(f => /asyncapi[^/\\]*\.(json|ya?ml)$/i.test(path.basename(f)));
+  const slug = featureFile ? path.basename(featureFile).replace(/\.feature$/i, '').toLowerCase() : '';
+  const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+  return (
+    (slug ? specs.find(f => path.relative(root, f).split(/[\\/]/).slice(0, -1).some(seg => norm(seg) === norm(slug))) : undefined) ??
+    specs.find(f => path.dirname(f) === root) ??
+    specs[0]
+  );
+}
+
 function collectFilesRecursively(dir: string): { path: string; content: string }[] {
   const results: { path: string; content: string }[] = [];
   if (!fs.existsSync(dir)) return results;
@@ -25,6 +55,7 @@ function collectFilesRecursively(dir: string): { path: string; content: string }
     for (const entry of entries) {
       const fullPath = path.join(dir, entry.name);
       if (entry.isDirectory()) {
+        if (VALIDATE_SKIP_DIRS.has(entry.name)) continue;
         results.push(...collectFilesRecursively(fullPath));
       } else if (entry.isFile()) {
         try {
@@ -86,13 +117,18 @@ export async function handleValidateCommand(options: { feature?: string; config?
   // 2. Contracts & Layer Boundary Verification via AST (ts-morph) for TypeScript/JS
   const tsProject = new Project();
   const targetForGlob = options.target || config.outputDir;
-  const outputDirGlob = path.posix.join(targetForGlob.replace(/\\/g, '/'), '**/*.ts');
-  const sourceFiles = tsProject.addSourceFilesAtPaths(outputDirGlob);
+  const globRoot = targetForGlob.replace(/\\/g, '/');
+  const outputDirGlob = path.posix.join(globRoot, '**/*.ts');
+  const sourceFiles = tsProject.addSourceFilesAtPaths([
+    outputDirGlob,
+    ...[...VALIDATE_SKIP_DIRS].map(d => `!${path.posix.join(globRoot, `**/${d}/**`)}`)
+  ]);
+  const coreFiles = sourceFiles.filter(f => isCoreLayerFile(path.relative(path.resolve(process.cwd(), targetForGlob), f.getFilePath())));
 
   if (sourceFiles.length > 0) {
     let prohibitedFound = false;
 
-    for (const sourceFile of sourceFiles) {
+    for (const sourceFile of coreFiles) {
       const imports = sourceFile.getImportDeclarations();
       for (const importDecl of imports) {
         try {
@@ -101,7 +137,7 @@ export async function handleValidateCommand(options: { feature?: string; config?
           if (!moduleSpecifier) continue;
           arch.prohibitedImports.forEach(imp => {
             if (moduleSpecifier === imp || moduleSpecifier.startsWith(`${imp}/`)) {
-              logger.error(`Layer Boundary Violation: ${sourceFile.getBaseName()} imports prohibited library "${imp}"`);
+              logger.error(`Layer Boundary Violation: ${path.relative(process.cwd(), sourceFile.getFilePath())} imports prohibited library "${imp}"`);
               errorsCount++;
               prohibitedFound = true;
             }
@@ -113,7 +149,7 @@ export async function handleValidateCommand(options: { feature?: string; config?
     }
 
     if (!prohibitedFound) {
-      logger.success(`Layer Boundary Check: ${sourceFiles.length} TypeScript file(s) scanned via AST. Core cleanly isolates domain from ${arch.prohibitedImports.join(', ')}.`);
+      logger.success(`Layer Boundary Check: ${coreFiles.length} domain/application file(s) of ${sourceFiles.length} TypeScript file(s) checked via AST. Core cleanly isolates domain from ${arch.prohibitedImports.join(', ')}.`);
     }
   }
 
@@ -191,12 +227,9 @@ export async function handleValidateCommand(options: { feature?: string; config?
 
   // Auto-detect AsyncAPI files in outputDir if not explicitly provided
   if (!asyncapiPath && allScannedFiles.length > 0) {
-    const asyncapiFile = allScannedFiles.find(f =>
-      f.path.toLowerCase().includes('asyncapi') &&
-      (f.path.endsWith('.json') || f.path.endsWith('.yaml') || f.path.endsWith('.yml'))
-    );
+    const asyncapiFile = pickAsyncApiFile(allScannedFiles.map(f => f.path), outputDirResolved, options.feature);
     if (asyncapiFile) {
-      asyncapiPath = asyncapiFile.path;
+      asyncapiPath = asyncapiFile;
       logger.info(`Auto-detected AsyncAPI specification: ${asyncapiPath}`);
     }
   }

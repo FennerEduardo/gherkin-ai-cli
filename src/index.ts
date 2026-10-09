@@ -269,6 +269,7 @@ program
   .option('-c, --config <file>', 'Path to custom gherkin-ai.config.json file')
   .option('--openapi <file>', 'Path to OpenAPI spec file to validate against IR')
   .option('--asyncapi <file>', 'Path to AsyncAPI spec file to validate against IR')
+  .option('-t, --target <dir>', 'Directory to validate (defaults to the configured outputDir)')
   .action(async (options) => {
     await (await import('./commands/validate')).handleValidateCommand(options);
   });
