@@ -66,7 +66,7 @@ const messages = {
     valTelemetryNoTraceHeaders: 'Observability Violation: the contract ({file}) does not include distributed tracing headers (correlationId or traceId).',
     valAngularHttpInComponent: 'Architectural violation: an Angular component ({file}) must not inject HttpClient directly. Use a service or an NgRx Signal Store / Effects.',
     valAngularServiceComponent: 'Unusual syntax: a service ({file}) seems to have a @Component decorator.',
-    valFinancialPiiLog: 'Data leak risk: possible logging of sensitive data (PII/secrets) at line {line} of {file}.',
+    valFinancialPiiLog: 'Data leak risk: possible logging of sensitive data (PII/Secrets) at line {line} of {file}.',
     valFinancialCardData: 'PCI-DSS Violation: reference to card data without evidence of tokenization/masking at line {line} of {file}.'
   },
   es: {
