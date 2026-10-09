@@ -1,4 +1,5 @@
 import { ValidatorContext, ValidationResult } from './index';
+import { tf } from '../../utils/i18n-cli';
 
 export function validateTelemetry(context: ValidatorContext): ValidationResult {
   const result: ValidationResult = { valid: true, errors: [], warnings: [] };
@@ -18,7 +19,7 @@ export function validateTelemetry(context: ValidatorContext): ValidationResult {
       
       if (content.includes('asyncapi') || content.includes('openapi')) {
         if (!content.includes('correlationid') && !content.includes('traceid')) {
-          result.errors.push(`Violación de Observabilidad / Observability Violation: El contrato (${file.path}) no incluye headers de trazabilidad distribuida (correlationId o traceId) / The contract (${file.path}) does not include distributed tracing headers (correlationId or traceId).`);
+          result.errors.push(tf('valTelemetryNoTraceHeaders', { file: file.path }));
           result.valid = false;
         }
       }

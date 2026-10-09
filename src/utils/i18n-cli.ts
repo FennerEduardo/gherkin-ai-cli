@@ -57,7 +57,17 @@ const messages = {
     promptLanguageNotice: 'ℹ Note: Master Prompts are intentionally generated in English for optimal LLM BPE token density and agent reasoning precision.',
     auditHeader: 'FEATURE IMPLEMENTATION & PROMPT EXECUTION INVENTORY AUDIT',
     auditCleared: 'Feature audit trail inventory cleared successfully.',
-    auditDisabled: 'Audit tracking is disabled in configuration.'
+    auditDisabled: 'Audit tracking is disabled in configuration.',
+
+    // Validators ({file}, {line} are interpolated)
+    valJavaOutboxNoTx: '[Java-Spring] {file} uses OutboxRepository but does not declare @Transactional.',
+    valJavaPciExposure: '[Java-Spring-Security] Possible PCI-DSS data exposure in {file} without masking or @JsonIgnore.',
+    valJavaNoTrace: '[Java-Spring-Telemetry] {file} does not seem to propagate traceId or correlationId.',
+    valTelemetryNoTraceHeaders: 'Observability Violation: the contract ({file}) does not include distributed tracing headers (correlationId or traceId).',
+    valAngularHttpInComponent: 'Architectural violation: an Angular component ({file}) must not inject HttpClient directly. Use a service or an NgRx Signal Store / Effects.',
+    valAngularServiceComponent: 'Unusual syntax: a service ({file}) seems to have a @Component decorator.',
+    valFinancialPiiLog: 'Data leak risk: possible logging of sensitive data (PII/secrets) at line {line} of {file}.',
+    valFinancialCardData: 'PCI-DSS Violation: reference to card data without evidence of tokenization/masking at line {line} of {file}.'
   },
   es: {
     selectLanguagePrompt: 'Selecciona el idioma preferido para la CLI / Select preferred CLI interaction language:',
@@ -98,9 +108,46 @@ const messages = {
     promptLanguageNotice: 'ℹ Nota de Eficiencia: El CLI interactúa en Español, pero las definiciones del Prompt Maestro se generan en Inglés para maximizar la densidad de tokens (~30% más económico) y la precisión de razonamiento del agente de IA.',
     auditHeader: 'AUDITORÍA DE INVENTARIO DE FEATURES Y EJECUCIÓN DE PROMPTS',
     auditCleared: 'Inventario de auditoría de ejecuciones vaciado exitosamente.',
-    auditDisabled: 'El seguimiento de auditoría está desactivado en la configuración.'
+    auditDisabled: 'El seguimiento de auditoría está desactivado en la configuración.',
+
+    valJavaOutboxNoTx: '[Java-Spring] {file} usa OutboxRepository pero no declara @Transactional.',
+    valJavaPciExposure: '[Java-Spring-Security] Posible exposición de datos PCI-DSS en {file} sin masking ni @JsonIgnore.',
+    valJavaNoTrace: '[Java-Spring-Telemetry] {file} no parece propagar traceId ni correlationId.',
+    valTelemetryNoTraceHeaders: 'Violación de observabilidad: el contrato ({file}) no incluye headers de trazabilidad distribuida (correlationId o traceId).',
+    valAngularHttpInComponent: 'Violación arquitectónica: un componente Angular ({file}) no debe inyectar HttpClient directamente. Usa un servicio o un NgRx Signal Store / Effects.',
+    valAngularServiceComponent: 'Sintaxis inusual: un servicio ({file}) parece tener decorador @Component.',
+    valFinancialPiiLog: 'Riesgo de fuga de datos: posible registro de datos sensibles (PII/secretos) en la línea {line} de {file}.',
+    valFinancialCardData: 'Violación PCI-DSS: referencia a datos de tarjeta sin evidencia de tokenización/enmascaramiento en la línea {line} de {file}.'
   }
 };
+
+export type MessageKey = keyof typeof messages['en'];
+
+let cachedProjectLocale: { cwd: string; locale: SupportedLocale | null } | null = null;
+
+/** `locale` from gherkin-ai.config.json in the working directory, if set. */
+export function getProjectLocale(cwd: string = process.cwd()): SupportedLocale | null {
+  if (cachedProjectLocale?.cwd === cwd) return cachedProjectLocale.locale;
+  let locale: SupportedLocale | null = null;
+  const file = path.join(cwd, 'gherkin-ai.config.json');
+  if (fileExistsSync(file)) {
+    try {
+      const value = JSON.parse(readFileSync(file)).locale;
+      if (value === 'en' || value === 'es') locale = value;
+    } catch {
+      // An unreadable config is reported by the config loader, not here.
+    }
+  }
+  cachedProjectLocale = { cwd, locale };
+  return locale;
+}
+
+/** The locale in effect: GHK_LOCALE, then the project's `locale`, then the user's global choice, then English. */
+export function resolveLocale(): SupportedLocale {
+  const env = process.env.GHK_LOCALE;
+  if (env === 'en' || env === 'es') return env;
+  return getProjectLocale() || getGlobalUserLocale() || 'en';
+}
 
 let cachedLocale: SupportedLocale | null = null;
 
@@ -148,7 +195,7 @@ export async function ensureCliLanguage(requestedLang?: string): Promise<Support
     return requestedLang;
   }
 
-  const existing = getGlobalUserLocale();
+  const existing = getProjectLocale() || getGlobalUserLocale();
   if (existing) return existing;
 
   // Default is English if running in non-interactive CI mode
@@ -175,7 +222,12 @@ export async function ensureCliLanguage(requestedLang?: string): Promise<Support
   return selectedLocale;
 }
 
-export function t(key: keyof typeof messages['en'], locale?: SupportedLocale): string {
-  const lang = locale || getGlobalUserLocale() || 'en';
+export function t(key: MessageKey, locale?: SupportedLocale): string {
+  const lang = locale || resolveLocale();
   return messages[lang][key] || messages['en'][key] || key;
+}
+
+/** t() with `{name}` placeholders filled from `vars`. */
+export function tf(key: MessageKey, vars: Record<string, string | number>, locale?: SupportedLocale): string {
+  return t(key, locale).replace(/\{(\w+)\}/g, (m, name) => (name in vars ? String(vars[name]) : m));
 }

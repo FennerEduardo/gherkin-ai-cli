@@ -20,7 +20,7 @@ import { featurePascalName } from '../utils/naming';
 export async function handleAddCommand(options: { feature?: string; target?: string; config?: string; yes?: boolean; nonInteractive?: boolean }): Promise<void> {
   logger.banner();
 
-  const { promptOrFallback } = require('../utils/i18n-cli');
+  const { promptOrFallback, t } = require('../utils/i18n-cli');
 
   if (!options.feature) {
     logger.info('No --feature file specified. Launching interactive spec wizard...');
@@ -31,13 +31,13 @@ export async function handleAddCommand(options: { feature?: string; target?: str
   const featurePath = path.resolve(process.cwd(), options.feature);
 
   if (!fileExistsSync(featurePath)) {
-    logger.warn(`Feature file not found at: ${featurePath}`);
+    logger.warn(`${t('featureNotFound')} ${featurePath}`);
     
     const answer = await promptOrFallback([
       {
         type: 'confirm',
         name: 'createNow',
-        message: '¿Deseas crear la especificación Gherkin paso a paso ahora (wizard interactivo)?',
+        message: t('askCreateInteractive'),
         default: true
       }
     ], options);

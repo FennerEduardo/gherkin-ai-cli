@@ -5,6 +5,8 @@ export default defineConfig({
     globals: true,
     environment: 'node',
     testTimeout: 20000,
+    // Messages in assertions are English whatever locale the developer chose globally.
+    env: { GHK_LOCALE: 'en' },
     exclude: [...configDefaults.exclude, 'tests/e2e/**'],
     coverage: {
       provider: 'v8',

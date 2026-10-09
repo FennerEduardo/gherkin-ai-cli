@@ -1,4 +1,5 @@
 import { ValidatorContext, ValidationResult } from './index';
+import { tf } from '../../utils/i18n-cli';
 
 export function validateJavaSpring(context: ValidatorContext): ValidationResult {
   const result: ValidationResult = { valid: true, errors: [], warnings: [] };
@@ -11,13 +12,13 @@ export function validateJavaSpring(context: ValidatorContext): ValidationResult 
 
     // 1. Validar uso de @Transactional en operaciones de modificación o Outbox
     if (content.includes('OutboxRepository') && !content.includes('@Transactional')) {
-      result.warnings.push(`[Java-Spring] El archivo ${file.path} usa OutboxRepository pero no especifica @Transactional.`);
+      result.warnings.push(tf('valJavaOutboxNoTx', { file: file.path }));
     }
 
     // 2. Comprobar que los DTOs o Controllers no expongan datos de tarjeta o PII sin masking
     if (content.includes('cardNumber') || content.includes('cvv')) {
       if (!content.includes('mask') && !content.includes('Transient') && !content.includes('JsonIgnore')) {
-        result.errors.push(`[Java-Spring-Security] Posible exposición de datos PCI-DSS en ${file.path} sin masking ni @JsonIgnore.`);
+        result.errors.push(tf('valJavaPciExposure', { file: file.path }));
         result.valid = false;
       }
     }
@@ -25,7 +26,7 @@ export function validateJavaSpring(context: ValidatorContext): ValidationResult 
     // 3. Advertencia si no hay propagación de Trace ID / Correlation ID en Handlers
     if (content.includes('@RestController') || content.includes('@KafkaListener')) {
       if (!content.includes('traceId') && !content.includes('correlationId') && !content.includes('X-Trace-Id')) {
-        result.warnings.push(`[Java-Spring-Telemetry] El componente ${file.path} no parece propagar traceId ni correlationId.`);
+        result.warnings.push(tf('valJavaNoTrace', { file: file.path }));
       }
     }
   }

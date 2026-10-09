@@ -1,4 +1,5 @@
 import { ValidatorContext, ValidationResult } from './dotnet-cqrs-validator';
+import { tf } from '../../utils/i18n-cli';
 
 export function validateAngularNgRx(context: ValidatorContext): ValidationResult {
   const result: ValidationResult = { valid: true, errors: [], warnings: [] };
@@ -14,7 +15,7 @@ export function validateAngularNgRx(context: ValidatorContext): ValidationResult
     if (isComponent) {
       if (file.content.includes('HttpClient')) {
         result.valid = false;
-        result.errors.push(`Violación arquitectónica / Architectural violation: Un componente Angular (${file.path}) no debe inyectar HttpClient directamente. Debe usar un servicio o NgRx Signal Store / Effects.`);
+        result.errors.push(tf('valAngularHttpInComponent', { file: file.path }));
       }
       
       if (file.content.includes('signalStore') || file.content.includes('@ngrx/store')) {
@@ -24,7 +25,7 @@ export function validateAngularNgRx(context: ValidatorContext): ValidationResult
 
     if (isService) {
       if (file.content.includes('@Component')) {
-        result.warnings.push(`Sintaxis inusual / Unusual syntax: Un servicio (${file.path}) parece tener decorador @Component.`);
+        result.warnings.push(tf('valAngularServiceComponent', { file: file.path }));
       }
     }
   });
