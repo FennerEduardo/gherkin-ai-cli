@@ -97,14 +97,17 @@ const ACTOR_PATTERNS = [
 ];
 
 const AUTH_PATTERNS = [
-  /\b(authenticated|authorized|logged.?in|autenticado|autorizado|con.?sesión)\b/i,
-  /\b(has.?permission|tiene.?permiso|has.?role|tiene.?rol|is.?admin|es.?admin)\b/i,
-  /\b(token|jwt|session|sesión|cookie|bearer)\b/i,
+  /\b(authenticated|authorized|unauthenticated|unauthori[sz]ed|logged.?in|not.?logged|autenticado|autorizado|no.?autorizado|con.?sesión|sin.?sesión)\b/i,
+  /\b(permissions?|permisos?|roles?|has.?role|tiene.?rol|is.?admin|es.?admin|privileges?|privilegios?)\b/i,
+  /\b(token|jwt|session|sesión|cookie|bearer|login|sign.?in|iniciar.?sesión)\b/i,
+  /\b(access.?denied|acceso.?denegado|forbidden|prohibido)\b/i,
+  /\b(status|http|code|código|estado)\s*(401|403)\b/i,
 ];
 
 const ERROR_PATTERNS = [
   /\b(error|fail(s|ed|ure)?|invalid|denied|forbidden|not.?found|fallo|inválido|denegado|prohibido|no.?encontrado)\b/i,
-  /\b(HTTP\s*(?:status\s*)?(?:4\d{2}|5\d{2}))\b/i,
+  /\b(?:HTTP|status|code|código|estado)\s*(?:status\s*)?(?:4\d{2}|5\d{2})\b/i,
+  /\b(reject(s|ed)?|rechazad[oa]|cannot|can.?not|no.?puede|not.?allowed|no.?permitid[oa])\b/i,
   /\b(exception|timeout|unavailable|excepción|tiempo.?agotado|no.?disponible)\b/i,
 ];
 
@@ -917,6 +920,7 @@ function enrichScenarios(
 ): EnrichedScenario[] {
   return scenarios.map(sc => {
     const category = categorizeScenario(sc);
+    const categories = categorizeScenarioLabels(sc);
     const actorIds = actors
       .filter(a => sc.steps.some(s => s.text.toLowerCase().includes(a.name)))
       .map(a => a.id);
@@ -933,6 +937,7 @@ function enrichScenarios(
       id: generateId('SCN'),
       name: sc.name,
       category,
+      categories,
       tags: sc.tags,
       actors: actorIds.length > 0 ? actorIds : (actors[0] ? [actors[0].id] : []),
       commands: cmdIds,
@@ -941,7 +946,7 @@ function enrichScenarios(
       actions: sc.steps.filter(s => s.keyword === 'When').map(s => s.text),
       expectations: sc.steps.filter(s => s.keyword === 'Then').map(s => s.text),
       coveredInvariants: [],
-      missingPaths: [],
+      missingPaths: ESSENTIAL_CATEGORIES.filter(c => !categories.includes(c)),
       source: { file: sourceFile, line: 0 },
       confidence: 1.0,
       inferenceSource: 'deterministic' as const,
@@ -949,41 +954,55 @@ function enrichScenarios(
   });
 }
 
-function categorizeScenario(sc: ScenarioModel): ScenarioCategory {
+/** Every category a scenario covers, most specific first. A scenario with none of them is a happy path. */
+export function categorizeScenarioLabels(sc: Pick<ScenarioModel, 'steps' | 'tags' | 'name'>): ScenarioCategory[] {
   const allText = sc.steps.map(s => s.text).join(' ');
   const tags = sc.tags.join(' ');
   const combined = `${allText} ${tags} ${sc.name}`;
+  const labels: ScenarioCategory[] = [];
+  const add = (c: ScenarioCategory, hit: boolean) => { if (hit && !labels.includes(c)) labels.push(c); };
 
-  if (ERROR_PATTERNS.some(p => p.test(combined))) return 'error-handling';
-  if (AUTH_PATTERNS.some(p => p.test(combined))) return 'authorization';
-  if (/\b(security|seguridad|vulnerability|vulnerabilidad)\b/i.test(combined)) return 'security';
-  if (/\b(timeout|time.?out|tiempo.?agotado)\b/i.test(combined)) return 'timeout';
-  if (/\b(retry|reinten(to|tar))\b/i.test(combined)) return 'retry';
-  if (/\b(idempoten(t|cy|ce))\b/i.test(combined)) return 'idempotency';
-  if (/\b(concurrent|concurren(cia|te)|parallel|paralel(o|a))\b/i.test(combined)) return 'concurrency';
-  if (/\b(partial|parcial)\b/i.test(combined)) return 'partial-failure';
-  if (/\b(recover|recuper(ar|ación)|rollback)\b/i.test(combined)) return 'recovery';
-  if (/\b(performance|rendimiento|load|carga)\b/i.test(combined)) return 'performance';
-  if (/\b(observ|monitor|log|metric|métrica)\b/i.test(combined)) return 'observability';
-  if (/\b(edge|edge.?case|borde|límite)\b/i.test(combined)) return 'edge-case';
-  if (/\b(valid(ation|ar)|invalid|inválid)\b/i.test(combined)) return 'validation';
+  add('validation', /\b(valid(ation|ate|ar|ación)?|invalid|inválid[oa]?|required|requerid[oa]|obligatori[oa]|malformed|mal.?formad[oa]|too.?(long|short)|demasiado.?(larg|cort)[oa])\b/i.test(combined) ||
+    /\b(status|http|code|código|estado)\s*(400|422)\b/i.test(combined));
+  add('error-handling', ERROR_PATTERNS.some(p => p.test(combined)));
+  add('authorization', AUTH_PATTERNS.some(p => p.test(combined)));
+  add('security', /\b(security|seguridad|vulnerability|vulnerabilidad|injection|inyección|xss|csrf)\b/i.test(combined));
+  add('timeout', /\b(timeout|time.?out|tiempo.?agotado)\b/i.test(combined));
+  add('retry', /\b(retry|retries|reinten(to|tar))\b/i.test(combined));
+  add('idempotency', /\b(idempoten(t|cy|ce)|idempotenc(ia|e)|duplicate|duplicad[oa])\b/i.test(combined));
+  add('concurrency', /\b(concurrent|concurrently|concurren(cia|te)|parallel|paralel(o|a)|race)\b/i.test(combined));
+  add('partial-failure', /\b(partial|parcial)\b/i.test(combined));
+  add('recovery', /\b(recover|recuper(ar|ación)|rollback|compensat(e|ion)|compensa(r|ción))\b/i.test(combined));
+  add('performance', /\b(performance|rendimiento|load|carga|latency|latencia)\b/i.test(combined));
+  add('observability', /\b(observ\w*|monitor\w*|log(s|ged|ging)?|metrics?|métricas?|trac(e|ing))\b/i.test(combined));
+  add('edge-case', /\b(edge|edge.?case|borde|límite|boundary)\b/i.test(combined));
+  // Context such as "Given a logged-in teacher" does not stop a scenario from being the happy path.
+  const failing: ScenarioCategory[] = ['validation', 'error-handling', 'timeout', 'partial-failure', 'security'];
+  add('happy-path', !labels.some(l => failing.includes(l)));
 
-  return 'happy-path';
+  return labels;
+}
+
+function categorizeScenario(sc: ScenarioModel): ScenarioCategory {
+  const labels = categorizeScenarioLabels(sc);
+  // A successful scenario run by an authenticated actor is primarily a happy path.
+  return labels.includes('happy-path') ? (labels.find(l => l !== 'authorization') as ScenarioCategory) : labels[0];
 }
 
 // ---------------------------------------------------------------------------
 // Quality Analysis
 // ---------------------------------------------------------------------------
 
+const ESSENTIAL_CATEGORIES: ScenarioCategory[] = ['happy-path', 'validation', 'authorization', 'error-handling'];
+
+/** Union of every label of every scenario. */
+export function coveredCategories(scenarios: EnrichedScenario[]): Set<ScenarioCategory> {
+  return new Set(scenarios.flatMap(s => s.categories ?? [s.category]));
+}
+
 function detectMissingScenarioCategories(scenarios: EnrichedScenario[]): ScenarioCategory[] {
-  const covered = new Set(scenarios.map(s => s.category));
-  const essential: ScenarioCategory[] = [
-    'happy-path',
-    'validation',
-    'authorization',
-    'error-handling',
-  ];
-  return essential.filter(c => !covered.has(c));
+  const covered = coveredCategories(scenarios);
+  return ESSENTIAL_CATEGORIES.filter(c => !covered.has(c));
 }
 
 function detectAmbiguities(parsed: ParsedFeature): string[] {
@@ -1122,8 +1141,24 @@ function buildTraceabilityMap(
     }
   }
 
+  // An event is tested when a Then step asserts it, or when a tested command emits it.
+  const squash = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+  const testedCommands = new Set(scenarios.flatMap(s => s.commands));
+  const testedEvents = events.filter(evt => {
+    const name = squash(evt.name);
+    const asserted = !!name && scenarios.some(sc => sc.expectations.some(e => squash(e).includes(name)));
+    const viaCommand = evt.triggeredBy.some(id => testedCommands.has(id)) ||
+      commands.some(c => testedCommands.has(c.id) && c.emittedEvents.includes(evt.id));
+    if (asserted) {
+      for (const sc of scenarios.filter(s => s.expectations.some(e => squash(e).includes(name)))) {
+        links.push({ from: { type: 'scenario', id: sc.id }, to: { type: 'event', id: evt.id }, relationship: 'tests' });
+      }
+    }
+    return asserted || viaCommand;
+  });
+
   const total = commands.length + queries.length + events.length;
-  const tested = new Set(scenarios.flatMap(s => [...s.commands, ...s.queries])).size;
+  const tested = new Set(scenarios.flatMap(s => [...s.commands, ...s.queries])).size + testedEvents.length;
 
   return {
     links,

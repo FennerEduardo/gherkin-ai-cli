@@ -608,7 +608,7 @@ describe('IR Builder', () => {
       const parsed = parseGherkinText(AUTH_FEATURE);
       const ir = buildIR(parsed, 'test.feature');
 
-      const errorScenarios = ir.scenarios.filter(s => s.category === 'error-handling');
+      const errorScenarios = ir.scenarios.filter(s => s.categories?.includes('error-handling'));
       expect(errorScenarios.length).toBeGreaterThan(0);
     });
 
@@ -616,7 +616,7 @@ describe('IR Builder', () => {
       const parsed = parseGherkinText(AUTH_FEATURE);
       const ir = buildIR(parsed, 'test.feature');
 
-      const authScenarios = ir.scenarios.filter(s => s.category === 'authorization');
+      const authScenarios = ir.scenarios.filter(s => s.categories?.includes('authorization'));
       expect(authScenarios.length).toBeGreaterThan(0);
     });
 

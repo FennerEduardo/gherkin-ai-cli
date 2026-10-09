@@ -86,8 +86,9 @@ export async function handleConvergeCommand(options: ConvergeCommandOptions = {}
       const barColor = dim.status === 'pass' ? chalk.green :
                        dim.status === 'warn' ? chalk.yellow : chalk.red;
 
-      const bar = barColor('█'.repeat(filledWidth)) + chalk.gray('░'.repeat(emptyWidth));
-      const scoreStr = `${dim.score}%`.padStart(4);
+      const notMeasured = dim.applicable === false;
+      const bar = notMeasured ? chalk.gray('·'.repeat(barWidth)) : barColor('█'.repeat(filledWidth)) + chalk.gray('░'.repeat(emptyWidth));
+      const scoreStr = notMeasured ? ' n/a' : `${dim.score}%`.padStart(4);
 
       // The basis says whether a score is checked against artifacts, test reports, or the spec alone.
       console.log(`     ${dim.name.padEnd(25)} ${bar}  ${barColor(scoreStr)}  ${chalk.gray(dim.basis ?? '')}`);

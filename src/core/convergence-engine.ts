@@ -9,11 +9,13 @@ import fs from 'fs';
 import path from 'path';
 import { ParsedFeature } from './gherkin-parser';
 import { SpecificationIR, EnrichedScenario, ScenarioCategory } from './semantic-ir';
-import { buildIR, getSourceFeature } from './ir-builder';
+import { buildIR, getSourceFeature, coveredCategories } from './ir-builder';
 import { buildDomainModel } from '../generators/kernel/domain-model';
 import { lintSpecification } from './specification-linter';
 import { loadConstitution } from './constitution';
 import { loadConfig } from './config';
+import { COVERAGE_REPORT_PATHS, findCoverage } from './coverage-reports';
+import { findLayerDirs } from './arch-rules';
 
 // ---------------------------------------------------------------------------
 // Convergence Metrics
@@ -27,6 +29,8 @@ export interface ConvergenceDimension {
   status: 'pass' | 'warn' | 'fail';
   /** What the score is computed from: the generated/implemented artifacts, the specification alone, or test reports. */
   basis?: 'artifacts' | 'specification' | 'reports';
+  /** false when there is nothing to measure (e.g. no coverage report); excluded from the overall score. */
+  applicable?: boolean;
 }
 
 export interface ConvergenceReport {
@@ -80,7 +84,10 @@ export function checkConvergence(
   const recommendations: string[] = [];
 
   // 1. Specification Quality
-  const specQuality = evaluateSpecificationQuality(ir, ir.qualityIndicators.scenarioCompleteness);
+  // The lint score of the source feature; the IR-derived completeness is only a fallback.
+  const sourceFeature = getSourceFeature(ir);
+  const lintScore = sourceFeature ? lintSpecification(sourceFeature, ir.sourceFile).score : ir.qualityIndicators.scenarioCompleteness;
+  const specQuality = evaluateSpecificationQuality(ir, lintScore, !!sourceFeature);
   dimensions.push(specQuality);
   if (specQuality.score < 80) {
     recommendations.push(`Specification quality is ${specQuality.score}%. Run \`ghk lint\` to see detailed issues.`);
@@ -101,7 +108,7 @@ export function checkConvergence(
   dimensions.push(contractCoverage);
 
   // 4. Architecture Compliance
-  const archCompliance = evaluateArchitectureCompliance(ir, constitution, projectDir);
+  const archCompliance = evaluateArchitectureCompliance(ir, constitution, projectDir, outputDir);
   dimensions.push(archCompliance);
 
   // 5. Security Policy
@@ -123,9 +130,8 @@ export function checkConvergence(
   }
 
   // Calculate overall convergence
-  const overallConvergence = Math.round(
-    dimensions.reduce((sum, d) => sum + d.score, 0) / dimensions.length
-  );
+  const measured = dimensions.filter(d => d.applicable !== false);
+  const overallConvergence = Math.round(measured.reduce((sum, d) => sum + d.score, 0) / Math.max(1, measured.length));
 
   const status: ConvergenceReport['status'] =
     overallConvergence >= 90 ? 'CONVERGED' :
@@ -160,7 +166,8 @@ export function checkConvergence(
 
 function evaluateSpecificationQuality(
   ir: SpecificationIR,
-  lintScore: number
+  lintScore: number,
+  fromLint = true
 ): ConvergenceDimension {
   const details: string[] = [];
 
@@ -180,7 +187,7 @@ function evaluateSpecificationQuality(
     details.push(`${ir.fields.length} field(s) extracted.`);
   }
 
-  details.push(`Quality indicator score: ${lintScore}/100`);
+  details.push(fromLint ? `Lint score: ${lintScore}/100` : `Quality indicator score: ${lintScore}/100`);
 
   return {
     name: 'Specification Quality',
@@ -195,7 +202,7 @@ function evaluateSpecificationQuality(
 function evaluateScenarioCompleteness(ir: SpecificationIR): ConvergenceDimension {
   const details: string[] = [];
 
-  const covered = new Set(ir.scenarios.map(s => s.category));
+  const covered = coveredCategories(ir.scenarios);
   const essential: ScenarioCategory[] = ['happy-path', 'validation', 'authorization', 'error-handling'];
   const missingEssential = essential.filter(c => !covered.has(c));
 
@@ -315,7 +322,8 @@ function evaluateContractCoverage(
 function evaluateArchitectureCompliance(
   ir: SpecificationIR,
   constitution: ReturnType<typeof loadConstitution>,
-  projectDir: string
+  projectDir: string,
+  outputDir = './'
 ): ConvergenceDimension {
   const details: string[] = [];
   let score = 100;
@@ -346,9 +354,10 @@ function evaluateArchitectureCompliance(
 
   if (constitution.architecture.layers) {
     for (const layer of constitution.architecture.layers) {
-      const layerPath = path.join(projectDir, 'src', layer);
-      if (fs.existsSync(layerPath)) {
-        details.push(`Layer "${layer}" directory exists.`);
+      // Layers live at any depth: src/<layer>, src/main/java/**/<layer>, internal/<layer>, X.<Layer> projects.
+      const dirs = findLayerDirs([projectDir, path.resolve(projectDir, outputDir)], layer);
+      if (dirs.length) {
+        details.push(`Layer "${layer}": ${dirs.slice(0, 3).join(', ')}${dirs.length > 3 ? ', ...' : ''}`);
       } else {
         score -= 10;
         details.push(`Layer "${layer}" directory missing.`);
@@ -458,123 +467,28 @@ interface CoverageSummaryReport {
 }
 
 function evaluateCodeCoverage(projectDir: string, outputDir = './'): ConvergenceDimension {
-  const details: string[] = [];
-  const config = loadConfig();
-  const target = config.rules?.coverageTarget || 85;
-
-  // Search for coverage reports in common locations, in the project root and in the output directory.
-  const roots = [...new Set([projectDir, path.resolve(projectDir, outputDir)])];
-  const candidatePaths = roots.flatMap(root => [
-    path.join(root, 'coverage', 'coverage-summary.json'),  // Istanbul/c8/vitest default
-    path.join(root, 'coverage', 'coverage-final.json'),
-    path.join(root, '.nyc_output', 'coverage-summary.json'),
-    path.join(root, 'target', 'site', 'jacoco', 'jacoco.xml'), // Java JaCoCo
-    path.join(root, 'coverage', 'jacoco.xml'),
-    path.join(root, 'coverage.cobertura.xml'), // .NET Cobertura
-    path.join(root, 'coverage', 'coverage.cobertura.xml'),
-    path.join(root, 'TestResults', 'coverage.cobertura.xml'), // .NET
-  ]);
-
-  let summaryPath: string | null = null;
-  for (const p of candidatePaths) {
-    if (fs.existsSync(p)) {
-      summaryPath = p;
-      break;
-    }
-  }
-
-  if (!summaryPath) {
-    details.push('No coverage report found.');
-    details.push(`→ Run your test suite with --coverage (e.g., \`vitest run --coverage\`, \`npx jest --coverage\`)`);
-    details.push(`→ Expected location: coverage/coverage-summary.json`);
-    return {
-      name: 'Code Coverage', basis: 'reports',
-      score: 0,
-      maxScore: 100,
-      details,
-      status: 'fail',
-    };
-  }
-
+  let target = 85;
   try {
-    const raw = fs.readFileSync(summaryPath, 'utf8');
-
-    if (summaryPath.endsWith('jacoco.xml')) {
-       return parseJacoco(raw, target, summaryPath, projectDir);
-    }
-    if (summaryPath.endsWith('cobertura.xml')) {
-       return parseCobertura(raw, target, summaryPath, projectDir);
-    }
-
-    const report: CoverageSummaryReport = JSON.parse(raw);
-    const total = report.total;
-
-    if (!total || !total.lines) {
-      details.push('Coverage report found but format is not recognized.');
-      return {
-        name: 'Code Coverage', basis: 'reports',
-        score: 0,
-        maxScore: 100,
-        details,
-        status: 'fail',
-      };
-    }
-
-    const linesPct = Math.round(total.lines.pct);
-    const branchesPct = Math.round(total.branches?.pct || 0);
-    const functionsPct = Math.round(total.functions?.pct || 0);
-    const statementsPct = Math.round(total.statements?.pct || 0);
-
-    return calculateFinalCoverageScore(linesPct, branchesPct, functionsPct, statementsPct, target, summaryPath, projectDir);
-  } catch (err: any) {
-    details.push(`Failed to parse coverage report: ${err.message}`);
-    return {
-      name: 'Code Coverage', basis: 'reports',
-      score: 0,
-      maxScore: 100,
-      details,
-      status: 'fail',
-    };
-  }
-}
-
-function parseJacoco(raw: string, target: number, summaryPath: string, projectDir: string): ConvergenceDimension {
-  try {
-    const instructionMatch = raw.match(/<counter type="INSTRUCTION" missed="(\d+)" covered="(\d+)"\/>/);
-    const branchMatch = raw.match(/<counter type="BRANCH" missed="(\d+)" covered="(\d+)"\/>/);
-    const methodMatch = raw.match(/<counter type="METHOD" missed="(\d+)" covered="(\d+)"\/>/);
-
-    const calcPct = (missed: string, covered: string) => {
-      const m = parseInt(missed, 10);
-      const c = parseInt(covered, 10);
-      if (m + c === 0) return 0;
-      return Math.round((c / (m + c)) * 100);
-    };
-
-    const linesPct = instructionMatch ? calcPct(instructionMatch[1], instructionMatch[2]) : 0;
-    const branchesPct = branchMatch ? calcPct(branchMatch[1], branchMatch[2]) : 0;
-    const functionsPct = methodMatch ? calcPct(methodMatch[1], methodMatch[2]) : 0;
-
-    return calculateFinalCoverageScore(linesPct, branchesPct, functionsPct, linesPct, target, summaryPath, projectDir);
+    target = loadConfig(path.join(projectDir, 'gherkin-ai.config.json')).rules?.coverageTarget || 85;
   } catch {
-    return { name: 'Code Coverage', basis: 'reports', score: 0, maxScore: 100, details: ['Failed to parse JaCoCo'], status: 'fail' };
+    // keep the default target
   }
-}
-
-function parseCobertura(raw: string, target: number, summaryPath: string, projectDir: string): ConvergenceDimension {
-  try {
-    const coverageMatch = raw.match(/<coverage[^>]*line-rate="([0-9.]+)"[^>]*branch-rate="([0-9.]+)"/);
-    if (!coverageMatch) throw new Error();
-
-    const linesPct = Math.round(parseFloat(coverageMatch[1]) * 100);
-    const branchesPct = Math.round(parseFloat(coverageMatch[2]) * 100);
-
-    return calculateFinalCoverageScore(linesPct, branchesPct, linesPct, linesPct, target, summaryPath, projectDir);
-  } catch {
-    return { name: 'Code Coverage', basis: 'reports', score: 0, maxScore: 100, details: ['Failed to parse Cobertura'], status: 'fail' };
+  const found = findCoverage([projectDir, path.resolve(projectDir, outputDir)]);
+  if (!found) {
+    // No report: not applicable rather than 0%, so a specs-only or not-yet-tested project is not penalized.
+    return {
+      name: 'Code Coverage', basis: 'reports', applicable: false,
+      score: 0, maxScore: 100, status: 'warn',
+      details: [
+        'No coverage report found (not counted in the overall score).',
+        '→ Produce one with your test runner, e.g. `vitest run --coverage`, `npx jest --coverage`, `mvn verify` (JaCoCo), `dotnet test --collect:"XPlat Code Coverage"`.',
+        `→ Looked for: ${COVERAGE_REPORT_PATHS.join(', ')}`
+      ]
+    };
   }
+  const { lines, branches, functions, statements } = found.totals;
+  return calculateFinalCoverageScore(lines, branches, functions, statements, target, found.file, projectDir);
 }
-
 function calculateFinalCoverageScore(linesPct: number, branchesPct: number, functionsPct: number, statementsPct: number, target: number, summaryPath: string, projectDir: string): ConvergenceDimension {
     // Weighted average: lines 40%, branches 30%, functions 20%, statements 10%
     const weightedScore = Math.round(

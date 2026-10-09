@@ -75,46 +75,7 @@ export function runCoverage(projectDir: string, config: GherkinAIConfig): Covera
       };
     }
 
-    let coveragePercentage = 0;
-
-    // Parse the generated report based on the tool
-    if (toolUsed === 'Istanbul/c8 (Jest/Vitest)') {
-      const summary = JSON.parse(fs.readFileSync(reportPath, 'utf8'));
-      coveragePercentage = summary.total?.lines?.pct || 0;
-    } else if (toolUsed === 'JaCoCo') {
-      const csv = fs.readFileSync(reportPath, 'utf8');
-      const lines = csv.split('\\n').filter(Boolean);
-      let totalMissed = 0;
-      let totalCovered = 0;
-      // Simple parse of CSV (skip header)
-      for (let i = 1; i < lines.length; i++) {
-        const parts = lines[i].split(',');
-        // INSTRUCTION_MISSED is index 3, INSTRUCTION_COVERED is index 4 typically in JaCoCo CSV
-        if (parts.length >= 5) {
-          totalMissed += parseInt(parts[3] || '0', 10);
-          totalCovered += parseInt(parts[4] || '0', 10);
-        }
-      }
-      const total = totalMissed + totalCovered;
-      coveragePercentage = total > 0 ? (totalCovered / total) * 100 : 0;
-    } else if (toolUsed === 'coverlet (dotnet test)' || toolUsed === 'coverage.py (pytest)') {
-      const summary = JSON.parse(fs.readFileSync(reportPath, 'utf8'));
-      // Handle Python coverage.py JSON format
-      if (summary.totals && typeof summary.totals.percent_covered !== 'undefined') {
-        coveragePercentage = summary.totals.percent_covered;
-      } 
-      // Handle Coverlet JSON format
-      else {
-        // Just a basic fallback, Coverlet JSON is complex, but this supports a general extraction if present
-        coveragePercentage = summary.total_coverage || 0;
-      }
-    } else if (toolUsed === 'go tool cover') {
-      const txt = fs.readFileSync(reportPath, 'utf8');
-      const match = txt.match(/total:\\s+\\(statements\\)\\s+([0-9.]+)%/);
-      if (match && match[1]) {
-        coveragePercentage = parseFloat(match[1]);
-      }
-    }
+    const coveragePercentage = parseCoverageReport(toolUsed, fs.readFileSync(reportPath, 'utf8'));
 
     return {
       success: coveragePercentage >= targetPercentage,
@@ -133,4 +94,50 @@ export function runCoverage(projectDir: string, config: GherkinAIConfig): Covera
       errorMessage: err.message
     };
   }
+}
+
+/** Coverage percentage from the report a tool writes (see runCoverage for the tool names). */
+export function parseCoverageReport(toolUsed: string, raw: string): number {
+    let coveragePercentage = 0;
+
+    // Parse the generated report based on the tool
+    if (toolUsed === 'Istanbul/c8 (Jest/Vitest)') {
+      const summary = JSON.parse(raw);
+      coveragePercentage = summary.total?.lines?.pct || 0;
+    } else if (toolUsed === 'JaCoCo') {
+      const csv = raw;
+      const lines = csv.split(/\r?\n/).filter(Boolean);
+      let totalMissed = 0;
+      let totalCovered = 0;
+      // Simple parse of CSV (skip header)
+      for (let i = 1; i < lines.length; i++) {
+        const parts = lines[i].split(',');
+        // INSTRUCTION_MISSED is index 3, INSTRUCTION_COVERED is index 4 typically in JaCoCo CSV
+        if (parts.length >= 5) {
+          totalMissed += parseInt(parts[3] || '0', 10);
+          totalCovered += parseInt(parts[4] || '0', 10);
+        }
+      }
+      const total = totalMissed + totalCovered;
+      coveragePercentage = total > 0 ? (totalCovered / total) * 100 : 0;
+    } else if (toolUsed === 'coverlet (dotnet test)' || toolUsed === 'coverage.py (pytest)') {
+      const summary = JSON.parse(raw);
+      // Handle Python coverage.py JSON format
+      if (summary.totals && typeof summary.totals.percent_covered !== 'undefined') {
+        coveragePercentage = summary.totals.percent_covered;
+      } 
+      // Handle Coverlet JSON format
+      else {
+        // Just a basic fallback, Coverlet JSON is complex, but this supports a general extraction if present
+        coveragePercentage = summary.total_coverage || 0;
+      }
+    } else if (toolUsed === 'go tool cover') {
+      const txt = raw;
+      const match = txt.match(/total:\s+\(statements\)\s+([0-9.]+)%/);
+      if (match && match[1]) {
+        coveragePercentage = parseFloat(match[1]);
+      }
+    }
+
+    return coveragePercentage;
 }

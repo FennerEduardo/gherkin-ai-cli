@@ -198,7 +198,8 @@ export type ScenarioCategory =
 
 export interface EnrichedScenario extends TraceableElement {
   name: string;
-  category: ScenarioCategory;
+  category: ScenarioCategory;  // Primary label
+  categories?: ScenarioCategory[]; // Every label that applies (a scenario can be authorization AND error-handling)
   tags: string[];
   actors: string[];           // Actor IDs involved
   commands: string[];         // Command IDs executed
