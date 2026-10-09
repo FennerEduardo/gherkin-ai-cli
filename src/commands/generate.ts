@@ -4,7 +4,7 @@
 
 import { getStackSupport, supportWarning } from '../generators/stack-support';
 import { ExitCode, GhkError } from '../core/errors';
-import { isNonInteractive } from '../core/run-context';
+import { getRunContext, isNonInteractive } from '../core/run-context';
 import path from 'path';
 import fs from 'fs';
 import { loadConfig } from '../core/config';
@@ -45,7 +45,17 @@ function buildDynamicFeatureTemplate(rawName: string): string {
 `;
 }
 
-export async function handleGenerateCommand(options: { feature?: string; config?: string; yes?: boolean }): Promise<void> {
+export interface GenerateCommandOptions {
+  feature?: string;
+  config?: string;
+  yes?: boolean;
+  /** Overwrite files even when they were edited or protected. */
+  force?: boolean;
+  /** Print what would be written, write nothing. */
+  dryRun?: boolean;
+}
+
+export async function handleGenerateCommand(options: GenerateCommandOptions): Promise<void> {
   logger.banner();
 
   const config = loadConfig(options.config);
@@ -266,29 +276,50 @@ Objective: Write detailed Gherkin feature scenarios for ${title}.
     throw new GhkError('Aborting generation to enforce clean architecture and complete implementations.', ExitCode.GATE_FAILED);
   }
 
-  filteredArtifacts.forEach(artifact => {
-    const fullPath = path.join(config.outputDir, artifact.filePath);
-    const dir = path.dirname(fullPath);
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-    }
-    writeGeneratedFile(fullPath, artifact.content);
-    logger.success(`[Plugin ${artifact.type}] Generated: ${artifact.filePath}`);
-  });
-
-  // Traceability inventory: checksums of what this run wrote, merged with earlier features' entries.
-  const crypto = await import('crypto');
+  // Implemented code is never overwritten: only files whose checksum still matches what was generated
+  // are updated; edited or protected files get the new version as <file>.ghk-new.
   const { readInventoryFile, writeInventoryFile, mergeArtifacts } = await import('../core/inventory');
+  const { planWrites, applyWrites, sha256, NEW_SUFFIX } = await import('../core/write-protection');
   const gheDir = path.join(process.cwd(), '.ghe');
   const inventoryPath = path.join(gheDir, 'inventory.json');
-  const generatedAt = new Date().toISOString();
   const previous = readInventoryFile(inventoryPath);
+  const plans = planWrites(filteredArtifacts, {
+    cwd: process.cwd(),
+    outputDir: config.outputDir,
+    inventory: previous.artifacts,
+    protect: config.generation?.protect,
+    force: options.force
+  });
+  const typeOf = new Map(filteredArtifacts.map(a => [a.filePath, a.type]));
+  const dryRun = Boolean(options.dryRun) || getRunContext().dryRun;
+
+  if (dryRun) {
+    console.log(chalk.bold.cyan('\n📝 Dry run: nothing is written.\n'));
+    for (const p of plans) {
+      console.log(`  ${p.action.padEnd(12)} ${p.filePath}${p.action === 'side-by-side' ? NEW_SUFFIX : ''}${p.reason ? chalk.gray(`  (${p.reason})`) : ''}`);
+    }
+    return;
+  }
+
+  applyWrites(plans, new Map(filteredArtifacts.map(a => [a.filePath, a.content])), writeGeneratedFile);
+  for (const p of plans) {
+    if (p.action === 'side-by-side') logger.warn(`[Protected] ${p.filePath} kept (${p.reason}); new version: ${p.filePath}${NEW_SUFFIX}`);
+    else if (p.action === 'unchanged') logger.info(`[Plugin ${typeOf.get(p.filePath)}] Unchanged: ${p.filePath}`);
+    else logger.success(`[Plugin ${typeOf.get(p.filePath)}] ${p.action === 'create' ? 'Generated' : 'Updated'}: ${p.filePath}${p.action === 'overwrite' && p.reason ? chalk.gray(` (${p.reason})`) : ''}`);
+  }
+  const sideBySide = plans.filter(p => p.action === 'side-by-side');
+  if (sideBySide.length) {
+    logger.warn(`${sideBySide.length} file(s) were not overwritten. Merge each ${NEW_SUFFIX} file into the original (or delete it), or rerun with --force to overwrite.`);
+  }
+
+  // Traceability inventory: checksums of what this run generated, merged with earlier features' entries.
+  const generatedAt = new Date().toISOString();
   writeInventoryFile(inventoryPath, {
     ...previous,
     artifacts: mergeArtifacts(previous.artifacts, filteredArtifacts.map(a => ({
       filePath: a.filePath,
       type: a.type,
-      checksum: crypto.createHash('sha256').update(a.content).digest('hex'),
+      checksum: sha256(a.content),
       feature: options.feature ? path.relative(process.cwd(), path.resolve(process.cwd(), options.feature)).replace(/\\/g, '/') : undefined,
       generatedAt
     })))

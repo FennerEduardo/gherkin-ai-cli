@@ -257,6 +257,8 @@ program
   .description('Generate TypeScript contracts, DTO schemas, test fixtures, docker-compose, and agent prompts from Gherkin feature spec')
   .option('-f, --feature <file>', 'Path to Gherkin .feature file')
   .option('-c, --config <file>', 'Path to custom gherkin-ai.config.json file')
+  .option('--force', 'Overwrite files even if they were edited since generation or are protected')
+  .option('--dry-run', 'Show what would be created, updated or kept, without writing')
   .action(async (options) => {
     await (await import('./commands/generate')).handleGenerateCommand(options);
   });

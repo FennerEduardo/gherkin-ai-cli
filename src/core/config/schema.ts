@@ -217,6 +217,15 @@ export const configShape = {
   policy: policySchema.optional(),
   sandbox: sandboxSchema.optional(),
   infrastructure: infrastructureSchema.optional(),
+  /** How `ghk generate` names and writes code. */
+  generation: z.object({
+    /** Globs (from the project root) that generate never overwrites; new versions go to <file>.ghk-new. */
+    protect: z.array(z.string()).optional(),
+    /** Base package / namespace for JVM and .NET code (e.g. "com.acme.orders"). */
+    package: z.string().optional(),
+    /** Maven/Gradle groupId (defaults to the package). */
+    groupId: z.string().optional()
+  }).optional(),
   /** Extra API contract formats generated next to OpenAPI/AsyncAPI. */
   contracts: z.object({
     grpc: z.boolean().optional(),
