@@ -9,15 +9,35 @@ import path from 'path';
 import chalk from 'chalk';
 import { parseGherkinText } from '../core/gherkin-parser';
 import { calculateConvergence, ConvergenceReport } from '../core/convergence-engine';
+import { forEachProjectFeature, formatFeatureTable, projectFeatureFiles } from '../core/workspace-projects';
 
 export interface ConvergeCommandOptions {
   feature?: string;
   threshold?: string;
   json?: boolean;
+  /** Every feature of every project under the working directory. */
+  all?: boolean;
 }
 
 export async function handleConvergeCommand(options: ConvergeCommandOptions = {}): Promise<void> {
   const threshold = parseInt(options.threshold || '80', 10);
+
+  if (options.all) {
+    // Every feature of every gherkin-ai project under the working directory (monorepos).
+    const rows = forEachProjectFeature(process.cwd(), (projectDir, file) => {
+      const report = calculateConvergence(parseGherkinText(fs.readFileSync(file, 'utf8')), file, projectDir);
+      return { score: report.overallConvergence, passed: report.overallConvergence >= threshold, status: report.status };
+    });
+    if (options.json) emitJson(rows);
+    else {
+      console.log(chalk.bold.cyan(`\n🔄 Convergence across ${new Set(rows.map(r => r.project)).size} project(s), threshold ${threshold}%\n`));
+      console.log(formatFeatureTable(rows, 'Convergence'));
+      console.log('');
+    }
+    if (rows.length === 0 || rows.some(r => !r.passed)) process.exitCode = ExitCode.DRIFT;
+    if (rows.length === 0 && !options.json) console.log(chalk.yellow('⚠ No gherkin-ai projects with feature files found.\n'));
+    return;
+  }
 
   // Resolve feature files
   let featureFiles: string[] = [];
@@ -25,12 +45,8 @@ export async function handleConvergeCommand(options: ConvergeCommandOptions = {}
   if (options.feature) {
     featureFiles = [path.resolve(options.feature)];
   } else {
-    const { resolveSpecDir } = require('../utils/spec-dir-resolver');
     try {
-      const specDir = resolveSpecDir(undefined, process.cwd());
-      featureFiles = fs.readdirSync(specDir)
-        .filter(f => f.endsWith('.feature'))
-        .map(f => path.join(specDir, f));
+      featureFiles = projectFeatureFiles(process.cwd());
     } catch (e) {
       console.log(chalk.yellow('\n⚠ No feature files found. Use --feature <file> or ensure a specs/ directory exists.\n'));
       return;

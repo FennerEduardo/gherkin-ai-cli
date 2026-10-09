@@ -330,6 +330,7 @@ program
   .option('-f, --feature <file>', 'Specific feature file to lint')
   .option('--threshold <score>', 'Minimum passing score 0-100 (default: 70); below it exits with code 4')
   .option('--rules', 'List available lint rules')
+  .option('--all', 'Lint every feature of every gherkin-ai project under the current directory')
   .option('--json', 'Output report as JSON')
   .action(async (options) => {
     await (await import('./commands/lint')).handleLintCommand(options);
@@ -342,6 +343,7 @@ program
   .option('-f, --feature <file>', 'Specific feature file to evaluate')
   .option('--threshold <score>', 'Minimum convergence 0-100 (default: 80); below it exits with code 7')
   .option('--strict', 'Deprecated: the threshold is always enforced')
+  .option('--all', 'Evaluate every feature of every gherkin-ai project under the current directory')
   .option('--json', 'Output report as JSON')
   .action(async (options) => {
     await (await import('./commands/converge')).handleConvergeCommand(options);

@@ -10,12 +10,15 @@ import chalk from 'chalk';
 import { parseGherkinText } from '../core/gherkin-parser';
 import { lintSpecification, LintDiagnostic, getAvailableRules } from '../core/specification-linter';
 import { loadConstitution } from '../core/constitution';
+import { forEachProjectFeature, formatFeatureTable, projectFeatureFiles } from '../core/workspace-projects';
 
 export interface LintCommandOptions {
   feature?: string;
   threshold?: string;
   rules?: boolean;
   json?: boolean;
+  /** Every feature of every project under the working directory. */
+  all?: boolean;
 }
 
 export async function handleLintCommand(options: LintCommandOptions = {}): Promise<void> {
@@ -35,6 +38,23 @@ export async function handleLintCommand(options: LintCommandOptions = {}): Promi
   const constitution = loadConstitution();
   const threshold = parseInt(options.threshold || '70', 10);
 
+  if (options.all) {
+    // Every feature of every gherkin-ai project under the working directory (monorepos).
+    const rows = forEachProjectFeature(process.cwd(), (projectDir, file) => {
+      const result = lintSpecification(parseGherkinText(fs.readFileSync(file, 'utf8')), file, { threshold, constitution: loadConstitution(projectDir) });
+      return { score: result.score, passed: result.passed };
+    });
+    if (options.json) emitJson(rows);
+    else {
+      console.log(chalk.bold.cyan(`\n🔍 Lint across ${new Set(rows.map(r => r.project)).size} project(s), threshold ${threshold}\n`));
+      console.log(formatFeatureTable(rows, 'Score'));
+      console.log('');
+    }
+    if (rows.length === 0 || rows.some(r => !r.passed)) process.exitCode = ExitCode.GATE_FAILED;
+    if (rows.length === 0 && !options.json) console.log(chalk.yellow('⚠ No gherkin-ai projects with feature files found.\n'));
+    return;
+  }
+
   // Resolve feature files
   let featureFiles: string[] = [];
 
@@ -42,12 +62,8 @@ export async function handleLintCommand(options: LintCommandOptions = {}): Promi
     featureFiles = [path.resolve(options.feature)];
   } else {
     // Auto-discover .feature files
-    const { resolveSpecDir } = require('../utils/spec-dir-resolver');
     try {
-      const specDir = resolveSpecDir(undefined, process.cwd());
-      featureFiles = fs.readdirSync(specDir)
-        .filter(f => f.endsWith('.feature'))
-        .map(f => path.join(specDir, f));
+      featureFiles = projectFeatureFiles(process.cwd());
     } catch (e) {
       console.log(chalk.yellow('\n⚠ No feature files found. Use --feature <file> or ensure a specs/ directory exists.\n'));
       return;
