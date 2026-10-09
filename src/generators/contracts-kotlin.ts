@@ -2,9 +2,11 @@ import { ParsedFeature } from '../core/gherkin-parser';
 import { SpecificationIR } from '../core/semantic-ir';
 import { GherkinAIConfig } from '../core/config';
 import { featurePascalName } from '../utils/naming';
+import { jvmBasePackage } from './preset-java-spring';
 
 export function generateKotlinContracts(parsed: ParsedFeature, ir: SpecificationIR, config: GherkinAIConfig): string {
-  const packageName = config.projectName ? config.projectName.replace(/[^a-zA-Z0-9]/g, '').toLowerCase() : 'com.example.app';
+  // Same base package as the generated sources (generation.package, else com.example.<project>).
+  const packageName = jvmBasePackage(config);
   const featurePascal = featurePascalName(parsed);
 
   let content = `// ==========================================================================

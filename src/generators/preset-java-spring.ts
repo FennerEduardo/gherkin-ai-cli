@@ -9,20 +9,29 @@
 
 import { ParsedFeature } from '../core/gherkin-parser';
 import { GherkinAIConfig } from '../core/config';
-import { generateJavaOutboxInfrastructure } from './java/java-outbox-generator';
-import { generateJavaSagaInfrastructure } from './java/java-saga-generator';
-import { generateJavaIdempotencyInfrastructure } from './java/java-idempotency-generator';
 import { generateJavaOpenTelemetryInfrastructure } from './java/java-opentelemetry-generator';
-import { generateJavaCQRSInfrastructure } from './java/java-cqrs-generator';
-import { generateJavaMultiTenancyInfrastructure } from './java/java-multitenancy-generator';
+import { renderSpringAppLayer } from './kernel/app/jvm';
+import { tenantClaim } from './kernel/app/shared';
 import { buildDomainModel, toFlat, toPascal } from './kernel/domain-model';
 import { renderJvmRuntime } from './kernel/runtime/jvm';
 import { javaPackagePath, renderJavaKernel, renderJavaKernelTests, renderSpringApplication } from './kernel/java';
 
-/** Base package for generated JVM projects: com.example.<projectname>. */
+const JAVA_PACKAGE = /^[a-z_][a-z0-9_]*(\.[a-z_][a-z0-9_]*)*$/;
+
+/** Base package for generated JVM projects: generation.package, else com.example.<projectname>. */
 export function jvmBasePackage(config?: GherkinAIConfig): string {
+  const configured = config?.generation?.package?.trim();
+  if (configured && JAVA_PACKAGE.test(configured)) return configured;
   const flat = toFlat(config?.projectName || 'app');
   return `com.example.${/^[a-z]/.test(flat) ? flat : `app${flat}`}`;
+}
+
+/** Maven/Gradle groupId: generation.groupId, else the base package without its last segment. */
+export function jvmGroupId(config?: GherkinAIConfig): string {
+  const configured = config?.generation?.groupId?.trim();
+  if (configured) return configured;
+  const pkg = jvmBasePackage(config);
+  return pkg.includes('.') ? pkg.slice(0, pkg.lastIndexOf('.')) : pkg;
 }
 
 export function generateJavaSpringPreset(parsed: ParsedFeature, config?: GherkinAIConfig): { filename: string; content: string }[] {
@@ -30,7 +39,7 @@ export function generateJavaSpringPreset(parsed: ParsedFeature, config?: Gherkin
   const pkg = jvmBasePackage(config);
   const srcRoot = `src/main/java/${javaPackagePath(pkg)}`;
 
-  // Pattern generators emit paths relative to the base package (e.g. infrastructure/outbox/X.java).
+  // Pattern generators emit paths relative to the base package (e.g. infrastructure/telemetry/X.java).
   const underBasePackage = (files: { filename: string; content: string }[]) =>
     files.map(f => ({ filename: `${srcRoot}/${f.filename}`, content: f.content }));
 
@@ -40,13 +49,10 @@ export function generateJavaSpringPreset(parsed: ParsedFeature, config?: Gherkin
     ...renderJavaKernelTests(m, pkg),
     // Runtime kernel: PostgreSQL + RabbitMQ + OpenTelemetry, verified with -Pintegration (docs/RUNTIME-KERNEL.md).
     ...renderJvmRuntime(m, pkg),
+    // Application layer wired to the kernel (kernel/app/shared.ts): REST, JWT tenant, DataSource, relay worker.
+    ...renderSpringAppLayer(m, pkg, tenantClaim(config)),
     ...underBasePackage([
-      ...generateJavaOutboxInfrastructure(pkg),
-      ...generateJavaSagaInfrastructure(pkg, m.pascal),
-      ...generateJavaIdempotencyInfrastructure(pkg),
-      { filename: 'infrastructure/telemetry/OpenTelemetryConfig.java', content: generateJavaOpenTelemetryInfrastructure(pkg) },
-      ...generateJavaCQRSInfrastructure(pkg, m.pascal),
-      ...generateJavaMultiTenancyInfrastructure(pkg)
+      { filename: 'infrastructure/telemetry/OpenTelemetryConfig.java', content: generateJavaOpenTelemetryInfrastructure(pkg) }
     ])
   ];
 

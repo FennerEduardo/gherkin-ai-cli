@@ -39,26 +39,15 @@ describe('Enterprise Gap Closure & Clean Architecture Suite (.NET + Angular Sign
 
   const files = generatePresets(mockParsed, config);
 
-  it('generates 4-project Clean Architecture layout for .NET', () => {
-    const domainFile = files.find(f => f.filename.includes('src/Domain/OrderManagement.cs'));
-    const appFile = files.find(f => f.filename.includes('src/Application/CQRS/OrderManagementHandlers.cs'));
-    const infraFile = files.find(f => f.filename.includes('src/Infrastructure/Repositories/OrderManagementRepository.cs'));
-    const apiFile = files.find(f => f.filename.includes('src/Api/Controllers/OrderManagementController.cs'));
-
-    expect(domainFile).toBeDefined();
-    expect(appFile).toBeDefined();
-    expect(infraFile).toBeDefined();
-    expect(apiFile).toBeDefined();
+  it('wires the .NET API to the runtime kernel (domain kernel, runtime, endpoints, worker)', () => {
+    for (const suffix of ['src/Domain/Kernel/OrderManagementAggregate.cs', 'src/Runtime/CommandService.cs', 'src/Api/OrderManagementEndpoints.cs', 'src/Api/Workers/OutboxRelayWorker.cs', 'src/Api/Auth/JwtTenant.cs', 'src/Api/Program.cs']) {
+      expect(files.some(f => f.filename.endsWith(suffix)), suffix).toBe(true);
+    }
   });
 
   it('uses dynamic namespaces based on config.projectName', () => {
-    const domainFile = files.find(f => f.filename.includes('src/Domain/OrderManagement.cs'))!;
-    const appFile = files.find(f => f.filename.includes('src/Application/CQRS/OrderManagementHandlers.cs'))!;
-    const apiFile = files.find(f => f.filename.includes('src/Api/Controllers/OrderManagementController.cs'))!;
-
-    expect(domainFile.content).toContain('namespace CustomCompany.BankingApp.Domain.Entities');
-    expect(appFile.content).toContain('namespace CustomCompany.BankingApp.Application.Handlers');
-    expect(apiFile.content).toContain('namespace CustomCompany.BankingApp.Api.Controllers');
+    expect(files.find(f => f.filename.endsWith('src/Domain/Kernel/OrderManagementAggregate.cs'))!.content).toContain('namespace CustomCompany.BankingApp.Domain.Kernel');
+    expect(files.find(f => f.filename.endsWith('src/Api/OrderManagementEndpoints.cs'))!.content).toContain('namespace CustomCompany.BankingApp.Api;');
   });
 
   it('has zero C# syntax errors ("import" keyword) across all C# generated files', () => {
@@ -69,28 +58,10 @@ describe('Enterprise Gap Closure & Clean Architecture Suite (.NET + Angular Sign
     });
   });
 
-  it('eliminates generic Dictionary<string, object> and object? from domain contracts', () => {
-    const domainFile = files.find(f => f.filename.includes('src/Domain/OrderManagement.cs'))!;
-    expect(domainFile.content).not.toContain('Dictionary<string, object>');
-    expect(domainFile.content).not.toContain('object?');
-    expect(domainFile.content).toContain('public abstract class AggregateRoot<TId>');
-    expect(domainFile.content).toContain('public abstract class ValueObject');
-    expect(domainFile.content).toContain('public interface IRepository<TEntity, TId>');
-  });
-
-  it('generates MediatR Handlers and Read Model Projector', () => {
-    const handlersFile = files.find(f => f.filename.includes('src/Application/CQRS/OrderManagementHandlers.cs'))!;
-    expect(handlersFile).toBeDefined();
-    expect(handlersFile.content).toContain('IRequestHandler<CreateOrderManagementCommand, CommandResult>');
-    expect(handlersFile.content).toContain('IRequestHandler<GetOrderManagementQuery, OrderManagementReadModel?>');
-    expect(handlersFile.content).toContain('INotificationHandler<OrderManagementProcessedEventNotification>');
-  });
-
-  it('generates Inbox Deduplication Service', () => {
-    const inboxFile = files.find(f => f.filename.includes('src/Infrastructure/Inbox/InboxInfrastructure.cs'))!;
-    expect(inboxFile).toBeDefined();
-    expect(inboxFile.content).toContain('public class InboxMessage');
-    expect(inboxFile.content).toContain('HasBeenConsumedAsync(Guid messageId)');
+  it('takes the tenant only from the JWT, with no default tenant', () => {
+    const all = files.filter(f => f.filename.endsWith('.cs')).map(f => f.content).join('\n');
+    expect(all).toContain('JwtTenant.TenantFrom(');
+    expect(all).not.toMatch(/X-Tenant-Id", out var|return "default"/);
   });
 
   it('generates Polly v8 resilience pipelines with Jitter and Circuit Breaker', () => {
@@ -119,12 +90,10 @@ describe('Enterprise Gap Closure & Clean Architecture Suite (.NET + Angular Sign
     expect(signalrFile.content).toContain('ReceiveDomainEvent');
   });
 
-  it('generates Testcontainers E2E Integration test with happy path, inbox deduplication, and compensation flow', () => {
-    const testcontainersFile = files.find(f => f.filename.endsWith('/Integration/DistributedSystemIntegrationTest.cs'))!;
-    expect(testcontainersFile).toBeDefined();
-    expect(testcontainersFile.content).toContain('PostgreSqlBuilder');
-    expect(testcontainersFile.content).toContain('OutboxAndSaga_HappyPath_ExecutesSuccessfully');
-    expect(testcontainersFile.content).toContain('InboxPattern_DuplicateMessage_IsDeduplicatedIdempotently');
-    expect(testcontainersFile.content).toContain('Saga_CompensationFlow_TriggersOnProviderFailure');
-  });
+  it('generates an HTTP integration test of the command contract against PostgreSQL', () => {
+    const http = files.find(f => f.filename.endsWith('/Api/OrderManagementHttpTests.cs'))!;
+    expect(http.content).toContain('[Trait("Category", "Integration")]');
+    expect(http.content).toContain('Rejects_requests_without_a_valid_token_and_never_trusts_X_Tenant_Id');
+    expect(http.content).toContain('Runs_a_command_into_the_outbox_for_the_token_tenant_idempotently');
+});
 });

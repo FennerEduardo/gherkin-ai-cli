@@ -9,11 +9,19 @@
 
 import { ParsedFeature } from '../core/gherkin-parser';
 import { GherkinAIConfig, defaultConfig } from '../core/config';
-import { generateNestJsCqrsModules } from './nestjs/cqrs-generator';
-import { generateNestJsOutboxInfrastructure } from './nestjs/outbox-generator';
-import { generateNestJsIdempotencyInterceptor } from './nestjs/idempotency-generator';
-import { generateNestJsSagaInfrastructure } from './nestjs/saga-generator';
+import fs from 'fs';
+import path from 'path';
 import { generateNestJsMultiTenancyInfrastructure } from './nestjs/multitenancy-generator';
+import {
+  renderNestAppModule,
+  renderNestController,
+  renderNestFeatureModule,
+  renderNestHttpSpec,
+  renderNestRuntimeModule,
+  renderNestTenantGuard,
+  renderTsJwt
+} from './kernel/app/typescript';
+import { tenantClaim } from './kernel/app/shared';
 import { buildDomainModel } from './kernel/domain-model';
 import { resolveNodeProfile, withEsmImportExtensions } from './node-profile';
 import { renderTsRuntime } from './kernel/runtime/typescript';
@@ -26,21 +34,33 @@ import {
   renderTsConfigs
 } from './kernel/typescript';
 
+/**
+ * Feature modules already generated in the project (src/<kebab>/<kebab>.module.ts under outputDir), so the
+ * service-wide AppModule imports every feature, not only the one being generated.
+ */
+function existingFeatureModules(config: GherkinAIConfig | undefined, cwd = process.cwd()): { pascal: string; kebab: string }[] {
+  const src = path.resolve(cwd, config?.outputDir ?? './', 'src');
+  let dirs: string[] = [];
+  try { dirs = fs.readdirSync(src, { withFileTypes: true }).filter(d => d.isDirectory()).map(d => d.name); } catch { return []; }
+  const found: { pascal: string; kebab: string }[] = [];
+  for (const kebab of dirs) {
+    const file = path.join(src, kebab, `${kebab}.module.ts`);
+    if (!fs.existsSync(file)) continue;
+    const pascal = /export class (\w+)Module\b/.exec(fs.readFileSync(file, 'utf8'))?.[1];
+    if (pascal) found.push({ pascal, kebab });
+  }
+  return found;
+}
+
 export function generateNodeNestJsPreset(parsed: ParsedFeature, config?: GherkinAIConfig): { filename: string; content: string }[] {
   const m = buildDomainModel(parsed);
   // NestJS 12 is ESM-only: see node-profile.ts.
   const profile = resolveNodeProfile(config ?? defaultConfig);
   const esm = profile.esm;
   const domainDir = `src/${m.kebab}/domain`;
+  const aggregateFromFeature = `./domain/${m.kebab}.aggregate`;
 
-  const appModule = `import { Module } from '@nestjs/common';
-import { ApplicationCqrsModule } from './${m.kebab}/${m.kebab}.cqrs';
-
-@Module({
-  imports: [ApplicationCqrsModule]
-})
-export class AppModule {}
-`;
+  const appModule = renderNestAppModule([...existingFeatureModules(config), { pascal: m.pascal, kebab: m.kebab }]);
 
   const main = `import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
@@ -67,10 +87,14 @@ void bootstrap();
     ...renderTsConfigs(),
     { filename: 'src/app.module.ts', content: appModule },
     { filename: 'src/main.ts', content: main },
-    { filename: `src/${m.kebab}/${m.kebab}.cqrs.ts`, content: generateNestJsCqrsModules() },
-    { filename: `src/infrastructure/outbox.service.ts`, content: generateNestJsOutboxInfrastructure() },
-    { filename: `src/infrastructure/idempotency.interceptor.ts`, content: generateNestJsIdempotencyInterceptor() },
-    ...generateNestJsSagaInfrastructure(m.pascal),
+    // Application layer wired to the runtime kernel (src/generators/kernel/app/shared.ts):
+    // HTTP commands, JWT tenant, outbox relay worker. Idempotency, outbox and sagas live in src/runtime.
+    { filename: 'src/runtime/runtime.module.ts', content: renderNestRuntimeModule(m) },
+    { filename: 'src/auth/jwt.ts', content: renderTsJwt(tenantClaim(config)) },
+    { filename: 'src/auth/jwt-tenant.guard.ts', content: renderNestTenantGuard() },
+    { filename: `src/${m.kebab}/${m.kebab}.controller.ts`, content: renderNestController(m, aggregateFromFeature) },
+    { filename: `src/${m.kebab}/${m.kebab}.module.ts`, content: renderNestFeatureModule(m) },
+    { filename: `test/integration/${m.kebab}.http.int-spec.ts`, content: renderNestHttpSpec(m) },
     ...generateNestJsMultiTenancyInfrastructure(profile)
   ];
 

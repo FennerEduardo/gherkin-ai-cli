@@ -6,10 +6,12 @@ import { ParsedFeature } from '../core/gherkin-parser';
 import { GherkinAIConfig } from '../core/config';
 import { SpecificationIR } from '../core/semantic-ir';
 import { featurePascalName } from '../utils/naming';
+import { dotnetNamespace } from './preset-csharp-dotnet';
 
 export function generateCsharpContracts(parsed: ParsedFeature, ir: SpecificationIR, config: GherkinAIConfig): string {
   const featurePascal = featurePascalName(parsed);
-  const namespace = config.projectName ? config.projectName.replace(/[^a-zA-Z0-9]/g, '') : 'Domain';
+  // Same root namespace as the generated project (generation.package, else the project name).
+  const namespace = config.projectName || config.generation?.package ? dotnetNamespace(config) : 'Domain';
 
   return `/* ==========================================================================
    Generated Strongly-Typed DDD Contracts & Base Classes
@@ -23,7 +25,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using MediatR;
 
 // --------------------------------------------------------------------------
 // 1. Core DDD Interfaces & Base Classes
@@ -90,14 +91,14 @@ public record Create${featurePascal}Command(
     DateTime Timestamp,
     string ReferenceCode,
     decimal Amount
-) : IRequest<CommandResult>;
+);
 
 public record ${featurePascal}ReadModel(Guid Id, string ReferenceCode, decimal Amount, string Status, DateTime UpdatedAt);
 
 public record Get${featurePascal}Query(
     Guid ${featurePascal}Id,
     Guid TenantId
-) : IRequest<${featurePascal}ReadModel?>;
+);
 
 // --------------------------------------------------------------------------
 // 4. Strongly-Typed Domain Repository Port

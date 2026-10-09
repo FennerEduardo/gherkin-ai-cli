@@ -118,46 +118,6 @@ ${m.commands.map(c => `
   ];
 }
 
-export function renderPhpController(m: DomainModel): PhpFile {
-  return {
-    filename: `app/Http/Controllers/${m.pascal}Controller.php`,
-    content: `<?php
-
-declare(strict_types=1);
-
-namespace App\\Http\\Controllers;
-
-use App\\Domain\\${m.pascal}\\${m.pascal}Aggregate;
-use App\\Domain\\${m.pascal}\\${m.pascal}Command;
-use App\\Domain\\${m.pascal}\\DomainValidationException;
-use Illuminate\\Http\\JsonResponse;
-use Illuminate\\Http\\Request;
-
-final class ${m.pascal}Controller
-{
-    private const COMMANDS = [
-${m.commands.map(c => `        '${c.snake}' => '${c.method}',`).join('\n')}
-    ];
-
-    public function execute(Request $request, string $id, string $command): JsonResponse
-    {
-        $method = self::COMMANDS[$command] ?? null;
-        if ($method === null) {
-            return response()->json(['detail' => "Unknown command {$command}"], 404);
-        }
-        try {
-            // In-memory aggregate: replace with a repository + outbox.
-            $event = (new ${m.pascal}Aggregate($id))->{$method}(new ${m.pascal}Command($id, $request->all()));
-        } catch (DomainValidationException $e) {
-            return response()->json(['detail' => $e->getMessage()], 422);
-        }
-        return response()->json(['type' => $event->type->value, 'aggregateId' => $event->aggregateId, 'version' => $event->version], 201);
-    }
-}
-`
-  };
-}
-
 export function renderPhpTests(m: DomainModel): PhpFile[] {
   const first = m.commands[0];
   return [
@@ -335,6 +295,8 @@ return Application::configure(basePath: dirname(__DIR__))
         api: __DIR__.'/../routes/api.php',
         health: '/up',
     )
+    // Binds the CommandPort to the runtime kernel (DATABASE_URL).
+    ->withProviders([App\\Providers\\RuntimeServiceProvider::class])
     ->withMiddleware(function (Middleware $middleware) {
         //
     })

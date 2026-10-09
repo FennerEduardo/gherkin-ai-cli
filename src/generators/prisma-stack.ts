@@ -47,7 +47,8 @@ function renderAggregateModel(parsed: ParsedFeature, isNest: boolean): string {
   const modelName = featurePascalName(parsed);
   let fieldsStr = `  id String @id @default(uuid())\n`;
   // PrismaService.tenant (a query extension) scopes every domain query by tenantId.
-  if (isNest) fieldsStr += `  tenantId String @default("default")\n`;
+  // No default tenant: rows get the tenant of the authenticated request (JwtTenantGuard -> PrismaService.tenant).
+  if (isNest) fieldsStr += `  tenantId String\n`;
   // Feature fields can repeat the columns declared above (or each other); Prisma rejects duplicates.
   const declared = new Set(['id', ...(isNest ? ['tenantid'] : [])]);
   parsed.domainAnalysis.fields.forEach(f => {
@@ -106,6 +107,7 @@ ${modelsStr}${isNest ? NEST_INFRASTRUCTURE_MODELS : ''}`;
   if (isNest) {
     const serviceContent = `import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { currentTenant } from '../infrastructure/multitenancy/tenant.storage';
 import type { ${modelName} } from '${prismaClientImport(profile, 'src/persistence')}';
 
 @Injectable()
@@ -116,9 +118,10 @@ export class ${modelName}Repository {
     return this.prisma.tenant.${delegate}.findUnique({ where: { id } });
   }
 
+  /** Creates a row for the tenant of the authenticated request (never a default tenant). */
   async save(data: Omit<${modelName}, 'id' | 'tenantId' | 'createdAt' | 'updatedAt'>): Promise<${modelName}> {
     return this.prisma.tenant.${delegate}.create({
-      data,
+      data: { ...data, tenantId: currentTenant() },
     });
   }
 

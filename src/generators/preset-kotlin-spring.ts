@@ -19,9 +19,12 @@ export function generateKotlinSpringPreset(parsed: ParsedFeature, config?: Gherk
   const m = buildDomainModel(parsed);
   const pkg = jvmBasePackage(config);
 
-  // Reuse only the pattern infrastructure from the Java preset (src/main/java/<pkg>/{infrastructure,application}).
+  // Reuse the Java infrastructure and the application layer (REST, JWT tenant, DataSource, relay worker):
+  // Java compiles against the Kotlin domain in the same Gradle module.
   const sharedInfra = generateJavaSpringPreset(parsed, config).filter(f =>
-    f.filename.startsWith('src/main/java/') && /\/(infrastructure|application)\//.test(f.filename)
+    (f.filename.startsWith('src/main/java/') && (/\/(infrastructure|application|auth|api)\//.test(f.filename) || f.filename.endsWith('/runtime/RuntimeConfiguration.java'))) ||
+    /^src\/test\/java\/.*\/api\/\w+HttpIntegrationTest\.java$/.test(f.filename) ||
+    f.filename === 'src/main/resources/application.properties'
   );
 
   return [

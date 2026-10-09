@@ -1,40 +1,32 @@
 import { describe, it, expect } from 'vitest';
-import { generateOutboxInfrastructure } from '../../src/generators/dotnet/outbox-generator';
-import { generateIdempotencyInfrastructure } from '../../src/generators/dotnet/idempotency-generator';
-import { generateSagaInfrastructure } from '../../src/generators/dotnet/saga-generator';
 import { generateOpenTelemetryConfig } from '../../src/generators/dotnet/opentelemetry-generator';
+import { dotnetNamespace, generateCsharpDotnetPreset } from '../../src/generators/preset-csharp-dotnet';
+import { parseGherkinText } from '../../src/core/gherkin-parser';
 
-describe('DotNet Pattern Generators', () => {
-  const ns = 'TestNamespace';
+const FEATURE = parseGherkinText('Feature: Payment\n  Scenario: Pay\n    When the customer pays the order\n    Then the order is paid\n');
 
-  it('should generate Outbox infrastructure', () => {
-    const code = generateOutboxInfrastructure(ns);
-    expect(code).toContain('namespace TestNamespace.Infrastructure.Outbox');
-    expect(code).toContain('public class OutboxMessage');
-    expect(code).toContain('public class OutboxService : IOutboxService');
-    expect(code).toContain('DbContext');
-  });
-
-  it('should generate Idempotency infrastructure', () => {
-    const code = generateIdempotencyInfrastructure(ns);
-    expect(code).toContain('namespace TestNamespace.Application.Behaviors');
-    expect(code).toContain('public interface IIdempotencyStore');
-    expect(code).toContain('public class IdempotentBehavior');
-    expect(code).toContain('IPipelineBehavior');
-  });
-
-  it('should generate Saga infrastructure', () => {
-    const code = generateSagaInfrastructure(ns);
-    expect(code).toContain('namespace TestNamespace.Application.Sagas');
-    expect(code).toContain('public class PaymentSagaState : SagaStateMachineInstance');
-    expect(code).toContain('public class PaymentSagaStateMachine : MassTransitStateMachine<PaymentSagaState>');
-    expect(code).toContain('CompensatePaymentCommand');
-  });
-
+describe('DotNet generators', () => {
   it('should generate OpenTelemetry config', () => {
-    const code = generateOpenTelemetryConfig(ns);
+    const code = generateOpenTelemetryConfig('TestNamespace');
     expect(code).toContain('namespace TestNamespace.Infrastructure.Telemetry');
     expect(code).toContain('AddOpenTelemetry');
     expect(code).toContain('AddOtlpExporter');
+  });
+
+  it('wires the minimal API to the runtime kernel with a JWT tenant, without the 3.0 placeholders', () => {
+    const files = generateCsharpDotnetPreset(FEATURE, { projectName: 'Shop' } as any);
+    const byName = (suffix: string) => files.find(f => f.filename.endsWith(suffix))?.content ?? '';
+    expect(byName('src/Api/Program.cs')).toContain('new CommandService(');
+    expect(byName('src/Api/Program.cs')).toContain('AddHostedService<OutboxRelayWorker>');
+    expect(byName('PaymentEndpoints.cs')).toContain('JwtTenant.TenantFrom(');
+    const all = files.map(f => f.content).join('\n');
+    expect(all).not.toContain('X-Tenant-Id", out');
+    expect(all).not.toMatch(/MediatR|MassTransit|HttpHeaderTenantService|"default"; \/\/ Fallback/);
+    expect(files.some(f => /HttpTests\.cs$/.test(f.filename))).toBe(true);
+  });
+
+  it('uses generation.package as the root namespace', () => {
+    expect(dotnetNamespace({ projectName: 'shop', generation: { package: 'Acme.Billing' } } as any)).toBe('Acme.Billing');
+    expect(dotnetNamespace({ projectName: 'my-shop' } as any)).toBe('myshop');
   });
 });

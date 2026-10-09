@@ -7,7 +7,6 @@ import { parseGherkinText } from '../../src/core/gherkin-parser';
 import { buildIR } from '../../src/core/ir-builder';
 import { defaultConfig } from '../../src/core/config';
 import { generateCsharpContracts } from '../../src/generators/contracts-csharp';
-import { generateCqrsHandlers } from '../../src/generators/dotnet/cqrs-handlers-generator';
 import { buildDomainModel } from '../../src/generators/kernel/domain-model';
 import { featurePascalName } from '../../src/utils/naming';
 
@@ -27,15 +26,6 @@ describe('identifier naming is shared by every generator', () => {
     expect(buildDomainModel(parseGherkinText(FEATURE)).pascal).toBe('EjecucionDeSagaYComandosCqrsEnNet8');
   });
 
-  it('C# handlers only reference command and read-model types the contracts declare', () => {
-    const parsed = parseGherkinText(FEATURE);
-    const config = { ...defaultConfig, projectName: 'Demo', stack: { ...defaultConfig.stack, language: 'csharp' } };
-    const contracts = generateCsharpContracts(parsed, buildIR(parsed, 'f.feature'), config);
-    const handlers = generateCqrsHandlers('Demo', parsed.featureName);
-    const referenced = new Set([...handlers.matchAll(/\b(Create\w+Command|Get\w+Query|\w+ReadModel)\b/g)].map(m => m[1]));
-    expect(referenced.size).toBeGreaterThan(0);
-    for (const type of referenced) expect(contracts, type).toMatch(new RegExp(`record ${type}\\b`));
-  });
 });
 
 describe('@aggregate tag', () => {
@@ -54,10 +44,7 @@ describe('@aggregate tag', () => {
     const contracts = generateCsharpContracts(parsed, buildIR(parsed, 'f.feature'), config);
     expect(contracts).toContain('PurchaseOrderAggregate');
     expect(contracts).not.toContain('EjecucionDeSaga');
-    const handlers = generateCqrsHandlers('Demo', buildDomainModel(parsed).pascal);
-    for (const type of new Set([...handlers.matchAll(/\b(Create\w+Command|\w+ReadModel)\b/g)].map(m => m[1]))) {
-      expect(contracts, type).toMatch(new RegExp(`record ${type}\\b`));
-    }
+    expect(buildDomainModel(parsed).pascal).toBe('PurchaseOrder');
   });
 
   it('without the tag the title is used', () => {

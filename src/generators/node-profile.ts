@@ -89,16 +89,12 @@ export const NEST_DEPENDENCIES: Record<NestMajor, Record<string, string>> = {
   '11': {
     '@nestjs/common': '^11.1.0',
     '@nestjs/core': '^11.1.0',
-    '@nestjs/cqrs': '^11.0.0',
     '@nestjs/platform-express': '^11.1.0',
-    '@nestjs/schedule': '^6.0.0'
   },
   '12': {
     '@nestjs/common': '^12.1.0',
     '@nestjs/core': '^12.1.0',
-    '@nestjs/cqrs': '^12.1.0',
     '@nestjs/platform-express': '^12.1.0',
-    '@nestjs/schedule': '^12.0.0'
   }
 };
 

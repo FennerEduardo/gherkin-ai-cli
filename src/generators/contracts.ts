@@ -5,6 +5,8 @@
 import { featurePascalName } from '../utils/naming';
 import { CLI_VERSION } from '../version';
 import { renderPom } from './kernel/java';
+import { jvmGroupId } from './preset-java-spring';
+import { dotnetNamespace } from './preset-csharp-dotnet';
 import { renderGoMod } from './kernel/go';
 import { renderGradleKts, renderGradleSettings } from './kernel/kotlin';
 import { toKebab } from './kernel/domain-model';
@@ -431,19 +433,13 @@ ${effectiveProhibited.map(p => `- \`${p}\``).join('\n')}
         content: `<Project Sdk="Microsoft.NET.Sdk.Web">
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
-    <RootNamespace>${(config.projectName || 'MyEnterpriseApp').replace(/[^a-zA-Z0-9.]/g, '') || 'MyEnterpriseApp'}</RootNamespace>
+    <RootNamespace>${dotnetNamespace(config)}</RootNamespace>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="MediatR" Version="12.2.0" />
-    <PackageReference Include="FluentValidation.AspNetCore" Version="11.3.0" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="8.0.2" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Tools" Version="8.0.2" />
-    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="8.0.2" />
     <PackageReference Include="Npgsql" Version="8.0.5" />
     <PackageReference Include="RabbitMQ.Client" Version="6.8.1" />
-    <PackageReference Include="MassTransit.RabbitMQ" Version="8.1.3" />
     <PackageReference Include="Polly.Core" Version="8.3.1" />
     <PackageReference Include="Microsoft.Extensions.Http.Resilience" Version="8.3.0" />
     <PackageReference Include="OpenTelemetry.Extensions.Hosting" Version="1.9.0" />
@@ -453,7 +449,6 @@ ${effectiveProhibited.map(p => `- \`${p}\``).join('\n')}
     <PackageReference Include="OpenTelemetry.Instrumentation.EntityFrameworkCore" Version="1.0.0-beta.12" />
     <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.9.0" />
     <PackageReference Include="Microsoft.Extensions.ServiceDiscovery" Version="8.2.0" />
-    <PackageReference Include="Swashbuckle.AspNetCore" Version="6.5.0" />
   </ItemGroup>
   <ItemGroup>
     <!-- The .NET Aspire AppHost is its own project (Aspire SDK); keep it out of this compilation unit. -->
@@ -482,11 +477,11 @@ docker run --rm -v "$(pwd)":/app -w /app -e DOTNET_CLI_TELEMETRY_OPTOUT=1 -e DOT
   } else if (config.stack.language === 'java') {
     projectRootFile = {
       filename: `pom.xml`,
-      content: renderPom(toKebab(config.projectName || 'demo'))
+      content: renderPom(toKebab(config.projectName || 'demo'), jvmGroupId(config))
     };
   } else if (config.stack.language === 'kotlin') {
     projectRootFile = [
-      { filename: `build.gradle.kts`, content: renderGradleKts() },
+      { filename: `build.gradle.kts`, content: renderGradleKts(jvmGroupId(config)) },
       { filename: `settings.gradle.kts`, content: renderGradleSettings(toKebab(config.projectName || 'demo')) }
     ];
   } else if (config.stack.language === 'go') {

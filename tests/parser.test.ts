@@ -150,7 +150,7 @@ describe('gherkin-ai CLI unit tests', () => {
       const javaPreset = generateJavaSpringPreset(parsed);
       const byName = (suffix: string) => javaPreset.find(f => f.filename.endsWith(suffix));
       // Standard Maven layout with a Cucumber (JUnit Platform) runner bound to ./features
-      expect(javaPreset.every(f => f.filename.startsWith('src/main/java/') || f.filename.startsWith('src/test/java/'))).toBe(true);
+      expect(javaPreset.every(f => /^src\/(main|test)\/(java|resources)\//.test(f.filename))).toBe(true);
       expect(byName('/bdd/RunCucumberTest.java')?.content).toContain('@IncludeEngines("cucumber")');
       expect(javaPreset.some(f => f.filename.endsWith('Steps.java') && f.content.includes('io.cucumber.java.en.Given'))).toBe(true);
     });

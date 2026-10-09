@@ -227,6 +227,11 @@ export const configShape = {
   policy: policySchema.optional(),
   sandbox: sandboxSchema.optional(),
   infrastructure: infrastructureSchema.optional(),
+  /** Security of the generated application layer. */
+  security: z.object({
+    /** JWT claim that carries the tenant (default "tenant_id"). The tenant never comes from a request header. */
+    tenantClaim: z.string().regex(/^[A-Za-z_][A-Za-z0-9_:.\/-]*$/).optional()
+  }).optional(),
   /** How `ghk generate` names and writes code. */
   generation: z.object({
     /** Globs (from the project root) that generate never overwrites; new versions go to <file>.ghk-new. */

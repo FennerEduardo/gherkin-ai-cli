@@ -62,7 +62,7 @@ describe('NestJS / Prisma version profile', () => {
     const p = pkg(files);
     expect(p.type).toBe('module');
     expect(p.dependencies['@nestjs/core']).toBe('^12.1.0');
-    expect(p.dependencies['@nestjs/schedule']).toBe('^12.0.0');
+    expect(p.dependencies['@nestjs/schedule']).toBeUndefined(); // the relay worker is a plain interval (no placeholder cron)
     expect(p.scripts.start).toBe('node dist/src/main.js');
     expect(p.scripts.test).toContain('--experimental-vm-modules');
     expect(p.scripts.test).toContain('--import tsx');

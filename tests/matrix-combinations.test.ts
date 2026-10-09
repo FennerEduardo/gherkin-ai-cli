@@ -62,7 +62,7 @@ describe('Distributed Multi-Stack & Frontend Matrix Combinations', () => {
         if (be.lang === 'csharp') {
           expect(files.some(f => f.filename.includes('AppHost/Program.cs'))).toBe(true);
           expect(files.some(f => f.filename.includes('SignalRNotificationService.cs'))).toBe(true);
-          expect(files.some(f => f.filename.includes('DistributedSystemIntegrationTest.cs'))).toBe(true);
+          expect(files.some(f => /\/Api\/\w+HttpTests\.cs$/.test(f.filename))).toBe(true);
         }
       });
     });

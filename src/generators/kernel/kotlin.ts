@@ -199,7 +199,7 @@ fun main(args: Array<String>) {
   };
 }
 
-export function renderGradleKts(): string {
+export function renderGradleKts(groupId = 'com.example'): string {
   return `plugins {
     id("org.springframework.boot") version "3.3.5"
     id("io.spring.dependency-management") version "1.1.6"
@@ -208,7 +208,7 @@ export function renderGradleKts(): string {
     kotlin("plugin.jpa") version "1.9.25"
 }
 
-group = "com.example"
+group = "${groupId}"
 version = "0.0.1-SNAPSHOT"
 
 java {

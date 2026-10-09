@@ -507,6 +507,38 @@
             },
             "image": {
               "type": "string"
+            },
+            "services": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9-]*$"
+                  },
+                  "image": {
+                    "type": "string"
+                  },
+                  "environment": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "string"
+                    }
+                  },
+                  "env": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": [
+                  "name",
+                  "image"
+                ],
+                "additionalProperties": false
+              }
             }
           },
           "additionalProperties": false
@@ -516,6 +548,34 @@
           "properties": {
             "awsCdk": {
               "type": "boolean"
+            }
+          },
+          "additionalProperties": false
+        },
+        "security": {
+          "type": "object",
+          "properties": {
+            "tenantClaim": {
+              "type": "string",
+              "pattern": "^[A-Za-z_][A-Za-z0-9_:.\\/-]*$"
+            }
+          },
+          "additionalProperties": false
+        },
+        "generation": {
+          "type": "object",
+          "properties": {
+            "protect": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "package": {
+              "type": "string"
+            },
+            "groupId": {
+              "type": "string"
             }
           },
           "additionalProperties": false

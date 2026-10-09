@@ -71,9 +71,9 @@ Feature: Online Checkout
 
     const files = generatePresets(parsed, config);
     expect(files.length).toBeGreaterThan(5);
-    const domainFile = files.find(f => f.filename.includes('src/Domain/OnlineCheckout.cs'))!;
+    const domainFile = files.find(f => f.filename.includes('src/Domain/Kernel/OnlineCheckoutAggregate.cs'))!;
     expect(domainFile).toBeDefined();
-    expect(domainFile.content).toContain('AggregateRoot<Guid>');
+    expect(domainFile.content).toContain('namespace PayCore.Api.Domain.Kernel');
   });
 
   it('automatically triggers validateFinancialGates when rules include "payments"', () => {
