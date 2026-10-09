@@ -2,6 +2,47 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [3.0.1] - 2026-10-09
+
+Bug-fix release from the 3.0.0 field reviews (an LMS of 7 services and a 9-feature NestJS/Vue project). No change to the generated output contract; `ghk upgrade` is not required.
+
+### Fixed
+- **`implement` crash and lost checksums.** `generate` and the audit trail wrote two different formats to `.ghe/inventory.json`. The file is now `{version: '2', artifacts, executions}`:
+  - both old formats are still read;
+  - `generate` merges artifacts across features instead of replacing them;
+  - the audit trail only touches executions, so `upgrade --prune` keeps working after `implement`.
+- **`converge` as a gate.** Scores now track real evidence:
+  - **Coverage:** JaCoCo totals come from the report-level counters (not the first method). `lcov.info` is read, and Cobertura attributes are read in any order. An unrecognised report no longer stops the search. With no report the dimension shows `n/a` and is left out of the average instead of counting as 0. `coverageTarget` is read from the project config.
+  - **Architecture:** layers are found at any depth: Maven/Gradle packages, `internal/`, `.NET` `X.Domain` projects and common aliases such as `adapters` and `api`.
+  - **Specification Quality:** uses the lint score, so it no longer repeats Scenario Completeness.
+  - **Traceability:** events asserted in `Then` steps count as tested.
+- **Scenario categories:**
+  - a scenario carries every category that applies, for example authorization and error-handling;
+  - authorization also recognises roles, permissions, 401/403 and access denied;
+  - a logged-in success still counts as the happy path.
+- **`ghk quality`:** JaCoCo CSV totals are summed over every line, and the Go coverage total is parsed.
+- **`lint`:**
+  - GHK006 and GHK007 ignore quoted example values such as `"MATH-101"`;
+  - acronyms mentioned in the feature description count as defined;
+  - GHK006 reports each term once per feature;
+  - a missing or unparseable file fails the run (exit 4, also with `--json`);
+  - the average only counts files that were linted.
+- **`validate`:**
+  - prohibited framework imports are checked only in domain/application code, not in infrastructure, controllers, Nest modules or `main.ts`;
+  - `node_modules`, `dist`, `target` and `.git` are skipped;
+  - AsyncAPI auto-detection prefers the feature's own document;
+  - `--target` is registered.
+- **`verify`:** an unset container limit keeps its default instead of producing `--network undefined`.
+- **Locale:**
+  - the project's `locale` (and `GHK_LOCALE`) takes precedence over the global choice;
+  - validator messages and the `add` prompt are translated instead of mixing Spanish and English.
+- **Local environment:**
+  - `.env.example` and `docker-compose.yml` use each stack's own variables and port (Spring, .NET, Python, Go, Rails, Phoenix, …);
+  - both always provide `DATABASE_URL` and `AMQP_URL` for the runtime kernel;
+  - RabbitMQ gets a dev user, because `guest` is localhost-only;
+  - the Serverless runtime is `nodejs22.x`.
+- **Gherkin:** scenarios inside `Rule:` blocks are parsed (with the Rule's tags), and `Background` steps get step definitions and run first in every generated scenario.
+
 ## [3.0.0] - 2026-10-05
 
 Enterprise-readiness release, driven by the reviews of 2.6.x. Contains breaking changes: see `docs/MIGRATION-3.0.md`. For operators: `docs/ENTERPRISE.md`. Support and versioning policy: `SUPPORT.md`.

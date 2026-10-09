@@ -294,9 +294,9 @@ node scripts/golden-build.js java vue      # selected stacks (all when omitted)
 Use the composite action and **pin the version**:
 
 ```yaml
-- uses: FennerEduardo/gherkin-ai-cli/.github/actions/audit@v3.0.0
+- uses: FennerEduardo/gherkin-ai-cli/.github/actions/audit@v3.0.1
   with:
-    version: 3.0.0
+    version: 3.0.1
     lint-threshold: 80
     converge-threshold: 80
 ```
@@ -304,9 +304,9 @@ Use the composite action and **pin the version**:
 Or call the CLI directly:
 
 ```bash
-npx --yes gherkin-ai@3.0.0 lint --threshold 80 --json > ghk-lint.json        # exit 4 below threshold
-npx --yes gherkin-ai@3.0.0 converge --threshold 80 --json > ghk-converge.json # exit 7 below threshold
-npx --yes gherkin-ai@3.0.0 risk --base origin/main --fail-on HIGH --json        # exit 4 at HIGH or above
+npx --yes gherkin-ai@3.0.1 lint --threshold 80 --json > ghk-lint.json        # exit 4 below threshold
+npx --yes gherkin-ai@3.0.1 converge --threshold 80 --json > ghk-converge.json # exit 7 below threshold
+npx --yes gherkin-ai@3.0.1 risk --base origin/main --fail-on HIGH --json        # exit 4 at HIGH or above
 ```
 
 ## 13. Verifying releases
@@ -372,7 +372,7 @@ ghk firewall policy --feature features/refunds.feature                          
 {
   "hooks": {
     "PreToolUse": [
-      { "matcher": "Write|Edit|MultiEdit|NotebookEdit|Bash|WebFetch|Read|mcp__.*", "hooks": [{ "type": "command", "command": "npx --yes gherkin-ai@3.0.0 firewall hook" }] }
+      { "matcher": "Write|Edit|MultiEdit|NotebookEdit|Bash|WebFetch|Read|mcp__.*", "hooks": [{ "type": "command", "command": "npx --yes gherkin-ai@3.0.1 firewall hook" }] }
     ]
   }
 }
