@@ -101,9 +101,11 @@ export function buildDomainModel(input: ParsedFeature): DomainModel {
 
   const seen = new Map<string, KernelStep>();
   const usedIds = new Set<string>();
+  // Background steps run before every scenario, so each scenario's steps start with them.
+  const backgroundSteps = parsed.background?.steps ?? [];
   const scenarios = parsed.scenarios.map(sc => {
     let last: KernelStep['keyword'] = 'Given';
-    const steps = sc.steps.map(st => {
+    const steps = [...backgroundSteps, ...sc.steps].map(st => {
       const kw = st.keyword.trim();
       if (kw === 'Given' || kw === 'When' || kw === 'Then') last = kw;
       const key = `${last}|${st.text}`;

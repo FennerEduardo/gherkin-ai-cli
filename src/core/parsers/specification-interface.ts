@@ -27,6 +27,8 @@ export interface ParsedFeature {
   descriptionLines: string[];
   tags: string[];
   scenarios: ScenarioModel[];
+  /** Background steps (feature-level, then Rule-level), which run before every scenario. */
+  background?: ScenarioModel;
   domainAnalysis: {
     actors: string[];
     commands: string[];

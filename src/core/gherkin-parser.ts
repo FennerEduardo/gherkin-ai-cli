@@ -55,54 +55,70 @@ export function parseGherkinText(gherkinText: string): ParsedFeature {
   const featureTags = feature.tags.map(t => t.name);
 
   const scenarios: ScenarioModel[] = [];
+  const backgroundSteps: StepModel[] = [];
+  let backgroundName = '';
 
-  for (const child of feature.children) {
-    if (child.scenario) {
-      const scenario = child.scenario;
-      const scenarioTags = scenario.tags.map(t => t.name);
-      const steps: StepModel[] = [];
+  type Child = (typeof feature.children)[number];
+  type GherkinStep = NonNullable<Child['scenario']>['steps'][number];
 
-      for (const step of scenario.steps) {
-        const kwStr = step.keyword.trim().toLowerCase();
-        let keyword: StepModel['keyword'] = 'Given';
+  const convertSteps = (gherkinSteps: readonly GherkinStep[], scenarioTags: string[]): StepModel[] => {
+    const steps: StepModel[] = [];
+    for (const step of gherkinSteps) {
+      const kwStr = step.keyword.trim().toLowerCase();
+      let keyword: StepModel['keyword'] = 'Given';
 
-        // keywordType is dialect-independent (Dado/Étant donné/Angenommen are all Context).
-        if (step.keywordType === StepKeywordType.CONTEXT) keyword = 'Given';
-        else if (step.keywordType === StepKeywordType.ACTION) keyword = 'When';
-        else if (step.keywordType === StepKeywordType.OUTCOME) keyword = 'Then';
-        else if (step.keywordType === StepKeywordType.CONJUNCTION) keyword = ['but', 'pero', 'mais', 'aber', 'ma'].includes(kwStr) ? 'But' : 'And';
-        else if (['when', 'cuando'].includes(kwStr)) keyword = 'When';
-        else if (['then', 'entonces'].includes(kwStr)) keyword = 'Then';
-        else if (['and', 'y', 'e'].includes(kwStr)) keyword = 'And';
-        else if (['but', 'pero'].includes(kwStr)) keyword = 'But';
+      // keywordType is dialect-independent (Dado/Étant donné/Angenommen are all Context).
+      if (step.keywordType === StepKeywordType.CONTEXT) keyword = 'Given';
+      else if (step.keywordType === StepKeywordType.ACTION) keyword = 'When';
+      else if (step.keywordType === StepKeywordType.OUTCOME) keyword = 'Then';
+      else if (step.keywordType === StepKeywordType.CONJUNCTION) keyword = ['but', 'pero', 'mais', 'aber', 'ma'].includes(kwStr) ? 'But' : 'And';
+      else if (['when', 'cuando'].includes(kwStr)) keyword = 'When';
+      else if (['then', 'entonces'].includes(kwStr)) keyword = 'Then';
+      else if (['and', 'y', 'e'].includes(kwStr)) keyword = 'And';
+      else if (['but', 'pero'].includes(kwStr)) keyword = 'But';
 
-        let stepText = step.text;
+      let stepText = step.text;
 
-        // Support for DataTables in steps
-        if (step.dataTable) {
-          const rows = step.dataTable.rows.map(r => '| ' + r.cells.map(c => c.value).join(' | ') + ' |').join('\n');
-          stepText += '\n' + rows;
-        }
-
-        // Support for DocStrings
-        if (step.docString) {
-          stepText += '\n"""\n' + step.docString.content + '\n"""';
-        }
-
-        steps.push({
-          keyword,
-          text: stepText,
-          tags: [...featureTags, ...scenarioTags] // Cucumber doesn't support tags on steps natively, we inherit
-        });
+      // Support for DataTables in steps
+      if (step.dataTable) {
+        const rows = step.dataTable.rows.map(r => '| ' + r.cells.map(c => c.value).join(' | ') + ' |').join('\n');
+        stepText += '\n' + rows;
       }
 
-      scenarios.push({
-        name: scenario.name,
-        tags: scenarioTags,
-        steps
+      // Support for DocStrings
+      if (step.docString) {
+        stepText += '\n"""\n' + step.docString.content + '\n"""';
+      }
+
+      steps.push({
+        keyword,
+        text: stepText,
+        tags: [...featureTags, ...scenarioTags] // Cucumber doesn't support tags on steps natively, we inherit
       });
     }
-  }
+    return steps;
+  };
+
+  // Feature children are Background, Scenario (Outline) or Rule; a Rule holds its own Background and scenarios.
+  const visit = (children: readonly Child[], inheritedTags: string[]) => {
+    for (const child of children) {
+      if (child.background) {
+        backgroundName ||= child.background.name;
+        for (const st of convertSteps(child.background.steps, inheritedTags)) {
+          if (!backgroundSteps.some(b => b.keyword === st.keyword && b.text === st.text)) backgroundSteps.push(st);
+        }
+      } else if (child.scenario) {
+        const scenarioTags = [...inheritedTags, ...child.scenario.tags.map(t => t.name)];
+        scenarios.push({ name: child.scenario.name, tags: scenarioTags, steps: convertSteps(child.scenario.steps, scenarioTags) });
+      } else if (child.rule) {
+        visit(child.rule.children as readonly Child[], [...inheritedTags, ...child.rule.tags.map(t => t.name)]);
+      }
+    }
+  };
+  visit(feature.children, []);
+  const background: ScenarioModel | undefined = backgroundSteps.length
+    ? { name: backgroundName || 'Background', tags: [], steps: backgroundSteps }
+    : undefined;
 
   // Domain Elements Extraction
   const actors = new Set<string>();
@@ -118,7 +134,7 @@ export function parseGherkinText(gherkinText: string): ParsedFeature {
 
   const httpCodes = new Set<string>();
 
-  scenarios.forEach(sc => {
+  [...(background ? [background] : []), ...scenarios].forEach(sc => {
     sc.steps.forEach(st => {
       if (st.keyword === 'Given') {
         fixtures.push(st.text);
@@ -193,6 +209,7 @@ export function parseGherkinText(gherkinText: string): ParsedFeature {
     descriptionLines,
     tags: featureTags,
     scenarios,
+    ...(background ? { background } : {}),
     domainAnalysis: {
       actors: Array.from(actors),
       commands,

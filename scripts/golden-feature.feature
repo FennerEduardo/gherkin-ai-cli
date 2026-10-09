@@ -3,6 +3,9 @@ Feature: Payment Processing
   I want to pay my order
   So that the order is confirmed
 
+  Background:
+    Given the payment gateway is online
+
   Scenario: Successful card payment
     Given an order with amount 100
     When the customer pays with a valid card
