@@ -12,6 +12,8 @@ export interface ScenarioModel {
   name: string;
   steps: StepModel[];
   tags: string[];
+  /** 1-based line of the Scenario keyword in the source file, when parsed from Gherkin. */
+  line?: number;
 }
 
 export interface DomainField {

@@ -76,3 +76,33 @@ describe('semantic repository graph', () => {
     expect(symbolVariants('place_order')).toEqual(expect.arrayContaining(['PlaceOrder', 'placeOrder', 'place_order', 'place-order']));
   });
 });
+
+describe('explicit trace annotations', () => {
+  let tmp: string;
+  beforeAll(() => {
+    tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ghk-trace-'));
+    fs.mkdirSync(path.join(tmp, 'features'));
+    fs.mkdirSync(path.join(tmp, 'src'));
+    fs.writeFileSync(path.join(tmp, 'features', 'billing.feature'), [
+      'Feature: Billing',
+      '',
+      '  @trace:InvoiceIssuer',
+      '  Scenario: Issue invoice',
+      '    When the clerk issues the invoice',
+      '    Then the invoice is issued',
+      ''
+    ].join('\n'));
+    // Neither file mentions a symbol from the step text; only the annotations link them.
+    fs.writeFileSync(path.join(tmp, 'src', 'issuer.ts'), 'export class InvoiceIssuer {}\n');
+    fs.writeFileSync(path.join(tmp, 'src', 'renamed.py'), '# ghk:implements InvoiceIssuer\nclass Whatever: pass\n');
+  });
+  afterAll(() => fs.rmSync(tmp, { recursive: true, force: true }));
+
+  it('links code to scenarios by @trace tags and ghk:implements comments, with the scenario line', () => {
+    const graph = buildRepositoryGraph(tmp);
+    const scenario = graph.nodes.find(n => n.kind === 'scenario')!;
+    expect(scenario.path).toBe('features/billing.feature:4');
+    const linked = graph.edges.filter(e => e.to === scenario.id).map(e => e.from).sort();
+    expect(linked).toEqual(expect.arrayContaining(['file:src/issuer.ts', 'file:src/renamed.py']));
+  });
+});

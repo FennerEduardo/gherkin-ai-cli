@@ -124,7 +124,7 @@ export function parseGherkinText(gherkinText: string): ParsedFeature {
         }
       } else if (child.scenario) {
         const scenarioTags = [...inheritedTags, ...child.scenario.tags.map(t => t.name)];
-        scenarios.push({ name: child.scenario.name, tags: scenarioTags, steps: convertSteps(child.scenario.steps, scenarioTags) });
+        scenarios.push({ name: child.scenario.name, tags: scenarioTags, steps: convertSteps(child.scenario.steps, scenarioTags), line: child.scenario.location?.line });
       } else if (child.rule) {
         visit(child.rule.children as readonly Child[], [...inheritedTags, ...child.rule.tags.map(t => t.name)]);
       }

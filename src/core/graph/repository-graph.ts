@@ -60,6 +60,8 @@ const SOURCE_EXTENSIONS = new Set([
   '.rs', '.dart', '.graphql', '.proto', '.yaml', '.yml', '.json', '.prisma', '.sql'
 ]);
 const MAX_FILE_BYTES = 512 * 1024;
+/** `ghk:implements <Symbol>` in a comment of any language. */
+const IMPLEMENTS_ANNOTATION = /ghk:implements\s+([A-Za-z_][A-Za-z0-9_.:-]*)/g;
 const TEST_PATH = /(^|\/)(tests?|spec|specs|__tests__|integration_test)\/|\.(test|spec)\.[a-z]+$|_test\.(go|exs|py|dart)$|_spec\.rb$|(^|\/)test_[^/]+\.py$|Tests?\.(java|kt|cs)$/i;
 
 export function isTestPath(relPath: string): boolean {
@@ -162,8 +164,13 @@ export function buildRepositoryGraph(projectDir: string, options: GraphOptions =
       if (endpoint.operationId) registerSymbol(id, endpoint.operationId);
     }
     for (const scenario of ir.scenarios) {
-      const id = addNode({ id: `scenario:${rel}#${scenario.name}`, kind: 'scenario', label: scenario.name });
+      const id = addNode({ id: `scenario:${rel}#${scenario.name}`, kind: 'scenario', label: scenario.name, path: scenario.source?.line ? `${rel}:${scenario.source.line}` : undefined });
       addEdge(featureId, id, 'declares');
+      // @trace:<Symbol> links the scenario to code by an explicit name that survives renames of the step text.
+      for (const tag of scenario.tags) {
+        const traced = /^@trace:(.+)$/.exec(tag)?.[1];
+        if (traced) registerSymbol(id, traced);
+      }
       for (const command of scenario.commands) {
         const commandId = commandIds.get(command);
         if (commandId) addEdge(id, commandId, 'executes');
@@ -190,6 +197,10 @@ export function buildRepositoryGraph(projectDir: string, options: GraphOptions =
       const matched = new Set<string>();
       for (const match of content.matchAll(pattern)) {
         for (const id of symbols.get(match[1]) ?? []) matched.add(id);
+      }
+      // Explicit annotations: `// ghk:implements PlaceOrder` or `# ghk:implements PlaceOrder`.
+      for (const match of content.matchAll(IMPLEMENTS_ANNOTATION)) {
+        for (const variant of symbolVariants(match[1])) for (const id of symbols.get(variant) ?? []) matched.add(id);
       }
       if (matched.size === 0) continue;
       const test = isTestPath(rel);

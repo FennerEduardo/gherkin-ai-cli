@@ -954,7 +954,7 @@ function enrichScenarios(
       expectations: sc.steps.filter(s => s.keyword === 'Then').map(s => s.text),
       coveredInvariants: [],
       missingPaths: ESSENTIAL_CATEGORIES.filter(c => !categories.includes(c)),
-      source: { file: sourceFile, line: 0 },
+      source: { file: sourceFile, line: sc.line ?? 0 },
       confidence: 1.0,
       inferenceSource: 'deterministic' as const,
     };
