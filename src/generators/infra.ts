@@ -3,7 +3,7 @@
    ========================================================================== */
 
 import { GherkinAIConfig } from '../core/config';
-import { resolveToolchain } from './toolchains';
+import { resolveAppRuntimeEnv, resolveToolchain } from './toolchains';
 
 export interface StackDockerDetails {
   image: string;
@@ -29,6 +29,17 @@ export function generateInfra(config: GherkinAIConfig): { dockerComposeYaml: str
       POSTGRES_USER: \${POSTGRES_USER:-dev_user}
       POSTGRES_PASSWORD: \${POSTGRES_PASSWORD:-dev_password}`;
   let dbPort = '5432:5432';
+
+  const runtime = resolveAppRuntimeEnv(config);
+  const dbName = `${config.projectName}_db`;
+  // The runtime kernel reads DATABASE_URL and AMQP_URL in every stack.
+  const databaseUrl = (host: string) =>
+    db.includes('mongo') ? `mongodb://dev_user:dev_password@${host}:27017/${dbName}?authSource=admin` :
+    db.includes('mysql') || db.includes('mariadb') ? `mysql://dev_user:dev_password@${host}:3306/${dbName}` :
+    `postgresql://dev_user:dev_password@${host}:5432/${dbName}`;
+  // RabbitMQ only lets `guest` in from localhost, so compose creates a dev user.
+  const amqpUrl = (host: string) => `amqp://dev_user:dev_password@${host}:5672`;
+  const hasBroker = !['none', 'native-events'].includes(messaging);
 
   if (db.includes('mysql') || db.includes('mariadb')) {
     dbImage = 'mysql:8.0';
@@ -57,12 +68,14 @@ services:
       - .:/app
     working_dir: /app
     environment:
-      - ENVIRONMENT=development
-      - DATABASE_URL=\${DATABASE_URL:-${db}://dev_user:dev_password@${db}:5432/${config.projectName}_db}
+${Object.entries(runtime.vars).map(([k, v]) => `      - ${k}=${v}`).join('\n')}
+      - DATABASE_URL=\${DATABASE_URL:-${databaseUrl(db)}}${messaging === 'rabbitmq' ? `
+      - AMQP_URL=\${AMQP_URL:-${amqpUrl(messaging)}}` : ''}
     ports:
-      - "8000:8000"
+      - "${runtime.port}:${runtime.port}"
     depends_on:
-      - ${db}
+      - ${db}${hasBroker ? `
+      - ${messaging}` : ''}
 
   # Database Service (${db})
   ${db}:
@@ -75,12 +88,15 @@ services:
     volumes:
       - db_data:${db.includes('postgres') ? '/var/lib/postgresql/data' : (db.includes('mongo') ? '/data/db' : '/var/lib/mysql')}
 
-  ${['none', 'native-events'].includes(messaging) ? '' : `
+  ${!hasBroker ? '' : `
   # Message Broker
   ${messaging}:
-    image: ${messaging === 'sqs' ? 'localstack/localstack' : (messaging === 'kafka' ? 'confluentinc/cp-kafka' : 'rabbitmq:3-management-alpine')}
+    image: ${messaging === 'sqs' ? 'localstack/localstack' : (messaging === 'kafka' ? 'confluentinc/cp-kafka' : 'rabbitmq:4-management-alpine')}
     container_name: ${config.projectName}-mq
-    restart: always
+    restart: always${messaging === 'rabbitmq' ? `
+    environment:
+      RABBITMQ_DEFAULT_USER: \${RABBITMQ_DEFAULT_USER:-dev_user}
+      RABBITMQ_DEFAULT_PASS: \${RABBITMQ_DEFAULT_PASS:-dev_password}` : ''}
     ports:
       - "${messaging === 'sqs' ? '4566:4566' : (messaging === 'kafka' ? '9092:9092' : '5672:5672')}"
       ${messaging === 'rabbitmq' ? '- "15672:15672"' : ''}
@@ -103,7 +119,7 @@ frameworkVersion: '3'
 
 provider:
   name: aws
-  runtime: nodejs18.x
+  runtime: nodejs22.x
   region: us-east-1
   memorySize: 512
   timeout: 10
@@ -126,11 +142,11 @@ functions:
 `;
 
   const envExample = `# Environment Variables for ${config.projectName}
-${config.stack.language === 'csharp' ? 'ASPNETCORE_ENVIRONMENT=Development' : 'NODE_ENV=development'}
-PORT=3000
+${Object.entries(runtime.vars).map(([k, v]) => `${k}=${v}`).join('\n')}
 
-# Database Connection
-DATABASE_URL=${db}://dev_user:dev_password@localhost:5432/${config.projectName}_db?schema=public
+# Database and message broker (read by the runtime kernel)
+DATABASE_URL=${databaseUrl('localhost')}
+AMQP_URL=${amqpUrl('localhost')}${messaging === 'kafka' ? '\nKAFKA_BROKERS=localhost:9092' : ''}
 
 # Security & Authentication
 JWT_SECRET=<YOUR_SUPER_SECRET_JWT_KEY_MIN_32_CHARS>

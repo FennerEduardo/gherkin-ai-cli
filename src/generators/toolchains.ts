@@ -119,6 +119,34 @@ export const TOOLCHAINS: Record<string, Toolchain> = {
   }
 };
 
+export interface AppRuntimeEnv {
+  /** Port the started application listens on. */
+  port: number;
+  /** Framework variables for local development (.env.example). */
+  vars: Record<string, string>;
+}
+
+/** How each backend is configured when run locally; DATABASE_URL / AMQP_URL are added for every stack. */
+export const APP_RUNTIME_ENV: Record<string, AppRuntimeEnv> = {
+  node: { port: 3000, vars: { NODE_ENV: 'development', PORT: '3000' } },
+  'csharp/dotnet': { port: 8080, vars: { ASPNETCORE_ENVIRONMENT: 'Development', ASPNETCORE_URLS: 'http://0.0.0.0:8080' } },
+  'java/spring': { port: 8080, vars: { SPRING_PROFILES_ACTIVE: 'dev', SERVER_PORT: '8080' } },
+  'kotlin/spring': { port: 8080, vars: { SPRING_PROFILES_ACTIVE: 'dev', SERVER_PORT: '8080' } },
+  'python/fastapi': { port: 8000, vars: { APP_ENV: 'development' } },
+  'python/django': { port: 8000, vars: { APP_ENV: 'development', DJANGO_DEBUG: 'true' } },
+  'go/chi': { port: 8080, vars: { APP_ENV: 'development', PORT: '8080' } },
+  'php/laravel': { port: 8000, vars: { APP_ENV: 'local', APP_DEBUG: 'true' } },
+  'ruby/rails': { port: 3000, vars: { RAILS_ENV: 'development', PORT: '3000' } },
+  'elixir/phoenix': { port: 4000, vars: { MIX_ENV: 'dev', PORT: '4000' } },
+  'rust/axum': { port: 3000, vars: { RUST_LOG: 'info', PORT: '3000' } }
+};
+
+export function resolveAppRuntimeEnv(config: Pick<GherkinAIConfig, 'stack'>): AppRuntimeEnv {
+  const id = getStackSupport(config).id;
+  if (id.startsWith('typescript/') || id.startsWith('frontend/')) return APP_RUNTIME_ENV.node;
+  return APP_RUNTIME_ENV[id] ?? APP_RUNTIME_ENV.node;
+}
+
 /** Toolchain for a project config (NestJS / Express variants share the Node toolchain). */
 export function resolveToolchain(config: Pick<GherkinAIConfig, 'stack'>): Toolchain | undefined {
   const id = getStackSupport(config).id;

@@ -346,3 +346,36 @@ Feature: Customer Management
     });
   });
 });
+
+describe('local environment per stack', () => {
+  const base = (language: string, framework: string, messaging = 'rabbitmq') => ({
+    projectName: 'shop', architecture: 'hexagonal', outputDir: './',
+    stack: { language, framework, orm: 'none', database: 'postgresql', messaging },
+    rules: {}
+  }) as any;
+
+  it('gives Spring its own variables, port and the kernel URLs', () => {
+    const infra = generateInfra(base('java', 'spring'));
+    expect(infra.envExample).toContain('SPRING_PROFILES_ACTIVE=dev');
+    expect(infra.envExample).toContain('SERVER_PORT=8080');
+    expect(infra.envExample).not.toContain('NODE_ENV');
+    expect(infra.envExample).toContain('DATABASE_URL=postgresql://dev_user:dev_password@localhost:5432/shop_db');
+    expect(infra.envExample).toContain('AMQP_URL=amqp://dev_user:dev_password@localhost:5672');
+    expect(infra.dockerComposeYaml).toContain('"8080:8080"');
+    expect(infra.dockerComposeYaml).toContain('AMQP_URL=${AMQP_URL:-amqp://dev_user:dev_password@rabbitmq:5672}');
+    expect(infra.dockerComposeYaml).toContain('RABBITMQ_DEFAULT_USER');
+  });
+
+  it('keeps Node defaults and targets a supported Lambda runtime', () => {
+    const infra = generateInfra(base('typescript', 'nestjs'));
+    expect(infra.envExample).toContain('NODE_ENV=development');
+    expect(infra.dockerComposeYaml).toContain('"3000:3000"');
+    expect(infra.serverlessYml).toContain('runtime: nodejs22.x');
+  });
+
+  it('uses the .NET variables for C#', () => {
+    const infra = generateInfra(base('csharp', 'dotnet'));
+    expect(infra.envExample).toContain('ASPNETCORE_ENVIRONMENT=Development');
+    expect(infra.envExample).toContain('AMQP_URL=');
+  });
+});
