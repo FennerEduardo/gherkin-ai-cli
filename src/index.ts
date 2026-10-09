@@ -151,6 +151,7 @@ program
   .option('--docker', "Run the tests in a disposable container with the stack's toolchain image (no network, CPU/memory limits, read-only root)")
   .option('--docker-network <mode>', 'Docker network for --docker: none (default) or bridge when tests must download dependencies')
   .option('--isolated', 'Generate docker-compose on the fly to spin up isolated DB/Brokers (Testcontainers mode)')
+  .option('--services', 'Run the runtime integration tests in the toolchain container against PostgreSQL 17 and RabbitMQ 4 (implies --docker)')
   .option('--max-retries <number>', 'Maximum auto-fix retries (default: 3)', '3')
   .option('-c, --command <cmd>', 'Custom test execution command')
   .option('--allow-unattended-writes', 'Allow --apply in CI (otherwise refused; see policy.allowUnattendedWrites)')

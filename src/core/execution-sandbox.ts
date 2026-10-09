@@ -28,6 +28,8 @@ export interface SandboxExecutionOptions {
   dockerImage?: string;
   limits?: ContainerLimits;
   timeoutMs?: number;
+  /** Variables for the test container (e.g. DATABASE_URL / AMQP_URL from `verify --services`). */
+  env?: Record<string, string>;
 }
 
 export const DEFAULT_CONTAINER_LIMITS: Required<ContainerLimits> = { network: 'none', memory: '2g', cpus: '2', pidsLimit: 512 };
@@ -39,7 +41,7 @@ export const DEFAULT_CONTAINER_LIMITS: Required<ContainerLimits> = { network: 'n
  * builds can write their outputs). The command runs through `sh -c` inside the container,
  * never through a host shell.
  */
-export function dockerRunArgs(cwd: string, image: string, command: string, limits: ContainerLimits = {}): string[] {
+export function dockerRunArgs(cwd: string, image: string, command: string, limits: ContainerLimits = {}, env: Record<string, string> = {}): string[] {
   // A limit that is present but undefined (e.g. an unset config key) keeps its default, never "--network undefined".
   const set = Object.fromEntries(Object.entries(limits).filter(([, v]) => v !== undefined && v !== null && v !== ''));
   const l: Required<ContainerLimits> = { ...DEFAULT_CONTAINER_LIMITS, ...set };
@@ -55,6 +57,7 @@ export function dockerRunArgs(cwd: string, image: string, command: string, limit
     '--tmpfs', '/tmp:rw,exec,size=1g',
     '-e', 'HOME=/tmp',
     '-e', 'CI=true',
+    ...Object.entries(env).flatMap(([k, v]) => ['-e', `${k}=${v}`]),
     '-v', `${cwd}:/work`,
     '-w', '/work',
     image,
@@ -81,7 +84,7 @@ export function executeSandbox(options: SandboxExecutionOptions = {}): SandboxRe
 
   if (options.docker) {
     const image = options.dockerImage || 'node:24-bookworm';
-    const args = dockerRunArgs(cwd, image, commandToRun, options.limits);
+    const args = dockerRunArgs(cwd, image, commandToRun, options.limits, options.env);
     const res = spawnSync('docker', args, { cwd, timeout, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
     return {
       success: res.status === 0,
@@ -99,7 +102,7 @@ export function executeSandbox(options: SandboxExecutionOptions = {}): SandboxRe
       timeout,
       encoding: 'utf8',
       stdio: ['pipe', 'pipe', 'pipe'],
-      env: { ...process.env, CI: 'true', FORCE_COLOR: '0' }
+      env: { ...process.env, ...(options.env ?? {}), CI: 'true', FORCE_COLOR: '0' }
     });
 
     return {

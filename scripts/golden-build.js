@@ -22,7 +22,8 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { STACKS } = require('./golden-stacks');
-const { startServices } = require('./golden-services');
+// The same PostgreSQL / RabbitMQ harness as `ghk verify --services` (src/core/services.ts, built into dist/).
+const { startServices } = require('../dist/core/services');
 
 const ROOT = path.resolve(__dirname, '..');
 const CLI = path.join(ROOT, 'bin', 'gherkin-ai.js');
@@ -71,7 +72,7 @@ function dockerPath(p) {
 
 /**
  * Builds and tests the project in the toolchain image. Stacks with `integration` commands
- * also run the runtime integration tests against PostgreSQL and RabbitMQ (golden-services.js).
+ * also run the runtime integration tests against PostgreSQL and RabbitMQ (src/core/services.ts).
  */
 function buildInDocker(dir, def, name) {
   const volumes = (def.caches || []).flatMap(([vol, target]) => ['-v', `ghk-cache-${vol}:${target}`]);

@@ -41,6 +41,6 @@ gherkin-ai is a Node.js (TypeScript) CLI. It is deterministic by default: only `
 1. generates a sample project from `scripts/golden-feature.feature`;
 2. builds it in the stack's official image;
 3. runs its unit, contract and BDD tests;
-4. for backends, runs the runtime integration suite against PostgreSQL 17 and RabbitMQ 4 containers (`scripts/golden-services.js`).
+4. for backends, runs the runtime integration suite against PostgreSQL 17 and RabbitMQ 4 containers (`src/core/services.ts`, shared with `ghk verify --services`).
 
 CI runs one job per stack. See [EVALUATION_REPORT.md](EVALUATION_REPORT.md) for the evidence, and [RUNTIME-KERNEL.md](RUNTIME-KERNEL.md) for the runtime contract.

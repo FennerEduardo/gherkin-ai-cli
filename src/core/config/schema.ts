@@ -143,7 +143,17 @@ const sandboxSchema = z.object({
   /** Maximum processes in the container (docker --pids-limit). Default 512. */
   pidsLimit: z.number().int().positive().optional(),
   /** Overrides the toolchain image for the stack. */
-  image: z.string().optional()
+  image: z.string().optional(),
+  /**
+   * Extra containers for `verify --services`, next to PostgreSQL and RabbitMQ (e.g. MinIO, Mailpit).
+   * Each is reachable from the tests by its `name`; `env` adds variables to the test container.
+   */
+  services: z.array(z.object({
+    name: z.string().regex(/^[a-z][a-z0-9-]*$/),
+    image: z.string(),
+    environment: z.record(z.string()).optional(),
+    env: z.record(z.string()).optional()
+  })).optional()
 });
 
 const infrastructureSchema = z.object({

@@ -4,7 +4,8 @@
 
 import { assertAgentWritesAllowed, reportAgentWrite, writeAgentFile } from '../core/governance/write-guard';
 import { AgentFirewall } from '../core/governance/agent-firewall';
-import { ExitCode } from '../core/errors';
+import { ExitCode, GhkError } from '../core/errors';
+import { RunningServices, startServices } from '../core/services';
 import chalk from 'chalk';
 import { DEFAULT_CONTAINER_LIMITS, executeSandbox, SandboxExecutionOptions } from '../core/execution-sandbox';
 import { resolveToolchain } from '../generators/toolchains';
@@ -19,6 +20,8 @@ export interface VerifyCommandOptions {
   /** Docker network for --docker (default "none"). */
   dockerNetwork?: string;
   isolated?: boolean;
+  /** Run the runtime integration suite against PostgreSQL and RabbitMQ (implies --docker). */
+  services?: boolean;
   maxRetries?: string | number;
   command?: string;
   allowUnattendedWrites?: boolean;
@@ -34,11 +37,20 @@ export async function handleVerifyCommand(options: VerifyCommandOptions = {}): P
     assertAgentWritesAllowed(config, { command: 'verify', allowUnattendedWrites: options.allowUnattendedWrites, forceBranch: options.forceBranch });
   }
   const firewall = AgentFirewall.forWorkspace(process.cwd(), config);
+  // --services runs the runtime integration suite in the toolchain container against real PostgreSQL / RabbitMQ.
+  if (options.services) options.docker = true;
   // In a container, default to the stack's verified toolchain image and test commands.
   const toolchain = options.docker ? resolveToolchain(config) : undefined;
+  if (options.services && !toolchain?.integration?.length) {
+    throw new GhkError(`The ${config.stack.language}/${config.stack.framework} stack has no runtime integration suite.`, ExitCode.USAGE, {
+      hint: 'verify --services runs the integration tests of the generated runtime kernel (backends only).'
+    });
+  }
   const sandboxOpts: SandboxExecutionOptions = {
     command: options.command,
-    configCommand: config.testCommand ?? (toolchain ? toolchain.test.join(' && ') : undefined),
+    configCommand: options.services
+      ? [...(toolchain?.build ?? []), ...(toolchain?.integration ?? [])].join(' && ')
+      : config.testCommand ?? (toolchain ? toolchain.test.join(' && ') : undefined),
     docker: options.docker || false,
     dockerImage: config.sandbox?.image ?? toolchain?.image,
     limits: {
@@ -46,8 +58,18 @@ export async function handleVerifyCommand(options: VerifyCommandOptions = {}): P
       memory: config.sandbox?.memory,
       cpus: config.sandbox?.cpus,
       pidsLimit: config.sandbox?.pidsLimit
-    }
+    },
+    env: toolchain?.env
   };
+  let services: RunningServices | undefined;
+  if (options.services) {
+    console.log(chalk.cyan(`   Starting PostgreSQL and RabbitMQ${config.sandbox?.services?.length ? ` (+ ${config.sandbox.services.map(s => s.name).join(', ')})` : ''}...`));
+    services = startServices(config.projectName, config.sandbox?.services);
+    sandboxOpts.env = { ...(sandboxOpts.env ?? {}), ...services.env };
+    // The services network also gives the build access to package registries.
+    sandboxOpts.limits = { ...sandboxOpts.limits, network: services.network };
+    sandboxOpts.timeoutMs = 30 * 60 * 1000;
+  }
   if (options.docker) {
     const limits = { ...DEFAULT_CONTAINER_LIMITS, ...Object.fromEntries(Object.entries(sandboxOpts.limits ?? {}).filter(([, v]) => v !== undefined)) };
     console.log(chalk.gray(`   Container: ${sandboxOpts.dockerImage} (network=${limits.network}, memory=${limits.memory}, cpus=${limits.cpus}, read-only root)\n`));
@@ -334,6 +356,10 @@ services:
     process.exitCode = ExitCode.GATE_FAILED;
   }
   } finally {
+    if (services) {
+      services.stop();
+      console.log(chalk.gray('   PostgreSQL / RabbitMQ stopped.'));
+    }
     if (isIsolatedActive) {
       console.log(chalk.cyan(`\n🧹 Cleaning up Isolated Testcontainers stack...`));
       try {
