@@ -39,6 +39,13 @@ export interface LintOptions {
   disabledRules?: string[];
 }
 
+/** Step text with quoted values ("x", “x”, «x», `x`, 'x') blanked out. Apostrophes inside words are kept. */
+export function withoutQuotedText(text: string): string {
+  return text
+    .replace(/"[^"]*"|“[^”]*”|«[^»]*»|`[^`]*`/g, '""')
+    .replace(/(^|[^\p{L}\p{N}])'[^']*'(?=[^\p{L}\p{N}]|$)/gu, '$1\'\'');
+}
+
 // ---------------------------------------------------------------------------
 // Lint Rule Registry
 // ---------------------------------------------------------------------------
@@ -237,31 +244,26 @@ const LINT_RULES: LintRule[] = [
     severity: 'info',
     check: (parsed) => {
       const diags: LintDiagnostic[] = [];
-      // Check for technical terms that leak into business specs
-      const techTerms = [
-        /\b(database|tabla|table|column|columna|index|índice|foreign key|clave foránea)\b/i,
-        /\b(sql|nosql|mongodb|redis|kafka|rabbitmq)\b/i,
-        /\b(api|endpoint|http|rest|graphql|grpc|websocket)\b/i,
-        /\b(repository|controller|service|middleware|handler|decorator)\b/i,
-        /\b(json|xml|yaml|csv|protobuf)\b/i,
-        /\b(docker|kubernetes|aws|azure|gcp)\b/i,
-      ];
+      // Acronyms are defined when the description (or a "Glossary:" section in it) mentions them.
+      const defined = new Set(['HTTP', 'API', 'ID', 'UUID', 'URL', 'OK', 'COP', 'USD', 'EUR', 'JWT',
+        ...(parsed.descriptionLines ?? []).join(' ').match(/\b[A-Z][A-Z0-9]+\b/g) ?? []]);
+      const reported = new Set<string>();
 
-      // This rule is now GHK007 but we still detect business term issues
-      // Check for undefined acronyms
       for (const sc of parsed.scenarios) {
         for (const step of sc.steps) {
-          const acronyms = step.text.match(/\b[A-Z]{2,}\b/g);
+          // Quoted text is example data ("MATH-101"), not vocabulary.
+          const acronyms = withoutQuotedText(step.text).match(/\b[A-Z]{2,}\b/g);
           if (acronyms) {
             for (const acr of acronyms) {
-              if (!['HTTP', 'API', 'ID', 'UUID', 'URL', 'OK', 'COP', 'USD', 'EUR', 'JWT'].includes(acr)) {
+              if (!defined.has(acr) && !reported.has(acr)) {
+                reported.add(acr);
                 diags.push({
                   ruleId: 'GHK006',
                   severity: 'info',
                   message: `Acronym "${acr}" used in "${sc.name}" — ensure it's defined in a glossary.`,
                   scenario: sc.name,
                   step: step.text,
-                  suggestion: 'Define all domain-specific acronyms in the feature description.',
+                  suggestion: `Define "${acr}" in the feature description (e.g. a "Glossary:" line), or quote it if it is example data.`,
                 });
               }
             }
@@ -292,8 +294,9 @@ const LINT_RULES: LintRule[] = [
 
       for (const sc of parsed.scenarios) {
         for (const step of sc.steps) {
+          const text = withoutQuotedText(step.text);
           for (const leak of techLeaks) {
-            if (leak.pattern.test(step.text)) {
+            if (leak.pattern.test(text)) {
               diags.push({
                 ruleId: 'GHK007',
                 severity: 'warning',

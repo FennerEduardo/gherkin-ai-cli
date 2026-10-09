@@ -62,12 +62,23 @@ export async function handleLintCommand(options: LintCommandOptions = {}): Promi
   console.log(chalk.bold.cyan(`\n🔍 Linting ${featureFiles.length} specification(s)...\n`));
 
   let totalScore = 0;
+  let evaluated = 0;
   let allPassed = true;
   const allResults: any[] = [];
 
+  // A file that cannot be read or parsed fails the run; it is not left out silently.
+  const unreadable = (file: string, message: string) => {
+    allPassed = false;
+    if (options.json) {
+      allResults.push({ file, featureName: '', diagnostics: [{ ruleId: 'GHK000', severity: 'error', message }], score: 0, passed: false });
+    } else {
+      console.log(chalk.red(`  ✖ ${message}`));
+    }
+  };
+
   for (const file of featureFiles) {
     if (!fs.existsSync(file)) {
-      console.log(chalk.red(`  ✖ File not found: ${file}`));
+      unreadable(file, `File not found: ${file}`);
       continue;
     }
 
@@ -76,7 +87,7 @@ export async function handleLintCommand(options: LintCommandOptions = {}): Promi
     try {
       parsed = parseGherkinText(content);
     } catch (e: any) {
-      console.log(chalk.red(`  ✖ Parse error in ${path.basename(file)}: ${e.message}`));
+      unreadable(file, `Parse error in ${path.basename(file)}: ${e.message}`);
       continue;
     }
 
@@ -86,6 +97,7 @@ export async function handleLintCommand(options: LintCommandOptions = {}): Promi
     });
 
     totalScore += result.score;
+    evaluated++;
     if (!result.passed) allPassed = false;
 
     if (options.json) {
@@ -131,11 +143,12 @@ export async function handleLintCommand(options: LintCommandOptions = {}): Promi
 
   if (options.json) {
     emitJson(allResults);
+    if (!allPassed) process.exitCode = ExitCode.GATE_FAILED;
     return;
   }
 
-  // Summary
-  const avgScore = featureFiles.length > 0 ? Math.round(totalScore / featureFiles.length) : 0;
+  // Summary (averaged over the files that were actually linted)
+  const avgScore = evaluated > 0 ? Math.round(totalScore / evaluated) : 0;
   const summaryColor = avgScore >= 80 ? chalk.green : avgScore >= 60 ? chalk.yellow : chalk.red;
 
   console.log(chalk.bold('─'.repeat(60)));
