@@ -100,8 +100,10 @@ const LINT_RULES: LintRule[] = [
         /\b(as a|as an|como un|como una)\b/i,
         /\b(the user|the admin|the customer|the system|el usuario|el administrador|el cliente|el sistema)\b/i,
       ];
+      // A user-story line in the description: "As a buyer", "Como cliente" (Spanish often omits the article).
+      const storyActor = /^\s*(as an?|como)\s+\S/i;
       const hasActor = parsed.descriptionLines.some(l =>
-        actorPatterns.some(p => p.test(l))
+        storyActor.test(l) || actorPatterns.some(p => p.test(l))
       ) || parsed.scenarios.some(sc =>
         sc.steps.some(s => actorPatterns.some(p => p.test(s.text)))
       );

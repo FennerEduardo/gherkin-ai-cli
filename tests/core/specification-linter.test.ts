@@ -124,6 +124,18 @@ describe('Specification Linter', () => {
       expect(diag).toBeDefined();
     });
 
+    it('accepts a Spanish user-story actor without an article (GHK002)', () => {
+      const es = '# language: es\nCaracterística: Pedidos\n  Como cliente de la tienda\n  Quiero crear un pedido\n\n  Escenario: Crear\n    Cuando se crea un pedido\n    Entonces el pedido queda registrado\n';
+      const result = lintSpecification(parseGherkinText(es));
+      expect(result.diagnostics.find(d => d.ruleId === 'GHK002')).toBeUndefined();
+    });
+
+    it('does not treat "como" inside a step as an actor (GHK002)', () => {
+      const es = '# language: es\nCaracterística: Pedidos\n\n  Escenario: Crear\n    Cuando se registra como pagado\n    Entonces el pedido queda registrado\n';
+      const result = lintSpecification(parseGherkinText(es));
+      expect(result.diagnostics.find(d => d.ruleId === 'GHK002')).toBeDefined();
+    });
+
     it('should detect missing outcomes (GHK003)', () => {
       const parsed = parseGherkinText(NO_OUTCOME_FEATURE);
       const result = lintSpecification(parsed);

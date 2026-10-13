@@ -53,6 +53,7 @@ Generated backends become services you can keep, from the 3.0.0 field reviews. T
   - **Cleanup:** `ghk upgrade --prune` removes these files from existing projects when they are unedited.
 
 ### Fixed
+- `lint` GHK002 now accepts a user-story actor line without an article, such as "Como cliente de la tienda".
 - The Spring OpenTelemetry bean no longer fails when a global OpenTelemetry is already registered (Java agent or tests).
 - Shared domain types no longer collide when a service has several features: Kotlin, C# and Python `DomainValidationException`, Go domain package, Rust domain module.
 
