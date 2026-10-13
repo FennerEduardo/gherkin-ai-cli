@@ -12,9 +12,9 @@ Every generated backend includes a small, framework-neutral runtime next to its 
 | Laravel | `app/Runtime/` | PDO, php-amqplib, OpenTelemetry PHP | `phpunit --group integration` |
 | Rails | `app/runtime/` | pg, bunny, opentelemetry-sdk | `rspec --tag integration` |
 | Phoenix | `lib/<app>/runtime/` | Postgrex, AMQP, opentelemetry | `mix test --only integration` |
-| Axum | `src/runtime/` | sqlx, lapin, opentelemetry-rust | `cargo test --features integration --test runtime_integration` |
+| Axum | `src/runtime/` | sqlx, lapin, opentelemetry-rust | `cargo test --features integration --test runtime_integration --test http_integration` |
 
-The integration tests read `DATABASE_URL` (`postgres://user:pass@host:5432/db`) and `AMQP_URL` (`amqp://user:pass@host:5672`). The golden builds start `postgres:17-alpine` and `rabbitmq:4-alpine` for them. To run them locally:
+`ghk verify --services` starts both containers, runs the stack's integration command in its toolchain image and removes everything. The integration tests read `DATABASE_URL` (`postgres://user:pass@host:5432/db`) and `AMQP_URL` (`amqp://user:pass@host:5672`). The golden builds start `postgres:17-alpine` and `rabbitmq:4-alpine` for them. To run them locally:
 
 ```bash
 docker run -d --name ghk-pg -e POSTGRES_PASSWORD=ghk -p 5432:5432 postgres:17-alpine
@@ -45,7 +45,7 @@ Every read and write is filtered by `tenant_id`, which is a mandatory argument o
 
 ## Components and guarantees
 
-1. **Command service** `handle(tenant, aggregateId, command, payload, idempotencyKey?, traceparent?)`. In one transaction it:
+1. **Command service** `handle(tenant, aggregateId, command, payload, idempotencyKey?, traceparent?, aggregateType?)`. It holds every aggregate of the service (one per feature whose domain kernel is generated); `aggregateType` selects one and defaults to the feature generated last. In one transaction it:
    1. claims the idempotency key (`INSERT … ON CONFLICT DO NOTHING`);
    2. loads the aggregate `FOR UPDATE`;
    3. runs the domain command;
@@ -54,8 +54,8 @@ Every read and write is filtered by `tenant_id`, which is a mandatory argument o
    6. stores the response under the key.
 
    A domain error rolls everything back, including the key. A replayed key returns the stored response without running the command again (`status: replayed`).
-2. **Outbox relay** `publishBatch(workerId, limit)` claims rows with `FOR UPDATE SKIP LOCKED` and a 30 s lease. It publishes each one to the topic exchange `<feature>.events` with publisher confirms, `message_id` = outbox id, and the `traceparent` and `tenant_id` headers, then marks it published. A failed publish releases the lease and records the error. After 5 attempts the row is set aside (`failed_at`).
-3. **Inbox consumer** consumes `<feature>.consumer`. It records `message_id` in `ghk_inbox` in the same transaction as the handler, so a redelivered message is acknowledged without running the handler again. A handler error rejects the message without requeue, so RabbitMQ dead-letters it to `<feature>.dlq`.
+2. **Outbox relay** `publishBatch(workerId, limit)` claims rows with `FOR UPDATE SKIP LOCKED` and a 30 s lease. It publishes each one to the topic exchange `<service>.events` (service = `projectName`, shared by every aggregate; routing key = event type) with publisher confirms, `message_id` = outbox id, and the `traceparent` and `tenant_id` headers, then marks it published. A failed publish releases the lease and records the error. After 5 attempts the row is set aside (`failed_at`).
+3. **Inbox consumer** consumes `<service>.consumer`. It records `message_id` in `ghk_inbox` in the same transaction as the handler, so a redelivered message is acknowledged without running the handler again. A handler error rejects the message without requeue, so RabbitMQ dead-letters it to `<service>.dlq`.
 4. **Saga orchestrator** runs ordered steps. It persists progress after each step. When a step fails, it runs the compensations of the completed steps in reverse order and ends `COMPENSATED`; otherwise it ends `COMPLETED`.
 5. **Telemetry.** W3C trace context is propagated from the incoming `traceparent` to:
    - the command span;
@@ -76,3 +76,17 @@ Every read and write is filtered by `tenant_id`, which is a mandatory argument o
 | IT5 | When the third saga step fails, the compensations of steps 2 and 1 run in that order and the saga is persisted as `COMPENSATED`. |
 | IT6 | A message delivered twice is handled once (inbox), and a message whose handler fails ends in the DLQ. |
 | IT7 | With an incoming `traceparent`, the command, publish and consume spans share its trace id. The command span's parent is the incoming span, and the published message carries the trace context. |
+
+## Application layer (wired to the kernel)
+
+Every backend exposes the command service over one HTTP contract:
+
+| Request | Response |
+|---|---|
+| `POST /api/v1/<feature>/{id}/{command}` with a JSON payload | `202` created, `200` replayed (same `Idempotency-Key`), `409` in progress, `422` domain validation error |
+| `Authorization: Bearer <JWT>` (HS256, `JWT_SECRET`) | `401` without a valid token or without the tenant claim (`security.tenantClaim`, default `tenant_id`) |
+| `Idempotency-Key`, `traceparent` (optional) | passed to the command service |
+
+The tenant comes only from the validated token. `X-Tenant-Id` is never read and there is no default tenant. An outbox relay worker publishes the outbox every second when `AMQP_URL` is set (in-process, or `manage.py outbox_relay` / `artisan outbox:relay` / `rails outbox:relay`).
+
+Each backend has unit tests of this contract with a fake command port, and an HTTP integration test against PostgreSQL. It proves that `X-Tenant-Id` alone gets 401, a command writes one outbox row under the token's tenant, and a replay returns 200. The golden builds generate a two-feature service and run both features' tests.

@@ -13,7 +13,7 @@ gherkin-ai turns requirements into executable Gherkin specifications and generat
 - **Govern.** An agent firewall for MCP clients, IDE agents and the CLI's own agent loops. Risk scoring of every change, traceability from requirement to code to tests, and a local audit trail.
 - **Verify.** Spec-to-code convergence, drift detection and sandboxed test runs, with stable exit codes and `--json` for CI.
 
-Rolling it out in a company? Start with [docs/ENTERPRISE.md](docs/ENTERPRISE.md). Upgrading from 2.x? See [docs/MIGRATION-3.0.md](docs/MIGRATION-3.0.md).
+Rolling it out in a company? Start with [docs/ENTERPRISE.md](docs/ENTERPRISE.md). Upgrading? See [docs/MIGRATION-3.1.md](docs/MIGRATION-3.1.md) (from 3.0) and [docs/MIGRATION-3.0.md](docs/MIGRATION-3.0.md) (from 2.x).
 
 ## Installation
 
@@ -115,6 +115,7 @@ With `--json`, stdout carries exactly one JSON document and diagnostics go to st
 - [MCP guide](docs/MCP_GUIDE.md)
 - [Architecture](docs/ARCHITECTURE.md)
 - [Migration to 3.0](docs/MIGRATION-3.0.md)
+- [Migration to 3.1](docs/MIGRATION-3.1.md)
 - [Changelog](CHANGELOG.md)
 
 ## Support and security

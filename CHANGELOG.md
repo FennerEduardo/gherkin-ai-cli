@@ -2,6 +2,53 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [3.1.0] - 2026-10-13
+
+Generated backends become services you can keep, from the 3.0.0 field reviews. The generated output changes: see `docs/MIGRATION-3.1.md`.
+
+### Added
+- **Application layer wired to the runtime kernel (all 12 backends).**
+  - **Contract.** `POST /api/v1/<feature>/{id}/{command}` runs the command through the kernel's `CommandService`: idempotency key, outbox, `traceparent`. It returns 202 created, 200 replayed, 409 in progress, or 422 for a domain error.
+  - **Tenant.** It comes only from a validated HS256 bearer token (`JWT_SECRET`; claim from the new `security.tenantClaim`, default `tenant_id`). `X-Tenant-Id` is never trusted and there is no default tenant: requests without one get 401.
+  - **Outbox relay worker.** It runs in-process for NestJS, Express, Spring, ASP.NET Core, FastAPI, Go, Phoenix and Axum, and as `manage.py outbox_relay`, `artisan outbox:relay` and `rails outbox:relay` elsewhere.
+  - **Spring.** It gets `application.properties` and a `DataSource` built from `DATABASE_URL`.
+  - **Tests.** Each backend has unit tests of the contract with a fake command port, and an HTTP integration test against PostgreSQL.
+- **Multi-feature services.**
+  - **Contracts.** Each feature owns `contracts/<feature>/` (`openapi.json`, `asyncapi.json`, ADR). The root `openapi.json` and `asyncapi.json` are the union of every feature's contracts.
+  - **Kernel registry.** The runtime command service handles every generated aggregate, with a new `aggregateType` request field.
+  - **Service-wide files.** Routes, the NestJS `AppModule`, .NET `Program.cs`, the Python domain package, the Rust domain module, the Prisma schema (one model per feature) and the Behat contexts cover every generated feature.
+  - **Topology.** The RabbitMQ topology is named after the service (`<service>.events`).
+  - **Golden builds** generate and test a two-feature service for every backend.
+- **Protection of implemented code.** `generate` overwrites a file only if its checksum still matches what was generated; otherwise it writes `<file>.ghk-new`.
+  - **New options:** `generation.protect` globs, the `.ghk-implemented` marker, `--force` and `--dry-run`.
+  - **Files without a recorded checksum** are overwritten only if they carry the generated header.
+- **`ghk upgrade --kernel`** refreshes only the runtime kernel: it replaces unedited files and writes `.ghk-new` for edited ones. `--all` covers every project under the current directory; `--dry-run` only reports.
+- **`ghk verify --services`** runs the stack's integration suite in its toolchain container against PostgreSQL 17 and RabbitMQ 4. `sandbox.services` adds extra containers. The golden builds use the same module.
+- **`ghk lint --all` / `ghk converge --all`** check every feature of every project in a monorepo and print one table (exit 4 / 7).
+- **Traceability.** `ghk graph` also follows `@trace:<Symbol>` scenario tags and `ghk:implements <Symbol>` comments; scenarios carry their source line.
+- **`generation.package` / `generation.groupId`** set the JVM package and groupId and the .NET root namespace.
+- **Lint rule GHK015** warns about command or aggregate names with digits, example data, or more than four words.
+- **`ghk implement`** lists the feature's commands, events, endpoints and scenarios, and writes one master prompt per feature.
+
+### Changed
+- **Names come from the domain, not from example data.**
+  - **Command subjects** ignore quoted values, numbers and tables.
+  - **Fields** come from data-table headers, never from values or from verbs and prepositions before a quoted value.
+  - **Prisma** gets one model per aggregate.
+- `lint` and `converge` without `-f` honour the configured `specDir`.
+- Removed the disconnected 3.0 placeholders, and the now-unused `@nestjs/cqrs`, `@nestjs/schedule`, MediatR, MassTransit and EF packages:
+  - **NestJS:** CQRS, outbox, saga and idempotency modules, plus the `X-Tenant-Id` middleware.
+  - **Java:** CQRS, outbox, saga, idempotency and multitenancy classes.
+  - **.NET:** MediatR handlers, the MassTransit saga, the EF outbox and inbox, `HttpHeaderTenantService` and the Testcontainers mock.
+  - **Django:** the ORM outbox.
+  - **Go and Python:** the pattern packages.
+  - **Every backend:** the in-memory HTTP handlers.
+  - **Cleanup:** `ghk upgrade --prune` removes these files from existing projects when they are unedited.
+
+### Fixed
+- The Spring OpenTelemetry bean no longer fails when a global OpenTelemetry is already registered (Java agent or tests).
+- Shared domain types no longer collide when a service has several features: Kotlin, C# and Python `DomainValidationException`, Go domain package, Rust domain module.
+
 ## [3.0.1] - 2026-10-09
 
 Bug-fix release from the 3.0.0 field reviews (an LMS of 7 services and a 9-feature NestJS/Vue project). No change to the generated output contract; `ghk upgrade` is not required.

@@ -256,7 +256,11 @@ Backends also include the **runtime kernel** (PostgreSQL, RabbitMQ, OpenTelemetr
 
 The opt-in AWS CDK app (`infrastructure.awsCdk`) has its own golden build: `npm test` with CDK assertions, then `cdk synth`.
 
-Every generated project shares one behavioral kernel derived from the feature: an aggregate with one method per command, unit tests (initial state, each command records one event and bumps the version, a command without an id is rejected), an HTTP contract test where the stack exposes an API (`POST /api/v1/<feature>/{id}/<command>` → 201), and BDD step definitions bound to the `.feature` file and generated as *pending*. Saga, outbox, idempotency, multitenancy and telemetry infrastructure is generated on top of that kernel.
+Every generated project shares one behavioral kernel derived from the feature: an aggregate with one method per command, unit tests (initial state, each command records one event and bumps the version, a command without an id is rejected), BDD step definitions bound to the `.feature` file and generated as *pending*, and an application layer wired to the runtime kernel: `POST /api/v1/<feature>/{id}/<command>` with a JWT tenant (202 created, 200 replayed, 409 in progress, 422 invalid, 401 without a valid token), plus an outbox relay worker ([RUNTIME-KERNEL.md](RUNTIME-KERNEL.md#application-layer-wired-to-the-kernel)).
+
+**Several features per service.** Each feature owns `contracts/<feature>/`; the root contracts, routes, Prisma schema and the runtime command service cover every generated feature. Regenerating never overwrites implemented code: edited or `generation.protect`ed files get `<file>.ghk-new` instead (`--force`, `--dry-run`). `ghk upgrade --kernel` refreshes only the runtime kernel.
+
+**Tenant isolation.** The tenant comes only from a validated bearer token (`JWT_SECRET`, claim `security.tenantClaim`, default `tenant_id`). `X-Tenant-Id` is never trusted and there is no default tenant.
 
 ### NestJS and Prisma versions
 
@@ -453,7 +457,7 @@ Override the limits in `sandbox.*`.
 
 Its integration suite (IT1–IT7) is excluded from the default test run and runs with the stack's integration command.
 
-**OpenTelemetry.** Spans use each language's official OpenTelemetry SDK and the global tracer provider. Configure the exporter with the standard `OTEL_*` variables. Generated frontends send a `traceparent` header with every API call. If the frontend and the API are served from different origins, add `traceparent` to the API's CORS allowed headers, next to `Content-Type` and `X-Tenant-Id`.
+**OpenTelemetry.** Spans use each language's official OpenTelemetry SDK and the global tracer provider. Configure the exporter with the standard `OTEL_*` variables. Generated frontends send a `traceparent` header with every API call. If the frontend and the API are served from different origins, add `traceparent` to the API's CORS allowed headers, next to `Content-Type` and `Authorization`.
 
 ## 18. Measuring value: A/B benchmark
 
