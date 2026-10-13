@@ -11,6 +11,8 @@ describe('DotNet generators', () => {
     expect(code).toContain('namespace TestNamespace.Infrastructure.Telemetry');
     expect(code).toContain('AddOpenTelemetry');
     expect(code).toContain('AddOtlpExporter');
+    // No EF Core layer is generated since 3.1 (the kernel persists with Npgsql).
+    expect(code).not.toContain('EntityFrameworkCore');
   });
 
   it('wires the minimal API to the runtime kernel with a JWT tenant, without the 3.0 placeholders', () => {
@@ -21,7 +23,7 @@ describe('DotNet generators', () => {
     expect(byName('PaymentEndpoints.cs')).toContain('JwtTenant.TenantFrom(');
     const all = files.map(f => f.content).join('\n');
     expect(all).not.toContain('X-Tenant-Id", out');
-    expect(all).not.toMatch(/MediatR|MassTransit|HttpHeaderTenantService|"default"; \/\/ Fallback/);
+    expect(all).not.toMatch(/MediatR|MassTransit|EntityFrameworkCore|HttpHeaderTenantService|"default"; \/\/ Fallback/);
     expect(files.some(f => /HttpTests\.cs$/.test(f.filename))).toBe(true);
   });
 

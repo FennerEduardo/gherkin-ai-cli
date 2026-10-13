@@ -46,7 +46,7 @@ Generated backends become services you can keep, from the 3.0.0 field reviews. T
 - Removed the disconnected 3.0 placeholders, and the now-unused `@nestjs/cqrs`, `@nestjs/schedule`, MediatR, MassTransit and EF packages:
   - **NestJS:** CQRS, outbox, saga and idempotency modules, plus the `X-Tenant-Id` middleware.
   - **Java:** CQRS, outbox, saga, idempotency and multitenancy classes.
-  - **.NET:** MediatR handlers, the MassTransit saga, the EF outbox and inbox, `HttpHeaderTenantService` and the Testcontainers mock.
+  - **.NET:** MediatR handlers, the MassTransit saga, the EF outbox and inbox, the EF Core OpenTelemetry instrumentation, `HttpHeaderTenantService` and the Testcontainers mock. The kernel persists with Npgsql; `stack.orm: entity-framework-core` now only guides your own code (docs/ENTERPRISE.md).
   - **Django:** the ORM outbox.
   - **Go and Python:** the pattern packages.
   - **Every backend:** the in-memory HTTP handlers.

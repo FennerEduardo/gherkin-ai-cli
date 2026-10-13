@@ -262,6 +262,10 @@ Every generated project shares one behavioral kernel derived from the feature: a
 
 **Tenant isolation.** The tenant comes only from a validated bearer token (`JWT_SECRET`, claim `security.tenantClaim`, default `tenant_id`). `X-Tenant-Id` is never trusted and there is no default tenant.
 
+**`stack.orm` and the runtime kernel.** The kernel talks to the database driver directly (Npgsql, JDBC, pgx, psycopg, …). The aggregate save, idempotency claim and outbox insert commit in one transaction. `stack.orm` shapes what the generator emits where an ORM layer exists, such as the Prisma schema for Node. It also names the persistence library in the generated agent prompts.
+
+For .NET, no EF Core layer is generated since 3.1, so `entity-framework-core` only tells agents to use EF Core in your own code. If an EF write must commit together with a command, give the `DbContext` the kernel's connection and transaction (`UseNpgsql(connection)`, then `Database.UseTransaction(transaction)`).
+
 ### NestJS and Prisma versions
 
 NestJS 11 and Prisma 6 remain the defaults. Projects opt into the newer majors in `stack`:

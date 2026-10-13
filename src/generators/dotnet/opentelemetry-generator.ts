@@ -30,7 +30,6 @@ namespace ${namespace}.Infrastructure.Telemetry
                     tracing
                         .AddAspNetCoreInstrumentation(opts => opts.RecordException = true)
                         .AddHttpClientInstrumentation()
-                        .AddEntityFrameworkCoreInstrumentation()
                         .AddSource(serviceName)
                         .AddOtlpExporter(otlpOptions =>
                         {
