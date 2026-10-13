@@ -30,6 +30,12 @@ describe('planWrites', () => {
     expect(p['a.ts'].target).toBe(path.join(dir, 'out', 'a.ts'));
   });
 
+  it('updates a generated file that git checked out with CRLF line endings (autocrlf)', () => {
+    put('out/a.ts', 'line 1\r\nline 2\r\n');
+    const p = plan([{ filePath: 'a.ts', content: 'v2' }], { inventory: [{ filePath: 'a.ts', checksum: sha256('line 1\nline 2\n') }] });
+    expect(p['a.ts'].action).toBe('update');
+  });
+
   it('keeps an edited file and writes the new version beside it', () => {
     put('out/a.ts', 'v1 + implementation');
     const p = plan([{ filePath: 'a.ts', content: 'v2' }], { inventory: [{ filePath: 'a.ts', checksum: sha256('v1') }] });

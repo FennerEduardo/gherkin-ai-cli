@@ -119,6 +119,17 @@ describe('upgrade analysis', () => {
     expect(findStaleFiles(opts)).toEqual({ removable: ['old-untouched.ts'], kept: ['old-edited.ts', 'old-header-only.ts'] });
     expect(findStaleFiles({ ...opts, prune: true }).removable).toEqual(['old-header-only.ts', 'old-untouched.ts']);
   });
+
+  it('treats a generated file checked out with CRLF line endings (git autocrlf) as unedited', () => {
+    write(tmp, 'crlf/stale.ts', 'line 1\r\nline 2\r\n');
+    const stale = findStaleFiles({
+      outputDir: path.join(tmp, 'crlf'),
+      generated: new Set<string>(),
+      previousInventory: [{ filePath: 'stale.ts', checksum: sha256('line 1\nline 2\n') }],
+      headerFiles: []
+    });
+    expect(stale).toEqual({ removable: ['stale.ts'], kept: [] });
+  });
 });
 
 describe('ghk upgrade --apply', () => {

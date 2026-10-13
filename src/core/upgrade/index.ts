@@ -16,6 +16,7 @@ import os from 'os';
 import path from 'path';
 import { partialConfigSchema } from '../config/schema';
 import { readInventoryFile } from '../inventory';
+import { matchesChecksum } from '../write-protection';
 import { CONFIG_SCHEMA_ID } from '../config/json-schema';
 
 export type FindingSeverity = 'required' | 'recommended' | 'info';
@@ -395,7 +396,7 @@ export function findStaleFiles(opts: {
     if (opts.generated.has(rel)) continue;
     const full = path.join(opts.outputDir, rel);
     if (!fs.existsSync(full)) continue;
-    if (checksum ? sha256(fs.readFileSync(full)) === checksum : opts.prune) removable.push(rel);
+    if (checksum ? matchesChecksum(fs.readFileSync(full), checksum) : opts.prune) removable.push(rel);
     else kept.push(rel);
   }
   return { removable: removable.sort(), kept: kept.sort() };
