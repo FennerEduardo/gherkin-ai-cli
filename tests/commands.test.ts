@@ -4,6 +4,8 @@ import { handleQualityCommand } from '../src/commands/quality';
 import * as stackDetector from '../src/core/stack-detector';
 import { logger } from '../src/utils/logger';
 import fs from 'fs';
+import os from 'os';
+import path from 'path';
 
 vi.mock('inquirer', () => ({
   default: {
@@ -33,9 +35,18 @@ describe('CLI Commands Integration', () => {
     
     // @ts-ignore
     const detectSpy = vi.spyOn(stackDetector, 'detectExistingStack').mockReturnValue(mockConfig);
-    
-    await handleDetectCommand();
-    
+
+    // detect writes the config and updates .gitignore in the current directory: keep it out of the repo.
+    const cwd = process.cwd();
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ghk-detect-'));
+    process.chdir(dir);
+    try {
+      await handleDetectCommand();
+    } finally {
+      process.chdir(cwd);
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+
     expect(detectSpy).toHaveBeenCalled();
     expect(logger.success).toHaveBeenCalledWith(expect.stringContaining('Saved detected project'));
   });
