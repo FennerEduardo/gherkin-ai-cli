@@ -551,7 +551,8 @@ program.hook('preAction', async (_thisCommand, actionCommand) => {
     enterJsonMode();
   }
 
-  if (!WORKSPACE_FREE_COMMANDS.has(commandName)) {
+  // --all (lint, converge, upgrade --kernel) covers every project under the current directory itself.
+  if (!WORKSPACE_FREE_COMMANDS.has(commandName) && !local.all) {
     const { resolveWorkspaceDirectory } = await import('./utils/workspace-detector');
     await resolveWorkspaceDirectory({
       project: globals.project,
