@@ -85,6 +85,54 @@ describe('multi-feature services', () => {
     expect(main).toContain('h(OrdersPanel), h(RefundsPanel)');
   });
 
+  const withFrontend = (framework: string) => fs.writeFileSync('gherkin-ai.config.json', JSON.stringify({
+    projectName: 'shop', architecture: 'hexagonal', outputDir: './', rules: {},
+    stack: { language: 'typescript', framework: 'nestjs', orm: 'none', database: 'postgresql', validation: 'zod', auth: 'jwt', testing: 'jest' },
+    frontendStack: { framework, language: framework === 'flutter' ? 'dart' : 'typescript' }
+  }));
+
+  it('React: the store registers every feature and main.tsx mounts every panel', async () => {
+    withFrontend('react');
+    await generateBoth();
+    const store = fs.readFileSync('frontend/src/store/store.ts', 'utf8');
+    expect(store).toContain('reducer: { orders: ordersReducer, refunds: refundsReducer }');
+    expect(store).toContain('orders: clients.orders ?? defaultOrdersClient()');
+    const main = fs.readFileSync('frontend/src/main.tsx', 'utf8');
+    expect(main).toContain('<OrdersPanel />');
+    expect(main).toContain('<RefundsPanel />');
+  });
+
+  it('Angular: the app root mounts every panel, each feature has its own client token', async () => {
+    withFrontend('angular');
+    await generateBoth();
+    const app = fs.readFileSync('frontend/src/app/app.component.ts', 'utf8');
+    expect(app).toContain('<app-orders-panel />');
+    expect(app).toContain('<app-refunds-panel />');
+    expect(fs.existsSync('frontend/src/app/api/orders-client.token.ts')).toBe(true);
+    expect(fs.existsSync('frontend/src/app/api/refunds-client.token.ts')).toBe(true);
+    expect(fs.readFileSync('frontend/src/main.ts', 'utf8')).toContain('bootstrapApplication(AppComponent');
+    expect(fs.readFileSync('frontend/src/app/realtime/realtime.service.ts', 'utf8')).toContain('Refunds: inject(RefundsStore)');
+  });
+
+  it('Next.js, React Native and Flutter: the entry mounts every feature', async () => {
+    withFrontend('nextjs');
+    await generateBoth();
+    expect(fs.readFileSync('frontend/app/page.tsx', 'utf8')).toMatch(/<OrdersPanel \/>[\s\S]*<RefundsPanel \/>/);
+
+    fs.rmSync('frontend', { recursive: true, force: true });
+    withFrontend('react-native');
+    await generateBoth();
+    expect(fs.readFileSync('frontend/App.tsx', 'utf8')).toMatch(/<OrdersScreen [^>]*\/>[\s\S]*<RefundsScreen [^>]*\/>/);
+
+    fs.rmSync('frontend', { recursive: true, force: true });
+    withFrontend('flutter');
+    await generateBoth();
+    const main = fs.readFileSync('frontend/lib/main.dart', 'utf8');
+    expect(main).toContain('length: 2');
+    expect(main).toContain('OrdersPanel(client: OrdersClient(baseUrl: apiUrl))');
+    expect(main).toContain('RefundsPanel(client: RefundsClient(baseUrl: apiUrl))');
+  });
+
   it('names the RabbitMQ topology after the service', () => {
     const m = buildDomainModel(parseGherkinText(ORDERS), { service: 'Shop Backend' });
     expect(topology(m).exchange).toBe('shop-backend.events');

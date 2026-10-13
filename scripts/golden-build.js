@@ -58,9 +58,11 @@ function generate(name, def) {
     rules: {},
     outputDir: './'
   }, null, 2));
-  // Backends are generated as a two-feature service: the second generate must keep the first feature
-  // (contracts, routes, runtime command service registry) and both are built and tested.
-  const features = def.integration && !def.frontendStack ? ['payment', 'refund'] : ['payment'];
+  // Backends and frontends are generated as a two-feature service: the second generate must keep the
+  // first feature (contracts, routes, runtime command service registry, frontend entry) and both are
+  // built and tested.
+  const twoFeatures = def.integration || def.frontendStack || def.stack.framework === 'flutter';
+  const features = twoFeatures ? ['payment', 'refund'] : ['payment'];
   if (features.includes('refund')) fs.writeFileSync(path.join(dir, 'features', 'refund.feature'), SECOND_FEATURE);
   for (const feature of features) {
     const res = run(process.execPath, [CLI, 'generate', '-f', `features/${feature}.feature`, '--yes'], {

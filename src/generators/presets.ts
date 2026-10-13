@@ -88,17 +88,17 @@ export function generatePresets(parsed: ParsedFeature, config: GherkinAIConfig, 
     if (feFramework === 'vue') {
       results.push(...renderVueProject(fm, 'frontend', siblingDomainModels(fm, config, s => `frontend/src/components/${s.pascal}Panel.vue`)));
     } else if (feFramework === 'react') {
-      results.push(...renderReactProject(fm));
+      results.push(...renderReactProject(fm, 'frontend', siblingDomainModels(fm, config, s => `frontend/src/components/${s.pascal}Panel.tsx`)));
     } else if (feFramework === 'angular') {
-      results.push(...renderAngularProject(fm));
+      results.push(...renderAngularProject(fm, 'frontend', siblingDomainModels(fm, config, s => `frontend/src/app/${s.kebab}-panel.component.ts`)));
     } else if (feFramework === 'nextjs' || feFramework === 'next') {
-      results.push(...renderNextProject(fm));
+      results.push(...renderNextProject(fm, 'frontend', siblingDomainModels(fm, config, s => `frontend/components/${s.pascal}Panel.tsx`)));
     } else if (feFramework === 'react-native' || feFramework === 'expo') {
-      results.push(...renderReactNativeProject(fm));
+      results.push(...renderReactNativeProject(fm, 'frontend', siblingDomainModels(fm, config, s => `frontend/src/${s.pascal}Screen.tsx`)));
     } else if (feFramework === 'flutter') {
       // The frontend package lives in ./frontend; the feature file is one level up.
       const feature = featureFile ? `../${featureFile}` : `../features/${fm.kebab}.feature`;
-      results.push(...renderFlutterProject(fm, { root: 'frontend', packageName: `${dartPackageName(config.projectName || fm.snake)}_app`, featurePathFromPackage: feature }));
+      results.push(...renderFlutterProject(fm, { root: 'frontend', packageName: `${dartPackageName(config.projectName || fm.snake)}_app`, featurePathFromPackage: feature, siblings: siblingDomainModels(fm, config, s => `frontend/lib/${s.snake}_panel.dart`) }));
     }
   }
 

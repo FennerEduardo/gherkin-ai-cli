@@ -7,7 +7,9 @@ import { FeFile, renderApiClient, renderApiClientTest } from './client';
 
 const pkg = (name: string, extra: Record<string, unknown>) => JSON.stringify({ name, private: true, version: '0.1.0', type: 'module', ...extra }, null, 2) + '\n';
 
-export function renderReactProject(m: DomainModel, root = 'frontend'): FeFile[] {
+export function renderReactProject(m: DomainModel, root = 'frontend', siblings: DomainModel[] = []): FeFile[] {
+  // Service-wide files (store, main.tsx) cover every generated feature.
+  const all = [...siblings, m].sort((a, b) => a.pascal.localeCompare(b.pascal));
   const first = m.commands[0];
   const f = (p: string) => `${root}/${p}`;
   return [
@@ -70,9 +72,9 @@ export interface ExecuteArgs {
   payload?: Record<string, unknown>;
 }
 
-export const executeCommand = createAsyncThunk<CommandResult, ExecuteArgs, { extra: { client: ${m.pascal}Client } }>(
+export const executeCommand = createAsyncThunk<CommandResult, ExecuteArgs, { extra: { clients: { ${m.camel}: ${m.pascal}Client } } }>(
   '${m.camel}/execute',
-  ({ id, command, payload }, { extra }) => extra.client.execute(id, command, payload, { idempotencyKey: crypto.randomUUID() })
+  ({ id, command, payload }, { extra }) => extra.clients.${m.camel}.execute(id, command, payload, { idempotencyKey: crypto.randomUUID() })
 );
 
 const ${m.camel}Slice = createSlice({
@@ -103,13 +105,23 @@ export const defaultClient = () => create${m.pascal}Client({ baseUrl: import.met
     {
       filename: f('src/store/store.ts'),
       content: `import { configureStore } from '@reduxjs/toolkit';
-import { ${m.pascal}Client } from '../api/${m.kebab}-client';
-import { defaultClient, ${m.camel}Reducer } from './${m.camel}Slice';
+${all.map(a => `import type { ${a.pascal}Client } from '../api/${a.kebab}-client';
+import { defaultClient as default${a.pascal}Client, ${a.camel}Reducer } from './${a.camel}Slice';`).join('\n')}
 
-export function createAppStore(client: ${m.pascal}Client = defaultClient()) {
+/** One API client per feature of the service (each slice uses its own). */
+export interface AppClients {
+${all.map(a => `  ${a.camel}: ${a.pascal}Client;`).join('\n')}
+}
+
+export function createAppStore(clients: Partial<AppClients> = {}) {
+  const extraArgument: { clients: AppClients } = {
+    clients: {
+${all.map(a => `      ${a.camel}: clients.${a.camel} ?? default${a.pascal}Client(),`).join('\n')}
+    }
+  };
   return configureStore({
-    reducer: { ${m.camel}: ${m.camel}Reducer },
-    middleware: getDefault => getDefault({ thunk: { extraArgument: { client } } })
+    reducer: { ${all.map(a => `${a.camel}: ${a.camel}Reducer`).join(', ')} },
+    middleware: getDefault => getDefault({ thunk: { extraArgument } })
   });
 }
 
@@ -129,7 +141,7 @@ describe('${m.camel} slice', () => {
   it('records the event returned by the backend', async () => {
     const result = { type: '${first.event}', aggregateId: 'agg-1', version: 1 };
     const client = { execute: vi.fn().mockResolvedValue(result) } as unknown as ${m.pascal}Client;
-    const store = createAppStore(client);
+    const store = createAppStore({ ${m.camel}: client });
 
     await store.dispatch(executeCommand({ id: 'agg-1', command: '${first.snake}' }));
 
@@ -138,7 +150,7 @@ describe('${m.camel} slice', () => {
 
   it('keeps the error message when the command fails', async () => {
     const client = { execute: vi.fn().mockRejectedValue(new Error('Command id is required')) } as unknown as ${m.pascal}Client;
-    const store = createAppStore(client);
+    const store = createAppStore({ ${m.camel}: client });
 
     await store.dispatch(executeCommand({ id: 'agg-1', command: '${first.snake}' }));
 
@@ -200,7 +212,7 @@ describe('${m.pascal}Panel', () => {
   it('executes a command and lists the resulting event', async () => {
     const client = { execute: vi.fn().mockResolvedValue({ type: '${first.event}', aggregateId: 'agg-1', version: 1 }) } as unknown as ${m.pascal}Client;
     render(
-      <Provider store={createAppStore(client)}>
+      <Provider store={createAppStore({ ${m.camel}: client })}>
         <${m.pascal}Panel />
       </Provider>
     );
@@ -214,7 +226,7 @@ describe('${m.pascal}Panel', () => {
 
   it('disables commands until an aggregate id is entered', () => {
     render(
-      <Provider store={createAppStore({ execute: vi.fn() } as unknown as ${m.pascal}Client)}>
+      <Provider store={createAppStore({ ${m.camel}: { execute: vi.fn() } as unknown as ${m.pascal}Client })}>
         <${m.pascal}Panel />
       </Provider>
     );
@@ -228,13 +240,13 @@ describe('${m.pascal}Panel', () => {
       content: `import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Provider } from 'react-redux';
-import { ${m.pascal}Panel } from './components/${m.pascal}Panel';
+${all.map(a => `import { ${a.pascal}Panel } from './components/${a.pascal}Panel';`).join('\n')}
 import { createAppStore } from './store/store';
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <Provider store={createAppStore()}>
-      <${m.pascal}Panel />
+${all.map(a => `      <${a.pascal}Panel />`).join('\n')}
     </Provider>
   </StrictMode>
 );

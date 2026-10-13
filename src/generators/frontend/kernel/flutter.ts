@@ -10,11 +10,13 @@ import { FeFile } from './client';
 const dartRaw = (s: string) => (s.includes("'") ? `r"${s}"` : `r'${s}'`);
 const dartStr = (s: string) => `'${s.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\$/g, '\\$')}'`;
 
-export function renderFlutterProject(m: DomainModel, opts: { root?: string; packageName: string; featurePathFromPackage: string }): FeFile[] {
+export function renderFlutterProject(m: DomainModel, opts: { root?: string; packageName: string; featurePathFromPackage: string; siblings?: DomainModel[] }): FeFile[] {
   const root = opts.root ? `${opts.root}/` : '';
   const f = (p: string) => `${root}${p}`;
   const pkg = opts.packageName;
   const first = m.commands[0];
+  // Service-wide files (main.dart) cover every generated feature.
+  const all = [...(opts.siblings ?? []), m].sort((a, b) => a.pascal.localeCompare(b.pascal));
   return [
     {
       filename: f('pubspec.yaml'),
@@ -242,13 +244,36 @@ class _${m.pascal}PanelState extends State<${m.pascal}Panel> {
     },
     {
       filename: f('lib/main.dart'),
-      content: `import 'package:flutter/material.dart';
+      content: all.length === 1
+        ? `import 'package:flutter/material.dart';
 
 import 'api/${m.snake}_client.dart';
 import '${m.snake}_panel.dart';
 
 void main() {
   runApp(MaterialApp(home: ${m.pascal}Panel(client: ${m.pascal}Client(baseUrl: const String.fromEnvironment('API_URL')))));
+}
+`
+        : `import 'package:flutter/material.dart';
+
+${all.map(a => `import 'api/${a.snake}_client.dart' show ${a.pascal}Client;
+import '${a.snake}_panel.dart';`).join('\n')}
+
+const apiUrl = String.fromEnvironment('API_URL');
+
+/** One tab per feature of the service. */
+void main() {
+  runApp(MaterialApp(
+    home: DefaultTabController(
+      length: ${all.length},
+      child: Scaffold(
+        appBar: const TabBar(tabs: [${all.map(a => `Tab(text: ${dartStr(a.feature)})`).join(', ')}]),
+        body: TabBarView(children: [
+${all.map(a => `          ${a.pascal}Panel(client: ${a.pascal}Client(baseUrl: apiUrl)),`).join('\n')}
+        ]),
+      ),
+    ),
+  ));
 }
 `
     },

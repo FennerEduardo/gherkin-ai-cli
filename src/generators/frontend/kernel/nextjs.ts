@@ -5,7 +5,9 @@
 import { DomainModel } from '../../kernel/domain-model';
 import { FeFile, renderApiClient, renderApiClientTest } from './client';
 
-export function renderNextProject(m: DomainModel, root = 'frontend'): FeFile[] {
+export function renderNextProject(m: DomainModel, root = 'frontend', siblings: DomainModel[] = []): FeFile[] {
+  // Service-wide files (entry point) cover every generated feature.
+  const all = [...siblings, m].sort((a, b) => a.pascal.localeCompare(b.pascal));
   const first = m.commands[0];
   const f = (p: string) => `${root}/${p}`;
   return [
@@ -78,10 +80,14 @@ export default function RootLayout({ children }: { children: ReactNode }) {
     },
     {
       filename: f('app/page.tsx'),
-      content: `import { ${m.pascal}Panel } from '../components/${m.pascal}Panel';
+      content: `${all.map(a => `import { ${a.pascal}Panel } from '../components/${a.pascal}Panel';`).join('\n')}
 
 export default function Page() {
-  return <${m.pascal}Panel />;
+  return (
+    <main>
+${all.map(a => `      <${a.pascal}Panel />`).join('\n')}
+    </main>
+  );
 }
 `
     },

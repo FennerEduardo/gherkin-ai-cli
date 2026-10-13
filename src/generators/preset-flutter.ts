@@ -10,6 +10,7 @@ import { ParsedFeature } from '../core/gherkin-parser';
 import { GherkinAIConfig } from '../core/config';
 import { buildDomainModel, toSnake } from './kernel/domain-model';
 import { renderFlutterProject } from './frontend/kernel/flutter';
+import { siblingDomainModels } from './kernel/siblings';
 
 export function dartPackageName(name: string): string {
   const snake = toSnake(name);
@@ -20,6 +21,7 @@ export function generateFlutterPreset(parsed: ParsedFeature, config?: GherkinAIC
   const m = buildDomainModel(parsed);
   return renderFlutterProject(m, {
     packageName: dartPackageName(config?.projectName || m.snake),
-    featurePathFromPackage: featureFile || `features/${m.kebab}.feature`
+    featurePathFromPackage: featureFile || `features/${m.kebab}.feature`,
+    siblings: siblingDomainModels(m, config, s => `lib/${s.snake}_panel.dart`)
   });
 }

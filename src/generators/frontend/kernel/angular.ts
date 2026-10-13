@@ -5,7 +5,9 @@
 import { DomainModel } from '../../kernel/domain-model';
 import { FeFile, renderApiClient, renderApiClientTest } from './client';
 
-export function renderAngularProject(m: DomainModel, root = 'frontend'): FeFile[] {
+export function renderAngularProject(m: DomainModel, root = 'frontend', siblings: DomainModel[] = []): FeFile[] {
+  // Service-wide files (entry point) cover every generated feature.
+  const all = [...siblings, m].sort((a, b) => a.pascal.localeCompare(b.pascal));
   const first = m.commands[0];
   const f = (p: string) => `${root}/${p}`;
   const name = `${m.kebab}-frontend`;
@@ -89,7 +91,7 @@ export function renderAngularProject(m: DomainModel, root = 'frontend'): FeFile[
     { filename: f(`src/app/api/${m.kebab}-client.ts`), content: renderApiClient(m) },
     { filename: f(`src/app/api/${m.kebab}-client.spec.ts`), content: renderApiClientTest(m, `./${m.kebab}-client`, 'vi') },
     {
-      filename: f('src/app/api/client.token.ts'),
+      filename: f(`src/app/api/${m.kebab}-client.token.ts`),
       content: `import { InjectionToken } from '@angular/core';
 import { create${m.pascal}Client, ${m.pascal}Client } from './${m.kebab}-client';
 
@@ -105,7 +107,7 @@ export const ${m.snake.toUpperCase()}_CLIENT = new InjectionToken<${m.pascal}Cli
       content: `import { inject } from '@angular/core';
 import { patchState, signalStore, withMethods, withState } from '@ngrx/signals';
 import { CommandName, CommandResult } from '../api/${m.kebab}-client';
-import { ${m.snake.toUpperCase()}_CLIENT } from '../api/client.token';
+import { ${m.snake.toUpperCase()}_CLIENT } from '../api/${m.kebab}-client.token';
 
 interface ${m.pascal}StateModel {
   events: CommandResult[];
@@ -142,7 +144,7 @@ export const ${m.pascal}Store = signalStore(
 import { TestBed } from '@angular/core/testing';
 import { describe, expect, it, vi, type Mock } from 'vitest';
 import { ${m.pascal}Store } from './${m.kebab}.store';
-import { ${m.snake.toUpperCase()}_CLIENT } from '../api/client.token';
+import { ${m.snake.toUpperCase()}_CLIENT } from '../api/${m.kebab}-client.token';
 
 describe('${m.pascal}Store', () => {
   function setup(execute: Mock) {
@@ -171,18 +173,23 @@ describe('${m.pascal}Store', () => {
       content: `import { Injectable, inject, signal } from '@angular/core';
 import * as signalR from '@microsoft/signalr';
 import type { CommandResult } from '../api/${m.kebab}-client';
-import { ${m.pascal}Store } from '../state/${m.kebab}.store';
+${all.map(a => `import { ${a.pascal}Store } from '../state/${a.kebab}.store';`).join('\n')}
 
-/** Pushes backend domain events (SignalR hub) into the store. */
+/** A pushed event names its aggregate type when the service hosts several features. */
+type PushedEvent = CommandResult & { aggregateType?: string };
+
+/** Pushes backend domain events (SignalR hub) into the store of their feature. */
 @Injectable({ providedIn: 'root' })
 export class RealtimeService {
-  private readonly store = inject(${m.pascal}Store);
+  private readonly stores: Record<string, { receive(event: CommandResult): void }> = {
+${all.map(a => `    ${a.pascal}: inject(${a.pascal}Store),`).join('\n')}
+  };
   private connection?: signalR.HubConnection;
   readonly connected = signal(false);
 
   async start(hubUrl = '/hubs/domain-events'): Promise<void> {
     this.connection = new signalR.HubConnectionBuilder().withUrl(hubUrl).withAutomaticReconnect().build();
-    this.connection.on('ReceiveDomainEvent', (event: CommandResult) => this.store.receive(event));
+    this.connection.on('ReceiveDomainEvent', (event: PushedEvent) => this.stores[event.aggregateType ?? '${all.length === 1 ? m.pascal : ''}']?.receive(event));
     await this.connection.start();
     this.connected.set(true);
   }
@@ -201,7 +208,7 @@ import { COMMANDS } from './api/${m.kebab}-client';
 import { ${m.pascal}Store } from './state/${m.kebab}.store';
 
 @Component({
-  selector: 'app-root',
+  selector: 'app-${m.kebab}-panel',
   standalone: true,
   template: \`
     <section aria-label="${m.feature}">
@@ -237,7 +244,7 @@ export class ${m.pascal}PanelComponent {
 import { TestBed } from '@angular/core/testing';
 import { describe, expect, it, vi } from 'vitest';
 import { ${m.pascal}PanelComponent } from './${m.kebab}-panel.component';
-import { ${m.snake.toUpperCase()}_CLIENT } from './api/client.token';
+import { ${m.snake.toUpperCase()}_CLIENT } from './api/${m.kebab}-client.token';
 
 describe('${m.pascal}PanelComponent', () => {
   it('executes a command and lists the resulting event', async () => {
@@ -268,12 +275,29 @@ describe('${m.pascal}PanelComponent', () => {
 `
     },
     {
+      filename: f('src/app/app.component.ts'),
+      content: `import { Component } from '@angular/core';
+${all.map(a => `import { ${a.pascal}PanelComponent } from './${a.kebab}-panel.component';`).join('\n')}
+
+/** Mounts the panel of every feature of the service. */
+@Component({
+  selector: 'app-root',
+  standalone: true,
+  imports: [${all.map(a => `${a.pascal}PanelComponent`).join(', ')}],
+  template: \`
+${all.map(a => `    <app-${a.kebab}-panel />`).join('\n')}
+  \`
+})
+export class AppComponent {}
+`
+    },
+    {
       filename: f('src/main.ts'),
       content: `import { provideZonelessChangeDetection } from '@angular/core';
 import { bootstrapApplication } from '@angular/platform-browser';
-import { ${m.pascal}PanelComponent } from './app/${m.kebab}-panel.component';
+import { AppComponent } from './app/app.component';
 
-bootstrapApplication(${m.pascal}PanelComponent, { providers: [provideZonelessChangeDetection()] }).catch(err => console.error(err));
+bootstrapApplication(AppComponent, { providers: [provideZonelessChangeDetection()] }).catch(err => console.error(err));
 `
     }
   ];

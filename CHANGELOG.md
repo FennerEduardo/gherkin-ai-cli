@@ -16,10 +16,16 @@ Generated backends become services you can keep, from the 3.0.0 field reviews. T
 - **Multi-feature services.**
   - **Contracts.** Each feature owns `contracts/<feature>/` (`openapi.json`, `asyncapi.json`, ADR). The root `openapi.json` and `asyncapi.json` are the union of every feature's contracts.
   - **Kernel registry.** The runtime command service handles every generated aggregate, with a new `aggregateType` request field.
-  - **Service-wide files.** Routes, the NestJS `AppModule`, .NET `Program.cs`, the Python domain package, the Rust domain module, the Prisma schema (one model per feature), the Behat contexts and the Vue entry (`main.ts` mounts every panel) cover every generated feature.
-  - **Known limitation.** The React, Angular, Next.js, React Native and Flutter frontends still mount the panel of the last generated feature: add the other panels to their entry by hand.
+  - **Service-wide files.** Routes, the NestJS `AppModule`, .NET `Program.cs`, the Python domain package, the Rust domain module, the Prisma schema (one model per feature), the Behat contexts and the frontend entry cover every generated feature.
+  - **Frontends.** The entry mounts every feature's panel:
+    - Vue: `main.ts`.
+    - React: `main.tsx`, with a store that registers every slice and takes one client per feature (`createAppStore({ <feature>: client })`).
+    - Angular: a new `AppComponent`. Each feature gets its own `<feature>-client.token.ts` (replacing `client.token.ts`), and the realtime service routes pushed events by `aggregateType`.
+    - Next.js: `app/page.tsx`.
+    - React Native: `App.tsx`.
+    - Flutter: `main.dart`, with one tab per feature.
   - **Topology.** The RabbitMQ topology is named after the service (`<service>.events`).
-  - **Golden builds** generate and test a two-feature service for every backend.
+  - **Golden builds** generate and test a two-feature service for every backend and frontend.
 - **Protection of implemented code.** `generate` overwrites a file only if its checksum still matches what was generated; otherwise it writes `<file>.ghk-new`.
   - **New options:** `generation.protect` globs, the `.ghk-implemented` marker, `--force` and `--dry-run`.
   - **Files without a recorded checksum** are overwritten only if they carry the generated header.

@@ -5,7 +5,9 @@
 import { DomainModel } from '../../kernel/domain-model';
 import { FeFile, renderApiClient, renderApiClientTest } from './client';
 
-export function renderReactNativeProject(m: DomainModel, root = 'frontend'): FeFile[] {
+export function renderReactNativeProject(m: DomainModel, root = 'frontend', siblings: DomainModel[] = []): FeFile[] {
+  // Service-wide files (entry point) cover every generated feature.
+  const all = [...siblings, m].sort((a, b) => a.pascal.localeCompare(b.pascal));
   const first = m.commands[0];
   const f = (p: string) => `${root}/${p}`;
   return [
@@ -106,10 +108,17 @@ describe('${m.pascal}Screen', () => {
     },
     {
       filename: f('App.tsx'),
-      content: `import { ${m.pascal}Screen } from './src/${m.pascal}Screen';
+      content: `import { ScrollView } from 'react-native';
+${all.map(a => `import { ${a.pascal}Screen } from './src/${a.pascal}Screen';`).join('\n')}
+
+const baseUrl = process.env.EXPO_PUBLIC_API_URL;
 
 export default function App() {
-  return <${m.pascal}Screen baseUrl={process.env.EXPO_PUBLIC_API_URL} />;
+  return (
+    <ScrollView>
+${all.map(a => `      <${a.pascal}Screen baseUrl={baseUrl} />`).join('\n')}
+    </ScrollView>
+  );
 }
 `
     },
