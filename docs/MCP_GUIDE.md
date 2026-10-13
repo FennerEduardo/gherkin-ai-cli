@@ -13,12 +13,12 @@ ghk mcp install
 ```json
 {
   "mcpServers": {
-    "gherkin-ai": { "command": "npx", "args": ["-y", "gherkin-ai@3.1.0", "mcp"] }
+    "gherkin-ai": { "command": "npx", "args": ["-y", "gherkin-ai@3.1.1", "mcp"] }
   }
 }
 ```
 
-Claude Code: `claude mcp add gherkin-ai -- npx -y gherkin-ai@3.1.0 mcp`.
+Claude Code: `claude mcp add gherkin-ai -- npx -y gherkin-ai@3.1.1 mcp`.
 
 Pin the version. An unpinned `npx gherkin-ai` silently changes behavior when a new major version is released, and `ghk upgrade` reports unpinned entries.
 
@@ -44,6 +44,6 @@ MCP only governs the calls an agent makes to gherkin-ai. To apply the same polic
 
 ## Troubleshooting
 
-- **The server exits immediately.** Run `npx -y gherkin-ai@3.1.0 mcp` in a terminal. Configuration errors are printed to stderr with exit code `3`.
+- **The server exits immediately.** Run `npx -y gherkin-ai@3.1.1 mcp` in a terminal. Configuration errors are printed to stderr with exit code `3`.
 - **A tool is missing.** Check its level in the table above. Write tools need `mcp.allowWrite`, and the organization may have locked it.
 - **A call returns `[POLICY BLOCK]`.** The message names the rule. `ghk firewall check --write <path>` reproduces the decision from the command line.

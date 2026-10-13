@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [3.1.1] - 2026-10-13
+
+### Fixed
+- **Windows (git `core.autocrlf`):** generated files checked out with CRLF line endings no longer count as edited. Before, `ghk generate` wrote `.ghk-new` instead of updating them, and `ghk upgrade` kept stale files instead of removing them. Checksums are now compared ignoring line endings.
+- **Phoenix LiveView with several features:** each feature has its own LiveView route, `/<feature>`, and the first feature is also served at `/`. Before, the last generated feature replaced the others at `/`.
+
 ## [3.1.0] - 2026-10-13
 
 Generated backends become services you can keep, from the 3.0.0 field reviews. The generated output changes: see `docs/MIGRATION-3.1.md`.
