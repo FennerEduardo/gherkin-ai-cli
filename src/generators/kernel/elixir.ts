@@ -23,6 +23,9 @@ export interface ElixirNames {
 
 export function renderElixirProject(m: DomainModel, n: ElixirNames, featureFile: string, opts: { liveview?: boolean; siblings?: DomainModel[] } = {}): ExFile[] {
   const siblings = opts.siblings ?? [];
+  // LiveView routes cover every feature of the service, sorted so "/" is stable across generations.
+  const features = [m, ...siblings].sort((a, b) => a.pascal.localeCompare(b.pascal));
+  const home = features[0];
   const agg = `${n.mod}.Domain.${m.pascal}Aggregate`;
   const web = `${n.mod}Web`;
   const first = m.commands[0];
@@ -185,7 +188,9 @@ ${lv ? `
 
   scope "/", ${web} do
     pipe_through :browser
-    live "/", ${m.pascal}Live
+    # One LiveView per feature; the first one is also the home page.
+    live "/", ${home.pascal}Live, :index, as: :home
+${features.map(f => `    live "/${f.kebab}", ${f.pascal}Live`).join('\n')}
   end
 ` : ''}
   scope "/", ${web} do
@@ -469,7 +474,7 @@ end
   @endpoint ${web}.Endpoint
 
   test "executes a command and lists the resulting event" do
-    {:ok, view, _html} = live(build_conn(), "/")
+    {:ok, view, _html} = live(build_conn(), "/${m.kebab}")
 
     view |> form("#aggregate-form", %{aggregate_id: "agg-1"}) |> render_change()
     html = view |> element("#cmd-${first.snake}") |> render_click()
@@ -478,7 +483,7 @@ end
   end
 
   test "disables commands until an aggregate id is entered" do
-    {:ok, view, _html} = live(build_conn(), "/")
+    {:ok, view, _html} = live(build_conn(), "/${m.kebab}")
     assert has_element?(view, "#cmd-${first.snake}[disabled]")
   end
 end
