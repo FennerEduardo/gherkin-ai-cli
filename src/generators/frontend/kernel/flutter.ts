@@ -124,8 +124,9 @@ class CommandResult {
   final String aggregateId;
   final int version;
 
+  /// Accepts the backend result { status, aggregateId, eventType, version }.
   factory CommandResult.fromJson(Map<String, dynamic> json) =>
-      CommandResult(json['type'] as String, json['aggregateId'] as String, (json['version'] as num).toInt());
+      CommandResult((json['eventType'] ?? json['type'] ?? '') as String, json['aggregateId'] as String, ((json['version'] ?? 0) as num).toInt());
 }
 
 class ApiException implements Exception {
@@ -145,13 +146,14 @@ String newTraceparent() => '00-\${_hex(16)}-\${_hex(8)}-01';
 class ${m.pascal}Client {
   /// [traceparent] supplies the W3C trace context sent with each request, so the backend's spans join
   /// the caller's trace. Default: a new sampled root context per request; return null to send none.
-  ${m.pascal}Client({http.Client? httpClient, this.baseUrl = '', this.tenantId, String? Function()? traceparent})
+  /// [token] returns the signed-in user's bearer token; the backend takes the tenant from it (never from a header).
+  ${m.pascal}Client({http.Client? httpClient, this.baseUrl = '', this.token, String? Function()? traceparent})
       : _http = httpClient ?? http.Client(),
         _traceparent = traceparent ?? newTraceparent;
 
   final http.Client _http;
   final String baseUrl;
-  final String? tenantId;
+  final String? Function()? token;
   final String? Function() _traceparent;
 
   static String _newKey() => List.generate(16, (_) => Random.secure().nextInt(16).toRadixString(16)).join();
@@ -159,13 +161,14 @@ class ${m.pascal}Client {
   Future<CommandResult> execute(String id, String command, {Map<String, Object?> payload = const {}, String? idempotencyKey}) async {
     final uri = Uri.parse('\${baseUrl.replaceAll(RegExp(r'/$'), '')}/api/v1/${m.kebab}/\${Uri.encodeComponent(id)}/\$command');
     final traceparent = _traceparent();
+    final bearer = token?.call();
     final res = await _http.post(
       uri,
       headers: {
         'Content-Type': 'application/json',
         'Accept': 'application/json',
-        if (tenantId != null) 'X-Tenant-Id': tenantId!,
-        'X-Idempotency-Key': idempotencyKey ?? _newKey(),
+        if (bearer != null) 'Authorization': 'Bearer $bearer',
+        'Idempotency-Key': idempotencyKey ?? _newKey(),
         if (traceparent != null) 'traceparent': traceparent,
       },
       body: jsonEncode(payload),
@@ -293,14 +296,14 @@ import 'package:http/testing.dart';
 import 'package:${pkg}/api/${m.snake}_client.dart';
 
 void main() {
-  test('posts the command with tenant and idempotency headers', () async {
+  test('posts the command with the bearer token and idempotency key', () async {
     late http.Request sent;
     final client = ${m.pascal}Client(
       baseUrl: 'https://api.test/',
-      tenantId: 'acme',
+      token: () => 'jwt-1',
       httpClient: MockClient((req) async {
         sent = req;
-        return http.Response(jsonEncode({'type': '${first.event}', 'aggregateId': 'agg-1', 'version': 1}), 201);
+        return http.Response(jsonEncode({'status': 'created', 'eventType': '${first.event}', 'aggregateId': 'agg-1', 'version': 1}), 202);
       }),
     );
 
@@ -308,8 +311,9 @@ void main() {
 
     expect(result.type, '${first.event}');
     expect(sent.url.toString(), 'https://api.test/api/v1/${m.kebab}/agg-1/${first.snake}');
-    expect(sent.headers['X-Tenant-Id'], 'acme');
-    expect(sent.headers['X-Idempotency-Key'], 'key-1');
+    expect(sent.headers['Authorization'], 'Bearer jwt-1');
+    expect(sent.headers.containsKey('X-Tenant-Id'), isFalse);
+    expect(sent.headers['Idempotency-Key'], 'key-1');
     expect(jsonDecode(sent.body), {'amount': 100});
   });
 

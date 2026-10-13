@@ -29,12 +29,17 @@ export const LEASE_SECONDS = 30;
 export const MAX_PUBLISH_ATTEMPTS = 5;
 
 /** RabbitMQ topology for a feature: topic exchange, consumer queue dead-lettering to a fanout DLX/DLQ. */
+/**
+ * The service's RabbitMQ topology. It is named after the service (project), not a feature, so every
+ * aggregate of a multi-feature service publishes to the same exchange (routing key = event type).
+ */
 export function topology(m: DomainModel) {
+  const prefix = m.service || m.kebab;
   return {
-    exchange: `${m.kebab}.events`,
-    queue: `${m.kebab}.consumer`,
-    dlx: `${m.kebab}.dlx`,
-    dlq: `${m.kebab}.dlq`
+    exchange: `${prefix}.events`,
+    queue: `${prefix}.consumer`,
+    dlx: `${prefix}.dlx`,
+    dlq: `${prefix}.dlq`
   };
 }
 

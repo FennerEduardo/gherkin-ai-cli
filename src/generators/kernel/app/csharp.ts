@@ -15,7 +15,7 @@ export interface CsAppFile {
 
 const cs = (s: string) => JSON.stringify(s);
 
-export function renderAspNetAppLayer(m: DomainModel, ns: string, testsDir: string, claim: string): CsAppFile[] {
+export function renderAspNetAppLayer(m: DomainModel, ns: string, testsDir: string, claim: string, siblings: DomainModel[] = []): CsAppFile[] {
   const first = m.commands[0];
   const route = commandRoute(m);
 
@@ -104,7 +104,8 @@ public static class ${m.pascal}Endpoints
                 var result = await commands.HandleAsync(new CommandService.Request(
                     tenant, id, command, payload,
                     request.Headers.TryGetValue("Idempotency-Key", out var key) ? key.ToString() : null,
-                    request.Headers.TryGetValue("traceparent", out var tp) ? tp.ToString() : null));
+                    request.Headers.TryGetValue("traceparent", out var tp) ? tp.ToString() : null,
+                    ${cs(m.pascal)}));
                 return Results.Json(result, statusCode: StatusCodes.GetValueOrDefault(result.Status, 200));
             }
             catch (DomainValidationException e)
@@ -181,7 +182,7 @@ builder.Services.AddHostedService<OutboxRelayWorker>();
 
 var app = builder.Build();
 app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
-app.Map${m.pascal}Endpoints();
+${[m, ...siblings].map(f => `app.Map${f.pascal}Endpoints();`).join('\n')}
 app.Run();
 
 public partial class Program { } // WebApplicationFactory<Program> in the tests
@@ -199,6 +200,8 @@ namespace ${ns}.Tests.Api;
 
 /// <summary>HTTP contract of the application layer against PostgreSQL (needs DATABASE_URL).</summary>
 [Trait("Category", "Integration")]
+// One collection: the HTTP tests of every feature migrate the same (public) schema, so they run one at a time.
+[Collection("HttpApplicationLayer")]
 public sealed class ${m.pascal}HttpTests : IAsyncLifetime
 {
     private const string Secret = "integration-test-secret-with-32-chars!";

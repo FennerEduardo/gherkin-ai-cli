@@ -18,7 +18,7 @@ import { getArchRule } from '../core/arch-rules';
 import { getStackSpec } from '../core/stack-specs';
 import { generatePythonContracts } from './contracts-python';
 import { generatePhpContracts } from './contracts-php';
-import { generateGoContracts } from './contracts-go';
+import { GO_CONTRACT_PORTS, generateGoContracts } from './contracts-go';
 import { generateCsharpContracts } from './contracts-csharp';
 import { generateKotlinContracts } from './contracts-kotlin';
 
@@ -485,7 +485,10 @@ docker run --rm -v "$(pwd)":/app -w /app -e DOTNET_CLI_TELEMETRY_OPTOUT=1 -e DOT
       { filename: `settings.gradle.kts`, content: renderGradleSettings(toKebab(config.projectName || 'demo')) }
     ];
   } else if (config.stack.language === 'go') {
-    projectRootFile = { filename: 'go.mod', content: renderGoMod(toKebab(config.projectName || 'app')) };
+    projectRootFile = [
+      { filename: 'go.mod', content: renderGoMod(toKebab(config.projectName || 'app')) },
+      { filename: 'internal/contracts/ports.go', content: GO_CONTRACT_PORTS }
+    ];
   } else if (['typescript', 'javascript', 'node'].includes(config.stack.language || '')) {
     projectRootFile = {
       filename: `package.json`,

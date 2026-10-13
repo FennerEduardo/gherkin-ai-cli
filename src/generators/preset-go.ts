@@ -15,22 +15,24 @@ import { renderGoKernel } from './kernel/go';
 import { renderGoRuntime } from './kernel/runtime/go';
 import { renderGoAppLayer } from './kernel/app/go';
 import { tenantClaim } from './kernel/app/shared';
+import { siblingDomainModels } from './kernel/siblings';
 
 export function goModulePath(config?: GherkinAIConfig): string {
   return toKebab(config?.projectName || 'app');
 }
 
 export function generateGoPreset(parsed: ParsedFeature, config?: GherkinAIConfig): { filename: string; content: string }[] {
-  const m = buildDomainModel(parsed);
+  const m = buildDomainModel(parsed, { service: config?.projectName });
+  const siblings = siblingDomainModels(m, config, s => `internal/domain/${s.snake}.go`);
   const module = goModulePath(config);
-  const app = renderGoAppLayer(m, module, tenantClaim(config));
+  const app = renderGoAppLayer(m, module, tenantClaim(config), siblings);
   const replaced = new Set(app.map(f => f.filename));
 
   return [
     // The kernel's in-memory HTTP router and server are replaced by the application layer below.
     ...renderGoKernel(m, module).filter(f => !replaced.has(f.filename)),
     // Runtime kernel: PostgreSQL + RabbitMQ + OpenTelemetry, verified with -tags integration (docs/RUNTIME-KERNEL.md).
-    ...renderGoRuntime(m, module),
+    ...renderGoRuntime(m, module, siblings),
     // Application layer wired to the kernel (kernel/app/shared.ts): HTTP commands, JWT tenant, relay worker.
     ...app
   ];

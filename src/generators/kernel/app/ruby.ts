@@ -14,7 +14,7 @@ export interface RbAppFile {
 
 const rb = (s: string) => JSON.stringify(s);
 
-export function renderRailsAppLayer(m: DomainModel, claim: string): RbAppFile[] {
+export function renderRailsAppLayer(m: DomainModel, claim: string, siblings: DomainModel[] = []): RbAppFile[] {
   const first = m.commands[0];
   const route = commandRoute(m);
 
@@ -92,7 +92,8 @@ class ${m.pascal}Controller < ApplicationController
 
     payload = params.to_unsafe_h.except("controller", "action", "id", "command", "${m.snake}")
     result = self.class.commands.handle(tenant_id: tenant, aggregate_id: params[:id], command: params[:command], payload: payload,
-                                        idempotency_key: request.headers["Idempotency-Key"], traceparent: request.headers["traceparent"])
+                                        idempotency_key: request.headers["Idempotency-Key"], traceparent: request.headers["traceparent"],
+                                        aggregate_type: ${rb(m.pascal)})
     render json: result.to_h, status: STATUS.fetch(result.status, :ok)
   rescue DomainValidationError => e
     render json: { detail: e.message }, status: :unprocessable_entity
@@ -130,7 +131,7 @@ RSpec.describe "${m.pascal} API", type: :request do
 
     def initialize = @calls = []
 
-    def handle(tenant_id:, aggregate_id:, command:, payload: {}, idempotency_key: nil, traceparent: nil)
+    def handle(tenant_id:, aggregate_id:, command:, payload: {}, idempotency_key: nil, traceparent: nil, aggregate_type: nil)
       @calls << [tenant_id, aggregate_id, command, payload]
       raise DomainValidationError, "Unknown command #{command}" if command == "does_not_exist"
 

@@ -21,7 +21,8 @@ export interface ElixirNames {
   mod: string;
 }
 
-export function renderElixirProject(m: DomainModel, n: ElixirNames, featureFile: string, opts: { liveview?: boolean } = {}): ExFile[] {
+export function renderElixirProject(m: DomainModel, n: ElixirNames, featureFile: string, opts: { liveview?: boolean; siblings?: DomainModel[] } = {}): ExFile[] {
+  const siblings = opts.siblings ?? [];
   const agg = `${n.mod}.Domain.${m.pascal}Aggregate`;
   const web = `${n.mod}Web`;
   const first = m.commands[0];
@@ -190,7 +191,7 @@ ${lv ? `
   scope "/", ${web} do
     pipe_through :api
     get "/health", ${m.pascal}Controller, :health
-    post "/api/v1/${m.kebab}/:id/:command", ${m.pascal}Controller, :execute
+${[m, ...siblings].map(f => `    post "/api/v1/${f.kebab}/:id/:command", ${f.pascal}Controller, :execute`).join('\n')}
   end
 end
 `
@@ -377,7 +378,7 @@ end
   ];
 
   // Runtime kernel: PostgreSQL + RabbitMQ + OpenTelemetry (docs/RUNTIME-KERNEL.md).
-  files.push(...renderExRuntime(m, n.otp, n.mod));
+  files.push(...renderExRuntime(m, n.otp, n.mod, siblings));
   if (lv) files.push(...renderLiveView(m, n, agg, web));
   return files;
 }

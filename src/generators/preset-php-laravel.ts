@@ -13,18 +13,20 @@ import { renderPhpRuntime } from './kernel/runtime/php';
 import { renderLaravelSkeleton, renderPhpKernel, renderPhpTests } from './kernel/php';
 import { renderLaravelAppLayer } from './kernel/app/php';
 import { tenantClaim } from './kernel/app/shared';
+import { siblingDomainModels } from './kernel/siblings';
 
 export function generatePhpLaravelPreset(parsed: ParsedFeature, config?: GherkinAIConfig): { filename: string; content: string }[] {
-  const m = buildDomainModel(parsed);
-  const app = renderLaravelAppLayer(m, tenantClaim(config));
+  const m = buildDomainModel(parsed, { service: config?.projectName });
+  const siblings = siblingDomainModels(m, config, s => `app/Domain/${s.pascal}/${s.pascal}Aggregate.php`);
+  const app = renderLaravelAppLayer(m, tenantClaim(config), siblings);
   const replaced = new Set(app.map(f => f.filename));
   return [
-    ...renderLaravelSkeleton(m, toKebab(config?.projectName || m.kebab)),
+    ...renderLaravelSkeleton(m, toKebab(config?.projectName || m.kebab), siblings),
     ...renderPhpKernel(m),
     // The kernel's in-memory API test is replaced by the application layer's tests below.
     ...renderPhpTests(m).filter(f => !replaced.has(f.filename)),
     // Runtime kernel: PostgreSQL + RabbitMQ + OpenTelemetry, verified by phpunit --group integration (docs/RUNTIME-KERNEL.md).
-    ...renderPhpRuntime(m),
+    ...renderPhpRuntime(m, siblings),
     // Application layer wired to the kernel (kernel/app/shared.ts): HTTP commands, JWT tenant, `artisan outbox:relay`.
     ...app
   ];

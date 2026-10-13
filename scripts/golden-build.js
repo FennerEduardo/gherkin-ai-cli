@@ -38,6 +38,7 @@ if (args.includes('--list')) {
 }
 
 const FEATURE = fs.readFileSync(path.join(__dirname, 'golden-feature.feature'), 'utf8');
+const SECOND_FEATURE = fs.readFileSync(path.join(__dirname, 'golden-feature-refund.feature'), 'utf8');
 
 function run(cmd, cmdArgs, opts = {}) {
   const res = spawnSync(cmd, cmdArgs, { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, ...opts });
@@ -57,11 +58,17 @@ function generate(name, def) {
     rules: {},
     outputDir: './'
   }, null, 2));
-  const res = run(process.execPath, [CLI, 'generate', '-f', 'features/payment.feature', '--yes'], {
-    cwd: dir,
-    env: { ...process.env, NO_COLOR: '1', GHK_NON_INTERACTIVE: 'true', GHK_TELEMETRY_DISABLED: 'true' }
-  });
-  if (res.code !== 0) throw new Error(`ghk generate failed for ${name}:\n${res.out}`);
+  // Backends are generated as a two-feature service: the second generate must keep the first feature
+  // (contracts, routes, runtime command service registry) and both are built and tested.
+  const features = def.integration && !def.frontendStack ? ['payment', 'refund'] : ['payment'];
+  if (features.includes('refund')) fs.writeFileSync(path.join(dir, 'features', 'refund.feature'), SECOND_FEATURE);
+  for (const feature of features) {
+    const res = run(process.execPath, [CLI, 'generate', '-f', `features/${feature}.feature`, '--yes'], {
+      cwd: dir,
+      env: { ...process.env, NO_COLOR: '1', GHK_NON_INTERACTIVE: 'true', GHK_TELEMETRY_DISABLED: 'true' }
+    });
+    if (res.code !== 0) throw new Error(`ghk generate failed for ${name} (${feature}):\n${res.out}`);
+  }
   return dir;
 }
 

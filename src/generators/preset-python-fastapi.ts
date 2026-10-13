@@ -13,22 +13,24 @@ import { GherkinAIConfig } from '../core/config';
 import { buildDomainModel, toKebab } from './kernel/domain-model';
 import { renderFastApiHttpIntegration, renderFastApiMain, renderFastApiUnitTest, renderPyAuth, renderPyWorker } from './kernel/app/python';
 import { tenantClaim } from './kernel/app/shared';
+import { siblingDomainModels } from './kernel/siblings';
 import { PyFile, pyModulesOf, renderPyImportSmokeTest, renderPyKernel, renderPyKernelTests, renderPytestBdd, withInitFiles } from './kernel/python';
 import { PY_INTEGRATION_MARKER, PY_RUNTIME_DEPENDENCIES, renderPyRuntime } from './kernel/runtime/python';
 import { PY_DATABASE, PY_EVENT_BUS, pyEventBusTest, pyFeatureFile, renderPyproject } from './python/python-common';
 
 export function generatePythonFastApiPreset(parsed: ParsedFeature, config?: GherkinAIConfig, featureFile?: string): { filename: string; content: string }[] {
-  const m = buildDomainModel(parsed);
+  const m = buildDomainModel(parsed, { service: config?.projectName });
+  const siblings = siblingDomainModels(m, config, s => `app/domain/${s.snake}.py`);
 
-  const runtime = renderPyRuntime(m);
+  const runtime = renderPyRuntime(m, 'app', siblings);
   const appFiles: PyFile[] = withInitFiles([
     { filename: 'app/database.py', content: PY_DATABASE },
     { filename: 'app/infrastructure/event_bus.py', content: PY_EVENT_BUS },
-    ...renderPyKernel(m),
+    ...renderPyKernel(m, 'app', siblings),
     // Runtime kernel: PostgreSQL + RabbitMQ + OpenTelemetry, verified by tests/integration (docs/RUNTIME-KERNEL.md).
     ...runtime.filter(f => f.filename.startsWith('app/')),
     // Application layer wired to the kernel (kernel/app/shared.ts): HTTP commands, JWT tenant, relay worker.
-    { filename: 'app/main.py', content: renderFastApiMain(m) },
+    { filename: 'app/main.py', content: renderFastApiMain(m, siblings) },
     { filename: 'app/auth.py', content: renderPyAuth(tenantClaim(config)) },
     { filename: 'app/worker.py', content: renderPyWorker(m) }
   ]);

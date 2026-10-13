@@ -12,6 +12,7 @@ import { GherkinAIConfig } from '../core/config';
 import { generateJavaOpenTelemetryInfrastructure } from './java/java-opentelemetry-generator';
 import { renderSpringAppLayer } from './kernel/app/jvm';
 import { tenantClaim } from './kernel/app/shared';
+import { siblingDomainModels } from './kernel/siblings';
 import { buildDomainModel, toFlat, toPascal } from './kernel/domain-model';
 import { renderJvmRuntime } from './kernel/runtime/jvm';
 import { javaPackagePath, renderJavaKernel, renderJavaKernelTests, renderSpringApplication } from './kernel/java';
@@ -35,8 +36,9 @@ export function jvmGroupId(config?: GherkinAIConfig): string {
 }
 
 export function generateJavaSpringPreset(parsed: ParsedFeature, config?: GherkinAIConfig): { filename: string; content: string }[] {
-  const m = buildDomainModel(parsed);
+  const m = buildDomainModel(parsed, { service: config?.projectName });
   const pkg = jvmBasePackage(config);
+  const siblings = siblingDomainModels(m, config, s => `src/main/java/${javaPackagePath(pkg)}/domain/${s.pascal}Aggregate.java`);
   const srcRoot = `src/main/java/${javaPackagePath(pkg)}`;
 
   // Pattern generators emit paths relative to the base package (e.g. infrastructure/telemetry/X.java).
@@ -48,7 +50,7 @@ export function generateJavaSpringPreset(parsed: ParsedFeature, config?: Gherkin
     ...renderJavaKernel(m, pkg),
     ...renderJavaKernelTests(m, pkg),
     // Runtime kernel: PostgreSQL + RabbitMQ + OpenTelemetry, verified with -Pintegration (docs/RUNTIME-KERNEL.md).
-    ...renderJvmRuntime(m, pkg),
+    ...renderJvmRuntime(m, pkg, { siblings }),
     // Application layer wired to the kernel (kernel/app/shared.ts): REST, JWT tenant, DataSource, relay worker.
     ...renderSpringAppLayer(m, pkg, tenantClaim(config)),
     ...underBasePackage([

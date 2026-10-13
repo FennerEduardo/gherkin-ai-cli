@@ -14,7 +14,8 @@ export interface GoAppFile {
 
 const goStr = (s: string) => JSON.stringify(s);
 
-export function renderGoAppLayer(m: DomainModel, module: string, claim: string): GoAppFile[] {
+export function renderGoAppLayer(m: DomainModel, module: string, claim: string, siblings: DomainModel[] = []): GoAppFile[] {
+  const all = [m, ...siblings];
   const first = m.commands[0];
   const route = commandRoute(m);
 
@@ -114,7 +115,14 @@ func NewRouter(commands CommandPort, jwtSecret string) http.Handler {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
 
-	r.Post(${goStr(route + '/{id}/{command}')}, func(w http.ResponseWriter, req *http.Request) {
+	for path, aggregateType := range map[string]string{${all.map(f => `${goStr(commandRoute(f) + '/{id}/{command}')}: ${goStr(f.pascal)}`).join(', ')}} {
+		r.Post(path, commandHandler(commands, jwtSecret, aggregateType))
+	}
+	return r
+}
+
+func commandHandler(commands CommandPort, jwtSecret, aggregateType string) http.HandlerFunc {
+	return func(w http.ResponseWriter, req *http.Request) {
 		tenant := TenantFrom(req.Header.Get("Authorization"), jwtSecret)
 		if tenant == "" {
 			writeJSON(w, http.StatusUnauthorized, map[string]string{"detail": "A valid bearer token with a tenant is required"})
@@ -124,6 +132,7 @@ func NewRouter(commands CommandPort, jwtSecret string) http.Handler {
 		_ = json.NewDecoder(req.Body).Decode(&payload)
 		result, err := commands.Handle(req.Context(), runtime.CommandRequest{
 			TenantID:       tenant,
+			AggregateType:  aggregateType,
 			AggregateID:    chi.URLParam(req, "id"),
 			Command:        chi.URLParam(req, "command"),
 			Payload:        payload,
@@ -143,8 +152,7 @@ func NewRouter(commands CommandPort, jwtSecret string) http.Handler {
 			status = http.StatusOK
 		}
 		writeJSON(w, status, result)
-	})
-	return r
+	}
 }
 
 func writeJSON(w http.ResponseWriter, status int, body any) {

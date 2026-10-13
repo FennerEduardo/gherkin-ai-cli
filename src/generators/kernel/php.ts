@@ -248,7 +248,8 @@ ${m.steps.map(s => `
   ];
 }
 
-export function renderLaravelSkeleton(m: DomainModel, name: string): PhpFile[] {
+export function renderLaravelSkeleton(m: DomainModel, name: string, siblings: DomainModel[] = []): PhpFile[] {
+  const features = [m, ...siblings];
   const keep = (dir: string): PhpFile => ({ filename: `${dir}/.gitignore`, content: '*\n!.gitignore\n' });
   return [
     {
@@ -323,10 +324,10 @@ require __DIR__.'/../vendor/autoload.php';
       filename: 'routes/api.php',
       content: `<?php
 
-use App\\Http\\Controllers\\${m.pascal}Controller;
+${features.map(f => `use App\\Http\\Controllers\\${f.pascal}Controller;`).join('\n')}
 use Illuminate\\Support\\Facades\\Route;
 
-Route::post('/v1/${m.kebab}/{id}/{command}', [${m.pascal}Controller::class, 'execute']);
+${features.map(f => `Route::post('/v1/${f.kebab}/{id}/{command}', [${f.pascal}Controller::class, 'execute']);`).join('\n')}
 `
     },
     keep('storage/app'),
@@ -377,7 +378,7 @@ Route::post('/v1/${m.kebab}/{id}/{command}', [${m.pascal}Controller::class, 'exe
   suites:
     default:
       paths: ['%paths.base%/features']
-      contexts: ['${m.pascal}Context']
+      contexts: [${features.map(f => `'${f.pascal}Context'`).join(', ')}]
 `
     }
   ];

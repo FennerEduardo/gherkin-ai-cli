@@ -9,8 +9,6 @@
 
 import { ParsedFeature } from '../core/gherkin-parser';
 import { GherkinAIConfig, defaultConfig } from '../core/config';
-import fs from 'fs';
-import path from 'path';
 import { generateNestJsMultiTenancyInfrastructure } from './nestjs/multitenancy-generator';
 import {
   renderNestAppModule,
@@ -22,6 +20,7 @@ import {
   renderTsJwt
 } from './kernel/app/typescript';
 import { tenantClaim } from './kernel/app/shared';
+import { siblingDomainModels } from './kernel/siblings';
 import { buildDomainModel } from './kernel/domain-model';
 import { resolveNodeProfile, withEsmImportExtensions } from './node-profile';
 import { renderTsRuntime } from './kernel/runtime/typescript';
@@ -34,33 +33,18 @@ import {
   renderTsConfigs
 } from './kernel/typescript';
 
-/**
- * Feature modules already generated in the project (src/<kebab>/<kebab>.module.ts under outputDir), so the
- * service-wide AppModule imports every feature, not only the one being generated.
- */
-function existingFeatureModules(config: GherkinAIConfig | undefined, cwd = process.cwd()): { pascal: string; kebab: string }[] {
-  const src = path.resolve(cwd, config?.outputDir ?? './', 'src');
-  let dirs: string[] = [];
-  try { dirs = fs.readdirSync(src, { withFileTypes: true }).filter(d => d.isDirectory()).map(d => d.name); } catch { return []; }
-  const found: { pascal: string; kebab: string }[] = [];
-  for (const kebab of dirs) {
-    const file = path.join(src, kebab, `${kebab}.module.ts`);
-    if (!fs.existsSync(file)) continue;
-    const pascal = /export class (\w+)Module\b/.exec(fs.readFileSync(file, 'utf8'))?.[1];
-    if (pascal) found.push({ pascal, kebab });
-  }
-  return found;
-}
-
 export function generateNodeNestJsPreset(parsed: ParsedFeature, config?: GherkinAIConfig): { filename: string; content: string }[] {
-  const m = buildDomainModel(parsed);
+  const m = buildDomainModel(parsed, { service: config?.projectName });
+  // The service's other features: the runtime command service handles all of them.
+  const siblings = siblingDomainModels(m, config, s => `src/${s.kebab}/domain/${s.kebab}.aggregate.ts`);
   // NestJS 12 is ESM-only: see node-profile.ts.
   const profile = resolveNodeProfile(config ?? defaultConfig);
   const esm = profile.esm;
   const domainDir = `src/${m.kebab}/domain`;
   const aggregateFromFeature = `./domain/${m.kebab}.aggregate`;
 
-  const appModule = renderNestAppModule([...existingFeatureModules(config), { pascal: m.pascal, kebab: m.kebab }]);
+  const appModule = // Service-wide: imports the module of every generated feature.
+  renderNestAppModule([m, ...siblings].map(f => ({ pascal: f.pascal, kebab: f.kebab })));
 
   const main = `import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
@@ -83,7 +67,7 @@ void bootstrap();
     { filename: 'jest.config.js', content: renderJestConfig(['<rootDir>/src'], { esm }) },
     { filename: 'jest.integration.config.js', content: renderJestConfig(['<rootDir>/test/integration'], { esm, testMatch: '**/*.int-spec.ts', testTimeout: 60000 }) },
     // Runtime kernel: PostgreSQL + RabbitMQ + OpenTelemetry, verified by test/integration (docs/RUNTIME-KERNEL.md).
-    ...renderTsRuntime(m, `../${m.kebab}/domain/${m.kebab}.aggregate`),
+    ...renderTsRuntime(m, `../${m.kebab}/domain/${m.kebab}.aggregate`, siblings.map(s => ({ m: s, aggregateImport: `../${s.kebab}/domain/${s.kebab}.aggregate` }))),
     ...renderTsConfigs(),
     { filename: 'src/app.module.ts', content: appModule },
     { filename: 'src/main.ts', content: main },

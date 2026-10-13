@@ -250,7 +250,7 @@ public class ${m.pascal}Controller {
         @RequestHeader(value = "traceparent", required = false) String traceparent,
         @RequestAttribute(JwtTenantFilter.TENANT_ATTRIBUTE) String tenantId
     ) throws SQLException {
-        CommandService.Result result = commands.handle(new CommandService.Request(tenantId, id, command, payload == null ? Map.of() : payload, idempotencyKey, traceparent));
+        CommandService.Result result = commands.handle(new CommandService.Request(tenantId, id, command, payload == null ? Map.of() : payload, idempotencyKey, traceparent, ${j(m.pascal)}));
         return ResponseEntity.status(STATUS.getOrDefault(result.status(), HttpStatus.OK)).body(result);
     }
 

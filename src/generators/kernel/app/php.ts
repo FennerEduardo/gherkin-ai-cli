@@ -15,7 +15,7 @@ export interface PhpAppFile {
 const php = (s: string) => `'${s.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`;
 const head = (ns: string) => `<?php\n\ndeclare(strict_types=1);\n\nnamespace ${ns};\n\n`;
 
-export function renderLaravelAppLayer(m: DomainModel, claim: string): PhpAppFile[] {
+export function renderLaravelAppLayer(m: DomainModel, claim: string, siblings: DomainModel[] = []): PhpAppFile[] {
   const first = m.commands[0];
   const route = commandRoute(m);
 
@@ -87,7 +87,7 @@ interface CommandPort
      * @param array<string, mixed> $payload
      * @return array{status: string, aggregateId: string, eventType: ?string, version: ?int}
      */
-    public function handle(string $tenantId, string $aggregateId, string $command, array $payload = [], ?string $idempotencyKey = null, ?string $traceparent = null): array;
+    public function handle(string $tenantId, string $aggregateId, string $command, array $payload = [], ?string $idempotencyKey = null, ?string $traceparent = null, ?string $aggregateType = null): array;
 }
 `;
 
@@ -102,10 +102,10 @@ final class RuntimeCommandPort implements CommandPort
     {
     }
 
-    public function handle(string $tenantId, string $aggregateId, string $command, array $payload = [], ?string $idempotencyKey = null, ?string $traceparent = null): array
+    public function handle(string $tenantId, string $aggregateId, string $command, array $payload = [], ?string $idempotencyKey = null, ?string $traceparent = null, ?string $aggregateType = null): array
     {
         $this->service ??= new CommandService($this->databaseUrl);
-        return $this->service->handle($tenantId, $aggregateId, $command, $payload, $idempotencyKey, $traceparent);
+        return $this->service->handle($tenantId, $aggregateId, $command, $payload, $idempotencyKey, $traceparent, $aggregateType);
     }
 }
 `;
@@ -125,7 +125,6 @@ final class RuntimeServiceProvider extends ServiceProvider
 
   const controller = `${head('App\\Http\\Controllers')}use App\\Application\\CommandPort;
 use App\\Auth\\JwtTenant;
-use App\\Domain\\${m.pascal}\\DomainValidationException;
 use Illuminate\\Http\\JsonResponse;
 use Illuminate\\Http\\Request;
 
@@ -146,8 +145,9 @@ final class ${m.pascal}Controller
             return response()->json(['detail' => 'A valid bearer token with a tenant is required'], 401);
         }
         try {
-            $result = $this->commands->handle($tenant, $id, $command, $request->all(), $request->header('Idempotency-Key'), $request->header('traceparent'));
-        } catch (DomainValidationException $e) {
+            $result = $this->commands->handle($tenant, $id, $command, $request->all(), $request->header('Idempotency-Key'), $request->header('traceparent'), ${php(m.pascal)});
+        } catch (\\DomainException $e) {
+            // Every feature's DomainValidationException extends \\DomainException.
             return response()->json(['detail' => $e->getMessage()], 422);
         }
         return response()->json($result, self::STATUS[$result['status']] ?? 200);
@@ -203,7 +203,7 @@ final class ${m.pascal}ApiTest extends TestCase
             {
             }
 
-            public function handle(string $tenantId, string $aggregateId, string $command, array $payload = [], ?string $idempotencyKey = null, ?string $traceparent = null): array
+            public function handle(string $tenantId, string $aggregateId, string $command, array $payload = [], ?string $idempotencyKey = null, ?string $traceparent = null, ?string $aggregateType = null): array
             {
                 $this->test->calls[] = [$tenantId, $aggregateId, $command, $payload];
                 if ($command === 'does_not_exist') {

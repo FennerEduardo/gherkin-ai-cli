@@ -17,7 +17,8 @@ export interface JvmRuntimeFile {
 const j = (s: string) => JSON.stringify(s); // JSON strings are valid Java string literals here
 
 /** @param kotlin the domain kernel is Kotlin (data-class getters instead of record accessors) */
-export function renderJvmRuntime(m: DomainModel, pkg: string, { kotlin = false } = {}): JvmRuntimeFile[] {
+export function renderJvmRuntime(m: DomainModel, pkg: string, { kotlin = false, siblings = [] as DomainModel[] } = {}): JvmRuntimeFile[] {
+  const all = [m, ...siblings];
   const t = topology(m);
   const dir = `src/main/java/${javaPackagePath(pkg)}/runtime`;
   const testDir = `src/test/java/${javaPackagePath(pkg)}/runtime`;
@@ -120,10 +121,7 @@ public final class Telemetry {
 }
 `;
 
-  const commandService = `${p}import ${pkg}.domain.${A};
-import ${pkg}.domain.${m.pascal}Command;
-import ${pkg}.domain.${m.pascal}DomainEvent;
-import ${pkg}.domain.${m.pascal}State;
+  const commandService = `${p}${all.map(a => `import ${pkg}.domain.${a.pascal}Aggregate;\nimport ${pkg}.domain.${a.pascal}Command;\nimport ${pkg}.domain.${a.pascal}DomainEvent;\nimport ${pkg}.domain.${a.pascal}State;`).join('\n')}
 import ${pkg}.domain.DomainValidationException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.opentelemetry.api.trace.Span;
@@ -137,24 +135,33 @@ import java.sql.SQLException;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
-import java.util.function.BiFunction;
 
 /**
  * Executes a command in one transaction: idempotency claim, aggregate load (FOR UPDATE), domain
  * logic, aggregate save and outbox insert. A domain error rolls back everything.
  */
 public class CommandService {
-    private static final String AGGREGATE_TYPE = ${j(m.pascal)};
+    /** Aggregate type used when a request does not name one. */
+    public static final String DEFAULT_AGGREGATE = ${j(m.pascal)};
     private static final ObjectMapper JSON = new ObjectMapper().findAndRegisterModules();
-    private static final Map<String, BiFunction<${A}, ${m.pascal}Command, ${m.pascal}DomainEvent>> COMMANDS = Map.of(
-${m.commands.map(c => `        ${j(c.snake)}, (a, c) -> a.${c.method}(c)`).join(',\n')}
-    );
 
-    public record Request(String tenantId, String aggregateId, String command, Map<String, Object> payload, String idempotencyKey, String traceparent) {
+    /** aggregateType: the feature's aggregate (e.g. ${j(m.pascal)}); null means DEFAULT_AGGREGATE. */
+    public record Request(String tenantId, String aggregateId, String command, Map<String, Object> payload, String idempotencyKey, String traceparent, String aggregateType) {
+        public Request(String tenantId, String aggregateId, String command, Map<String, Object> payload, String idempotencyKey, String traceparent) {
+            this(tenantId, aggregateId, command, payload, idempotencyKey, traceparent, null);
+        }
+
         public Request(String tenantId, String aggregateId, String command) {
-            this(tenantId, aggregateId, command, Map.of(), null, null);
+            this(tenantId, aggregateId, command, Map.of(), null, null, null);
+        }
+
+        String type() {
+            return aggregateType == null || aggregateType.isBlank() ? DEFAULT_AGGREGATE : aggregateType;
         }
     }
+
+    /** The result of running a command on an aggregate: its new state and the recorded event. */
+    private record Applied(String state, long version, String eventType, long eventVersion, Object event) {}
 
     public record Result(String status, String aggregateId, String eventType, Long version) {}
 
@@ -209,39 +216,57 @@ ${m.commands.map(c => `        ${j(c.snake)}, (a, c) -> a.${c.method}(c)`).join(
                 return new Result("in-progress", req.aggregateId(), null, null);
             }
         }
-        ${A} aggregate;
+        String type = req.type();
+        String state = null;
+        long version = 0;
         try (PreparedStatement ps = conn.prepareStatement("SELECT state, version FROM " + s + ".ghk_aggregates WHERE tenant_id = ? AND aggregate_type = ? AND id = ? FOR UPDATE")) {
             ps.setString(1, req.tenantId());
-            ps.setString(2, AGGREGATE_TYPE);
+            ps.setString(2, type);
             ps.setString(3, req.aggregateId());
             try (ResultSet rs = ps.executeQuery()) {
-                aggregate = rs.next()
-                    ? ${A}.restore(req.aggregateId(), ${m.pascal}State.valueOf(rs.getString(1)), rs.getLong(2))
-                    : new ${A}(req.aggregateId());
+                if (rs.next()) {
+                    state = rs.getString(1);
+                    version = rs.getLong(2);
+                }
             }
         }
-        var handler = COMMANDS.get(req.command());
-        if (handler == null) throw new DomainValidationException("Unknown command " + req.command());
-        ${m.pascal}DomainEvent event = handler.apply(aggregate, new ${m.pascal}Command(req.aggregateId(), req.payload() == null ? Map.of() : req.payload()));
+        Map<String, Object> payload = req.payload() == null ? Map.of() : req.payload();
+        Applied applied = switch (type) {
+${all.map(a => `            case ${j(a.pascal)} -> apply${a.pascal}(req.aggregateId(), state, version, req.command(), payload);`).join('\n')}
+            default -> throw new DomainValidationException("Unknown aggregate type " + type);
+        };
         update(conn, "INSERT INTO " + s + ".ghk_aggregates (tenant_id, aggregate_type, id, state, version) VALUES (?, ?, ?, ?, ?) "
             + "ON CONFLICT (tenant_id, aggregate_type, id) DO UPDATE SET state = EXCLUDED.state, version = EXCLUDED.version, updated_at = now()",
-            req.tenantId(), AGGREGATE_TYPE, req.aggregateId(), aggregate.getState().name(), aggregate.getVersion());
-        String eventType = event.${ev('type')}.name();
+            req.tenantId(), type, req.aggregateId(), applied.state(), applied.version());
         update(conn, "INSERT INTO " + s + ".ghk_outbox (id, tenant_id, aggregate_id, event_type, payload, traceparent) VALUES (?, ?, ?, ?, ?, ?)",
-            UUID.randomUUID().toString(), req.tenantId(), req.aggregateId(), eventType, writeJson(event), traceparent);
-        Result result = new Result("created", req.aggregateId(), eventType, event.${ev('version')});
+            UUID.randomUUID().toString(), req.tenantId(), req.aggregateId(), applied.eventType(), writeJson(applied.event()), traceparent);
+        Result result = new Result("created", req.aggregateId(), applied.eventType(), applied.eventVersion());
         if (key != null) {
             update(conn, "UPDATE " + s + ".ghk_idempotency SET status = 'COMPLETED', response = ? WHERE tenant_id = ? AND key = ?", writeJson(result), req.tenantId(), key);
         }
         return result;
     }
 
+${all.map(a => `    private static Applied apply${a.pascal}(String id, String state, long version, String command, Map<String, Object> payload) {
+        ${a.pascal}Aggregate aggregate = state == null ? new ${a.pascal}Aggregate(id) : ${a.pascal}Aggregate.restore(id, ${a.pascal}State.valueOf(state), version);
+        ${a.pascal}Command cmd = new ${a.pascal}Command(id, payload);
+        ${a.pascal}DomainEvent event = switch (command) {
+${a.commands.map(c => `            case ${j(c.snake)} -> aggregate.${c.method}(cmd);`).join('\n')}
+            default -> throw new DomainValidationException("Unknown command " + command);
+        };
+        return new Applied(aggregate.getState().name(), aggregate.getVersion(), event.${ev('type')}.name(), event.${ev('version')}, event);
+    }
+`).join('\n')}
     /** The aggregate as tenantId sees it (empty for other tenants' aggregates). */
     public Optional<Snapshot> load(String tenantId, String aggregateId) throws SQLException {
+        return load(tenantId, aggregateId, DEFAULT_AGGREGATE);
+    }
+
+    public Optional<Snapshot> load(String tenantId, String aggregateId, String aggregateType) throws SQLException {
         try (Connection conn = connections.open();
              PreparedStatement ps = conn.prepareStatement("SELECT state, version FROM " + s + ".ghk_aggregates WHERE tenant_id = ? AND aggregate_type = ? AND id = ?")) {
             ps.setString(1, tenantId);
-            ps.setString(2, AGGREGATE_TYPE);
+            ps.setString(2, aggregateType);
             ps.setString(3, aggregateId);
             try (ResultSet rs = ps.executeQuery()) {
                 return rs.next() ? Optional.of(new Snapshot(rs.getString(1), rs.getLong(2))) : Optional.empty();

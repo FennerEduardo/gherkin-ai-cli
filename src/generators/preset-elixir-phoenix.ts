@@ -13,18 +13,20 @@ import { buildDomainModel, toPascal, toSnake } from './kernel/domain-model';
 import { renderElixirProject } from './kernel/elixir';
 import { renderPhoenixAppLayer } from './kernel/app/elixir';
 import { tenantClaim } from './kernel/app/shared';
+import { siblingDomainModels } from './kernel/siblings';
 
 export function generateElixirPhoenixPreset(parsed: ParsedFeature, config?: GherkinAIConfig, featureFile?: string): { filename: string; content: string }[] {
-  const m = buildDomainModel(parsed);
+  const m = buildDomainModel(parsed, { service: config?.projectName });
   const base = config?.projectName || 'app';
   const otp = /^[a-z]/.test(toSnake(base)) ? toSnake(base) : `app_${toSnake(base)}`;
   const mod = /^[A-Z]/.test(toPascal(base)) ? toPascal(base) : `App${toPascal(base)}`;
   const liveview = /live-?view/i.test(config?.frontendStack?.framework || "");
+  const siblings = siblingDomainModels(m, config, s => `lib/${otp}/domain/${s.snake}_aggregate.ex`);
   // Application layer wired to the kernel (kernel/app/shared.ts): HTTP commands, JWT tenant, Postgrex pool, relay worker.
   const app = renderPhoenixAppLayer(m, { otp, mod }, tenantClaim(config), { liveview });
   const replaced = new Set(app.map(f => f.filename));
   return [
-    ...renderElixirProject(m, { otp, mod }, featureFile || `features/${m.kebab}.feature`, { liveview }).filter(f => !replaced.has(f.filename)),
+    ...renderElixirProject(m, { otp, mod }, featureFile || `features/${m.kebab}.feature`, { liveview, siblings }).filter(f => !replaced.has(f.filename)),
     ...app
   ];
 }

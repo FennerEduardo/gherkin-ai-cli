@@ -81,7 +81,8 @@ end
   ];
 }
 
-export function renderRailsApp(m: DomainModel, appModule: string): RbFile[] {
+export function renderRailsApp(m: DomainModel, appModule: string, siblings: DomainModel[] = []): RbFile[] {
+  const features = [m, ...siblings];
   const first = m.commands[0];
   return [
     {
@@ -133,7 +134,7 @@ end
       filename: 'config/routes.rb',
       content: `Rails.application.routes.draw do
   get "health", to: "${m.snake}#health"
-  post "api/v1/${m.kebab}/:id/:command", to: "${m.snake}#execute"
+${features.map(f => `  post "api/v1/${f.kebab}/:id/:command", to: "${f.snake}#execute"`).join('\n')}
 end
 `
     },

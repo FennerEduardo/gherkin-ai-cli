@@ -25,7 +25,8 @@ export const PHP_RUNTIME_EXTENSIONS = 'apk add --no-cache $PHPIZE_DEPS postgresq
 
 const php = (s: string) => `'${s.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`;
 
-export function renderPhpRuntime(m: DomainModel): PhpRuntimeFile[] {
+export function renderPhpRuntime(m: DomainModel, siblings: DomainModel[] = []): PhpRuntimeFile[] {
+  const all = [m, ...siblings];
   const t = topology(m);
   const domainNs = `App\\Domain\\${m.pascal}`;
   const A = `${m.pascal}Aggregate`;
@@ -131,9 +132,9 @@ final class Telemetry
 }
 `;
 
-  const commandService = `${head}use ${domainNs}\\${A};
-use ${domainNs}\\${m.pascal}Command;
-use ${domainNs}\\${m.pascal}State;
+  const commandService = `${head}${all.map(a => `use App\\Domain\\${a.pascal}\\${a.pascal}Aggregate;
+use App\\Domain\\${a.pascal}\\${a.pascal}Command;
+use App\\Domain\\${a.pascal}\\${a.pascal}State;`).join('\n')}
 use ${domainNs}\\DomainValidationException;
 use OpenTelemetry\\API\\Trace\\SpanKind;
 use OpenTelemetry\\API\\Trace\\StatusCode;
@@ -145,9 +146,14 @@ use PDO;
  */
 final class CommandService
 {
-    private const AGGREGATE_TYPE = ${php(m.pascal)};
+    /** Aggregate type used when a request does not name one. */
+    public const DEFAULT_AGGREGATE = ${php(m.pascal)};
+
+    /** Every aggregate of the service: command name => aggregate method. */
     private const COMMANDS = [
-${m.commands.map(c => `        ${php(c.snake)} => ${php(c.method)},`).join('\n')}
+${all.map(a => `        ${php(a.pascal)} => [
+${a.commands.map(c => `            ${php(c.snake)} => ${php(c.method)},`).join('\n')}
+        ],`).join('\n')}
     ];
 
     private readonly string $s;
@@ -161,18 +167,22 @@ ${m.commands.map(c => `        ${php(c.snake)} => ${php(c.method)},`).join('\n')
      * @param array<string, mixed> $payload
      * @return array{status: string, aggregateId: string, eventType: ?string, version: ?int}
      */
-    public function handle(string $tenantId, string $aggregateId, string $command, array $payload = [], ?string $idempotencyKey = null, ?string $traceparent = null): array
+    public function handle(string $tenantId, string $aggregateId, string $command, array $payload = [], ?string $idempotencyKey = null, ?string $traceparent = null, ?string $aggregateType = null): array
     {
         if ($tenantId === '') {
             throw new DomainValidationException('tenantId is required');
         }
+        $aggregateType ??= self::DEFAULT_AGGREGATE;
+        if (!isset(self::COMMANDS[$aggregateType])) {
+            throw new DomainValidationException("Unknown aggregate type {$aggregateType}");
+        }
         $parent = Telemetry::contextFrom($traceparent);
-        $span = Telemetry::tracer()->spanBuilder("${m.pascal}.{$command}")->setParent($parent)->setSpanKind(SpanKind::KIND_INTERNAL)
+        $span = Telemetry::tracer()->spanBuilder("{$aggregateType}.{$command}")->setParent($parent)->setSpanKind(SpanKind::KIND_INTERNAL)
             ->setAttribute('tenant.id', $tenantId)->setAttribute('aggregate.id', $aggregateId)->startSpan();
         $pdo = Database::connect($this->databaseUrl);
         try {
             $pdo->beginTransaction();
-            $result = $this->execute($pdo, $tenantId, $aggregateId, $command, $payload, $idempotencyKey, Telemetry::traceparentOf($span, $parent));
+            $result = $this->execute($pdo, $aggregateType, $tenantId, $aggregateId, $command, $payload, $idempotencyKey, Telemetry::traceparentOf($span, $parent));
             $pdo->commit();
             return $result;
         } catch (\\Throwable $e) {
@@ -191,7 +201,7 @@ ${m.commands.map(c => `        ${php(c.snake)} => ${php(c.method)},`).join('\n')
      * @param array<string, mixed> $payload
      * @return array{status: string, aggregateId: string, eventType: ?string, version: ?int}
      */
-    private function execute(PDO $pdo, string $tenantId, string $aggregateId, string $command, array $payload, ?string $key, ?string $traceparent): array
+    private function execute(PDO $pdo, string $aggregateType, string $tenantId, string $aggregateId, string $command, array $payload, ?string $key, ?string $traceparent): array
     {
         $s = $this->s;
         if ($key !== null) {
@@ -204,15 +214,20 @@ ${m.commands.map(c => `        ${php(c.snake)} => ${php(c.method)},`).join('\n')
             }
         }
         $row = Database::rows($pdo, "SELECT state, version FROM {$s}.ghk_aggregates WHERE tenant_id = ? AND aggregate_type = ? AND id = ? FOR UPDATE",
-            [$tenantId, self::AGGREGATE_TYPE, $aggregateId])[0] ?? null;
-        $aggregate = $row !== null
-            ? ${A}::restore($aggregateId, ${m.pascal}State::from((string) $row['state']), (int) $row['version'])
-            : new ${A}($aggregateId);
-        $method = self::COMMANDS[$command] ?? throw new DomainValidationException("Unknown command {$command}");
-        $event = $aggregate->{$method}(new ${m.pascal}Command($aggregateId, $payload));
+            [$tenantId, $aggregateType, $aggregateId])[0] ?? null;
+        $aggregate = match ($aggregateType) {
+${all.map(a => `            ${php(a.pascal)} => $row !== null
+                ? ${a.pascal}Aggregate::restore($aggregateId, ${a.pascal}State::from((string) $row['state']), (int) $row['version'])
+                : new ${a.pascal}Aggregate($aggregateId),`).join('\n')}
+        };
+        $method = self::COMMANDS[$aggregateType][$command] ?? throw new DomainValidationException("Unknown command {$command}");
+        $commandObject = match ($aggregateType) {
+${all.map(a => `            ${php(a.pascal)} => new ${a.pascal}Command($aggregateId, $payload),`).join('\n')}
+        };
+        $event = $aggregate->{$method}($commandObject);
         Database::exec($pdo, "INSERT INTO {$s}.ghk_aggregates (tenant_id, aggregate_type, id, state, version) VALUES (?, ?, ?, ?, ?) "
             . 'ON CONFLICT (tenant_id, aggregate_type, id) DO UPDATE SET state = EXCLUDED.state, version = EXCLUDED.version, updated_at = now()',
-            [$tenantId, self::AGGREGATE_TYPE, $aggregateId, $aggregate->state()->value, $aggregate->version()]);
+            [$tenantId, $aggregateType, $aggregateId, $aggregate->state()->value, $aggregate->version()]);
         Database::exec($pdo, "INSERT INTO {$s}.ghk_outbox (id, tenant_id, aggregate_id, event_type, payload, traceparent) VALUES (?, ?, ?, ?, ?, ?)",
             [self::uuid(), $tenantId, $aggregateId, $event->type->value, json_encode($event, JSON_THROW_ON_ERROR), $traceparent]);
         $result = ['status' => 'created', 'aggregateId' => $aggregateId, 'eventType' => $event->type->value, 'version' => $event->version];
@@ -224,11 +239,11 @@ ${m.commands.map(c => `        ${php(c.snake)} => ${php(c.method)},`).join('\n')
     }
 
     /** @return array{state: string, version: int}|null The aggregate as the tenant sees it (null for other tenants'). */
-    public function load(string $tenantId, string $aggregateId): ?array
+    public function load(string $tenantId, string $aggregateId, string $aggregateType = self::DEFAULT_AGGREGATE): ?array
     {
         $row = Database::rows(Database::connect($this->databaseUrl),
             "SELECT state, version FROM {$this->s}.ghk_aggregates WHERE tenant_id = ? AND aggregate_type = ? AND id = ?",
-            [$tenantId, self::AGGREGATE_TYPE, $aggregateId])[0] ?? null;
+            [$tenantId, $aggregateType, $aggregateId])[0] ?? null;
         return $row === null ? null : ['state' => (string) $row['state'], 'version' => (int) $row['version']];
     }
 

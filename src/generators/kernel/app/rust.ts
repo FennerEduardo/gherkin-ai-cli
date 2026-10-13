@@ -19,7 +19,8 @@ export const RS_APP_DEPS = `base64 = "0.22"
 hmac = "0.12"
 sha2 = "0.10"`;
 
-export function renderAxumAppLayer(m: DomainModel, crate: string, claim: string): RsAppFile[] {
+export function renderAxumAppLayer(m: DomainModel, crate: string, claim: string, siblings: DomainModel[] = []): RsAppFile[] {
+  const all = [m, ...siblings];
   const first = m.commands[0];
   const route = commandRoute(m);
 
@@ -65,15 +66,25 @@ struct AppState {
     jwt_secret: Arc<String>,
 }
 
+/// Routes of every feature of the service (each names its aggregate type).
+const ROUTES: &[(&str, &str)] = &[${all.map(f => `(${rsStr(commandRoute(f) + '/:id/:command')}, ${rsStr(f.pascal)})`).join(', ')}];
+
 pub fn router(commands: Arc<dyn CommandPort>, jwt_secret: impl Into<String>) -> Router {
-    Router::new()
-        .route("/health", get(|| async { Json(json!({ "status": "ok" })) }))
-        .route(${rsStr(route + '/:id/:command')}, post(execute))
-        .with_state(AppState { commands, jwt_secret: Arc::new(jwt_secret.into()) })
+    let mut router = Router::new().route("/health", get(|| async { Json(json!({ "status": "ok" })) }));
+    for &(path, aggregate_type) in ROUTES {
+        router = router.route(
+            path,
+            post(move |state: State<AppState>, params: Path<(String, String)>, headers: HeaderMap, body: Option<Json<Value>>| {
+                execute(state, aggregate_type, params, headers, body)
+            }),
+        );
+    }
+    router.with_state(AppState { commands, jwt_secret: Arc::new(jwt_secret.into()) })
 }
 
 async fn execute(
     State(state): State<AppState>,
+    aggregate_type: &'static str,
     Path((id, command)): Path<(String, String)>,
     headers: HeaderMap,
     body: Option<Json<Value>>,
@@ -85,6 +96,7 @@ async fn execute(
     let payload: HashMap<String, Value> = body.and_then(|Json(v)| v.as_object().cloned()).map(|m| m.into_iter().collect()).unwrap_or_default();
     let req = CommandRequest {
         tenant_id: tenant,
+        aggregate_type: Some(aggregate_type.to_string()),
         aggregate_id: id,
         command,
         payload,

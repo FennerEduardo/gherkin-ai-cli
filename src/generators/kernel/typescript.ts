@@ -173,8 +173,10 @@ module.exports = {
 
 /** `esm`: ts-jest in ESM mode (run with --experimental-vm-modules); `.js` specifiers map back to the .ts sources. */
 export function renderJestConfig(roots: string[], { esm = false, testMatch = '**/*.spec.ts', testTimeout = 0 } = {}): string {
+  // Integration suites (the ones with a timeout) share one database: run their files one at a time.
   const timeout = testTimeout ? `
-  testTimeout: ${testTimeout},` : '';
+  testTimeout: ${testTimeout},
+  maxWorkers: 1,` : '';
   if (esm) {
     return `/** @type {import('jest').Config} */
 export default {

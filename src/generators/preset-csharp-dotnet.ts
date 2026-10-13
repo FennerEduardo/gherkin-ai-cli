@@ -15,8 +15,9 @@ import { generateDotNetAspireAppHost, generateDotNetAspireServiceDefaults } from
 import { generateResiliencePipelines } from './dotnet/resilience-generator';
 import { buildDomainModel } from './kernel/domain-model';
 import { renderCsRuntime } from './kernel/runtime/csharp';
-import { REQNROLL_JSON, renderCsAggregate, renderCsAggregateTests, renderCsTestProject, renderReqnrollSteps } from './kernel/csharp';
+import { REQNROLL_JSON, renderCsDomainValidationException, renderCsAggregate, renderCsAggregateTests, renderCsTestProject, renderReqnrollSteps } from './kernel/csharp';
 import { renderAspNetAppLayer } from './kernel/app/csharp';
+import { siblingDomainModels } from './kernel/siblings';
 import { tenantClaim } from './kernel/app/shared';
 
 /** Root namespace: generation.package (e.g. Acme.Billing), else the project name. */
@@ -28,19 +29,21 @@ export function dotnetNamespace(config?: GherkinAIConfig): string {
 
 export function generateCsharpDotnetPreset(parsed: ParsedFeature, config?: GherkinAIConfig): { filename: string; content: string }[] {
   const namespace = dotnetNamespace(config);
-  const m = buildDomainModel(parsed);
+  const m = buildDomainModel(parsed, { service: config?.projectName });
+  const siblings = siblingDomainModels(m, config, s => `src/Domain/Kernel/${s.pascal}Aggregate.cs`);
   const testsDir = `tests/${namespace}.Tests`;
 
   return [
     { filename: `src/Domain/Kernel/${m.pascal}Aggregate.cs`, content: renderCsAggregate(m, namespace) },
+    { filename: 'src/Domain/Kernel/DomainValidationException.cs', content: renderCsDomainValidationException(namespace) },
     { filename: `${testsDir}/${namespace}.Tests.csproj`, content: renderCsTestProject(namespace, `${config?.projectName || 'MyProject'}.csproj`) },
     { filename: `${testsDir}/reqnroll.json`, content: REQNROLL_JSON },
     { filename: `${testsDir}/Domain/${m.pascal}AggregateTests.cs`, content: renderCsAggregateTests(m, namespace) },
     { filename: `${testsDir}/Steps/${m.pascal}StepDefinitions.cs`, content: renderReqnrollSteps(m, namespace) },
     // Runtime kernel: PostgreSQL + RabbitMQ + OpenTelemetry, verified by Category=Integration tests (docs/RUNTIME-KERNEL.md).
-    ...renderCsRuntime(m, namespace, testsDir),
+    ...renderCsRuntime(m, namespace, testsDir, siblings),
     // Application layer wired to the kernel (kernel/app/shared.ts): HTTP commands, JWT tenant, relay worker.
-    ...renderAspNetAppLayer(m, namespace, testsDir, tenantClaim(config)),
+    ...renderAspNetAppLayer(m, namespace, testsDir, tenantClaim(config), siblings),
     { filename: `src/Infrastructure/Resilience/ResilienceExtensions.cs`, content: generateResiliencePipelines(namespace) },
     { filename: `src/Infrastructure/Telemetry/OpenTelemetryExtensions.cs`, content: generateOpenTelemetryConfig(namespace) },
     { filename: `src/Infrastructure/Realtime/SignalRNotificationService.cs`, content: generateSignalRInfrastructure(namespace) },

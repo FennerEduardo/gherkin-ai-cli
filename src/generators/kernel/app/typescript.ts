@@ -206,11 +206,12 @@ export class ${m.pascal}Controller {
     @Res({ passthrough: true }) res: { status(code: number): unknown }
   ) {
     try {
-      const result = await this.commands.handle({ tenantId: req.tenantId, aggregateId: id, command, payload: payload ?? {}, idempotencyKey, traceparent });
+      const result = await this.commands.handle({ tenantId: req.tenantId, aggregateType: '${m.pascal}', aggregateId: id, command, payload: payload ?? {}, idempotencyKey, traceparent });
       res.status(STATUS[result.status]);
       return result;
     } catch (err) {
-      if (err instanceof DomainValidationError) throw new HttpException(err.message, HttpStatus.UNPROCESSABLE_ENTITY);
+      // By name: every feature's domain module declares its own DomainValidationError class.
+      if (err instanceof DomainValidationError || (err as Error)?.name === 'DomainValidationError') throw new HttpException((err as Error).message, HttpStatus.UNPROCESSABLE_ENTITY);
       throw err;
     }
   }
@@ -315,7 +316,8 @@ describe('${m.pascal} HTTP application layer', () => {
 }
 
 /** Express app over a command port (the runtime CommandService in production, a fake in unit tests). */
-export function renderExpressApp(m: DomainModel): string {
+export function renderExpressApp(m: DomainModel, siblings: DomainModel[] = []): string {
+  const all = [m, ...siblings];
   return `import express, { NextFunction, Request, Response } from 'express';
 import { DomainValidationError } from './domain/${m.kebab}.aggregate';
 import type { CommandRequest, CommandResult } from './runtime/command-service';
@@ -328,7 +330,7 @@ export interface CommandPort {
 
 const STATUS: Record<CommandResult['status'], number> = { created: 202, replayed: 200, 'in-progress': 409 };
 
-// ghk:implements ${m.pascal}
+${all.map(f => `// ghk:implements ${f.pascal}`).join('\n')}
 export function createApp(commands: CommandPort): express.Express {
   const app = express();
   app.use(express.json());
@@ -337,8 +339,9 @@ export function createApp(commands: CommandPort): express.Express {
     res.json({ status: 'ok' });
   });
 
-  /** POST ${commandRoute(m)}/:id/:command (${m.commands.map(c => c.snake).join(', ')}) */
-  app.post('${commandRoute(m)}/:id/:command', async (req: Request<{ id: string; command: string }>, res: Response, next: NextFunction) => {
+  // One route per feature of the service; each names its aggregate type.
+  const routes: [string, string][] = [${all.map(f => `['${commandRoute(f)}', '${f.pascal}']`).join(', ')}];
+  for (const [route, aggregateType] of routes) app.post(\`\${route}/:id/:command\`, async (req: Request<{ id: string; command: string }>, res: Response, next: NextFunction) => {
     // The tenant comes only from the validated token, never from a header such as X-Tenant-Id.
     const tenantId = tenantFromAuthorization(req.headers.authorization);
     if (!tenantId) {
@@ -348,6 +351,7 @@ export function createApp(commands: CommandPort): express.Express {
     try {
       const result = await commands.handle({
         tenantId,
+        aggregateType,
         aggregateId: req.params.id,
         command: req.params.command,
         payload: req.body ?? {},
@@ -356,8 +360,9 @@ export function createApp(commands: CommandPort): express.Express {
       });
       res.status(STATUS[result.status]).json(result);
     } catch (err) {
-      if (err instanceof DomainValidationError) {
-        res.status(422).json({ detail: err.message });
+      // By name: every feature's domain module declares its own DomainValidationError class.
+      if (err instanceof DomainValidationError || (err as Error)?.name === 'DomainValidationError') {
+        res.status(422).json({ detail: (err as Error).message });
         return;
       }
       next(err);

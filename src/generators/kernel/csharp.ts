@@ -11,11 +11,6 @@ export function renderCsAggregate(m: DomainModel, ns: string): string {
 // Pure domain logic: no framework, no I/O. Extend the command handlers with your business rules.
 namespace ${ns}.Domain.Kernel;
 
-public sealed class DomainValidationException : Exception
-{
-    public DomainValidationException(string message) : base(message) { }
-}
-
 public static class ${m.pascal}States
 {
 ${m.states.map(s => `    public const string ${s} = ${cs(s)};`).join('\n')}
@@ -70,6 +65,17 @@ ${m.commands.map(c => `
         _pendingEvents.Add(@event);
         return @event;
     }
+}
+`;
+}
+
+/** Shared by every aggregate of the service: src/Domain/Kernel/DomainValidationException.cs */
+export function renderCsDomainValidationException(ns: string): string {
+  return `namespace ${ns}.Domain.Kernel;
+
+public sealed class DomainValidationException : Exception
+{
+    public DomainValidationException(string message) : base(message) { }
 }
 `;
 }

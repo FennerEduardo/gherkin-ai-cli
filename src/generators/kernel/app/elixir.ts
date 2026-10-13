@@ -162,6 +162,7 @@ end
       tenant ->
         request = %{
           tenant_id: tenant,
+          aggregate_type: ${ex(m.pascal)},
           aggregate_id: id,
           command: command,
           payload: Map.drop(params, ["id", "command"]),

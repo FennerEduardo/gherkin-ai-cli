@@ -19,7 +19,8 @@ gem "opentelemetry-sdk", "~> 1.5"
 
 const rb = (s: string) => JSON.stringify(s); // JSON strings are valid Ruby double-quoted literals here (no #{)
 
-export function renderRbRuntime(m: DomainModel): RbRuntimeFile[] {
+export function renderRbRuntime(m: DomainModel, siblings: DomainModel[] = []): RbRuntimeFile[] {
+  const all = [m, ...siblings];
   const t = topology(m);
   const A = `${m.pascal}Aggregate`;
   const statements = RUNTIME_SCHEMA_SQL.map(s => `    ${rb(s)}`).join(',\n');
@@ -87,9 +88,11 @@ require "securerandom"
 # Executes a command in one transaction: idempotency claim, aggregate load (FOR UPDATE), domain
 # logic, aggregate save and outbox insert. A domain error rolls back everything.
 class CommandService
-  AGGREGATE_TYPE = ${rb(m.pascal)}
-  COMMANDS = {
-${m.commands.map(c => `    ${rb(c.snake)} => ->(aggregate, command) { aggregate.${c.snake}(command) }`).join(',\n')}
+  # Aggregate type used when a request does not name one.
+  DEFAULT_AGGREGATE = ${rb(m.pascal)}
+  # Every aggregate of the service: aggregate class, command class and command names.
+  AGGREGATES = {
+${all.map(a => `    ${rb(a.pascal)} => { aggregate: ${a.pascal}Aggregate, command: ${a.pascal}Command, commands: %w[${a.commands.map(c => c.snake).join(' ')}] }`).join(',\n')}
   }.freeze
 
   Result = Struct.new(:status, :aggregate_id, :event_type, :version, keyword_init: true)
@@ -99,16 +102,19 @@ ${m.commands.map(c => `    ${rb(c.snake)} => ->(aggregate, command) { aggregate.
     @s = RuntimeSchema.name_for(schema)
   end
 
-  def handle(tenant_id:, aggregate_id:, command:, payload: {}, idempotency_key: nil, traceparent: nil)
+  def handle(tenant_id:, aggregate_id:, command:, payload: {}, idempotency_key: nil, traceparent: nil, aggregate_type: nil)
     raise DomainValidationError, "tenant_id is required" if tenant_id.to_s.empty?
 
+    aggregate_type ||= DEFAULT_AGGREGATE
+    raise DomainValidationError, "Unknown aggregate type #{aggregate_type}" unless AGGREGATES.key?(aggregate_type)
+
     parent = RuntimeTelemetry.context_from(traceparent)
-    span = RuntimeTelemetry.tracer.start_span("${m.pascal}.#{command}", with_parent: parent, kind: :internal,
+    span = RuntimeTelemetry.tracer.start_span("#{aggregate_type}.#{command}", with_parent: parent, kind: :internal,
                                               attributes: { "tenant.id" => tenant_id, "aggregate.id" => aggregate_id })
     conn = PG.connect(@database_url)
     begin
       conn.transaction do |tx|
-        execute(tx, tenant_id, aggregate_id, command, payload, idempotency_key, RuntimeTelemetry.traceparent_of(span, parent))
+        execute(tx, aggregate_type, tenant_id, aggregate_id, command, payload, idempotency_key, RuntimeTelemetry.traceparent_of(span, parent))
       end
     rescue StandardError => e
       span.record_exception(e)
@@ -121,10 +127,10 @@ ${m.commands.map(c => `    ${rb(c.snake)} => ->(aggregate, command) { aggregate.
   end
 
   # The aggregate as the tenant sees it (nil for other tenants' aggregates).
-  def load(tenant_id, aggregate_id)
+  def load(tenant_id, aggregate_id, aggregate_type = DEFAULT_AGGREGATE)
     conn = PG.connect(@database_url)
     row = conn.exec_params("SELECT state, version FROM #{@s}.ghk_aggregates WHERE tenant_id = $1 AND aggregate_type = $2 AND id = $3",
-                           [tenant_id, AGGREGATE_TYPE, aggregate_id]).first
+                           [tenant_id, aggregate_type, aggregate_id]).first
     row && { state: row["state"], version: row["version"].to_i }
   ensure
     conn&.close
@@ -132,7 +138,8 @@ ${m.commands.map(c => `    ${rb(c.snake)} => ->(aggregate, command) { aggregate.
 
   private
 
-  def execute(tx, tenant_id, aggregate_id, command, payload, key, traceparent)
+  def execute(tx, aggregate_type, tenant_id, aggregate_id, command, payload, key, traceparent)
+    kind = AGGREGATES.fetch(aggregate_type)
     if key
       claim = tx.exec_params("INSERT INTO #{@s}.ghk_idempotency (tenant_id, key, status) VALUES ($1, $2, 'PROCESSING') ON CONFLICT DO NOTHING", [tenant_id, key])
       if claim.cmd_tuples.zero?
@@ -143,13 +150,14 @@ ${m.commands.map(c => `    ${rb(c.snake)} => ->(aggregate, command) { aggregate.
       end
     end
     row = tx.exec_params("SELECT state, version FROM #{@s}.ghk_aggregates WHERE tenant_id = $1 AND aggregate_type = $2 AND id = $3 FOR UPDATE",
-                         [tenant_id, AGGREGATE_TYPE, aggregate_id]).first
-    aggregate = row ? ${A}.restore(aggregate_id, row["state"], row["version"].to_i) : ${A}.new(aggregate_id)
-    handler = COMMANDS[command] or raise DomainValidationError, "Unknown command #{command}"
-    event = handler.call(aggregate, ${m.pascal}Command.new(id: aggregate_id, payload: payload || {}))
+                         [tenant_id, aggregate_type, aggregate_id]).first
+    aggregate = row ? kind[:aggregate].restore(aggregate_id, row["state"], row["version"].to_i) : kind[:aggregate].new(aggregate_id)
+    raise DomainValidationError, "Unknown command #{command}" unless kind[:commands].include?(command)
+
+    event = aggregate.public_send(command, kind[:command].new(id: aggregate_id, payload: payload || {}))
     tx.exec_params("INSERT INTO #{@s}.ghk_aggregates (tenant_id, aggregate_type, id, state, version) VALUES ($1, $2, $3, $4, $5) " \\
                    "ON CONFLICT (tenant_id, aggregate_type, id) DO UPDATE SET state = EXCLUDED.state, version = EXCLUDED.version, updated_at = now()",
-                   [tenant_id, AGGREGATE_TYPE, aggregate_id, aggregate.state, aggregate.version])
+                   [tenant_id, aggregate_type, aggregate_id, aggregate.state, aggregate.version])
     tx.exec_params("INSERT INTO #{@s}.ghk_outbox (id, tenant_id, aggregate_id, event_type, payload, traceparent) VALUES ($1, $2, $3, $4, $5, $6)",
                    [SecureRandom.uuid, tenant_id, aggregate_id, event.type, JSON.generate(event.to_h), traceparent])
     result = Result.new(status: "created", aggregate_id: aggregate_id, event_type: event.type, version: event.version)

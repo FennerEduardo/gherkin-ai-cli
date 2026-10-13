@@ -46,13 +46,15 @@ export interface DomainModel {
   events: string[];
   steps: KernelStep[];
   scenarios: { name: string; steps: KernelStep[] }[];
+  /** Service the aggregate belongs to (kebab-case project name): names the shared RabbitMQ topology. */
+  service?: string;
 }
 
 import { featurePascalName, safeIdent, toCamel, toFlat, toKebab, toPascal, toSnake } from '../../utils/naming';
 
 export { toPascal, toCamel, toSnake, toKebab, toFlat };
 
-export function buildDomainModel(input: ParsedFeature): DomainModel {
+export function buildDomainModel(input: ParsedFeature, opts: { service?: string } = {}): DomainModel {
   // Callers (plugins, tests, MCP) sometimes pass partial features: normalize before analysis.
   const parsed: ParsedFeature = {
     ...input,
@@ -134,7 +136,8 @@ export function buildDomainModel(input: ParsedFeature): DomainModel {
     commands,
     events: [...new Set([...commands.map(c => c.event), ...events, defaultEvent])],
     steps: [...seen.values()],
-    scenarios
+    scenarios,
+    ...(opts.service ? { service: toKebab(opts.service) } : {})
   };
 }
 

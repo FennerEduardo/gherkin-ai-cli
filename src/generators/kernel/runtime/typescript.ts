@@ -21,13 +21,21 @@ export const TS_RUNTIME_DEPENDENCIES = {
 };
 export const TS_RUNTIME_DEV_DEPENDENCIES = { '@types/pg': '^8.15.0' };
 
+/** Another aggregate of the same service and its module specifier relative to src/runtime/. */
+export interface TsSiblingAggregate {
+  m: DomainModel;
+  aggregateImport: string;
+}
+
 /**
  * @param aggregateImport module specifier of the domain aggregate, relative to src/runtime/
+ * @param siblings the service's other aggregates: the command service handles all of them
  */
-export function renderTsRuntime(m: DomainModel, aggregateImport: string): TsRuntimeFile[] {
+export function renderTsRuntime(m: DomainModel, aggregateImport: string, siblings: TsSiblingAggregate[] = []): TsRuntimeFile[] {
   const t = topology(m);
   const A = `${m.pascal}Aggregate`;
   const sql = JSON.stringify(RUNTIME_SCHEMA_SQL, null, 2);
+  const all = [{ m, aggregateImport }, ...siblings];
 
   const telemetry = `// W3C trace-context helpers. Spans go to the globally registered tracer provider
 // (configure exporters with the standard OTEL_* environment variables).
@@ -78,18 +86,43 @@ export async function migrate(pool: Pool, schema = 'public'): Promise<void> {
   const commandService = `import { randomUUID } from 'crypto';
 import { SpanKind, SpanStatusCode, trace } from '@opentelemetry/api';
 import type { Pool } from 'pg';
-import { ${A}, DomainValidationError, type ${m.pascal}Command, type ${m.pascal}DomainEvent, type ${m.pascal}State } from '${aggregateImport}';
+import { DomainValidationError } from '${aggregateImport}';
+${all.map(s => `import { ${s.m.pascal}Aggregate, type ${s.m.pascal}Command, type ${s.m.pascal}State } from '${s.aggregateImport}';`).join('\n')}
 import { schemaName } from './schema';
 import { contextFrom, traceparentOf, tracer } from './telemetry';
 
-const AGGREGATE_TYPE = '${m.pascal}';
+interface LoadedAggregate {
+  readonly state: string;
+  readonly version: number;
+}
 
-const COMMANDS: Record<string, (aggregate: ${A}, command: ${m.pascal}Command) => ${m.pascal}DomainEvent> = {
-${m.commands.map(c => `  ${c.snake}: (a, c) => a.${c.method}(c)`).join(',\n')}
+type DomainCommand = { id: string; payload: Record<string, unknown> };
+
+/** How the command service creates, restores and runs commands on one aggregate type. */
+interface AggregateRuntime {
+  create(id: string): LoadedAggregate;
+  restore(id: string, state: string, version: number): LoadedAggregate;
+  commands: Record<string, (aggregate: LoadedAggregate, command: DomainCommand) => { type: string; version: number }>;
+}
+
+/** Every aggregate of this service, by aggregate type (one per feature). */
+const AGGREGATES: Record<string, AggregateRuntime> = {
+${all.map(s => `  ${s.m.pascal}: {
+    create: id => new ${s.m.pascal}Aggregate(id),
+    restore: (id, state, version) => ${s.m.pascal}Aggregate.restore(id, state as ${s.m.pascal}State, version),
+    commands: {
+${s.m.commands.map(c => `      ${c.snake}: (a, c) => (a as ${s.m.pascal}Aggregate).${c.method}(c as ${s.m.pascal}Command)`).join(',\n')}
+    }
+  }`).join(',\n')}
 };
+
+/** Aggregate type used when a request does not name one. */
+export const DEFAULT_AGGREGATE = '${m.pascal}';
 
 export interface CommandRequest {
   tenantId: string;
+  /** Aggregate type (feature), e.g. '${m.pascal}'; defaults to DEFAULT_AGGREGATE. */
+  aggregateType?: string;
   aggregateId: string;
   command: string;
   payload?: Record<string, unknown>;
@@ -118,8 +151,11 @@ export class CommandService {
 
   async handle(req: CommandRequest): Promise<CommandResult> {
     if (!req.tenantId) throw new DomainValidationError('tenantId is required');
+    const aggregateType = req.aggregateType ?? DEFAULT_AGGREGATE;
+    const kind = AGGREGATES[aggregateType];
+    if (!kind) throw new DomainValidationError(\`Unknown aggregate type \${aggregateType}\`);
     const parent = contextFrom(req.traceparent);
-    const span = tracer().startSpan(\`${m.pascal}.\${req.command}\`, {
+    const span = tracer().startSpan(\`\${aggregateType}.\${req.command}\`, {
       kind: SpanKind.INTERNAL,
       attributes: { 'tenant.id': req.tenantId, 'aggregate.id': req.aggregateId }
     }, parent);
@@ -136,18 +172,18 @@ export class CommandService {
           return { status: 'in-progress', aggregateId: req.aggregateId };
         }
       }
-      const { rows } = await client.query(\`SELECT state, version FROM \${this.s}.ghk_aggregates WHERE tenant_id = $1 AND aggregate_type = $2 AND id = $3 FOR UPDATE\`, [req.tenantId, AGGREGATE_TYPE, req.aggregateId]);
+      const { rows } = await client.query(\`SELECT state, version FROM \${this.s}.ghk_aggregates WHERE tenant_id = $1 AND aggregate_type = $2 AND id = $3 FOR UPDATE\`, [req.tenantId, aggregateType, req.aggregateId]);
       const aggregate = rows[0]
-        ? ${A}.restore(req.aggregateId, rows[0].state as ${m.pascal}State, Number(rows[0].version))
-        : new ${A}(req.aggregateId);
-      const handler = COMMANDS[req.command];
+        ? kind.restore(req.aggregateId, String(rows[0].state), Number(rows[0].version))
+        : kind.create(req.aggregateId);
+      const handler = kind.commands[req.command];
       if (!handler) throw new DomainValidationError(\`Unknown command \${req.command}\`);
       const event = handler(aggregate, { id: req.aggregateId, payload: req.payload ?? {} });
 
       await client.query(
         \`INSERT INTO \${this.s}.ghk_aggregates (tenant_id, aggregate_type, id, state, version) VALUES ($1, $2, $3, $4, $5)
          ON CONFLICT (tenant_id, aggregate_type, id) DO UPDATE SET state = EXCLUDED.state, version = EXCLUDED.version, updated_at = now()\`,
-        [req.tenantId, AGGREGATE_TYPE, req.aggregateId, aggregate.state, aggregate.version]
+        [req.tenantId, aggregateType, req.aggregateId, aggregate.state, aggregate.version]
       );
       await client.query(
         \`INSERT INTO \${this.s}.ghk_outbox (id, tenant_id, aggregate_id, event_type, payload, traceparent) VALUES ($1, $2, $3, $4, $5, $6)\`,
@@ -171,8 +207,8 @@ export class CommandService {
   }
 
   /** The aggregate as tenant \`tenantId\` sees it (undefined for other tenants' aggregates). */
-  async load(tenantId: string, aggregateId: string): Promise<{ state: string; version: number } | undefined> {
-    const { rows } = await this.pool.query(\`SELECT state, version FROM \${this.s}.ghk_aggregates WHERE tenant_id = $1 AND aggregate_type = $2 AND id = $3\`, [tenantId, AGGREGATE_TYPE, aggregateId]);
+  async load(tenantId: string, aggregateId: string, aggregateType = DEFAULT_AGGREGATE): Promise<{ state: string; version: number } | undefined> {
+    const { rows } = await this.pool.query(\`SELECT state, version FROM \${this.s}.ghk_aggregates WHERE tenant_id = $1 AND aggregate_type = $2 AND id = $3\`, [tenantId, aggregateType, aggregateId]);
     return rows[0] ? { state: rows[0].state, version: Number(rows[0].version) } : undefined;
   }
 }

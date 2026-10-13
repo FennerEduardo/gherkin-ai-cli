@@ -27,7 +27,8 @@ export const RS_RUNTIME_FEATURES = `[features]
 # Runtime integration tests (PostgreSQL + RabbitMQ): cargo test --features integration --test runtime_integration
 integration = []`;
 
-export function renderRsRuntime(m: DomainModel, crate: string): RsRuntimeFile[] {
+export function renderRsRuntime(m: DomainModel, crate: string, siblings: DomainModel[] = []): RsRuntimeFile[] {
+  const all = [m, ...siblings];
   const t = topology(m);
   const A = `${m.pascal}Aggregate`;
   const first = m.commands[0];
@@ -93,11 +94,11 @@ impl From<serde_json::Error> for RuntimeError {
     }
 }
 
-impl From<crate::domain::DomainValidationError> for RuntimeError {
-    fn from(e: crate::domain::DomainValidationError) -> Self {
+${all.map(a => `impl From<crate::domain::${a.snake}::DomainValidationError> for RuntimeError {
+    fn from(e: crate::domain::${a.snake}::DomainValidationError) -> Self {
         RuntimeError::Validation(e.0)
     }
-}
+}`).join('\n\n')}
 `;
 
   const schema = `use sqlx::PgPool;
@@ -184,13 +185,48 @@ use serde_json::{json, Value};
 use sqlx::PgPool;
 
 use super::{schema_name, telemetry, RuntimeError};
-use crate::domain::{${A}, Command, State};
 
-const AGGREGATE_TYPE: &str = ${rsStr(m.pascal)};
+
+/// Aggregate type used when a request does not name one.
+pub const DEFAULT_AGGREGATE: &str = ${rsStr(m.pascal)};
+
+/// An aggregate's new state after a command, and the recorded event.
+struct Applied {
+    state: String,
+    version: i32,
+    event_type: String,
+    event_version: u64,
+    payload: Value,
+}
+${all.map(a => `
+fn apply_${a.snake}(stored: Option<(String, i32)>, id: &str, command: &str, payload: HashMap<String, Value>) -> Result<Applied, RuntimeError> {
+    use crate::domain::${a.snake}::{${a.pascal}Aggregate, Command, State};
+    let mut aggregate = match stored {
+        None => ${a.pascal}Aggregate::new(id)?,
+        Some((state, version)) => {
+            let state = State::parse(&state).ok_or_else(|| RuntimeError::Other(format!("unknown stored state {state}")))?;
+            ${a.pascal}Aggregate::restore(id, state, version as u64)?
+        }
+    };
+    let command_value = Command { id: id.to_string(), payload };
+    let event = match command {
+${a.commands.map(c => `        ${rsStr(c.snake)} => aggregate.${c.snake}(command_value)?,`).join('\n')}
+        other => return Err(RuntimeError::Validation(format!("unknown command {other}"))),
+    };
+    Ok(Applied {
+        state: aggregate.state.as_str().to_string(),
+        version: aggregate.version as i32,
+        event_type: event.event_type.as_str().to_string(),
+        event_version: event.version,
+        payload: json!({ "type": event.event_type.as_str(), "aggregateId": event.aggregate_id, "version": event.version, "payload": event.payload }),
+    })
+}`).join('\n')}
 
 #[derive(Debug, Clone, Default)]
 pub struct CommandRequest {
     pub tenant_id: String,
+    /// The feature's aggregate (e.g. ${rsStr(m.pascal)}); None means DEFAULT_AGGREGATE.
+    pub aggregate_type: Option<String>,
     pub aggregate_id: String,
     pub command: String,
     pub payload: HashMap<String, Value>,
@@ -277,50 +313,42 @@ impl CommandService {
             }
         }
 
+        let aggregate_type = req.aggregate_type.clone().unwrap_or_else(|| DEFAULT_AGGREGATE.to_string());
         let stored: Option<(String, i32)> = sqlx::query_as(&format!("SELECT state, version FROM {s}.ghk_aggregates WHERE tenant_id = $1 AND aggregate_type = $2 AND id = $3 FOR UPDATE"))
             .bind(&req.tenant_id)
-            .bind(AGGREGATE_TYPE)
+            .bind(&aggregate_type)
             .bind(&req.aggregate_id)
             .fetch_optional(&mut *tx)
             .await?;
-        let mut aggregate = match stored {
-            None => ${A}::new(req.aggregate_id.clone())?,
-            Some((state, version)) => {
-                let state = State::parse(&state).ok_or_else(|| RuntimeError::Other(format!("unknown stored state {state}")))?;
-                ${A}::restore(req.aggregate_id.clone(), state, version as u64)?
-            }
-        };
-        let command = Command { id: req.aggregate_id.clone(), payload: req.payload.clone() };
-        let event = match req.command.as_str() {
-${m.commands.map(c => `            ${rsStr(c.snake)} => aggregate.${c.snake}(command)?,`).join('\n')}
-            other => return Err(RuntimeError::Validation(format!("unknown command {other}"))),
+        let applied = match aggregate_type.as_str() {
+${all.map(a => `            ${rsStr(a.pascal)} => apply_${a.snake}(stored, &req.aggregate_id, &req.command, req.payload.clone())?,`).join('\n')}
+            other => return Err(RuntimeError::Validation(format!("unknown aggregate type {other}"))),
         };
         sqlx::query(&format!(
             "INSERT INTO {s}.ghk_aggregates (tenant_id, aggregate_type, id, state, version) VALUES ($1, $2, $3, $4, $5) \\
              ON CONFLICT (tenant_id, aggregate_type, id) DO UPDATE SET state = EXCLUDED.state, version = EXCLUDED.version, updated_at = now()"
         ))
         .bind(&req.tenant_id)
-        .bind(AGGREGATE_TYPE)
+        .bind(&aggregate_type)
         .bind(&req.aggregate_id)
-        .bind(aggregate.state.as_str())
-        .bind(aggregate.version as i32)
+        .bind(&applied.state)
+        .bind(applied.version)
         .execute(&mut *tx)
         .await?;
-        let payload = json!({ "type": event.event_type.as_str(), "aggregateId": event.aggregate_id, "version": event.version, "payload": event.payload });
         sqlx::query(&format!("INSERT INTO {s}.ghk_outbox (id, tenant_id, aggregate_id, event_type, payload, traceparent) VALUES ($1, $2, $3, $4, $5, $6)"))
             .bind(uuid::Uuid::new_v4().to_string())
             .bind(&req.tenant_id)
             .bind(&req.aggregate_id)
-            .bind(event.event_type.as_str())
-            .bind(payload.to_string())
+            .bind(&applied.event_type)
+            .bind(applied.payload.to_string())
             .bind(telemetry::traceparent_of(cx))
             .execute(&mut *tx)
             .await?;
         let result = CommandResult {
             status: "created".into(),
             aggregate_id: req.aggregate_id.clone(),
-            event_type: Some(event.event_type.as_str().to_string()),
-            version: Some(event.version),
+            event_type: Some(applied.event_type.clone()),
+            version: Some(applied.event_version),
         };
         if let Some(key) = &req.idempotency_key {
             sqlx::query(&format!("UPDATE {s}.ghk_idempotency SET status = 'COMPLETED', response = $3 WHERE tenant_id = $1 AND key = $2"))
@@ -336,9 +364,14 @@ ${m.commands.map(c => `            ${rsStr(c.snake)} => aggregate.${c.snake}(com
 
     /// Returns the aggregate as \`tenant_id\` sees it (None for other tenants' aggregates).
     pub async fn load(&self, tenant_id: &str, aggregate_id: &str) -> Result<Option<Snapshot>, RuntimeError> {
+        self.load_type(DEFAULT_AGGREGATE, tenant_id, aggregate_id).await
+    }
+
+    /// load for a given aggregate type.
+    pub async fn load_type(&self, aggregate_type: &str, tenant_id: &str, aggregate_id: &str) -> Result<Option<Snapshot>, RuntimeError> {
         let row: Option<(String, i32)> = sqlx::query_as(&format!("SELECT state, version FROM {}.ghk_aggregates WHERE tenant_id = $1 AND aggregate_type = $2 AND id = $3", self.s))
             .bind(tenant_id)
-            .bind(AGGREGATE_TYPE)
+            .bind(aggregate_type)
             .bind(aggregate_id)
             .fetch_optional(&self.pool)
             .await?;
