@@ -16,13 +16,13 @@ const rsStr = (s: string) => JSON.stringify(s);
 /** Cargo dependencies of the runtime kernel (appended to [dependencies]). */
 export const RS_RUNTIME_DEPS = `futures-util = "0.3"
 lapin = "2"
-opentelemetry = "0.31"
-opentelemetry_sdk = "0.31"
+opentelemetry = "0.33"
+opentelemetry_sdk = "0.33"
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "postgres"] }
 uuid = { version = "1", features = ["v4"] }`;
 
 /** Dev-dependencies and the feature that enables tests/runtime_integration.rs. */
-export const RS_RUNTIME_DEV_DEPS = `opentelemetry_sdk = { version = "0.31", features = ["testing"] }`;
+export const RS_RUNTIME_DEV_DEPS = `opentelemetry_sdk = { version = "0.33", features = ["testing"] }`;
 export const RS_RUNTIME_FEATURES = `[features]
 # Runtime integration tests (PostgreSQL + RabbitMQ): cargo test --features integration --test runtime_integration
 integration = []`;

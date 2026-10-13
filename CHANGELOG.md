@@ -56,6 +56,14 @@ Generated backends become services you can keep, from the 3.0.0 field reviews. T
 - The Spring OpenTelemetry bean no longer fails when a global OpenTelemetry is already registered (Java agent or tests).
 - Shared domain types no longer collide when a service has several features: Kotlin, C# and Python `DomainValidationException`, Go domain package, Rust domain module.
 
+### Security
+- Generated projects pin OpenTelemetry releases without known advisories:
+  - **.NET:** 1.9.0 → 1.19.x. Fixes GHSA-4625-4j76-fww9 in the OTLP exporter and GHSA-g94r-2vxg-569j in `OpenTelemetry.Api`.
+  - **Go:** `otel` v1.31.0 → v1.47.0. Fixes CVE-2026-24051, CVE-2026-39883, CVE-2026-81869 and CVE-2026-81870. The generated `go.mod` and the Go toolchain image now require Go 1.26.
+  - **Java / Kotlin:** BOM 1.43.0 → 1.67.0. Fixes CVE-2026-45292. `Telemetry.java` no longer overrides the deprecated `TextMapGetter.keys`.
+  - **Rust:** 0.31 → 0.33. Fixes CVE-2026-48504.
+  - **Node:** the floor of `@opentelemetry/core` and `sdk-trace-base` is now `^2.12.0`. Fixes CVE-2026-54285.
+
 ## [3.0.1] - 2026-10-09
 
 Bug-fix release from the 3.0.0 field reviews (an LMS of 7 services and a 9-feature NestJS/Vue project). No change to the generated output contract; `ghk upgrade` is not required.

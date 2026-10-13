@@ -22,6 +22,6 @@ describe('toolchain registry', () => {
     expect(resolveToolchain(cfg('java', 'spring-boot'))!.image).toBe('maven:3.9-eclipse-temurin-17');
     expect(resolveToolchain(cfg('typescript', 'nestjs'))!.image).toBe('node:24-bookworm');
     expect(getStackDockerDetails(cfg('python', 'django'))).toMatchObject({ image: 'python:3.12-slim', testCmd: expect.stringContaining('pytest') });
-    expect(getStackDockerDetails(cfg('go', 'chi')).image).toBe('golang:1.22');
+    expect(getStackDockerDetails(cfg('go', 'chi')).image).toBe('golang:1.26');
   });
 });

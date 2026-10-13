@@ -17,7 +17,7 @@ export const CS_RUNTIME_PACKAGES = [
   '<PackageReference Include="Npgsql" Version="8.0.5" />',
   '<PackageReference Include="RabbitMQ.Client" Version="6.8.1" />'
 ];
-export const CS_RUNTIME_TEST_PACKAGES = ['<PackageReference Include="OpenTelemetry.Exporter.InMemory" Version="1.9.0" />'];
+export const CS_RUNTIME_TEST_PACKAGES = ['<PackageReference Include="OpenTelemetry.Exporter.InMemory" Version="1.19.1" />'];
 
 const cs = (s: string) => JSON.stringify(s); // JSON strings are valid C# regular string literals here
 

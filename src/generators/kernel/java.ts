@@ -262,7 +262,7 @@ export function renderPom(artifactId: string, groupId = 'com.example'): string {
   <properties>
     <java.version>17</java.version>
     <cucumber.version>7.20.1</cucumber.version>
-    <opentelemetry.version>1.43.0</opentelemetry.version>
+    <opentelemetry.version>1.67.0</opentelemetry.version>
     <!-- Runtime integration tests (tag "integration") need DATABASE_URL / AMQP_URL: mvn test -Pintegration -->
     <test.groups></test.groups>
     <test.excludedGroups>integration</test.excludedGroups>

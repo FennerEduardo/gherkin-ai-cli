@@ -236,7 +236,7 @@ Every target below is **stable**: on every change CI generates a sample project,
 | backend | Kotlin · Spring Boot 3 (Gradle) | Gradle, JUnit 5, Cucumber-JVM (`gradle:8.10-jdk17`) |
 | backend | Python · FastAPI + SQLAlchemy | pip, pytest, pytest-bdd (`python:3.12-slim`) |
 | backend | Python · Django + DRF | pip, pytest, pytest-bdd (`python:3.12-slim`) |
-| backend | Go · chi | go vet, go test, godog (`golang:1.22`) |
+| backend | Go · chi | go vet, go test, godog (`golang:1.26`) |
 | backend | PHP · Laravel 13 | Composer, PHPUnit 12, Behat (`composer:2`) |
 | backend | Ruby · Rails 8 (API) | Bundler, RSpec, Cucumber (`ruby:3.3`) |
 | backend | Elixir · Phoenix | mix, ExUnit (`elixir:1.17`) |

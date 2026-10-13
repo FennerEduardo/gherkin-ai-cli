@@ -225,7 +225,7 @@ repositories {
 
 dependencyManagement {
     imports {
-        mavenBom("io.opentelemetry:opentelemetry-bom:1.43.0")
+        mavenBom("io.opentelemetry:opentelemetry-bom:1.67.0")
         mavenBom("io.cucumber:cucumber-bom:7.20.1")
     }
 }

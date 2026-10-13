@@ -291,7 +291,7 @@ Feature: Customer Management
       lang: 'go',
       testing: 'testing',
       database: 'mongodb',
-      expectedImage: 'golang:1.22',
+      expectedImage: 'golang:1.26',
       expectedTestCmd: 'go test ./...',
       expectedDbImage: 'mongo:7.0'
     },

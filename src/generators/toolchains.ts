@@ -75,7 +75,7 @@ export const TOOLCHAINS: Record<string, Toolchain> = {
     start: 'python manage.py runserver 0.0.0.0:8000'
   },
   'go/chi': {
-    image: 'golang:1.22',
+    image: 'golang:1.26',
     build: ['go mod tidy', 'go vet ./...', 'go build ./...'],
     test: ['go test ./...'],
     integration: ['go test -tags integration -count=1 ./internal/runtime/...'],

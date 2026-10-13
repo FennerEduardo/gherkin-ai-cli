@@ -95,10 +95,8 @@ import java.util.Map;
 /** W3C trace-context helpers; spans go to the global OpenTelemetry (configure exporters with OTEL_*). */
 public final class Telemetry {
     private static final W3CTraceContextPropagator PROPAGATOR = W3CTraceContextPropagator.getInstance();
-    private static final TextMapGetter<Map<String, String>> GETTER = new TextMapGetter<>() {
-        @Override public Iterable<String> keys(Map<String, String> carrier) { return carrier.keySet(); }
-        @Override public String get(Map<String, String> carrier, String key) { return carrier == null ? null : carrier.get(key); }
-    };
+    // keys() is a deprecated default since OpenTelemetry 1.67; W3C extraction only needs get().
+    private static final TextMapGetter<Map<String, String>> GETTER = (carrier, key) -> carrier == null ? null : carrier.get(key);
 
     private Telemetry() {}
 

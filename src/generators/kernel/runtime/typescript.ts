@@ -15,9 +15,9 @@ export interface TsRuntimeFile {
 export const TS_RUNTIME_DEPENDENCIES = {
   pg: '^8.16.0',
   amqplib: '^2.1.0',
-  '@opentelemetry/api': '^1.9.0',
-  '@opentelemetry/core': '^2.1.0',
-  '@opentelemetry/sdk-trace-base': '^2.1.0'
+  '@opentelemetry/api': '^1.9.1',
+  '@opentelemetry/core': '^2.12.0',
+  '@opentelemetry/sdk-trace-base': '^2.12.0'
 };
 export const TS_RUNTIME_DEV_DEPENDENCIES = { '@types/pg': '^8.15.0' };
 

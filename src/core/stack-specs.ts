@@ -55,7 +55,7 @@ export function getStackSpec(stackConfig: Record<string, any>): StackSpec {
     validationPackage = 'FluentValidation 11.9';
     testPackages = testing === 'xunit' ? ['xunit 2.7.0'] : ['NUnit 4.1'];
   } else if (lang === 'go') {
-    frameworkVersion = 'Go 1.22+';
+    frameworkVersion = 'Go 1.26+';
     ormPackage = 'gorm.io/gorm v1.25.7';
     validationPackage = 'github.com/go-playground/validator/v10';
     testPackages = testing === 'testing' ? ['testing (standard library)'] : ['github.com/onsi/ginkgo/v2'];

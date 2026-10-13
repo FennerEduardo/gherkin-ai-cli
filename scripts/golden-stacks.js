@@ -147,7 +147,7 @@ const STACKS = {
   },
   go: {
     stack: { ...base, language: 'go', framework: 'chi', orm: 'pgx', validation: 'go-playground', testing: 'testing' },
-    image: 'golang:1.22',
+    image: 'golang:1.26',
     caches: [['gomod', '/go/pkg/mod'], ['gobuild', '/root/.cache/go-build']],
     build: ['go mod tidy', 'go vet ./...', 'go vet -tags integration ./internal/runtime/...', 'go build ./...'],
     test: ['go test ./...'],

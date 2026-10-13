@@ -170,7 +170,7 @@ export function renderCsTestProject(ns: string, appProject: string): string {
     <PackageReference Include="Testcontainers" Version="3.10.0" />
     <PackageReference Include="Testcontainers.PostgreSql" Version="3.10.0" />
     <PackageReference Include="Testcontainers.RabbitMq" Version="3.10.0" />
-    <PackageReference Include="OpenTelemetry.Exporter.InMemory" Version="1.9.0" />
+    <PackageReference Include="OpenTelemetry.Exporter.InMemory" Version="1.19.1" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../../${appProject}" />
