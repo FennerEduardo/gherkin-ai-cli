@@ -49,12 +49,16 @@ describe('planWrites', () => {
     expect(p['src/domain/order.ts'].reason).toContain('generation.protect');
   });
 
-  it('honours the .ghk-implemented marker for existing files only', () => {
+  it('honours the .ghk-implemented marker for files it cannot prove unedited', () => {
     put(IMPLEMENTED_MARKER, 'implemented');
     put('out/a.ts', 'v1');
-    const p = plan([{ filePath: 'a.ts', content: 'v2' }, { filePath: 'b.ts', content: 'new' }], { inventory: [{ filePath: 'a.ts', checksum: sha256('v1') }] });
-    expect(p['a.ts'].action).toBe('side-by-side');
+    put('out/c.ts', 'implemented by hand');
+    const p = plan([{ filePath: 'a.ts', content: 'v2' }, { filePath: 'b.ts', content: 'new' }, { filePath: 'c.ts', content: 'v2' }],
+      { inventory: [{ filePath: 'a.ts', checksum: sha256('v1') }] });
+    expect(p['a.ts'].action).toBe('update'); // checksum proves it is still the generated version
     expect(p['b.ts'].action).toBe('create');
+    expect(p['c.ts'].action).toBe('side-by-side');
+    expect(p['c.ts'].reason).toContain('.ghk-implemented');
   });
 
   it('without a checksum, overwrites only files that carry the generated header', () => {

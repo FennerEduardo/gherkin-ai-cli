@@ -311,6 +311,14 @@ Objective: Write detailed Gherkin feature scenarios for ${title}.
   if (sideBySide.length) {
     logger.warn(`${sideBySide.length} file(s) were not overwritten. Merge each ${NEW_SUFFIX} file into the original (or delete it), or rerun with --force to overwrite.`);
   }
+  // The application layer is generated against this CLI's runtime kernel; a kept (older or edited) kernel
+  // may not have what it calls (e.g. the aggregate type of a multi-feature service).
+  const { isKernelFile } = await import('../core/upgrade/kernel-refresh');
+  const keptKernel = sideBySide.filter(p => isKernelFile(p.filePath));
+  if (keptKernel.length) {
+    logger.warn(`The runtime kernel was kept (${keptKernel.map(p => p.filePath).slice(0, 3).join(', ')}${keptKernel.length > 3 ? ', ...' : ''}). ` +
+      `The generated application layer targets the new kernel: merge the kernel ${NEW_SUFFIX} files first (ghk upgrade --kernel shows them).`);
+  }
 
   // Traceability inventory: checksums of what this run generated, merged with earlier features' entries.
   const generatedAt = new Date().toISOString();

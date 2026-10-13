@@ -36,7 +36,9 @@ ghk upgrade                                            # the full upgrade report
    { "generation": { "protect": ["src/domain/**", "src/**/*.service.ts"] } }
    ```
 
-   A `.ghk-implemented` file at the project root (the LMS convention) protects every existing file. `--force` overwrites anyway.
+   A `.ghk-implemented` file at the project root (the LMS convention) protects every existing file that cannot be proven unedited (no matching checksum). `--force` overwrites anyway.
+
+   **If you edited the 3.0 runtime kernel** (as the LMS did), regeneration keeps it and writes the new kernel as `.ghk-new`; the new controllers call the 3.1 command service (with `aggregateType`), so merge the kernel `.ghk-new` files before building. `generate` warns when this happens. A project with its own web layer can delete the generated controllers and keep calling its kernel.
 
 3. **Regenerate every feature** of the service, one `ghk generate -f <feature>` per feature (order does not matter; each run includes the features already generated). Then:
    - merge each reported `<file>.ghk-new` into your file, or delete it;
