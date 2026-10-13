@@ -56,3 +56,17 @@ test-results/
 # gherkin-ai CLI Logs, Telemetry & Secrets
 .gherkin-ai/
 telemetry.jsonl
+
+# Build outputs
+target/
+build/
+.gradle/
+**/bin/Debug/
+**/bin/Release/
+**/obj/
+_build/
+deps/
+.dart_tool/
+__pycache__/
+.pytest_cache/
+.next/
