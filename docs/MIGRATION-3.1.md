@@ -42,15 +42,17 @@ ghk upgrade                                            # the full upgrade report
    - merge each reported `<file>.ghk-new` into your file, or delete it;
    - delete the 3.0 placeholders you never edited. `ghk upgrade --apply --prune` removes them when the inventory proves they are unedited. The removed generators are NestJS `cqrs`, `outbox`, `saga`, `idempotency` and the `X-Tenant-Id` middleware; Java `CQRS`, `Outbox`, `Saga`, `Idempotency` and `MultiTenancy`; the .NET MediatR handlers, MassTransit saga, EF outbox/inbox, `HttpHeaderTenantService` and Testcontainers mock; the Django ORM outbox; and the Go/Python pattern packages.
 
-4. **Rust only:** the domain moved from `src/domain.rs` to `src/domain/mod.rs` plus one module per feature. Delete `src/domain.rs` (Rust refuses both).
+4. **Frontends:** the Vue entry mounts every feature's panel. React, Angular, Next.js, React Native and Flutter still mount the last generated feature: add the other panels to their entry by hand (and protect it with `generation.protect`). The API clients now send `Authorization: Bearer <token>` (pass `token`) instead of `tenantId`.
 
-5. **Naming (optional).** JVM packages and the .NET namespace can be set explicitly:
+5. **Rust only:** the domain moved from `src/domain.rs` to `src/domain/mod.rs` plus one module per feature. Delete `src/domain.rs` (Rust refuses both).
+
+6. **Naming (optional).** JVM packages and the .NET namespace can be set explicitly:
 
    ```json
    { "generation": { "package": "com.acme.billing", "groupId": "com.acme" } }
    ```
 
-6. **Verify against real infrastructure:**
+7. **Verify against real infrastructure:**
 
    ```bash
    ghk verify --services      # PostgreSQL 17 + RabbitMQ 4, runs the stack's integration suite

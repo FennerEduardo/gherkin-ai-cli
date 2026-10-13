@@ -20,6 +20,7 @@ import { dartPackageName, generateFlutterPreset } from './preset-flutter';
 import { renderFlutterProject } from './frontend/kernel/flutter';
 
 import { buildDomainModel } from './kernel/domain-model';
+import { siblingDomainModels } from './kernel/siblings';
 import { VALIDATE_CONTRACTS_SCRIPT, renderGraphql, renderProto } from './kernel/api-contracts';
 import { renderReactProject } from './frontend/kernel/react';
 import { renderVueProject } from './frontend/kernel/vue';
@@ -85,7 +86,7 @@ export function generatePresets(parsed: ParsedFeature, config: GherkinAIConfig, 
   if (feFramework) {
     const fm = buildDomainModel(parsed);
     if (feFramework === 'vue') {
-      results.push(...renderVueProject(fm));
+      results.push(...renderVueProject(fm, 'frontend', siblingDomainModels(fm, config, s => `frontend/src/components/${s.pascal}Panel.vue`)));
     } else if (feFramework === 'react') {
       results.push(...renderReactProject(fm));
     } else if (feFramework === 'angular') {

@@ -72,6 +72,19 @@ describe('multi-feature services', () => {
     expect(router).toContain('"/api/v1/orders/{id}/{command}": "Orders"');
   });
 
+  it('Vue: main.ts mounts the panel of every generated feature', async () => {
+    fs.writeFileSync('gherkin-ai.config.json', JSON.stringify({
+      projectName: 'shop', architecture: 'hexagonal', outputDir: './', rules: {},
+      stack: { language: 'typescript', framework: 'nestjs', orm: 'none', database: 'postgresql', validation: 'zod', auth: 'jwt', testing: 'jest' },
+      frontendStack: { framework: 'vue', language: 'typescript' }
+    }));
+    await generateBoth();
+    const main = fs.readFileSync('frontend/src/main.ts', 'utf8');
+    expect(main).toContain("import OrdersPanel from './components/OrdersPanel.vue'");
+    expect(main).toContain("import RefundsPanel from './components/RefundsPanel.vue'");
+    expect(main).toContain('h(OrdersPanel), h(RefundsPanel)');
+  });
+
   it('names the RabbitMQ topology after the service', () => {
     const m = buildDomainModel(parseGherkinText(ORDERS), { service: 'Shop Backend' });
     expect(topology(m).exchange).toBe('shop-backend.events');

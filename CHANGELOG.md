@@ -16,7 +16,8 @@ Generated backends become services you can keep, from the 3.0.0 field reviews. T
 - **Multi-feature services.**
   - **Contracts.** Each feature owns `contracts/<feature>/` (`openapi.json`, `asyncapi.json`, ADR). The root `openapi.json` and `asyncapi.json` are the union of every feature's contracts.
   - **Kernel registry.** The runtime command service handles every generated aggregate, with a new `aggregateType` request field.
-  - **Service-wide files.** Routes, the NestJS `AppModule`, .NET `Program.cs`, the Python domain package, the Rust domain module, the Prisma schema (one model per feature) and the Behat contexts cover every generated feature.
+  - **Service-wide files.** Routes, the NestJS `AppModule`, .NET `Program.cs`, the Python domain package, the Rust domain module, the Prisma schema (one model per feature), the Behat contexts and the Vue entry (`main.ts` mounts every panel) cover every generated feature.
+  - **Known limitation.** The React, Angular, Next.js, React Native and Flutter frontends still mount the panel of the last generated feature: add the other panels to their entry by hand.
   - **Topology.** The RabbitMQ topology is named after the service (`<service>.events`).
   - **Golden builds** generate and test a two-feature service for every backend.
 - **Protection of implemented code.** `generate` overwrites a file only if its checksum still matches what was generated; otherwise it writes `<file>.ghk-new`.

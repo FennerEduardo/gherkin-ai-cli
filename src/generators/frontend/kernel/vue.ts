@@ -5,7 +5,8 @@
 import { DomainModel } from '../../kernel/domain-model';
 import { FeFile, renderApiClient, renderApiClientTest } from './client';
 
-export function renderVueProject(m: DomainModel, root = 'frontend'): FeFile[] {
+export function renderVueProject(m: DomainModel, root = 'frontend', siblings: DomainModel[] = []): FeFile[] {
+  const panels = [...siblings, m].sort((a, b) => a.pascal.localeCompare(b.pascal));
   const first = m.commands[0];
   const f = (p: string) => `${root}/${p}`;
   return [
@@ -183,11 +184,14 @@ describe('${m.pascal}Panel', () => {
     },
     {
       filename: f('src/main.ts'),
-      content: `import { createApp } from 'vue';
+      // Service-wide: one panel per generated feature.
+      content: `import { createApp, h } from 'vue';
 import { createPinia } from 'pinia';
-import ${m.pascal}Panel from './components/${m.pascal}Panel.vue';
+${panels.map(p => `import ${p.pascal}Panel from './components/${p.pascal}Panel.vue';`).join('\n')}
 
-createApp(${m.pascal}Panel).use(createPinia()).mount('#app');
+const App = { render: () => [${panels.map(p => `h(${p.pascal}Panel)`).join(', ')}] };
+
+createApp(App).use(createPinia()).mount('#app');
 `
     }
   ];
