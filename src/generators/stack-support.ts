@@ -65,13 +65,24 @@ const FRONTEND_ALIASES: Record<string, string> = {
   react: 'react', vue: 'vue', angular: 'angular', nextjs: 'nextjs', next: 'nextjs', 'react-native': 'react-native', expo: 'react-native'
 };
 
-/** Maps a project config to its backend support entry (mirrors the routing in presets.ts). */
+/** Spring Boot is the JVM default: an empty or `default` framework, or any `spring*` spelling, selects it. */
+export function isSpringFramework(framework: string | undefined): boolean {
+  const f = (framework || '').toLowerCase();
+  return f === '' || f === 'default' || f.startsWith('spring');
+}
+
+/**
+ * Maps a project config to its backend support entry. This id is the routing key used by
+ * presets.ts, contracts.ts and toolchains.ts, so a stack is only generated when it resolves here.
+ */
 export function getStackSupport(config: Pick<GherkinAIConfig, 'stack'>): StackSupport {
   const lang = config.stack.language.toLowerCase();
   const framework = (config.stack.framework || '').toLowerCase();
 
-  if (lang === 'kotlin') return find('kotlin/spring');
-  if (lang === 'java') return find('java/spring');
+  // Other JVM frameworks (quarkus, ktor, micronaut, ...) fall through to the experimental entry
+  // instead of silently generating Spring Boot code.
+  if (lang === 'kotlin' && isSpringFramework(framework)) return find('kotlin/spring');
+  if (lang === 'java' && isSpringFramework(framework)) return find('java/spring');
   if (lang === 'csharp' || lang === 'dotnet' || lang === '.net') return find('csharp/dotnet');
   if (lang === 'python') return framework === 'django' ? find('python/django') : find('python/fastapi');
   if (lang === 'go') return find('go/chi');

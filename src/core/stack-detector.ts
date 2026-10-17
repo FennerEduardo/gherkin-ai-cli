@@ -170,8 +170,18 @@ export function detectExistingStack(rootDir: string = process.cwd()): GherkinAIC
     
     try {
       const gradleContent = fileExistsSync(buildGradlePath) ? readFileSync(buildGradlePath) : '';
+      const pomContent = fileExistsSync(pomXmlPath) ? readFileSync(pomXmlPath) : '';
       if (gradleContent.includes('org.jetbrains.kotlin')) {
         detected.stack.language = 'kotlin';
+      }
+      const buildContent = `${pomContent}\n${gradleContent}`;
+      if (buildContent.includes('io.quarkus')) {
+        detected.stack.framework = 'quarkus';
+        detected.stack.orm = 'jdbc';
+      } else if (buildContent.includes('io.micronaut')) {
+        detected.stack.framework = 'micronaut';
+      } else if (buildContent.includes('io.ktor')) {
+        detected.stack.framework = 'ktor';
       }
       if (gradleContent.includes('com.android.application')) {
         detected.stack.framework = 'android-native';

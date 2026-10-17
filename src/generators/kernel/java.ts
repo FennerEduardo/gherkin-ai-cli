@@ -3,6 +3,7 @@
    ========================================================================== */
 
 import { DomainModel, cucumberExpression } from './domain-model';
+import { JVM_VERSIONS } from '../versions';
 
 export interface JavaFile {
   filename: string;
@@ -251,7 +252,7 @@ export function renderPom(artifactId: string, groupId = 'com.example'): string {
   <parent>
     <groupId>org.springframework.boot</groupId>
     <artifactId>spring-boot-starter-parent</artifactId>
-    <version>3.3.5</version>
+    <version>${JVM_VERSIONS.springBoot}</version>
     <relativePath/>
   </parent>
 
@@ -260,9 +261,9 @@ export function renderPom(artifactId: string, groupId = 'com.example'): string {
   <version>0.0.1-SNAPSHOT</version>
 
   <properties>
-    <java.version>17</java.version>
-    <cucumber.version>7.20.1</cucumber.version>
-    <opentelemetry.version>1.67.0</opentelemetry.version>
+    <java.version>${JVM_VERSIONS.java}</java.version>
+    <cucumber.version>${JVM_VERSIONS.cucumber}</cucumber.version>
+    <opentelemetry.version>${JVM_VERSIONS.openTelemetry}</opentelemetry.version>
     <!-- Runtime integration tests (tag "integration") need DATABASE_URL / AMQP_URL: mvn test -Pintegration -->
     <test.groups></test.groups>
     <test.excludedGroups>integration</test.excludedGroups>

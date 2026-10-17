@@ -6,6 +6,7 @@ import { featurePascalName } from '../utils/naming';
 import { CLI_VERSION } from '../version';
 import { renderPom } from './kernel/java';
 import { jvmGroupId } from './preset-java-spring';
+import { isSpringFramework } from './stack-support';
 import { dotnetNamespace } from './preset-csharp-dotnet';
 import { renderGoMod } from './kernel/go';
 import { renderGradleKts, renderGradleSettings } from './kernel/kotlin';
@@ -473,12 +474,12 @@ docker run --rm -v "$(pwd)":/app -w /app -e DOTNET_CLI_TELEMETRY_OPTOUT=1 -e DOT
 `
       }
     ];
-  } else if (config.stack.language === 'java') {
+  } else if (config.stack.language === 'java' && isSpringFramework(config.stack.framework)) {
     projectRootFile = {
       filename: `pom.xml`,
       content: renderPom(toKebab(config.projectName || 'demo'), jvmGroupId(config))
     };
-  } else if (config.stack.language === 'kotlin') {
+  } else if (config.stack.language === 'kotlin' && isSpringFramework(config.stack.framework)) {
     projectRootFile = [
       { filename: `build.gradle.kts`, content: renderGradleKts(jvmGroupId(config)) },
       { filename: `settings.gradle.kts`, content: renderGradleSettings(toKebab(config.projectName || 'demo')) }

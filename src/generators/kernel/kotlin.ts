@@ -3,6 +3,7 @@
    ========================================================================== */
 
 import { DomainModel, cucumberExpression } from './domain-model';
+import { JVM_VERSIONS } from '../versions';
 import { javaPackagePath, JavaFile } from './java';
 
 // Kotlin string literal: escape backslash, quote and the string-template marker.
@@ -203,11 +204,11 @@ fun main(args: Array<String>) {
 
 export function renderGradleKts(groupId = 'com.example'): string {
   return `plugins {
-    id("org.springframework.boot") version "3.3.5"
-    id("io.spring.dependency-management") version "1.1.6"
-    kotlin("jvm") version "1.9.25"
-    kotlin("plugin.spring") version "1.9.25"
-    kotlin("plugin.jpa") version "1.9.25"
+    id("org.springframework.boot") version "${JVM_VERSIONS.springBoot}"
+    id("io.spring.dependency-management") version "${JVM_VERSIONS.springDependencyManagement}"
+    kotlin("jvm") version "${JVM_VERSIONS.kotlin}"
+    kotlin("plugin.spring") version "${JVM_VERSIONS.kotlin}"
+    kotlin("plugin.jpa") version "${JVM_VERSIONS.kotlin}"
 }
 
 group = "${groupId}"
@@ -215,7 +216,7 @@ version = "0.0.1-SNAPSHOT"
 
 java {
     toolchain {
-        languageVersion = JavaLanguageVersion.of(17)
+        languageVersion = JavaLanguageVersion.of(${JVM_VERSIONS.java})
     }
 }
 
@@ -225,8 +226,8 @@ repositories {
 
 dependencyManagement {
     imports {
-        mavenBom("io.opentelemetry:opentelemetry-bom:1.67.0")
-        mavenBom("io.cucumber:cucumber-bom:7.20.1")
+        mavenBom("io.opentelemetry:opentelemetry-bom:${JVM_VERSIONS.openTelemetry}")
+        mavenBom("io.cucumber:cucumber-bom:${JVM_VERSIONS.cucumber}")
     }
 }
 

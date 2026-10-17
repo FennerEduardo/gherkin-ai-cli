@@ -1,6 +1,6 @@
 import { CLI_VERSION } from '../version';
 import { isNonInteractive } from '../core/run-context';
-import { getStackSupport, supportWarning } from '../generators/stack-support';
+import { getStackSupport, isSpringFramework, supportWarning } from '../generators/stack-support';
 import fs from 'fs';
 import path from 'path';
 import YAML from 'yaml';
@@ -257,7 +257,11 @@ export function generateGovernanceConfig(config: GherkinAIConfig, workspaceDir: 
   // Backend / Service Paths & Imports
   allowedPaths.push('src/**', 'app/**', 'public/**', 'views/**', 'controllers/**', 'domain/**');
 
-  if (lang === 'java' || framework.includes('spring')) {
+  if ((lang === 'java' || lang === 'kotlin') && !isSpringFramework(framework)) {
+    // Quarkus / Micronaut / Ktor use CDI or their own DI: Spring imports do not belong here.
+    prohibitedImports[lang] = ['org.springframework.* (this project does not use Spring)', 'java.sql.Statement without PreparedStatement'];
+    requireHumanApprovalOn.push('pom.xml', 'build.gradle', 'build.gradle.kts', 'application.properties', 'application.yml', 'schema.sql');
+  } else if (lang === 'java' || framework.includes('spring')) {
     prohibitedImports['java'] = ['org.springframework.beans.factory.annotation.Autowired on fields (use constructor injection)', 'java.sql.Statement without PreparedStatement'];
     requireHumanApprovalOn.push('pom.xml', 'build.gradle', 'application.yml', 'schema.sql');
   } else if (lang === 'csharp' || framework.includes('aspnet') || framework.includes('dotnet')) {

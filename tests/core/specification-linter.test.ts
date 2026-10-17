@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { parseGherkinText } from '../../src/core/gherkin-parser';
-import { lintSpecification, getAvailableRules } from '../../src/core/specification-linter';
+import { lintSpecification, getAvailableRules, LintRule } from '../../src/core/specification-linter';
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -218,5 +218,25 @@ describe('Specification Linter', () => {
       expect(rules[0].name).toBeDefined();
       expect(rules[0].severity).toBeDefined();
     });
+  });
+});
+
+describe('Extra lint rules', () => {
+  const extra: LintRule = {
+    id: 'GHK100',
+    name: 'Feature declares a BIAN service domain',
+    severity: 'warning',
+    check: parsed => parsed.tags.some(t => t.startsWith('@bian:')) ? [] : [{ ruleId: 'GHK100', severity: 'warning', message: 'missing @bian tag' }]
+  };
+  const feature = parseGherkinText(['Feature: Refund', '  Scenario: Refund a payment', '    Given a settled payment', '    When the customer requests a refund', '    Then the refund is issued'].join('\n'));
+
+  it('runs rules passed in options after the built-in ones and honours disabledRules', () => {
+    expect(lintSpecification(feature, 'f.feature', { rules: [extra], constitution: null }).diagnostics.some(d => d.ruleId === 'GHK100')).toBe(true);
+    expect(lintSpecification(feature, 'f.feature', { rules: [extra], disabledRules: ['GHK100'], constitution: null }).diagnostics.some(d => d.ruleId === 'GHK100')).toBe(false);
+    expect(lintSpecification(feature, 'f.feature', { constitution: null }).diagnostics.some(d => d.ruleId === 'GHK100')).toBe(false);
+  });
+
+  it('lists extra rules with the built-in ones', () => {
+    expect(getAvailableRules([extra]).map(r => r.id)).toContain('GHK100');
   });
 });

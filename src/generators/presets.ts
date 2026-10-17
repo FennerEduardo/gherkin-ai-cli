@@ -19,6 +19,7 @@ import { generateNodeExpressPreset } from './preset-node-express';
 import { dartPackageName, generateFlutterPreset } from './preset-flutter';
 import { renderFlutterProject } from './frontend/kernel/flutter';
 
+import { getStackSupport } from './stack-support';
 import { buildDomainModel } from './kernel/domain-model';
 import { siblingDomainModels } from './kernel/siblings';
 import { VALIDATE_CONTRACTS_SCRIPT, renderGraphql, renderProto } from './kernel/api-contracts';
@@ -44,42 +45,41 @@ export function frontendFramework(config: Pick<GherkinAIConfig, 'stack' | 'front
   return undefined;
 }
 
+type BackendPreset = (parsed: ParsedFeature, config: GherkinAIConfig, featureFile?: string) => { filename: string; content: string }[];
+
+/** Backend preset per stack-support id (stack-support.ts decides which id a config resolves to). */
+const BACKEND_PRESETS: Record<string, BackendPreset> = {
+  'csharp/dotnet': (p, c) => generateCsharpDotnetPreset(p, c),
+  'java/spring': (p, c) => generateJavaSpringPreset(p, c),
+  'kotlin/spring': (p, c) => generateKotlinSpringPreset(p, c),
+  'python/fastapi': generatePythonFastApiPreset,
+  'python/django': generatePythonDjangoPreset,
+  'go/chi': (p, c) => generateGoPreset(p, c),
+  'php/laravel': (p, c) => generatePhpLaravelPreset(p, c),
+  'ruby/rails': (p, c) => generateRubyRailsPreset(p, c),
+  'elixir/phoenix': generateElixirPhoenixPreset,
+  'rust/axum': generateRustAxumPreset,
+  'dart/flutter': generateFlutterPreset
+};
+
+/** Ids every generated backend id must have a preset for (tests/generators/stack-support.test.ts). */
+export const BACKEND_PRESET_IDS = Object.keys(BACKEND_PRESETS);
+
+function backendPreset(id: string): BackendPreset | undefined {
+  // NestJS / Express variants (framework and ORM majors) share one preset each.
+  if (id.startsWith('typescript/nestjs')) return (p, c) => generateNodeNestJsPreset(p, c);
+  if (id.startsWith('typescript/express')) return (p, c) => generateNodeExpressPreset(p, c);
+  return BACKEND_PRESETS[id];
+}
+
 /** @param featureFile path of the source .feature relative to the project root, when known (used by BDD runners that bind one file). */
 export function generatePresets(parsed: ParsedFeature, config: GherkinAIConfig, featureFile?: string): { filename: string; content: string }[] {
-  const lang = config.stack.language.toLowerCase();
-  const framework = config.stack.framework?.toLowerCase() || '';
   const results: { filename: string; content: string }[] = [];
-  
-  if (lang === 'go') {
-    results.push(...generateGoPreset(parsed, config));
-  } else if (lang === 'rust') {
-    results.push(...generateRustAxumPreset(parsed, config, featureFile));
-  } else if (lang === 'elixir') {
-    results.push(...generateElixirPhoenixPreset(parsed, config, featureFile));
-  } else if (lang === 'ruby') {
-    results.push(...generateRubyRailsPreset(parsed, config));
-  } else if (lang === 'dart' || framework === 'flutter') {
-    results.push(...generateFlutterPreset(parsed, config, featureFile));
-  } else if (lang === 'kotlin') {
-    results.push(...generateKotlinSpringPreset(parsed, config));
-  } else if (lang === 'java') {
-    results.push(...generateJavaSpringPreset(parsed, config));
-  } else if (lang === 'python') {
-    if (framework === 'django') results.push(...generatePythonDjangoPreset(parsed, config, featureFile));
-    else results.push(...generatePythonFastApiPreset(parsed, config, featureFile));
-  } else if (lang === 'php') {
-    results.push(...generatePhpLaravelPreset(parsed, config));
-  } else if (lang === 'csharp') {
-    results.push(...generateCsharpDotnetPreset(parsed, config));
-  } else if (lang === 'typescript' || lang === 'javascript') {
-    if (framework === 'nestjs' || framework === 'nest') {
-      results.push(...generateNodeNestJsPreset(parsed, config));
-    } else if (framework === 'express') {
-      results.push(...generateNodeExpressPreset(parsed, config));
-    }
-    // Frontend frameworks in `stack` are rendered below as a frontend-only project; other TypeScript
-    // backends (fastify, node-native, ...) have no preset: only contracts and prompts are generated.
-  }
+
+  // Frontend-only stacks (`frontend/*`) are rendered below; unsupported stacks (experimental
+  // tier, e.g. Java + Quarkus before its preset exists) only get contracts and prompts.
+  const backend = backendPreset(getStackSupport(config).id);
+  if (backend) results.push(...backend(parsed, config, featureFile));
 
   // Complementary Frontend Dual-Stack Matrix Generation (or a frontend-only project declared in `stack`).
   const feFramework = frontendFramework(config);

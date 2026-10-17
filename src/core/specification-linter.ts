@@ -40,6 +40,8 @@ export interface LintOptions {
   threshold?: number;     // default: 70
   constitution?: Constitution | null;
   disabledRules?: string[];
+  /** Extra rules run after the built-in ones (e.g. contributed by an industry profile). */
+  rules?: LintRule[];
 }
 
 export { withoutQuotedText };
@@ -48,7 +50,7 @@ export { withoutQuotedText };
 // Lint Rule Registry
 // ---------------------------------------------------------------------------
 
-interface LintRule {
+export interface LintRule {
   id: string;
   name: string;
   severity: LintSeverity;
@@ -580,7 +582,7 @@ export function lintSpecification(
 
   const allDiagnostics: LintDiagnostic[] = [];
 
-  for (const rule of LINT_RULES) {
+  for (const rule of [...LINT_RULES, ...(options.rules || [])]) {
     if (disabledRules.has(rule.id)) continue;
 
     try {
@@ -613,8 +615,8 @@ export function lintSpecification(
 // Get Available Rules (for help/documentation)
 // ---------------------------------------------------------------------------
 
-export function getAvailableRules(): { id: string; name: string; severity: LintSeverity }[] {
-  return LINT_RULES.map(r => ({
+export function getAvailableRules(extra: LintRule[] = []): { id: string; name: string; severity: LintSeverity }[] {
+  return [...LINT_RULES, ...extra].map(r => ({
     id: r.id,
     name: r.name,
     severity: r.severity,
