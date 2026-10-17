@@ -4,10 +4,12 @@
    built CLI, then compile it AND run its generated test suite inside the
    stack's official Docker image.
 
-   Usage:  npm run build && node scripts/golden-build.js [stack ...] [--keep] [--list] [--no-integration]
+   Usage:  npm run build && node scripts/golden-build.js [stack ...] [--keep] [--list] [--no-integration] [--no-image]
 
    Backends also run their runtime integration tests (docs/RUNTIME-KERNEL.md)
-   against PostgreSQL and RabbitMQ containers on a private network. The full
+   against PostgreSQL and RabbitMQ containers on a private network. Backends
+   with a generated Dockerfile also build their production image, start it on
+   that network and must answer their liveness and readiness probes. The full
    log of each stack is written to <tmp>/ghk-golden-<stack>.log.
 
    A stack passes when the generated project builds and its tests exit 0
@@ -24,12 +26,14 @@ const path = require('path');
 const { STACKS } = require('./golden-stacks');
 // The same PostgreSQL / RabbitMQ harness as `ghk verify --services` (src/core/services.ts, built into dist/).
 const { startServices } = require('../dist/core/services');
+const { resolveAppRuntimeEnv, resolveHealth } = require('../dist/generators/toolchains');
 
 const ROOT = path.resolve(__dirname, '..');
 const CLI = path.join(ROOT, 'bin', 'gherkin-ai.js');
 const args = process.argv.slice(2);
 const keep = args.includes('--keep');
 const skipIntegration = args.includes('--no-integration');
+const skipImage = args.includes('--no-image');
 const selected = args.filter(a => !a.startsWith('--'));
 
 if (args.includes('--list')) {
@@ -92,7 +96,7 @@ function buildInDocker(dir, def, name) {
   const script = [...(def.build || []), ...(def.test || []), ...exports, ...integration].join(' && ');
   try {
     const env = { ...(def.env || {}) };
-    return run('docker', [
+    const res = run('docker', [
       'run', '--rm',
       ...(services ? ['--network', services.network] : []),
       '-v', `${dockerPath(dir)}:/work`, '-w', `/work${def.workdir ? `/${def.workdir}` : ''}`,
@@ -100,8 +104,57 @@ function buildInDocker(dir, def, name) {
       ...Object.entries(env).flatMap(([k, v]) => ['-e', `${k}=${v}`]),
       def.image, 'sh', '-c', script
     ], { env: { ...process.env, MSYS_NO_PATHCONV: '1' } });
+    if (res.code !== 0 || !services || skipImage || !fs.existsSync(path.join(dir, 'Dockerfile'))) return res;
+    const image = smokeImage(dir, def, name, services);
+    return { code: image.code, out: `${res.out}\n--- production image ---\n${image.out}` };
   } finally {
     if (services) services.stop();
+  }
+}
+
+// Platform-provided settings the production images expect (secret managers in a real deployment).
+const IMAGE_ENV = {
+  JWT_SECRET: 'golden-image-secret-with-32-chars!!',
+  SECRET_KEY_BASE: 'golden'.repeat(16),
+  APP_KEY: 'base64:' + Buffer.alloc(32, 7).toString('base64'),
+  DJANGO_SECRET_KEY: 'golden-django-secret'
+};
+
+/**
+ * Builds the generated Dockerfile, starts the image on the services network and waits until its liveness
+ * and readiness probes answer 200 (toolchains.ts resolveHealth).
+ */
+function smokeImage(dir, def, name, services) {
+  const tag = `ghk-golden-${name}:image`;
+  const container = `ghk-app-${name}-${Date.now()}`;
+  const opts = { env: { ...process.env, MSYS_NO_PATHCONV: '1' } };
+  const log = [];
+  const build = run('docker', ['build', '-q', '-t', tag, dockerPath(dir)], opts);
+  log.push(build.out);
+  if (build.code !== 0) return { code: build.code, out: `docker build failed\n${log.join('\n')}` };
+  try {
+    const { port } = resolveAppRuntimeEnv({ stack: def.stack });
+    const health = resolveHealth({ stack: def.stack });
+    const env = { ...IMAGE_ENV, ...services.env };
+    const start = run('docker', ['run', '-d', '--name', container, '--network', services.network,
+      ...Object.entries(env).flatMap(([k, v]) => ['-e', `${k}=${v}`]), tag], opts);
+    if (start.code !== 0) return { code: start.code, out: `docker run failed\n${start.out}` };
+    const probe = p => run('docker', ['run', '--rm', '--network', services.network, 'curlimages/curl:8.11.1',
+      '-s', '-o', '/dev/null', '-w', '%{http_code}', '--max-time', '5', `http://${container}:${port}${p}`], opts).out.trim();
+    const deadline = Date.now() + 180_000;
+    let codes = [];
+    while (Date.now() < deadline) {
+      codes = [health.live, health.ready].map(p => `${p}=${probe(p)}`);
+      if (codes.every(c => c.endsWith('=200'))) {
+        return { code: 0, out: `image ${tag} healthy on :${port} (${codes.join(', ')})` };
+      }
+      spawnSync(process.execPath, ['-e', 'setTimeout(()=>{},3000)']);
+    }
+    const logs = run('docker', ['logs', '--tail', '80', container], opts).out;
+    return { code: 1, out: `image ${tag} did not become healthy on :${port} (${codes.join(', ')})\n--- container logs ---\n${logs}` };
+  } finally {
+    run('docker', ['rm', '-f', container], opts);
+    run('docker', ['rmi', '-f', tag], opts);
   }
 }
 

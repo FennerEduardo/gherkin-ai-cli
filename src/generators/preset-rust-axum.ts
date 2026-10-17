@@ -14,10 +14,15 @@ import { RS_APP_DEPS, renderAxumAppLayer } from './kernel/app/rust';
 import { tenantClaim } from './kernel/app/shared';
 import { siblingDomainModels } from './kernel/siblings';
 
+/** Cargo package (and binary) name: the snake-cased project name. */
+export function rustCrateName(config?: Pick<GherkinAIConfig, 'projectName'>): string {
+  const snake = toSnake(config?.projectName || 'app');
+  return /^[a-z]/.test(snake) ? snake : `app_${snake}`;
+}
+
 export function generateRustAxumPreset(parsed: ParsedFeature, config?: GherkinAIConfig, featureFile?: string): { filename: string; content: string }[] {
   const m = buildDomainModel(parsed, { service: config?.projectName });
-  const snake = toSnake(config?.projectName || 'app');
-  const crate = /^[a-z]/.test(snake) ? snake : `app_${snake}`;
+  const crate = rustCrateName(config);
   const siblings = siblingDomainModels(m, config, s => `src/domain/${s.snake}.rs`);
   // Application layer wired to the kernel (kernel/app/shared.ts): HTTP commands, JWT tenant, relay task.
   const app = renderAxumAppLayer(m, crate, tenantClaim(config), siblings);

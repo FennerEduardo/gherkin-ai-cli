@@ -1,0 +1,60 @@
+# Deploying a generated service
+
+Every generated backend can be deployed as one container image to AWS, GCP, Azure or any Kubernetes cluster. This page covers the image and its runtime contract. Cloud targets (Terraform, Helm) are added in the next 3.2 milestones.
+
+## Production image
+
+`ghk generate` writes a `Dockerfile` and a `.dockerignore` next to the backend. Each image:
+
+- **Builds in stages.** It compiles in the same toolchain image the golden builds use, then copies only the result into a smaller runtime image.
+- **Runs without root.** The user is UID 10001, or the image's own `node`, `app` or `nonroot` user.
+- **Takes configuration only from environment variables.** Nothing environment-specific is baked into the image, so one image runs in dev, staging and prod.
+- **Has no `HEALTHCHECK` and no curl.** The platform probes the HTTP paths below.
+
+```bash
+docker build -t orders-svc .
+docker run -p 8080:8080 -e DATABASE_URL=... -e AMQP_URL=... -e JWT_SECRET=... orders-svc
+```
+
+| Stack | Runtime image | Port | Liveness | Readiness |
+|---|---|---|---|---|
+| NestJS | `node:24-bookworm-slim` | 3000 | `/health` | `/health/ready` (PostgreSQL) |
+| Express | `node:24-bookworm-slim` | 3000 | `/health` | `/health` |
+| Spring Boot (Java, Kotlin) | `eclipse-temurin:17-jre` | 8080 | `/health` | `/health/ready` (PostgreSQL) |
+| Quarkus | `eclipse-temurin:21-jre` | 8080 | `/q/health/live` | `/q/health/ready` (datasource) |
+| ASP.NET Core | `mcr.microsoft.com/dotnet/aspnet:8.0` | 8080 | `/health` | `/health` |
+| FastAPI | `python:3.12-slim` (uvicorn) | 8000 | `/health` | `/health` |
+| Django | `python:3.12-slim` (gunicorn) | 8000 | `/health` | `/health` |
+| Go (chi) | `gcr.io/distroless/static-debian12:nonroot` | 8080 | `/health` | `/health` |
+| Rust (Axum) | `debian:bookworm-slim` | 3000 | `/health` | `/health` |
+| Rails | `ruby:3.3-slim` (Puma) | 3000 | `/health` | `/health` |
+| Phoenix | `elixir:1.17` (`mix phx.server`, prod) | 4000 | `/health` | `/health` |
+| Laravel | `dunglas/frankenphp:1-php8.3-alpine` | 8000 | `/up` | `/up` |
+
+Where readiness equals liveness, the stack does not yet check its dependencies in the probe.
+
+## Runtime contract
+
+| Variable | Required | Purpose |
+|---|---|---|
+| `DATABASE_URL` | yes | `postgres://user:password@host:5432/db`. Quarkus maps it to its Agroal pool |
+| `AMQP_URL` | for publishing | `amqp://user:password@host:5672`. Without it, events stay in the outbox |
+| `JWT_SECRET` | yes | HS256 secret of bearer tokens. The tenant comes from the token claim only |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | no | OpenTelemetry collector |
+| `GHK_OUTBOX_RELAY` | no | `false` turns off the in-process relay (Spring and Quarkus), e.g. when a separate relay runs |
+| `SECRET_KEY_BASE` | Rails, Phoenix | Framework secret |
+| `APP_KEY` | Laravel | `base64:<32 bytes>` |
+| `DJANGO_SECRET_KEY`, `DJANGO_ALLOWED_HOSTS` | Django | Debug is off in the image; restrict the allowed hosts per environment |
+
+Keep secrets in the platform's secret manager (AWS Secrets Manager, GCP Secret Manager or Azure Key Vault) and inject them as environment variables. The agent firewall requires human approval for changes to `Dockerfile`.
+
+## Verification
+
+`node scripts/golden-build.js <stack>` does four things for each backend:
+
+1. Builds the production image.
+2. Starts it next to PostgreSQL and RabbitMQ.
+3. Waits until both probes answer 200.
+4. Removes everything.
+
+Pass `--no-image` to skip this step.

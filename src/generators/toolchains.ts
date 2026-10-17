@@ -131,19 +131,33 @@ export interface AppRuntimeEnv {
   port: number;
   /** Framework variables for local development (.env.example). */
   vars: Record<string, string>;
+  /**
+   * HTTP probes of the running service (container platforms, Helm, Terraform). Default: /health for both;
+   * `ready` also checks the database where the stack implements it.
+   */
+  health?: { live: string; ready: string };
+}
+
+const DEFAULT_HEALTH = { live: '/health', ready: '/health' };
+
+/** Liveness / readiness paths of a backend. */
+export function resolveHealth(config: Pick<GherkinAIConfig, 'stack'>): { live: string; ready: string } {
+  // NestJS checks the database in /health/ready (RuntimeModule); Express shares the node entry and has /health only.
+  if (getStackSupport(config).id.startsWith('typescript/nestjs')) return { live: '/health', ready: '/health/ready' };
+  return resolveAppRuntimeEnv(config).health ?? DEFAULT_HEALTH;
 }
 
 /** How each backend is configured when run locally; DATABASE_URL / AMQP_URL are added for every stack. */
 export const APP_RUNTIME_ENV: Record<string, AppRuntimeEnv> = {
   node: { port: 3000, vars: { NODE_ENV: 'development', PORT: '3000' } },
   'csharp/dotnet': { port: 8080, vars: { ASPNETCORE_ENVIRONMENT: 'Development', ASPNETCORE_URLS: 'http://0.0.0.0:8080' } },
-  'java/spring': { port: 8080, vars: { SPRING_PROFILES_ACTIVE: 'dev', SERVER_PORT: '8080' } },
-  'java/quarkus': { port: 8080, vars: { QUARKUS_PROFILE: 'dev', SERVER_PORT: '8080' } },
-  'kotlin/spring': { port: 8080, vars: { SPRING_PROFILES_ACTIVE: 'dev', SERVER_PORT: '8080' } },
+  'java/spring': { port: 8080, vars: { SPRING_PROFILES_ACTIVE: 'dev', SERVER_PORT: '8080' }, health: { live: '/health', ready: '/health/ready' } },
+  'java/quarkus': { port: 8080, vars: { QUARKUS_PROFILE: 'dev', SERVER_PORT: '8080' }, health: { live: '/q/health/live', ready: '/q/health/ready' } },
+  'kotlin/spring': { port: 8080, vars: { SPRING_PROFILES_ACTIVE: 'dev', SERVER_PORT: '8080' }, health: { live: '/health', ready: '/health/ready' } },
   'python/fastapi': { port: 8000, vars: { APP_ENV: 'development' } },
   'python/django': { port: 8000, vars: { APP_ENV: 'development', DJANGO_DEBUG: 'true' } },
   'go/chi': { port: 8080, vars: { APP_ENV: 'development', PORT: '8080' } },
-  'php/laravel': { port: 8000, vars: { APP_ENV: 'local', APP_DEBUG: 'true' } },
+  'php/laravel': { port: 8000, vars: { APP_ENV: 'local', APP_DEBUG: 'true' }, health: { live: '/up', ready: '/up' } },
   'ruby/rails': { port: 3000, vars: { RAILS_ENV: 'development', PORT: '3000' } },
   'elixir/phoenix': { port: 4000, vars: { MIX_ENV: 'dev', PORT: '4000' } },
   'rust/axum': { port: 3000, vars: { RUST_LOG: 'info', PORT: '3000' } }

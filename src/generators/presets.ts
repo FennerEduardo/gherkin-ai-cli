@@ -21,6 +21,7 @@ import { dartPackageName, generateFlutterPreset } from './preset-flutter';
 import { renderFlutterProject } from './frontend/kernel/flutter';
 
 import { getStackSupport } from './stack-support';
+import { renderContainerFiles } from './deploy/container';
 import { buildDomainModel } from './kernel/domain-model';
 import { siblingDomainModels } from './kernel/siblings';
 import { VALIDATE_CONTRACTS_SCRIPT, renderGraphql, renderProto } from './kernel/api-contracts';
@@ -81,7 +82,11 @@ export function generatePresets(parsed: ParsedFeature, config: GherkinAIConfig, 
   // Frontend-only stacks (`frontend/*`) are rendered below; unsupported stacks (experimental
   // tier, e.g. Kotlin + Ktor) only get contracts and prompts.
   const backend = backendPreset(getStackSupport(config).id);
-  if (backend) results.push(...backend(parsed, config, featureFile));
+  if (backend) {
+    results.push(...backend(parsed, config, featureFile));
+    // Production image (Dockerfile + .dockerignore) for container platforms (ECS, Cloud Run, Container Apps, Kubernetes).
+    results.push(...renderContainerFiles(config));
+  }
 
   // Complementary Frontend Dual-Stack Matrix Generation (or a frontend-only project declared in `stack`).
   const feFramework = frontendFramework(config);

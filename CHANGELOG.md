@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file. See [commit
 ## [3.2.0] - Unreleased
 
 ### Added
+- **Production container image for every backend.** `ghk generate` writes a `Dockerfile` and `.dockerignore`.
+  - **Image.** The build is multi-stage and the image runs as a non-root user. It is configured only with environment variables, so one image runs on ECS, Cloud Run, Container Apps and Kubernetes.
+  - **Health.** NestJS and Spring (Java and Kotlin) get `/health` and `/health/ready`, which checks PostgreSQL. Each stack's probe paths are in `resolveHealth`.
+  - **Verification.** Golden builds now build each image, start it next to PostgreSQL and RabbitMQ, and require both probes to answer 200; `--no-image` skips this.
+  - **Docs.** See `docs/DEPLOYMENT.md`.
 - **Java + Quarkus 3.40 LTS backend (beta, golden `quarkus`).** Select it with `stack.framework: "quarkus"`.
   - **Shared kernel.** It uses the same domain kernel, Cucumber runner and runtime kernel (PostgreSQL + RabbitMQ + OpenTelemetry, IT1–IT7) as Spring.
   - **Application layer.** It has the same HTTP contract as Spring: a Quarkus REST resource and the HS256 JWT tenant filter (tenant only from the claim). The Agroal pool is configured from `DATABASE_URL` through a config source. The outbox relay runs on the Quarkus scheduler, and SmallRye Health serves `/q/health/live|ready`.

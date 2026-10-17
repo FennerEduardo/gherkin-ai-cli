@@ -107,7 +107,7 @@ export function currentTenant(): string {
 
 /** Global module: pg pool, outbox relay worker and (when handlers are registered) the inbox consumer. */
 export function renderNestRuntimeModule(m: DomainModel): string {
-  return `import { Global, Inject, Injectable, Logger, Module, OnApplicationBootstrap, OnApplicationShutdown } from '@nestjs/common';
+  return `import { Controller, Get, Global, Inject, Injectable, Logger, Module, OnApplicationBootstrap, OnApplicationShutdown, ServiceUnavailableException } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import * as amqp from 'amqplib';
 import { Pool } from 'pg';
@@ -167,8 +167,30 @@ export class RuntimeWorker implements OnApplicationBootstrap, OnApplicationShutd
   }
 }
 
+/** Probes for container platforms: /health (process is up) and /health/ready (database reachable). */
+@Controller('health')
+export class HealthController {
+  constructor(@Inject(PG_POOL) private readonly pool: Pool) {}
+
+  @Get()
+  live(): { status: string } {
+    return { status: 'ok' };
+  }
+
+  @Get('ready')
+  async ready(): Promise<{ status: string }> {
+    try {
+      await this.pool.query('SELECT 1');
+      return { status: 'ok' };
+    } catch {
+      throw new ServiceUnavailableException({ status: 'unavailable' });
+    }
+  }
+}
+
 @Global()
 @Module({
+  controllers: [HealthController],
   providers: [
     { provide: PG_POOL, useFactory: () => new Pool({ connectionString: process.env.DATABASE_URL }) },
     { provide: EVENT_HANDLERS, useValue: {} satisfies EventHandlers },
@@ -310,6 +332,11 @@ describe('${m.pascal} HTTP application layer', () => {
   it('maps domain validation errors to 422', async () => {
     const res = await post(\`${commandRoute(m)}/\${randomUUID()}/no_such_command\`, { authorization: token({ [TENANT_CLAIM]: tenant }) });
     expect(res.status).toBe(422);
+  });
+
+  it('reports liveness and database readiness without a token', async () => {
+    expect((await fetch(\`\${base}/health\`)).status).toBe(200);
+    expect((await fetch(\`\${base}/health/ready\`)).status).toBe(200);
   });
 });
 `;
