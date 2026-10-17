@@ -15,5 +15,13 @@ export const JVM_VERSIONS = {
   java: '17',
   kotlin: '1.9.25',
   cucumber: '7.20.1',
-  openTelemetry: '1.67.0'
+  openTelemetry: '1.67.0',
+  /** Quarkus platform BOM (current LTS: supported for 12 months from its release). */
+  quarkus: '3.40.1',
+  /** Java release of Quarkus projects. */
+  quarkusJava: '21',
+  /** RabbitMQ Java client (explicit: Quarkus projects have no Spring BOM). */
+  amqpClient: '5.21.0',
+  mavenCompilerPlugin: '3.13.0',
+  mavenSurefirePlugin: '3.5.2'
 } as const;

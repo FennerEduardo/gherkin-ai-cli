@@ -2,6 +2,8 @@
    gherkin-ai-cli - Technical Stack Specifications & Package Versions
    ========================================================================== */
 
+import { JVM_VERSIONS } from '../generators/versions';
+
 export interface StackSpec {
   language: string;
   framework: string;
@@ -45,8 +47,9 @@ export function getStackSpec(stackConfig: Record<string, any>): StackSpec {
     validationPackage = validation === 'pydantic' ? 'pydantic^2.6.0' : 'marshmallow^3.20.0';
     testPackages = testing === 'pytest' ? ['pytest^8.0.0', 'pytest-asyncio'] : ['unittest (standard library)'];
   } else if (lang === 'java') {
-    frameworkVersion = 'Java 17/21/25 (Spring Boot 3.2+)';
-    ormPackage = 'org.hibernate.orm:hibernate-core:6.4.4.Final';
+    const quarkus = framework === 'quarkus';
+    frameworkVersion = quarkus ? `Java ${JVM_VERSIONS.quarkusJava} (Quarkus ${JVM_VERSIONS.quarkus} LTS)` : 'Java 17/21/25 (Spring Boot 3.2+)';
+    ormPackage = quarkus ? 'JDBC (runtime kernel) on io.quarkus:quarkus-agroal' : 'org.hibernate.orm:hibernate-core:6.4.4.Final';
     validationPackage = 'jakarta.validation:jakarta.validation-api:3.0.2';
     testPackages = testing === 'junit' ? ['org.junit.jupiter:junit-jupiter:5.10.2'] : ['org.testng:testng:7.9.0'];
   } else if (lang === 'csharp') {

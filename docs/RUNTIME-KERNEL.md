@@ -6,7 +6,7 @@ Every generated backend includes a small, framework-neutral runtime next to its 
 |---|---|---|---|
 | NestJS, Express | `src/runtime/` | `pg`, `amqplib`, `@opentelemetry/*` | `npm run test:integration` |
 | ASP.NET Core | `Runtime/` | Npgsql, RabbitMQ.Client, OpenTelemetry .NET | `dotnet test --filter Category=Integration` |
-| Spring Boot (Java, Kotlin) | `…/runtime/` | JDBC, amqp-client, OpenTelemetry Java | `mvn verify -Pintegration` / `gradle integrationTest` |
+| Spring Boot (Java, Kotlin), Quarkus (Java) | `…/runtime/` | JDBC (Quarkus: Agroal pool), amqp-client, OpenTelemetry Java | `mvn verify -Pintegration` / `gradle integrationTest` |
 | FastAPI, Django | `app/runtime/` | psycopg 3, pika, opentelemetry-sdk | `pytest -m integration` |
 | Go (chi) | `internal/runtime/` | pgx, amqp091-go, otel-go | `go test -tags integration ./...` |
 | Laravel | `app/Runtime/` | PDO, php-amqplib, OpenTelemetry PHP | `phpunit --group integration` |

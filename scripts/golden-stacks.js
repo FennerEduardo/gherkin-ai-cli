@@ -118,6 +118,14 @@ const STACKS = {
     test: ['mvn -B -ntp test'],
     integration: ['mvn -B -ntp test -Pintegration']
   },
+  quarkus: {
+    stack: { ...base, language: 'java', framework: 'quarkus', orm: 'jdbc', validation: 'jakarta-validation', testing: 'junit' },
+    image: 'maven:3.9-eclipse-temurin-21',
+    caches: [['m2', '/root/.m2']],
+    build: ['mvn -q -B -ntp -DskipTests package'],
+    test: ['mvn -B -ntp test'],
+    integration: ['mvn -B -ntp test -Pintegration']
+  },
   kotlin: {
     stack: { ...base, language: 'kotlin', framework: 'spring-boot', orm: 'hibernate', validation: 'jakarta-validation', testing: 'junit' },
     image: 'gradle:8.10-jdk17',

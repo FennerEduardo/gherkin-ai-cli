@@ -243,6 +243,159 @@ public class Application {
   };
 }
 
+/**
+ * Maven build of a Quarkus service: the runtime kernel (plain JDBC + amqp-client + OpenTelemetry SDK) on
+ * Agroal, Quarkus REST and the scheduler. OpenTelemetry is imported before the Quarkus BOM so the kernel
+ * gets the API version it is written against; the quarkus-opentelemetry extension is not used (one SDK).
+ */
+export function renderQuarkusPom(artifactId: string, groupId = 'com.example'): string {
+  const dep = (g: string, a: string, extra = '') => `    <dependency>\n      <groupId>${g}</groupId>\n      <artifactId>${a}</artifactId>${extra}\n    </dependency>`;
+  const test = '\n      <scope>test</scope>';
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>${groupId}</groupId>
+  <artifactId>${artifactId}</artifactId>
+  <version>0.0.1-SNAPSHOT</version>
+
+  <properties>
+    <maven.compiler.release>${JVM_VERSIONS.quarkusJava}</maven.compiler.release>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <quarkus.platform.version>${JVM_VERSIONS.quarkus}</quarkus.platform.version>
+    <cucumber.version>${JVM_VERSIONS.cucumber}</cucumber.version>
+    <opentelemetry.version>${JVM_VERSIONS.openTelemetry}</opentelemetry.version>
+    <!-- Runtime integration tests (tag "integration") need DATABASE_URL / AMQP_URL: mvn test -Pintegration -->
+    <test.groups></test.groups>
+    <test.excludedGroups>integration</test.excludedGroups>
+  </properties>
+
+  <dependencyManagement>
+    <dependencies>
+      <dependency>
+        <groupId>io.opentelemetry</groupId>
+        <artifactId>opentelemetry-bom</artifactId>
+        <version>\${opentelemetry.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+      <!-- Incubator artifacts (pulled by quarkus-scheduler) must match the API version too. -->
+      <dependency>
+        <groupId>io.opentelemetry</groupId>
+        <artifactId>opentelemetry-bom-alpha</artifactId>
+        <version>\${opentelemetry.version}-alpha</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+      <dependency>
+        <groupId>io.quarkus.platform</groupId>
+        <artifactId>quarkus-bom</artifactId>
+        <version>\${quarkus.platform.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+      <dependency>
+        <groupId>io.cucumber</groupId>
+        <artifactId>cucumber-bom</artifactId>
+        <version>\${cucumber.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
+
+  <dependencies>
+${dep('io.quarkus', 'quarkus-arc')}
+${dep('io.quarkus', 'quarkus-rest')}
+${dep('io.quarkus', 'quarkus-rest-jackson')}
+${dep('io.quarkus', 'quarkus-agroal')}
+${dep('io.quarkus', 'quarkus-jdbc-postgresql')}
+${dep('io.quarkus', 'quarkus-scheduler')}
+${dep('io.quarkus', 'quarkus-smallrye-health')}
+${dep('io.opentelemetry', 'opentelemetry-api')}
+${dep('io.opentelemetry', 'opentelemetry-sdk')}
+${dep('io.opentelemetry', 'opentelemetry-exporter-otlp', `
+      <exclusions>
+        <exclusion>
+          <groupId>io.opentelemetry</groupId>
+          <artifactId>opentelemetry-exporter-sender-okhttp</artifactId>
+        </exclusion>
+      </exclusions>`)}
+${dep('io.opentelemetry', 'opentelemetry-exporter-sender-jdk')}
+${dep('com.rabbitmq', 'amqp-client', `\n      <version>${JVM_VERSIONS.amqpClient}</version>`)}
+
+${dep('io.quarkus', 'quarkus-junit5', test)}
+${dep('io.opentelemetry', 'opentelemetry-sdk-testing', test)}
+${dep('io.cucumber', 'cucumber-java', test)}
+${dep('io.cucumber', 'cucumber-junit-platform-engine', test)}
+${dep('org.junit.platform', 'junit-platform-suite', test)}
+  </dependencies>
+
+  <build>
+    <testResources>
+      <testResource>
+        <directory>src/test/resources</directory>
+      </testResource>
+      <!-- The Gherkin specification is the single source of truth: run it from ./features. -->
+      <testResource>
+        <directory>features</directory>
+        <targetPath>features</targetPath>
+      </testResource>
+    </testResources>
+    <plugins>
+      <plugin>
+        <groupId>io.quarkus.platform</groupId>
+        <artifactId>quarkus-maven-plugin</artifactId>
+        <version>\${quarkus.platform.version}</version>
+        <extensions>true</extensions>
+        <executions>
+          <execution>
+            <goals>
+              <goal>build</goal>
+              <goal>generate-code</goal>
+              <goal>generate-code-tests</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <version>${JVM_VERSIONS.mavenCompilerPlugin}</version>
+        <configuration>
+          <parameters>true</parameters>
+        </configuration>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <version>${JVM_VERSIONS.mavenSurefirePlugin}</version>
+        <configuration>
+          <groups>\${test.groups}</groups>
+          <excludedGroups>\${test.excludedGroups}</excludedGroups>
+          <systemPropertyVariables>
+            <java.util.logging.manager>org.jboss.logmanager.LogManager</java.util.logging.manager>
+            <maven.home>\${maven.home}</maven.home>
+          </systemPropertyVariables>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
+
+  <profiles>
+    <profile>
+      <id>integration</id>
+      <properties>
+        <test.groups>integration</test.groups>
+        <test.excludedGroups></test.excludedGroups>
+      </properties>
+    </profile>
+  </profiles>
+</project>
+`;
+}
+
 export function renderPom(artifactId: string, groupId = 'com.example'): string {
   return `<?xml version="1.0" encoding="UTF-8"?>
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"

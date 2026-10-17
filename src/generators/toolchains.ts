@@ -53,6 +53,13 @@ export const TOOLCHAINS: Record<string, Toolchain> = {
     integration: ['mvn -B -ntp test -Pintegration'],
     start: 'mvn -B -ntp spring-boot:run'
   },
+  'java/quarkus': {
+    image: 'maven:3.9-eclipse-temurin-21',
+    build: ['mvn -q -B -ntp -DskipTests package'],
+    test: ['mvn -B -ntp test'],
+    integration: ['mvn -B -ntp test -Pintegration'],
+    start: 'mvn -B -ntp quarkus:dev -Dquarkus.http.host=0.0.0.0'
+  },
   'kotlin/spring': {
     image: 'gradle:8.10-jdk17',
     build: ['gradle -q --no-daemon assemble'],
@@ -131,6 +138,7 @@ export const APP_RUNTIME_ENV: Record<string, AppRuntimeEnv> = {
   node: { port: 3000, vars: { NODE_ENV: 'development', PORT: '3000' } },
   'csharp/dotnet': { port: 8080, vars: { ASPNETCORE_ENVIRONMENT: 'Development', ASPNETCORE_URLS: 'http://0.0.0.0:8080' } },
   'java/spring': { port: 8080, vars: { SPRING_PROFILES_ACTIVE: 'dev', SERVER_PORT: '8080' } },
+  'java/quarkus': { port: 8080, vars: { QUARKUS_PROFILE: 'dev', SERVER_PORT: '8080' } },
   'kotlin/spring': { port: 8080, vars: { SPRING_PROFILES_ACTIVE: 'dev', SERVER_PORT: '8080' } },
   'python/fastapi': { port: 8000, vars: { APP_ENV: 'development' } },
   'python/django': { port: 8000, vars: { APP_ENV: 'development', DJANGO_DEBUG: 'true' } },

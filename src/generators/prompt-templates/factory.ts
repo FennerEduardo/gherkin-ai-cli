@@ -3,6 +3,7 @@ import { fallbackTemplate } from './stacks/fallback';
 import { nestjsTemplate } from './stacks/nestjs';
 import { laravelTemplate } from './stacks/laravel';
 import { springBootTemplate } from './stacks/spring-boot';
+import { quarkusTemplate } from './stacks/quarkus';
 import { dotnetTemplate } from './stacks/dotnet';
 import { rubyOnRailsTemplate } from './stacks/ruby-on-rails';
 import { reactNativeTemplate } from './stacks/react-native';
@@ -20,6 +21,7 @@ const templates: PromptTemplate[] = [
   nestjsTemplate,
   laravelTemplate,
   springBootTemplate,
+  quarkusTemplate,
   dotnetTemplate,
   rubyOnRailsTemplate,
   pythonBackendTemplate,

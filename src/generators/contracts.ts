@@ -4,7 +4,7 @@
 
 import { featurePascalName } from '../utils/naming';
 import { CLI_VERSION } from '../version';
-import { renderPom } from './kernel/java';
+import { renderPom, renderQuarkusPom } from './kernel/java';
 import { jvmGroupId } from './preset-java-spring';
 import { isSpringFramework } from './stack-support';
 import { industryForConfig } from '../core/profiles/industries';
@@ -496,6 +496,11 @@ docker run --rm -v "$(pwd)":/app -w /app -e DOTNET_CLI_TELEMETRY_OPTOUT=1 -e DOT
 `
       }
     ];
+  } else if (config.stack.language === 'java' && (config.stack.framework || '').toLowerCase() === 'quarkus') {
+    projectRootFile = {
+      filename: `pom.xml`,
+      content: renderQuarkusPom(toKebab(config.projectName || 'demo'), jvmGroupId(config))
+    };
   } else if (config.stack.language === 'java' && isSpringFramework(config.stack.framework)) {
     projectRootFile = {
       filename: `pom.xml`,

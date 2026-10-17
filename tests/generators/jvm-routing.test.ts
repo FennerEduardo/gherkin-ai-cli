@@ -18,7 +18,6 @@ describe('JVM framework routing', () => {
   });
 
   it.each([
-    ['java', 'quarkus'],
     ['java', 'micronaut'],
     ['kotlin', 'ktor']
   ])('%s + %s is experimental and never falls back to Spring code', (language, framework) => {
@@ -45,5 +44,46 @@ describe('backend preset registry', () => {
   it('every generated backend in the support matrix has a preset', () => {
     const backends = STACK_SUPPORT.filter(s => s.kind === 'backend' && !s.id.startsWith('typescript/'));
     for (const s of backends) expect(BACKEND_PRESET_IDS, s.id).toContain(s.id);
+  });
+});
+
+describe('Java + Quarkus preset', () => {
+  const quarkus = cfg('java', 'quarkus');
+  const files = generatePresets(parsed, quarkus);
+  const file = (suffix: string) => files.find(f => f.filename.endsWith(suffix));
+
+  it('resolves to the java/quarkus stack with its own toolchain', () => {
+    expect(getStackSupport(quarkus)).toMatchObject({ id: 'java/quarkus', golden: 'quarkus' });
+  });
+
+  it('generates a Quarkus application layer over the shared runtime kernel, without Spring', () => {
+    expect(files.some(f => f.content.includes('org.springframework'))).toBe(false);
+    expect(file('api/OrderCheckoutResource.java')?.content).toContain('@Path("/api/v1/order-checkout")');
+    expect(file('auth/JwtTenantFilter.java')?.content).toContain('implements ContainerRequestFilter');
+    expect(file('runtime/RuntimeIntegrationTest.java')?.content).toContain('@Tag("integration")');
+    expect(file('runtime/OutboxRelayWorker.java')?.content).toContain('@Scheduled(every = "PT1S"');
+    expect(file('META-INF/services/org.eclipse.microprofile.config.spi.ConfigSource')?.content.trim()).toMatch(/\.runtime\.DatabaseUrlConfigSource$/);
+    const props = file('src/main/resources/application.properties')!.content;
+    expect(props).toContain('quarkus.devservices.enabled=false');
+    expect(props).toContain('ghk.jwt-secret=${JWT_SECRET:}');
+    expect(file('HttpIntegrationTest.java')?.content).toContain('@QuarkusTest');
+  });
+
+  it('builds with the Quarkus BOM after the OpenTelemetry BOM and keeps the integration profile', () => {
+    const pom = ([generateContracts(parsed, ir, quarkus as any).projectRootFile].flat()[0] as { filename: string; content: string });
+    expect(pom.filename).toBe('pom.xml');
+    expect(pom.content).toContain('<quarkus.platform.version>3.40.1</quarkus.platform.version>');
+    expect(pom.content.indexOf('opentelemetry-bom')).toBeLessThan(pom.content.indexOf('quarkus-bom'));
+    expect(pom.content).toContain('<id>integration</id>');
+    expect(pom.content).not.toContain('spring-boot');
+  });
+});
+
+describe('beta tier warning', () => {
+  it('says a beta stack with a golden build is built in CI', async () => {
+    const { supportWarning } = await import('../../src/generators/stack-support');
+    const warning = supportWarning(getStackSupport(cfg('java', 'quarkus')))!;
+    expect(warning).toMatch(/built and tested in CI \(golden "quarkus"\)/);
+    expect(warning).not.toMatch(/not built in CI/);
   });
 });

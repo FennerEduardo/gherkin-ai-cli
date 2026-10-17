@@ -4,8 +4,9 @@
    stable:       a sample project is generated, compiled AND its generated
                  test suite run on every CI build (scripts/golden-build.js);
                  breaking changes follow semver.
-   beta:         generators are unit-tested but generated projects are not
-                 built in CI; expect manual fixes.
+   beta:         generators are unit-tested; generated projects are either not
+                 built in CI (expect manual fixes) or, with a golden entry, built
+                 in CI but not yet promoted to stable (new stacks: java/quarkus).
    experimental: skeletons only; may change at any time.
 
    Keep in sync with scripts/golden-stacks.js.
@@ -36,6 +37,7 @@ export const STACK_SUPPORT: StackSupport[] = [
   { id: 'typescript/express-prisma7', label: 'TypeScript · Express 5 + Prisma 7', kind: 'backend', tier: 'stable', golden: 'express-prisma7', notes: 'stack.ormVersion "7".' },
   { id: 'csharp/dotnet', label: 'C# · ASP.NET Core 8 + EF Core', kind: 'backend', tier: 'stable', golden: 'dotnet' },
   { id: 'java/spring', label: 'Java 17 · Spring Boot 3 (Maven)', kind: 'backend', tier: 'stable', golden: 'java' },
+  { id: 'java/quarkus', label: 'Java 21 · Quarkus 3.40 LTS (Maven)', kind: 'backend', tier: 'beta', golden: 'quarkus', notes: 'Agroal + Quarkus REST over the JVM runtime kernel.' },
   { id: 'kotlin/spring', label: 'Kotlin · Spring Boot 3 (Gradle)', kind: 'backend', tier: 'stable', golden: 'kotlin', notes: 'Pattern infrastructure is shared Java code compiled alongside Kotlin.' },
   { id: 'python/fastapi', label: 'Python · FastAPI + SQLAlchemy', kind: 'backend', tier: 'stable', golden: 'fastapi' },
   { id: 'python/django', label: 'Python · Django + DRF', kind: 'backend', tier: 'stable', golden: 'django' },
@@ -79,10 +81,11 @@ export function getStackSupport(config: Pick<GherkinAIConfig, 'stack'>): StackSu
   const lang = config.stack.language.toLowerCase();
   const framework = (config.stack.framework || '').toLowerCase();
 
-  // Other JVM frameworks (quarkus, ktor, micronaut, ...) fall through to the experimental entry
+  // Other JVM frameworks (ktor, micronaut, ...) fall through to the experimental entry
   // instead of silently generating Spring Boot code.
   if (lang === 'kotlin' && isSpringFramework(framework)) return find('kotlin/spring');
   if (lang === 'java' && isSpringFramework(framework)) return find('java/spring');
+  if (lang === 'java' && framework === 'quarkus') return find('java/quarkus');
   if (lang === 'csharp' || lang === 'dotnet' || lang === '.net') return find('csharp/dotnet');
   if (lang === 'python') return framework === 'django' ? find('python/django') : find('python/fastapi');
   if (lang === 'go') return find('go/chi');
@@ -115,7 +118,9 @@ export function getStackSupport(config: Pick<GherkinAIConfig, 'stack'>): StackSu
 export function supportWarning(support: StackSupport): string | undefined {
   if (support.tier === 'stable') return undefined;
   const base = support.tier === 'beta'
-    ? `${support.label} support is BETA: generated code is not built in CI and may need manual fixes.`
+    ? (support.golden
+      ? `${support.label} support is BETA: it is built and tested in CI (golden "${support.golden}") but not yet promoted to stable.`
+      : `${support.label} support is BETA: generated code is not built in CI and may need manual fixes.`)
     : `${support.label} support is EXPERIMENTAL: expect skeletons and breaking changes.`;
   return support.notes ? `${base} ${support.notes}` : base;
 }

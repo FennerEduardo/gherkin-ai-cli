@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file. See [commit
 ## [3.2.0] - Unreleased
 
 ### Added
+- **Java + Quarkus 3.40 LTS backend (beta, golden `quarkus`).** Select it with `stack.framework: "quarkus"`.
+  - **Shared kernel.** It uses the same domain kernel, Cucumber runner and runtime kernel (PostgreSQL + RabbitMQ + OpenTelemetry, IT1–IT7) as Spring.
+  - **Application layer.** It has the same HTTP contract as Spring: a Quarkus REST resource and the HS256 JWT tenant filter (tenant only from the claim). The Agroal pool is configured from `DATABASE_URL` through a config source. The outbox relay runs on the Quarkus scheduler, and SmallRye Health serves `/q/health/live|ready`.
+  - **Build and tests.** Maven on Java 21, with Dev Services off. A `@QuarkusTest` HTTP integration test runs under `-Pintegration`.
+  - **Versions.** They are pinned in `generators/versions.ts`. The OpenTelemetry BOMs (stable and alpha) are imported before the Quarkus BOM.
 - **Industry profiles (`industry.id`).** There are 8 reference-standard profiles plus `generic`: banking (BIAN, ISO 20022), telecom (TM Forum ODA, SID), manufacturing (RAMI 4.0, AAS, ISA-95), health (HL7 FHIR, openEHR), supply chain (SCOR-DS, GS1), insurance (ACORD), aviation (IATA NDC, ONE Order) and automotive (AUTOSAR, ISO 26262). See `docs/INDUSTRIES.md`.
   - **Lint.** `ghk lint`, `converge` and the MCP `lint_specification` tool run the profile rules (GHK101–GHK803) plus GHK090, which limits capability depth to L4. `industry.disabledRules` skips rules.
   - **Agents.** The IR gets `must` compliance constraints. The `ghk implement` prompt (compact with `-C`) and the agent prompts get an Industry Standards section. `.ghe/industry-context.md` and `.json` are written, with their schema in `schemas/industry-context.schema.json`.
@@ -14,7 +19,7 @@ All notable changes to this project will be documented in this file. See [commit
   - **Opt-in only.** A legacy `domainProfile` such as `payments` does not turn on an industry; `ghk upgrade` suggests `ghk industry apply banking`.
 
 ### Fixed
-- **Java/Kotlin frameworks other than Spring** (`quarkus`, `ktor`, `micronaut`, offered by `ghk init`) no longer generate Spring Boot code silently. They are reported as experimental and get contracts and prompts only, until their preset exists. `stack-detector` recognises Quarkus, Micronaut and Ktor builds.
+- **Java/Kotlin frameworks without a preset** (`ktor` offered by `ghk init`, `micronaut`, ...) no longer generate Spring Boot code silently. They are reported as experimental and get contracts and prompts only. `stack-detector` recognises Quarkus, Micronaut and Ktor builds.
 
 ## [3.1.1] - 2026-10-13
 

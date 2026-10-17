@@ -6,6 +6,7 @@ import { ParsedFeature } from '../core/gherkin-parser';
 import { GherkinAIConfig } from '../core/config';
 import { generateJavaSpringPreset } from './preset-java-spring';
 import { generateKotlinSpringPreset } from './preset-kotlin-spring';
+import { generateJavaQuarkusPreset } from './preset-java-quarkus';
 import { generatePythonFastApiPreset } from './preset-python-fastapi';
 import { generatePythonDjangoPreset } from './preset-python-django';
 import { generatePhpLaravelPreset } from './preset-php-laravel';
@@ -51,6 +52,7 @@ type BackendPreset = (parsed: ParsedFeature, config: GherkinAIConfig, featureFil
 const BACKEND_PRESETS: Record<string, BackendPreset> = {
   'csharp/dotnet': (p, c) => generateCsharpDotnetPreset(p, c),
   'java/spring': (p, c) => generateJavaSpringPreset(p, c),
+  'java/quarkus': (p, c) => generateJavaQuarkusPreset(p, c),
   'kotlin/spring': (p, c) => generateKotlinSpringPreset(p, c),
   'python/fastapi': generatePythonFastApiPreset,
   'python/django': generatePythonDjangoPreset,
@@ -77,7 +79,7 @@ export function generatePresets(parsed: ParsedFeature, config: GherkinAIConfig, 
   const results: { filename: string; content: string }[] = [];
 
   // Frontend-only stacks (`frontend/*`) are rendered below; unsupported stacks (experimental
-  // tier, e.g. Java + Quarkus before its preset exists) only get contracts and prompts.
+  // tier, e.g. Kotlin + Ktor) only get contracts and prompts.
   const backend = backendPreset(getStackSupport(config).id);
   if (backend) results.push(...backend(parsed, config, featureFile));
 

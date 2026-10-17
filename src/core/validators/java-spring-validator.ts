@@ -24,7 +24,7 @@ export function validateJavaSpring(context: ValidatorContext): ValidationResult 
     }
 
     // 3. Advertencia si no hay propagación de Trace ID / Correlation ID en Handlers
-    if (content.includes('@RestController') || content.includes('@KafkaListener')) {
+    if (content.includes('@RestController') || content.includes('@KafkaListener') || /^@Path\(/m.test(content)) {
       if (!content.includes('traceId') && !content.includes('correlationId') && !content.includes('X-Trace-Id')) {
         result.warnings.push(tf('valJavaNoTrace', { file: file.path }));
       }
