@@ -10,6 +10,7 @@ import { getArchRule } from '../../core/arch-rules';
 import { ARCHITECTURES, loadConfig } from '../../core/config';
 import { buildIR, buildSpecificationIR } from '../../core/ir-builder';
 import { lintSpecification } from '../../core/specification-linter';
+import { INDUSTRY_IDS, industryForConfig, industryLintOptions, renderIndustryContextJson, resolveIndustry } from '../../core/profiles/industries';
 import { calculateConvergence } from '../../core/convergence-engine';
 import { assessDeliveryRisk } from '../../core/risk-engine';
 import { loadConstitution, getConstraintsByLevel } from '../../core/constitution';
@@ -89,7 +90,18 @@ export const analysisTools: ToolSpec[] = [
     level: 'safe',
     description: 'Run the specification linter on Gherkin text. Returns diagnostics with severity, suggestions and a quality score.',
     input: { gherkinText, threshold: z.number().min(0).max(100).optional().describe('Minimum passing score. Default: 70.') },
-    run: async ({ gherkinText, threshold }) => lintSpecification(parseGherkinText(gherkinText), 'mcp-input.feature', { threshold: threshold ?? 70 })
+    run: async ({ gherkinText, threshold }) => lintSpecification(parseGherkinText(gherkinText), 'mcp-input.feature', { threshold: threshold ?? 70, ...industryLintOptions(loadConfig()) })
+  }),
+  defineTool<{ id?: string }>({
+    name: 'get_industry_profile',
+    level: 'safe',
+    description: 'Get the industry reference-standard rules (BIAN, TM Forum ODA, HL7 FHIR, ACORD, ...) the implementation must follow: standards, rules, glossary, lint rules. Defaults to the project industry.',
+    input: { id: z.string().optional().describe(`Industry id or alias (${INDUSTRY_IDS.join(', ')}). Default: the project industry.`) },
+    run: async ({ id }) => {
+      const profile = id ? resolveIndustry(id) : industryForConfig(loadConfig());
+      if (!profile) return { industry: null, available: INDUSTRY_IDS, hint: id ? `Unknown industry "${id}".` : 'The project declares no industry (config industry.id).' };
+      return JSON.parse(renderIndustryContextJson(profile));
+    }
   }),
   defineTool<{ level?: 'must' | 'should' | 'may' | 'must-not' }>({
     name: 'get_constraints',

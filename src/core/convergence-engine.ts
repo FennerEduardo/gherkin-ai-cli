@@ -11,7 +11,8 @@ import { ParsedFeature } from './gherkin-parser';
 import { SpecificationIR, EnrichedScenario, ScenarioCategory } from './semantic-ir';
 import { buildIR, getSourceFeature, coveredCategories } from './ir-builder';
 import { buildDomainModel } from '../generators/kernel/domain-model';
-import { lintSpecification } from './specification-linter';
+import { lintSpecification, LintRule } from './specification-linter';
+import { industryLintOptions } from './profiles/industries';
 import { loadConstitution } from './constitution';
 import { loadConfig } from './config';
 import { COVERAGE_REPORT_PATHS, findCoverage } from './coverage-reports';
@@ -64,6 +65,15 @@ function configuredOutputDir(projectDir: string): string {
   }
 }
 
+/** Same industry rules as `ghk lint`, so the specification dimension matches its score. */
+function configuredIndustryLint(projectDir: string): { rules: LintRule[]; disabledRules: string[] } {
+  try {
+    return industryLintOptions(loadConfig(path.join(projectDir, 'gherkin-ai.config.json')));
+  } catch {
+    return { rules: [], disabledRules: [] };
+  }
+}
+
 export function calculateConvergence(
   parsed: ParsedFeature,
   sourceFile: string,
@@ -87,7 +97,7 @@ export function checkConvergence(
   // 1. Specification Quality
   // The lint score of the source feature; the IR-derived completeness is only a fallback.
   const sourceFeature = getSourceFeature(ir);
-  const lintScore = sourceFeature ? lintSpecification(sourceFeature, ir.sourceFile).score : ir.qualityIndicators.scenarioCompleteness;
+  const lintScore = sourceFeature ? lintSpecification(sourceFeature, ir.sourceFile, configuredIndustryLint(projectDir)).score : ir.qualityIndicators.scenarioCompleteness;
   const specQuality = evaluateSpecificationQuality(ir, lintScore, !!sourceFeature);
   dimensions.push(specQuality);
   if (specQuality.score < 80) {

@@ -11,6 +11,19 @@ import { parseGherkinText } from '../core/gherkin-parser';
 import { lintSpecification, LintDiagnostic, getAvailableRules } from '../core/specification-linter';
 import { loadConstitution } from '../core/constitution';
 import { forEachProjectFeature, formatFeatureTable, projectFeatureFiles } from '../core/workspace-projects';
+import { loadResolvedConfig } from '../core/config';
+import { allIndustryLintRules, industryForConfig, industryLintOptions } from '../core/profiles/industries';
+
+/** Industry lint rules of the project in `dir` (none when it declares no industry or its config is unreadable). */
+function projectIndustry(dir: string): { label?: string; options: ReturnType<typeof industryLintOptions> } {
+  try {
+    const config = loadResolvedConfig({ cwd: dir }).config;
+    return { label: industryForConfig(config)?.label, options: industryLintOptions(config) };
+  } catch (e: any) {
+    process.stderr.write(`⚠ Industry lint rules skipped: ${e.message}\n`);
+    return { options: { rules: [], disabledRules: [] } };
+  }
+}
 
 export interface LintCommandOptions {
   feature?: string;
@@ -25,7 +38,7 @@ export async function handleLintCommand(options: LintCommandOptions = {}): Promi
   // Show available rules
   if (options.rules) {
     console.log(chalk.bold.cyan('\n📋 Available Lint Rules:\n'));
-    const rules = getAvailableRules();
+    const rules = getAvailableRules(allIndustryLintRules());
     for (const rule of rules) {
       const severityColor = rule.severity === 'error' ? chalk.red :
                             rule.severity === 'warning' ? chalk.yellow : chalk.gray;
@@ -40,8 +53,10 @@ export async function handleLintCommand(options: LintCommandOptions = {}): Promi
 
   if (options.all) {
     // Every feature of every gherkin-ai project under the working directory (monorepos).
+    const industries = new Map<string, ReturnType<typeof projectIndustry>>();
+    const industryOf = (dir: string) => industries.get(dir) ?? industries.set(dir, projectIndustry(dir)).get(dir)!;
     const rows = forEachProjectFeature(process.cwd(), (projectDir, file) => {
-      const result = lintSpecification(parseGherkinText(fs.readFileSync(file, 'utf8')), file, { threshold, constitution: loadConstitution(projectDir) });
+      const result = lintSpecification(parseGherkinText(fs.readFileSync(file, 'utf8')), file, { threshold, constitution: loadConstitution(projectDir), ...industryOf(projectDir).options });
       return { score: result.score, passed: result.passed };
     });
     if (options.json) emitJson(rows);
@@ -75,7 +90,8 @@ export async function handleLintCommand(options: LintCommandOptions = {}): Promi
     return;
   }
 
-  console.log(chalk.bold.cyan(`\n🔍 Linting ${featureFiles.length} specification(s)...\n`));
+  const industry = projectIndustry(process.cwd());
+  console.log(chalk.bold.cyan(`\n🔍 Linting ${featureFiles.length} specification(s)${industry.label ? ` (industry: ${industry.label})` : ''}...\n`));
 
   let totalScore = 0;
   let evaluated = 0;
@@ -110,6 +126,7 @@ export async function handleLintCommand(options: LintCommandOptions = {}): Promi
     const result = lintSpecification(parsed, file, {
       threshold,
       constitution,
+      ...industry.options,
     });
 
     totalScore += result.score;

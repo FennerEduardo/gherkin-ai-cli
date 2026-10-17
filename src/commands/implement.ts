@@ -17,6 +17,8 @@ import { t, getGlobalUserLocale } from '../utils/i18n-cli';
 import { featurePascalName } from '../utils/naming';
 import { buildIR } from '../core/ir-builder';
 import { CONTRACTS_DIR, featureContractSlug } from '../core/contracts/merge';
+import { renderIndustryGuidance } from '../core/profiles/industries';
+import { INDUSTRY_CONTEXT_MD, writeIndustryContext } from '../core/profiles/industries/context-files';
 
 export async function handleImplementCommand(options: { 
   feature?: string; 
@@ -100,7 +102,7 @@ export async function handleImplementCommand(options: {
   const asyncApiPath = firstExisting(path.join(featureDir, 'asyncapi.json'), path.join(outDir, 'asyncapi.json'));
 
   // What this feature asks for, from the IR (not a generic checklist).
-  const ir = buildIR(parsed, relativeFeature, { domainProfile: config.domainProfile });
+  const ir = buildIR(parsed, relativeFeature, { domainProfile: config.domainProfile, industry: config.industry?.id });
   const scopeLines = [
     ir.commands.length ? `- **Commands**: ${ir.commands.map(c => c.name).join(', ')}` : '',
     ir.events.length ? `- **Domain events**: ${ir.events.map(e => e.name).join(', ')}` : '',
@@ -122,6 +124,11 @@ export async function handleImplementCommand(options: {
   if (asyncApiPath) refFiles.push(`@${asyncApiPath}`);
   if (dockerComposePath) refFiles.push(`@${dockerComposePath}`);
 
+  // Industry standard rules (BIAN, FHIR, ...): context file for the agent plus a prompt section.
+  const industry = writeIndustryContext(process.cwd(), config);
+  if (industry) refFiles.push(`@${INDUSTRY_CONTEXT_MD}`);
+  const industrySection = industry ? `\n${renderIndustryGuidance(industry, { compact: isCompact, contextPath: INDUSTRY_CONTEXT_MD })}` : '';
+
   // Draft prompt content for hash calculation
   const promptBody = `
 ### 📌 Context Files to Read & Follow:
@@ -129,7 +136,7 @@ ${refFiles.map(f => `- ${f}`).join('\n')}
 
 ### 🧭 Feature Scope:
 ${scopeLines.join('\n')}
-
+${industrySection}
 ### 🛠️ Technical Guardrails & Stack Specifications:
 - **Language**: ${config.stack.language} (${config.stack.framework})
 - **Persistence**: ${config.stack.orm} + ${config.stack.database}
@@ -241,7 +248,7 @@ ${scopeLines.join('\n')}
   let quickPrompt = '';
   if (isCompact) {
     quickPrompt = `${refFiles.join(' ')}
-Impl ${featureName} (${config.architecture}/${config.stack.language}/${config.stack.orm}/${config.stack.testing}): 1.Follow contract ${nativeContractPath || ''} 2.Adhere to ${govPath || 'rules'} 3.Pure domain core 4.${config.stack.orm} repo & controllers 5.${config.stack.testing} test suite 6.Docker sandbox: \`docker compose run --rm app ${dockerDetails.testCmd}\``;
+Impl ${featureName} (${config.architecture}/${config.stack.language}/${config.stack.orm}/${config.stack.testing}): 1.Follow contract ${nativeContractPath || ''} 2.Adhere to ${govPath || 'rules'} 3.Pure domain core 4.${config.stack.orm} repo & controllers 5.${config.stack.testing} test suite 6.Docker sandbox: \`docker compose run --rm app ${dockerDetails.testCmd}\`${industry ? ` 7.${industry.guidance.compact}` : ''}`;
   } else {
     quickPrompt = `${refFiles.join(' ')}
 

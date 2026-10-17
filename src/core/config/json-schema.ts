@@ -4,12 +4,25 @@
    ========================================================================== */
 
 import { zodToJsonSchema } from 'zod-to-json-schema';
+import { z } from 'zod';
 import { partialConfigSchema } from './schema';
+import { industryProfileSchema } from '../profiles/industries/types';
 
 export const CONFIG_SCHEMA_ID = 'https://unpkg.com/gherkin-ai/schemas/config.schema.json';
 
 // zod-to-json-schema's overloaded generics hit TS2589 on a schema this size; call it untyped.
 const toJsonSchema = zodToJsonSchema as unknown as (schema: unknown, options: Record<string, unknown>) => Record<string, unknown>;
+
+export const INDUSTRY_CONTEXT_SCHEMA_ID = 'https://unpkg.com/gherkin-ai/schemas/industry-context.schema.json';
+
+/** Schema of .ghe/industry-context.json (what `ghk industry show --json` and the MCP tool return). */
+export function buildIndustryContextJsonSchema(): Record<string, unknown> {
+  const context = industryProfileSchema.extend({
+    lintRules: z.array(z.object({ id: z.string(), name: z.string(), severity: z.enum(['error', 'warning', 'info']) }))
+  });
+  const schema = toJsonSchema(context, { name: 'IndustryContext', $refStrategy: 'none' });
+  return { $id: INDUSTRY_CONTEXT_SCHEMA_ID, title: 'gherkin-ai industry context', ...schema };
+}
 
 export function buildConfigJsonSchema(): Record<string, unknown> {
   // Each config file is a layer, so the published schema is the partial (all-optional) shape.

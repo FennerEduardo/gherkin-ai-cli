@@ -8,6 +8,7 @@
    ========================================================================== */
 
 import { z } from 'zod';
+import { INDUSTRY_IDS } from '../profiles/industries/ids';
 
 export const ARCHITECTURES = [
   'ddd', 'hexagonal', 'clean', 'cqrs', 'microservices', 'monolith', 'modular',
@@ -216,6 +217,12 @@ export const configShape = {
   specDir: z.string().optional(),
   testCommand: z.string().optional(),
   domainProfile: z.string().optional(),
+  /** Industry reference standard (BIAN, TM Forum, HL7 FHIR, ...): adds lint rules, IR constraints and LLM guidance. */
+  industry: z.object({
+    id: z.enum(INDUSTRY_IDS),
+    /** Industry lint rules to skip (e.g. ["GHK104"]). */
+    disabledRules: z.array(z.string()).optional()
+  }).optional(),
   channelMapping: z.record(z.string()).optional(),
   locale: z.enum(['en', 'es']).optional(),
   llm: llmSchema.optional(),

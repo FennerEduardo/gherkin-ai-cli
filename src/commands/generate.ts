@@ -151,7 +151,7 @@ Objective: Write detailed Gherkin feature scenarios for ${title}.
   const parsed = parseGherkinText(gherkinText);
 
   logger.info('Building Semantic IR...');
-  const ir = buildIR(parsed, options.feature || 'sample.feature', { domainProfile: config.domainProfile });
+  const ir = buildIR(parsed, options.feature || 'sample.feature', { domainProfile: config.domainProfile, industry: config.industry?.id });
 
   logger.info(`Target Output Directory: ${config.outputDir}`);
 
@@ -333,6 +333,11 @@ Objective: Write detailed Gherkin feature scenarios for ${title}.
     })))
   });
   logger.success(`[Audit] Traceability inventory saved to .ghe/inventory.json`);
+
+  // Industry rules for agents and reviewers (.ghe is CLI state: not tracked by the inventory).
+  const { writeIndustryContext, INDUSTRY_CONTEXT_MD } = await import('../core/profiles/industries/context-files');
+  const industry = writeIndustryContext(process.cwd(), config);
+  if (industry) logger.success(`[Industry] ${industry.label} rules saved to ${INDUSTRY_CONTEXT_MD}`);
 
   // Generate Suggested Commit Message
   const suggestedCommit = `feat: Implement ${parsed.featureName} base architecture

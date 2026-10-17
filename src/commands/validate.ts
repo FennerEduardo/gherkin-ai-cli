@@ -96,7 +96,7 @@ export async function handleValidateCommand(options: { feature?: string; config?
     } else {
       const gherkinText = readFileSync(featurePath);
       const parsed = parseGherkinText(gherkinText);
-      parsedFeatureIR = buildIR(parsed, featurePath, { domainProfile: config.domainProfile });
+      parsedFeatureIR = buildIR(parsed, featurePath, { domainProfile: config.domainProfile, industry: config.industry?.id });
       
       if (parsed.scenarios.length === 0) {
         logger.error('Feature file contains zero valid scenarios.');

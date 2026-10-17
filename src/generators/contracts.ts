@@ -7,6 +7,8 @@ import { CLI_VERSION } from '../version';
 import { renderPom } from './kernel/java';
 import { jvmGroupId } from './preset-java-spring';
 import { isSpringFramework } from './stack-support';
+import { industryForConfig } from '../core/profiles/industries';
+import { tagValues } from '../core/profiles/industries/lint-helpers';
 import { dotnetNamespace } from './preset-csharp-dotnet';
 import { renderGoMod } from './kernel/go';
 import { renderGradleKts, renderGradleSettings } from './kernel/kotlin';
@@ -242,6 +244,17 @@ ${cqrsSection}`;
     ...(langProhibited[config.stack.language?.toLowerCase() || ''] || [])
   ]));
 
+  // Industry standard of the project (config industry.id): ADR section and x-industry contract metadata.
+  const industry = industryForConfig(config);
+  const industryClassification: Record<string, string[]> = {};
+  for (const ns of industry?.tagNamespaces ?? []) {
+    const values = tagValues(parsed, ns);
+    if (values.length) industryClassification[ns] = values;
+  }
+  const industryExtension = industry ? {
+    'x-industry': { id: industry.id, standards: industry.standards.map(s => s.id), classification: industryClassification }
+  } : {};
+
   const adrMd = `# ADR 001: Architecture Decisions for ${parsed.featureName}
 
 ## Status
@@ -262,14 +275,22 @@ Project requiring structured implementation matching Gherkin specification.
 ## Prohibited Layer Dependencies
 Domain core must NOT import:
 ${effectiveProhibited.map(p => `- \`${p}\``).join('\n')}
-`;
+${industry ? `
+## Industry Standards (${industry.label})
+- **Standards**: ${industry.standards.map(s => `${s.name} <${s.url}>`).join('; ')}
+- **Canonical model**: ${industry.canonicalModel}${Object.keys(industryClassification).length ? `\n- **Classification**: ${Object.entries(industryClassification).map(([ns, v]) => `@${ns}:${v.join(', ')}`).join('; ')}` : ''}
+${industry.guidance.rules.map(r => `- MUST: ${r}`).join('\n')}
+
+Compliance items are engineering guidance, not certification.
+` : ''}`;
 
   const openApiJson = JSON.stringify({
     openapi: '3.0.3',
     info: {
       title: `${parsed.featureName} API Specification`,
       version: '1.0.0',
-      description: `Auto-generated OpenAPI specification for ${parsed.featureName} from Gherkin feature spec.`
+      description: `Auto-generated OpenAPI specification for ${parsed.featureName} from Gherkin feature spec.`,
+      ...industryExtension
     },
     paths: ir.apiEndpoints.reduce((acc, ep) => {
       if (!acc[ep.path]) acc[ep.path] = {};
@@ -325,7 +346,8 @@ ${effectiveProhibited.map(p => `- \`${p}\``).join('\n')}
     info: {
       title: `${parsed.featureName} AsyncAPI Specification`,
       version: '1.0.0',
-      description: `Auto-generated AsyncAPI events for ${parsed.featureName} from Gherkin feature spec.`
+      description: `Auto-generated AsyncAPI events for ${parsed.featureName} from Gherkin feature spec.`,
+      ...industryExtension
     },
     defaultContentType: 'application/json',
     channels: ir.events.reduce((acc, ev) => {

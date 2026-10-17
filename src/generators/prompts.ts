@@ -12,6 +12,8 @@ import { getGlobalUserLocale } from '../utils/i18n-cli';
 import { StepIndexer } from '../core/step-indexer';
 import { ContextExtractor } from '../core/context-extractor';
 import { loadConstitution } from '../core/constitution';
+import { industryForConfig, renderIndustryGuidance } from '../core/profiles/industries';
+import { INDUSTRY_CONTEXT_MD } from '../core/profiles/industries/context-files';
 
 export function generatePrompts(parsed: ParsedFeature, config: GherkinAIConfig): Record<string, string> {
   const arch = getArchRule(config.architecture);
@@ -64,6 +66,15 @@ export function generatePrompts(parsed: ParsedFeature, config: GherkinAIConfig):
   result['domain-agent.md'] += securityGuardrails;
   result['backend-agent.md'] += securityGuardrails;
   result['qa-agent.md'] += securityGuardrails;
+
+  // Industry reference standard (config industry.id): the rules every agent must follow.
+  const industry = industryForConfig(config);
+  if (industry) {
+    const industryGuardrails = `\n## [MANDATORY] Industry Standards\n${renderIndustryGuidance(industry, { contextPath: INDUSTRY_CONTEXT_MD }).replace(/^### .*\n/, '')}`;
+    result['domain-agent.md'] += industryGuardrails;
+    result['backend-agent.md'] += industryGuardrails;
+    result['qa-agent.md'] += industryGuardrails;
+  }
 
   // Inject Execution & Architectural "What and How" Rules
   let strictExecutionGuardrails = `\n## [MANDATORY] AI Agent Execution Instructions (The "What" and "How")\n`;

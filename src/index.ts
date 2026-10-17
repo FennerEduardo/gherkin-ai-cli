@@ -122,6 +122,7 @@ program
   .option('--enterprise', 'Initialize with enterprise constitution guardrails')
   .option('-p, --projectName <name>', 'Project name')
   .option('-a, --architecture <arch>', 'Primary software architecture')
+  .option('--industry <id>', 'Industry reference standard: banking, telecom, manufacturing, health, supply-chain, insurance, aviation, automotive, generic')
   .option('-l, --language <lang>', 'Programming language / runtime')
   .option('-f, --framework <framework>', 'Primary framework')
   .option('--frameworkVersion <major>', 'Framework major to generate for (NestJS: 11 default, 12 = ES modules)')
@@ -334,7 +335,7 @@ program
 
 program
   .command('lint')
-  .description('Lint Gherkin specifications against 14+ quality and enterprise compliance rules')
+  .description('Lint Gherkin specifications against 15 quality rules plus the rules of the project industry (industry.id)')
   .option('-f, --feature <file>', 'Specific feature file to lint')
   .option('--threshold <score>', 'Minimum passing score 0-100 (default: 70); below it exits with code 4')
   .option('--rules', 'List available lint rules')
@@ -342,6 +343,15 @@ program
   .option('--json', 'Output report as JSON')
   .action(async (options) => {
     await (await import('./commands/lint')).handleLintCommand(options);
+  });
+
+program
+  .command('industry [subcommand] [id]')
+  .description('Industry reference standards (BIAN, TM Forum, HL7 FHIR, ...): list | show <id> | apply <id>')
+  .option('--json', 'Output as JSON')
+  .action(async (subcommand, id, options) => {
+    const { handleIndustryCommand } = await import('./commands/industry');
+    await handleIndustryCommand(subcommand, id, { ...options, json: options.json || program.opts().json });
   });
 
 program

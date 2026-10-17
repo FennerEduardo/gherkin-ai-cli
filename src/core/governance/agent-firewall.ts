@@ -24,6 +24,7 @@ import { classifyOperation } from '../../mcp/mcp-operation-safety';
 import { buildRepositoryGraph, scopeForFeature } from '../graph/repository-graph';
 import { firstMatch } from '../../utils/glob';
 import { isPathInside } from '../../utils/path-guard';
+import { industryForConfig } from '../profiles/industries';
 
 export type FirewallActionKind = 'write' | 'execute' | 'network' | 'secret' | 'tool';
 export type FirewallVerdict = 'ALLOW' | 'REQUIRE_APPROVAL' | 'DENY';
@@ -111,7 +112,8 @@ export function loadFirewallPolicy(workspace: string, config: Partial<GherkinAIC
     workspace: path.resolve(workspace),
     allowPaths: [...(fw.allowPaths ?? legacy.allowPaths ?? [])],
     denyPaths: [...BUILTIN_DENY_PATHS, ...(legacy.denyPaths ?? []), ...(fw.denyPaths ?? [])],
-    approvalPaths: [...BUILTIN_APPROVAL_PATHS, ...(legacy.approvalPaths ?? []), ...(fw.approvalPaths ?? [])],
+    // Industry-sensitive areas (PHI, payments, OTA, ...) of the project industry also need a human.
+    approvalPaths: [...BUILTIN_APPROVAL_PATHS, ...(legacy.approvalPaths ?? []), ...(industryForConfig(config)?.approvalPaths ?? []), ...(fw.approvalPaths ?? [])],
     allowCommands: [...BUILTIN_ALLOW_COMMANDS, ...testCommand, ...(fw.allowCommands ?? [])],
     denyCommands: [...BUILTIN_DENY_COMMANDS, ...(fw.denyCommands ?? [])],
     allowHosts: [...(fw.allowHosts ?? [])],

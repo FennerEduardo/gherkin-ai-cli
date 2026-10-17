@@ -31,6 +31,7 @@ import {
 } from './semantic-ir';
 import { loadConstitution, Constitution } from './constitution';
 import { resolveDomainProfile } from './profiles/profile-registry';
+import { resolveIndustry } from './profiles/industries';
 import { featurePascalName } from '../utils/naming';
 import { withoutQuotedText } from '../utils/quoted-text';
 
@@ -230,6 +231,36 @@ export function buildIR(
       rules: [
         `Domain Profile: ${profile.name} (${profile.id})`,
         `Mandatory Rules: ${profile.getStandardRules().join(', ')}`
+      ],
+      source: { file: sourceFile, line: 0 },
+      confidence: 1.0,
+      inferenceSource: 'deterministic'
+    });
+  }
+
+  // Industry standard (BIAN, FHIR, ...): guidance for the implementation, not extra commands or events.
+  const industry = resolveIndustry(options.industry);
+  if (industry && industry.id !== 'generic') {
+    industry.guidance.rules.forEach(rule => {
+      constraints.push({
+        id: generateId('CST'),
+        level: 'must',
+        description: `Industry Requirement (${industry.label}): ${rule}`,
+        category: 'compliance',
+        evidence: industry.standards.map(s => s.id),
+        source: { file: sourceFile, line: 0 },
+        confidence: 1.0,
+        inferenceSource: 'deterministic'
+      });
+    });
+    policies.push({
+      id: generateId('POL'),
+      name: `${industry.label} Industry Standards Policy`,
+      type: 'compliance',
+      rules: [
+        `Standards: ${industry.standards.map(s => s.name).join(', ')}`,
+        `Canonical model: ${industry.canonicalModel}`,
+        ...industry.compliance.map(c => `Compliance reminder (guidance, not certification): ${c}`)
       ],
       source: { file: sourceFile, line: 0 },
       confidence: 1.0,

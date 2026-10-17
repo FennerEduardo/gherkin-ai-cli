@@ -385,4 +385,6 @@ export interface IRBuildOptions {
   traceabilityDepth?: 'shallow' | 'deep';
   profileName?: string;
   domainProfile?: string;
+  /** Industry profile id or alias (config industry.id); adds its rules as IR constraints. */
+  industry?: string;
 }

@@ -63,7 +63,7 @@
   "scripts": {
     "prebuild": "node -e \"require('fs').rmSync('dist', {recursive: true, force: true})\"",
     "build": "tsc && node scripts/build-ui.js && npm run schema",
-    "schema": "node -e \"const {buildConfigJsonSchema}=require('./dist/core/config/json-schema');require('fs').mkdirSync('schemas',{recursive:true});require('fs').writeFileSync('schemas/config.schema.json', JSON.stringify(buildConfigJsonSchema(), null, 2) + '\\n')\"",
+    "schema": "node -e \"const {buildConfigJsonSchema,buildIndustryContextJsonSchema}=require('./dist/core/config/json-schema');const fs=require('fs');fs.mkdirSync('schemas',{recursive:true});fs.writeFileSync('schemas/config.schema.json', JSON.stringify(buildConfigJsonSchema(), null, 2) + '\\n');fs.writeFileSync('schemas/industry-context.schema.json', JSON.stringify(buildIndustryContextJsonSchema(), null, 2) + '\\n')\"",
     "start": "node ./bin/gherkin-ai.js",
     "dev": "npx tsc --watch",
     "eval": "npx ts-node evals/runner.ts",

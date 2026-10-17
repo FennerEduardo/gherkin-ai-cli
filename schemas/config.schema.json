@@ -178,6 +178,35 @@
         "domainProfile": {
           "type": "string"
         },
+        "industry": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "enum": [
+                "generic",
+                "banking",
+                "telecom",
+                "manufacturing",
+                "health",
+                "supply-chain",
+                "insurance",
+                "aviation",
+                "automotive"
+              ]
+            },
+            "disabledRules": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "id"
+          ],
+          "additionalProperties": false
+        },
         "channelMapping": {
           "type": "object",
           "additionalProperties": {

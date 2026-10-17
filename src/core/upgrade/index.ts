@@ -18,6 +18,7 @@ import { partialConfigSchema } from '../config/schema';
 import { readInventoryFile } from '../inventory';
 import { matchesChecksum } from '../write-protection';
 import { CONFIG_SCHEMA_ID } from '../config/json-schema';
+import { suggestedIndustry } from '../profiles/industries';
 
 export type FindingSeverity = 'required' | 'recommended' | 'info';
 export type FindingArea = 'config' | 'generated' | 'automation' | 'mcp' | 'legacy' | 'cli';
@@ -189,6 +190,12 @@ export function checkProjectConfig(raw: unknown, file: string): ConfigCheck {
   if (String(stack?.orm ?? '').toLowerCase() === 'prisma' && !stack?.ormVersion) newer.push('Prisma 7: stack.ormVersion "7"');
   if (newer.length) {
     findings.push({ id: 'config.newer-majors', area: 'config', severity: 'info', fix: 'none', file, message: `Newer majors are supported (opt in; the defaults stay NestJS 11 / Prisma 6): ${newer.join('; ')}.` });
+  }
+
+  // 3.2: industry profiles are opt-in; a domainProfile that names an industry only gets a hint.
+  const industryHint = suggestedIndustry({ domainProfile: typeof config.domainProfile === 'string' ? config.domainProfile : undefined, industry: config.industry as any });
+  if (industryHint) {
+    findings.push({ id: 'config.industry-profile', area: 'config', severity: 'info', fix: 'none', file, message: `domainProfile "${config.domainProfile}" matches the ${industryHint.label} industry profile (${industryHint.standards.map(s => s.id).join(', ')}).`, hint: `Opt in with: ghk industry apply ${industryHint.id} (adds lint rules, IR constraints and agent guidance).` });
   }
 
   if (findings.every(f => f.severity === 'info')) {

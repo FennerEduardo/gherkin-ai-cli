@@ -51,7 +51,7 @@ export function refreshKernel(projectDir: string, opts: { dryRun?: boolean } = {
     const featureOf = new Map(inventory.artifacts.filter(a => a.feature).map(a => [a.filePath.replace(/\\/g, '/'), a.feature as string]));
     const kernel = new Map<string, { filePath: string; content: string; type: string; feature: string }>();
     for (const feature of features) {
-      const ir = buildIR(parseGherkinText(fs.readFileSync(path.join(projectDir, feature), 'utf8')), feature, { domainProfile: config.domainProfile });
+      const ir = buildIR(parseGherkinText(fs.readFileSync(path.join(projectDir, feature), 'utf8')), feature, { domainProfile: config.domainProfile, industry: config.industry?.id });
       for (const a of pluginRegistry.runGeneration(ir, config)) {
         if (!isKernelFile(a.filePath)) continue;
         const owner = featureOf.get(a.filePath.replace(/\\/g, '/'));

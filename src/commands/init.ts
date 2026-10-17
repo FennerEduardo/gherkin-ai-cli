@@ -10,6 +10,25 @@ import { generateConstitution } from '../core/constitution';
 import { logger } from '../utils/logger';
 import { promptOrFallback } from '../utils/i18n-cli';
 import { ensureGitignore } from '../utils/gitignore-manager';
+import { UsageError } from '../core/errors';
+import { INDUSTRIES, INDUSTRY_IDS, resolveIndustry } from '../core/profiles/industries';
+import { INDUSTRY_CONTEXT_MD, writeIndustryContext } from '../core/profiles/industries/context-files';
+
+const ARCHITECTURE_CHOICES = [
+  { name: 'Monolith Architecture (MVC / Fullstack Monolithic)', value: 'monolith' },
+  { name: 'Hexagonal Architecture (Ports & Adapters)', value: 'hexagonal' },
+  { name: 'Domain-Driven Design (DDD)', value: 'ddd' },
+  { name: 'Clean Architecture', value: 'clean' },
+  { name: 'CQRS + Event Sourcing', value: 'cqrs' },
+  { name: 'API REST Architecture (Stateless Service)', value: 'api-rest' },
+  { name: 'Microservices Architecture', value: 'microservices' }
+];
+
+/** The first architecture the industry recommends that init offers (e.g. banking → hexagonal). */
+function industryArchitecture(industryId: string | undefined): string | undefined {
+  const recommended: string[] = industryId ? INDUSTRIES[industryId as keyof typeof INDUSTRIES]?.recommendedArchitectures ?? [] : [];
+  return recommended.find(a => ARCHITECTURE_CHOICES.some(c => c.value === a));
+}
 
 function generateQualityGates(workspaceDir: string) {
   const workflowDir = path.join(workspaceDir, '.github', 'workflows');
@@ -336,6 +355,8 @@ export async function handleInitCommand(options?: {
   nonInteractive?: boolean;
   projectName?: string;
   architecture?: string;
+  /** Industry profile id or alias (banking, health, telecom, ...). */
+  industry?: string;
   language?: string;
   framework?: string;
   frameworkVersion?: string;
@@ -366,7 +387,10 @@ export async function handleInitCommand(options?: {
     logger.info('Running in non-interactive mode. Using default configuration.');
   }
 
-  // Step 1: Core Project Identity & Architecture
+  const flagIndustry = resolveIndustry(options?.industry);
+  if (options?.industry && !flagIndustry) throw new UsageError(`Unknown industry "${options.industry}". Available: ${INDUSTRY_IDS.join(', ')}.`);
+
+  // Step 1: Core Project Identity, Industry & Architecture
   const step1 = await promptOrFallback([
     {
       type: 'input',
@@ -376,18 +400,23 @@ export async function handleInitCommand(options?: {
     },
     {
       type: 'list',
+      name: 'industry',
+      message: 'Industry reference standard (adds lint rules and guidance for AI agents):',
+      choices: INDUSTRY_IDS.map(id => ({
+        name: `${INDUSTRIES[id].label}${INDUSTRIES[id].standards.length ? ` (${INDUSTRIES[id].standards.map(s => s.id).join(', ')})` : ''}`,
+        value: id
+      })),
+      default: flagIndustry?.id || 'generic'
+    },
+    {
+      type: 'list',
       name: 'architecture',
       message: 'Select primary software architecture:',
-      choices: [
-        { name: 'Monolith Architecture (MVC / Fullstack Monolithic)', value: 'monolith' },
-        { name: 'Hexagonal Architecture (Ports & Adapters)', value: 'hexagonal' },
-        { name: 'Domain-Driven Design (DDD)', value: 'ddd' },
-        { name: 'Clean Architecture', value: 'clean' },
-        { name: 'CQRS + Event Sourcing', value: 'cqrs' },
-        { name: 'API REST Architecture (Stateless Service)', value: 'api-rest' },
-        { name: 'Microservices Architecture', value: 'microservices' }
-      ],
-      default: options?.architecture || 'monolith'
+      choices: ARCHITECTURE_CHOICES,
+      // Interactive: preselect what the chosen industry recommends.
+      default: nonInteractive
+        ? options?.architecture || industryArchitecture(flagIndustry?.id) || 'monolith'
+        : (answers: { industry?: string }) => options?.architecture || industryArchitecture(answers.industry) || 'monolith'
     },
     {
       type: 'list',
@@ -616,11 +645,15 @@ export async function handleInitCommand(options?: {
       e2eTesting: frontendAnswers.e2eTesting
     } : undefined,
     rules: defaultConfig.rules,
-    outputDir: options?.outputDir || step4.outputDir
+    outputDir: options?.outputDir || step4.outputDir,
+    // generic adds nothing but the capability-depth rule, so it is not written.
+    ...(step1.industry && step1.industry !== 'generic' ? { industry: { id: step1.industry } } : {})
   };
 
   saveConfig(newConfig);
   logger.success('Successfully created gherkin-ai.config.json');
+  const industry = writeIndustryContext(process.cwd(), newConfig);
+  if (industry) logger.success(`Industry: ${industry.label}; rules for AI agents in ${INDUSTRY_CONTEXT_MD}`);
   const tierWarning = supportWarning(getStackSupport(newConfig));
   if (tierWarning) logger.warn(tierWarning);
 
