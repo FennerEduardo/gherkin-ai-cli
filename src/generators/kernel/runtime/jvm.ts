@@ -17,13 +17,21 @@ export interface JvmRuntimeFile {
 const j = (s: string) => JSON.stringify(s); // JSON strings are valid Java string literals here
 
 /** Broker the generated runtime defaults to for a stack.messaging value (GHK_BROKER overrides it at run time). */
-export function defaultJvmBroker(messaging?: string): 'rabbitmq' | 'pubsub' {
-  return /pubsub|pub-sub/i.test(messaging || '') ? 'pubsub' : 'rabbitmq';
+export function defaultJvmBroker(messaging?: string): 'rabbitmq' | 'pubsub' | 'servicebus' {
+  if (/pubsub|pub-sub/i.test(messaging || '')) return 'pubsub';
+  if (usesServiceBus(messaging)) return 'servicebus';
+  return 'rabbitmq';
+}
+
+/** The Service Bus adapter brings the Azure SDK, so it is generated only for stack.messaging "servicebus". */
+export function usesServiceBus(messaging?: string): boolean {
+  return /service-?bus|azure-servicebus/i.test(messaging || '');
 }
 
 /** @param kotlin the domain kernel is Kotlin (data-class getters instead of record accessors) */
 export function renderJvmRuntime(m: DomainModel, pkg: string, { kotlin = false, siblings = [] as DomainModel[], messaging = undefined as string | undefined } = {}): JvmRuntimeFile[] {
   const defaultBroker = defaultJvmBroker(messaging);
+  const serviceBus = usesServiceBus(messaging);
   const all = [m, ...siblings];
   const t = topology(m);
   const dir = `src/main/java/${javaPackagePath(pkg)}/runtime`;
@@ -369,11 +377,17 @@ public interface Broker extends AutoCloseable {
     /** @param topology where dead-lettered messages go */
     EventSubscription subscribe(String source, Topology topology) throws Exception;
 
+    /** False when topics and subscriptions cannot be created at run time (Service Bus emulator: fixed Config.json). */
+    default boolean dynamicTopology() {
+        return true;
+    }
+
     static String kind() {
         String explicit = System.getenv("GHK_BROKER");
         if (explicit != null && !explicit.isBlank()) return explicit.trim().toLowerCase();
         if (System.getenv("AMQP_URL") != null) return "rabbitmq";
         if (System.getenv("PUBSUB_PROJECT_ID") != null || System.getenv("PUBSUB_EMULATOR_HOST") != null) return "pubsub";
+        if (System.getenv("SERVICEBUS_CONNECTION_STRING") != null || System.getenv("SERVICEBUS_NAMESPACE") != null) return "servicebus";
         return DEFAULT_KIND;
     }
 
@@ -381,6 +395,7 @@ public interface Broker extends AutoCloseable {
     static boolean configured() {
         return switch (kind()) {
             case "pubsub" -> System.getenv("PUBSUB_PROJECT_ID") != null || System.getenv("GOOGLE_CLOUD_PROJECT") != null;
+            case "servicebus" -> System.getenv("SERVICEBUS_CONNECTION_STRING") != null || System.getenv("SERVICEBUS_NAMESPACE") != null;
             default -> System.getenv("AMQP_URL") != null && !System.getenv("AMQP_URL").isBlank();
         };
     }
@@ -388,12 +403,13 @@ public interface Broker extends AutoCloseable {
     static Broker fromEnv() throws Exception {
         return switch (kind()) {
             case "pubsub" -> PubSubBroker.fromEnv();
+            case "servicebus" -> ${serviceBus ? 'ServiceBusBroker.fromEnv()' : 'throw new IllegalStateException("The Azure Service Bus adapter is not generated: set stack.messaging to \\"servicebus\\" and regenerate")'};
             case "rabbitmq" -> {
                 String url = System.getenv("AMQP_URL");
                 if (url == null || url.isBlank()) throw new IllegalStateException("AMQP_URL is not set (amqp://user:password@host:5672)");
                 yield RabbitMqBroker.connect(url);
             }
-            default -> throw new IllegalStateException("Unsupported GHK_BROKER: " + kind() + " (rabbitmq, pubsub)");
+            default -> throw new IllegalStateException("Unsupported GHK_BROKER: " + kind() + " (rabbitmq, pubsub, servicebus)");
         };
     }
 }
@@ -519,6 +535,163 @@ public final class RabbitMqBroker implements Broker {
     @Override
     public void close() throws Exception {
         if (connection.isOpen()) connection.close();
+    }
+}
+`;
+
+  const serviceBusJava = `${p}import com.azure.core.util.BinaryData;
+import com.azure.core.util.IterableStream;
+import com.azure.identity.DefaultAzureCredentialBuilder;
+import com.azure.messaging.servicebus.ServiceBusClientBuilder;
+import com.azure.messaging.servicebus.ServiceBusMessage;
+import com.azure.messaging.servicebus.ServiceBusReceivedMessage;
+import com.azure.messaging.servicebus.ServiceBusReceiverClient;
+import com.azure.messaging.servicebus.ServiceBusSenderClient;
+import com.azure.messaging.servicebus.administration.ServiceBusAdministrationClient;
+import com.azure.messaging.servicebus.administration.ServiceBusAdministrationClientBuilder;
+import com.azure.messaging.servicebus.models.ServiceBusReceiveMode;
+import java.time.Duration;
+import java.util.Iterator;
+import java.util.List;
+
+/**
+ * Azure Service Bus (official SDK, AMQP): topics for the exchange and the DLX, subscriptions for the queue and
+ * the DLQ. Auth: SERVICEBUS_CONNECTION_STRING (shared access key; the emulator) or SERVICEBUS_NAMESPACE
+ * (e.g. orders.servicebus.windows.net) with Microsoft Entra ID (managed identity in Container Apps / AKS).
+ * sendMessage returns once Service Bus has accepted the message. A failed message is dead-lettered by the
+ * consumer: sent to the DLX topic, then completed.
+ */
+public final class ServiceBusBroker implements Broker {
+    private final String connectionString;
+    private final String namespace;
+    private final boolean emulator;
+
+    public ServiceBusBroker(String connectionString, String namespace) {
+        this.connectionString = connectionString == null || connectionString.isBlank() ? null : connectionString;
+        this.namespace = namespace;
+        this.emulator = this.connectionString != null && this.connectionString.contains("UseDevelopmentEmulator=true");
+    }
+
+    public static ServiceBusBroker fromEnv() {
+        String connectionString = System.getenv("SERVICEBUS_CONNECTION_STRING");
+        String namespace = System.getenv("SERVICEBUS_NAMESPACE");
+        if ((connectionString == null || connectionString.isBlank()) && (namespace == null || namespace.isBlank())) {
+            throw new IllegalStateException("SERVICEBUS_CONNECTION_STRING or SERVICEBUS_NAMESPACE is not set");
+        }
+        return new ServiceBusBroker(connectionString, namespace);
+    }
+
+    private ServiceBusClientBuilder client() {
+        ServiceBusClientBuilder builder = new ServiceBusClientBuilder();
+        return connectionString != null ? builder.connectionString(connectionString) : builder.credential(namespace, new DefaultAzureCredentialBuilder().build());
+    }
+
+    @Override
+    public String system() {
+        return "servicebus";
+    }
+
+    @Override
+    public boolean dynamicTopology() {
+        return !emulator;
+    }
+
+    @Override
+    public void declare(Topology t) {
+        // The emulator only knows the entities of its Config.json; in Azure they usually come from Terraform.
+        if (emulator) return;
+        ServiceBusAdministrationClientBuilder builder = new ServiceBusAdministrationClientBuilder();
+        ServiceBusAdministrationClient admin = connectionString != null
+            ? builder.connectionString(connectionString).buildClient()
+            : builder.credential(namespace, new DefaultAzureCredentialBuilder().build()).buildClient();
+        for (String topic : List.of(t.exchange(), t.dlx())) {
+            if (!admin.getTopicExists(topic)) admin.createTopic(topic);
+        }
+        if (!admin.getSubscriptionExists(t.exchange(), t.queue())) admin.createSubscription(t.exchange(), t.queue());
+        if (!admin.getSubscriptionExists(t.dlx(), t.dlq())) admin.createSubscription(t.dlx(), t.dlq());
+    }
+
+    private static ServiceBusMessage toMessage(BrokerMessage m) {
+        ServiceBusMessage message = new ServiceBusMessage(BinaryData.fromBytes(m.body()));
+        message.setMessageId(m.messageId());
+        message.setContentType("application/json");
+        if (m.eventType() != null) message.setSubject(m.eventType());
+        if (m.tenantId() != null) message.getApplicationProperties().put("tenant_id", m.tenantId());
+        if (m.traceparent() != null) message.getApplicationProperties().put("ghk_traceparent", m.traceparent());
+        return message;
+    }
+
+    @Override
+    public EventPublisher publisher(String topic) {
+        ServiceBusSenderClient sender = client().sender().topicName(topic).buildClient();
+        return new EventPublisher() {
+            @Override
+            public String system() {
+                return "servicebus";
+            }
+
+            @Override
+            public String destination() {
+                return topic;
+            }
+
+            @Override
+            public void publish(BrokerMessage m) {
+                sender.sendMessage(toMessage(m));
+            }
+
+            @Override
+            public void close() {
+                sender.close();
+            }
+        };
+    }
+
+    @Override
+    public EventSubscription subscribe(String subscription, Topology topology) {
+        String topic = subscription.equals(topology.dlq()) ? topology.dlx() : topology.exchange();
+        ServiceBusReceiverClient receiver = client().receiver().topicName(topic).subscriptionName(subscription)
+            .receiveMode(ServiceBusReceiveMode.PEEK_LOCK).disableAutoComplete().buildClient();
+        return new EventSubscription() {
+            private ServiceBusSenderClient deadLetters;
+
+            @Override
+            public String system() {
+                return "servicebus";
+            }
+
+            @Override
+            public String source() {
+                return subscription;
+            }
+
+            @Override
+            public Delivery poll() {
+                IterableStream<ServiceBusReceivedMessage> received = receiver.receiveMessages(1, Duration.ofMillis(500));
+                Iterator<ServiceBusReceivedMessage> it = received.iterator();
+                if (!it.hasNext()) return null;
+                ServiceBusReceivedMessage msg = it.next();
+                Object tenant = msg.getApplicationProperties().get("tenant_id");
+                Object traceparent = msg.getApplicationProperties().get("ghk_traceparent");
+                BrokerMessage m = new BrokerMessage(msg.getMessageId(), msg.getSubject(), tenant == null ? null : tenant.toString(),
+                    traceparent == null ? null : traceparent.toString(), msg.getBody().toBytes());
+                return new Delivery(m, () -> receiver.complete(msg), () -> {
+                    if (deadLetters == null) deadLetters = client().sender().topicName(topology.dlx()).buildClient();
+                    deadLetters.sendMessage(toMessage(m));
+                    receiver.complete(msg);
+                });
+            }
+
+            @Override
+            public void close() {
+                if (deadLetters != null) deadLetters.close();
+                receiver.close();
+            }
+        };
+    }
+
+    @Override
+    public void close() {
     }
 }
 `;
@@ -990,9 +1163,14 @@ class RuntimeIntegrationTest {
     void freshSchema() throws Exception {
         String uid = UUID.randomUUID().toString().replace("-", "").substring(0, 12);
         schema = "it_" + uid;
-        topology = Topology.forPrefix("it-" + uid);
+        // Brokers with fixed entities (Service Bus emulator) share one topology, emptied before each test.
+        topology = broker.dynamicTopology() ? Topology.forPrefix("it-" + uid) : Topology.forPrefix("it");
         Schema.migrate(connections, schema);
         broker.declare(topology);
+        if (!broker.dynamicTopology()) {
+            receive(topology.queue(), 0);
+            receive(topology.dlq(), 0);
+        }
         EXPORTER.reset();
     }
 
@@ -1188,6 +1366,7 @@ class RuntimeIntegrationTest {
     { filename: `${dir}/Broker.java`, content: broker },
     { filename: `${dir}/RabbitMqBroker.java`, content: rabbit },
     { filename: `${dir}/PubSubBroker.java`, content: pubsub },
+    ...(serviceBus ? [{ filename: `${dir}/ServiceBusBroker.java`, content: serviceBusJava }] : []),
     { filename: `${dir}/OutboxRelay.java`, content: relay },
     { filename: `${dir}/InboxConsumer.java`, content: inbox },
     { filename: `${dir}/SagaOrchestrator.java`, content: saga },

@@ -22,6 +22,8 @@ export const JVM_VERSIONS = {
   quarkusJava: '21',
   /** RabbitMQ Java client (explicit: Quarkus projects have no Spring BOM). */
   amqpClient: '5.21.0',
+  /** Azure SDK BOM (Service Bus adapter only): azure-messaging-servicebus 7.18.1, azure-identity 1.18.7. */
+  azureSdkBom: '1.3.9',
   mavenCompilerPlugin: '3.13.0',
   mavenSurefirePlugin: '3.5.2'
 } as const;

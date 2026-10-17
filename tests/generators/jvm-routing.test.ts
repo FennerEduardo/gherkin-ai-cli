@@ -87,3 +87,32 @@ describe('beta tier warning', () => {
     expect(warning).not.toMatch(/not built in CI/);
   });
 });
+
+describe('JVM broker adapters', () => {
+  const withMessaging = (framework: string, messaging: string) => ({ ...cfg('java', framework), stack: { ...cfg('java', framework).stack, messaging } });
+  const runtimeFile = (files: { filename: string; content: string }[], name: string) => files.find(f => f.filename.endsWith(`/runtime/${name}`));
+
+  it('always generates the RabbitMQ and Pub/Sub adapters behind broker-neutral ports', () => {
+    const files = generatePresets(parsed, withMessaging('quarkus', 'rabbitmq'));
+    for (const name of ['Broker.java', 'EventPublisher.java', 'EventSubscription.java', 'RabbitMqBroker.java', 'PubSubBroker.java']) expect(runtimeFile(files, name), name).toBeDefined();
+    expect(runtimeFile(files, 'ServiceBusBroker.java')).toBeUndefined();
+    expect(runtimeFile(files, 'OutboxRelay.java')!.content).not.toContain('com.rabbitmq');
+    expect(runtimeFile(files, 'Broker.java')!.content).toContain('String DEFAULT_KIND = "rabbitmq"');
+  });
+
+  it('defaults to Pub/Sub for stack.messaging "pubsub"', () => {
+    expect(runtimeFile(generatePresets(parsed, withMessaging('spring-boot', 'pubsub')), 'Broker.java')!.content).toContain('String DEFAULT_KIND = "pubsub"');
+  });
+
+  it('adds the Service Bus adapter and the Azure SDK only for stack.messaging "servicebus"', () => {
+    for (const framework of ['quarkus', 'spring-boot']) {
+      const config = withMessaging(framework, 'servicebus');
+      expect(runtimeFile(generatePresets(parsed, config), 'ServiceBusBroker.java'), framework).toBeDefined();
+      const pom = ([generateContracts(parsed, ir, config as any).projectRootFile].flat()[0] as { content: string }).content;
+      expect(pom, framework).toContain('<artifactId>azure-sdk-bom</artifactId>');
+      expect(pom, framework).toContain('<artifactId>azure-core-http-netty</artifactId>');
+    }
+    const plain = ([generateContracts(parsed, ir, withMessaging('quarkus', 'rabbitmq') as any).projectRootFile].flat()[0] as { content: string }).content;
+    expect(plain).not.toContain('azure');
+  });
+});

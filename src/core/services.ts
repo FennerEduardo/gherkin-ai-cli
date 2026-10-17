@@ -7,6 +7,9 @@
    ========================================================================== */
 
 import { spawnSync } from 'child_process';
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
 
 export const POSTGRES_IMAGE = 'postgres:17-alpine';
 export const RABBITMQ_IMAGE = 'rabbitmq:4-alpine';
@@ -22,6 +25,10 @@ export interface ExtraService {
   command?: string[];
   /** Readiness probe run inside the container with docker exec (exit 0 = ready). */
   ready?: string[];
+  /** Ready once the container log contains this text (images without a probe tool). */
+  readyLog?: string;
+  /** Files mounted read-only into the container: container path -> content (e.g. an emulator config). */
+  files?: Record<string, string>;
 }
 
 export interface RunningServices {
@@ -76,20 +83,25 @@ export function startServices(label: string, extra: ExtraService[] = [], opts: {
     if (pgRun.code !== 0) throw new Error(`cannot start PostgreSQL: ${pgRun.out}`);
     const mqRun = docker(['run', '-d', '--name', mq, '--network', network, '--network-alias', 'rabbitmq', '-e', 'RABBITMQ_DEFAULT_USER=ghk', '-e', 'RABBITMQ_DEFAULT_PASS=ghk', RABBITMQ_IMAGE]);
     if (mqRun.code !== 0) throw new Error(`cannot start RabbitMQ: ${mqRun.out}`);
+    // Extra services start in order, each ready before the next (an emulator may need its database first).
     for (const s of extra) {
-      const run = docker(['run', '-d', '--name', `ghk-${s.name}-${id}`, '--network', network, '--network-alias', s.name,
+      const container = `ghk-${s.name}-${id}`;
+      const mounts = Object.entries(s.files ?? {}).flatMap(([target, content]) => {
+        const host = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'ghk-svc-')), path.basename(target));
+        fs.writeFileSync(host, content);
+        return ['-v', `${host}:${target}:ro`];
+      });
+      const run = docker(['run', '-d', '--name', container, '--network', network, '--network-alias', s.name, ...mounts,
         ...Object.entries(s.environment ?? {}).flatMap(([k, v]) => ['-e', `${k}=${v}`]), s.image, ...(s.command ?? [])]);
       if (run.code !== 0) throw new Error(`cannot start ${s.name}: ${run.out}`);
       Object.assign(env, s.env ?? {});
+      if (s.ready) waitFor(docker, s.name, () => docker(['exec', container, ...s.ready!]).code === 0, container, timeoutMs);
+      if (s.readyLog) waitFor(docker, s.name, () => docker(['logs', container]).out.includes(s.readyLog!), container, timeoutMs);
     }
     waitFor(docker, 'PostgreSQL', () => docker(['exec', pg, 'pg_isready', '-U', 'postgres', '-h', '127.0.0.1']).code === 0, pg, timeoutMs);
     // Probe as the rabbitmq user: the image sets HOME=/var/lib/rabbitmq, so a root probe that runs before
     // the server creates .erlang.cookie writes it root-only and the server then fails to start (eacces).
     waitFor(docker, 'RabbitMQ', () => docker(['exec', '-u', 'rabbitmq', mq, 'rabbitmq-diagnostics', '-q', 'check_port_connectivity']).code === 0, mq, timeoutMs);
-    for (const s of extra.filter(x => x.ready)) {
-      const container = `ghk-${s.name}-${id}`;
-      waitFor(docker, s.name, () => docker(['exec', container, ...s.ready!]).code === 0, container, timeoutMs);
-    }
   } catch (err) {
     stop();
     throw err;

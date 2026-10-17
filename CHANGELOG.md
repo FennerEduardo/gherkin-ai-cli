@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file. See [commit
 ## [3.2.0] - Unreleased
 
 ### Added
+- **Azure Service Bus adapter for the JVM runtime kernel (beta, opt-in with `stack.messaging: "servicebus"`, golden `quarkus-servicebus`).**
+  - **SDK.** It uses the official Azure SDK (`azure-sdk-bom`), with the JDK HTTP transport instead of Netty.
+  - **Auth.** Microsoft Entra ID through `SERVICEBUS_NAMESPACE` (managed identity), or a connection string.
+  - **Verification.** IT1–IT7 pass against the official emulator (SQL Edge plus fixed entities). The service harness can now mount files, wait on a log line and start services in order.
+  - **AWS.** It is covered by Amazon MQ for RabbitMQ with the existing adapter.
 - **Broker adapters in the JVM runtime kernel (Spring Java and Kotlin, Quarkus): RabbitMQ and Google Cloud Pub/Sub (beta, golden `quarkus-pubsub`).**
   - **Ports.** The outbox relay and the inbox consumer use broker-neutral ports (`EventPublisher`, `EventSubscription`, `Broker`).
   - **Selection at run time.** `GHK_BROKER` picks the broker; otherwise the configured variables decide. `stack.messaging: "pubsub"` sets the default. One image can run on any cloud.

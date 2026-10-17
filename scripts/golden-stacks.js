@@ -11,6 +11,52 @@
 
 const base = { database: 'postgresql', auth: 'jwt', messaging: 'none' };
 
+/**
+ * Azure Service Bus emulator config: its entities are fixed at startup, so it declares the runtime tests'
+ * topology ("it") and the service's own (Topology.DEFAULT, named after the project).
+ */
+function serviceBusConfig(prefixes) {
+  const subscription = name => ({
+    Name: name,
+    Properties: { DeadLetteringOnMessageExpiration: false, DefaultMessageTimeToLive: 'PT1H', LockDuration: 'PT1M', MaxDeliveryCount: 10, ForwardDeadLetteredMessagesTo: '', ForwardTo: '', RequiresSession: false },
+    Rules: []
+  });
+  const topic = (name, sub) => ({
+    Name: name,
+    Properties: { DefaultMessageTimeToLive: 'PT1H', DuplicateDetectionHistoryTimeWindow: 'PT20S', RequiresDuplicateDetection: false },
+    Subscriptions: [subscription(sub)]
+  });
+  return JSON.stringify({
+    UserConfig: {
+      Namespaces: [{ Name: 'sbemulatorns', Queues: [], Topics: prefixes.flatMap(p => [topic(`${p}.events`, `${p}.consumer`), topic(`${p}.dlx`, `${p}.dlq`)]) }],
+      Logging: { Type: 'File' }
+    }
+  }, null, 2);
+}
+
+const SQL_EDGE_PASSWORD = 'Ghk-Golden-2026!';
+
+/** Azure Service Bus emulator and the SQL Edge database it needs, selected with GHK_BROKER=servicebus. */
+const SERVICEBUS_EMULATOR = project => [
+  {
+    name: 'sqledge',
+    image: 'mcr.microsoft.com/azure-sql-edge:latest',
+    environment: { ACCEPT_EULA: 'Y', MSSQL_SA_PASSWORD: SQL_EDGE_PASSWORD },
+    readyLog: 'SQL Server is now ready for client connections'
+  },
+  {
+    name: 'servicebus',
+    image: 'mcr.microsoft.com/azure-messaging/servicebus-emulator:latest',
+    environment: { SQL_SERVER: 'sqledge', MSSQL_SA_PASSWORD: SQL_EDGE_PASSWORD, ACCEPT_EULA: 'Y' },
+    files: { '/ServiceBus_Emulator/ConfigFiles/Config.json': serviceBusConfig(['it', project]) },
+    readyLog: 'Emulator Service is Successfully Up!',
+    env: {
+      GHK_BROKER: 'servicebus',
+      SERVICEBUS_CONNECTION_STRING: 'Endpoint=sb://servicebus;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=SAS_KEY_VALUE;UseDevelopmentEmulator=true;'
+    }
+  }
+];
+
 /** Google Cloud Pub/Sub emulator (src/core/services.ts extra service), selected with GHK_BROKER=pubsub. */
 const PUBSUB_EMULATOR = {
   name: 'pubsub',
@@ -145,6 +191,16 @@ const STACKS = {
     test: ['mvn -B -ntp test'],
     integration: ['mvn -B -ntp test -Pintegration']
   },
+  // The same Quarkus service with Azure Service Bus (official SDK; emulator + SQL Edge, fixed entities).
+  'quarkus-servicebus': {
+    stack: { ...base, language: 'java', framework: 'quarkus', orm: 'jdbc', validation: 'jakarta-validation', testing: 'junit', messaging: 'servicebus' },
+    image: 'maven:3.9-eclipse-temurin-21',
+    caches: [['m2', '/root/.m2']],
+    services: SERVICEBUS_EMULATOR('golden-quarkus-servicebus'),
+    build: ['mvn -q -B -ntp -DskipTests package'],
+    test: ['mvn -B -ntp test'],
+    integration: ['mvn -B -ntp test -Pintegration']
+  },
   kotlin: {
     stack: { ...base, language: 'kotlin', framework: 'spring-boot', orm: 'hibernate', validation: 'jakarta-validation', testing: 'junit' },
     image: 'gradle:8.10-jdk17',
@@ -233,4 +289,4 @@ const STACKS = {
   }
 };
 
-module.exports = { STACKS };
+module.exports = { STACKS, SERVICEBUS_EMULATOR, PUBSUB_EMULATOR };

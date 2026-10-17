@@ -243,12 +243,42 @@ public class Application {
   };
 }
 
+/** Azure SDK BOM, imported when the Service Bus adapter is generated (stack.messaging "servicebus"). */
+const AZURE_BOM = `
+      <dependency>
+        <groupId>com.azure</groupId>
+        <artifactId>azure-sdk-bom</artifactId>
+        <version>${JVM_VERSIONS.azureSdkBom}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>`;
+
+/**
+ * Service Bus client and Entra ID credentials. The Netty HTTP transport is swapped for the JDK one so the SDK
+ * does not depend on the Netty / Reactor Netty versions the framework BOM pins.
+ */
+const AZURE_DEPS = ['azure-messaging-servicebus', 'azure-identity'].map(a => `
+    <dependency>
+      <groupId>com.azure</groupId>
+      <artifactId>${a}</artifactId>
+      <exclusions>
+        <exclusion>
+          <groupId>com.azure</groupId>
+          <artifactId>azure-core-http-netty</artifactId>
+        </exclusion>
+      </exclusions>
+    </dependency>`).join('') + `
+    <dependency>
+      <groupId>com.azure</groupId>
+      <artifactId>azure-core-http-jdk-httpclient</artifactId>
+    </dependency>`;
+
 /**
  * Maven build of a Quarkus service: the runtime kernel (plain JDBC + amqp-client + OpenTelemetry SDK) on
  * Agroal, Quarkus REST and the scheduler. OpenTelemetry is imported before the Quarkus BOM so the kernel
  * gets the API version it is written against; the quarkus-opentelemetry extension is not used (one SDK).
  */
-export function renderQuarkusPom(artifactId: string, groupId = 'com.example'): string {
+export function renderQuarkusPom(artifactId: string, groupId = 'com.example', { serviceBus = false } = {}): string {
   const dep = (g: string, a: string, extra = '') => `    <dependency>\n      <groupId>${g}</groupId>\n      <artifactId>${a}</artifactId>${extra}\n    </dependency>`;
   const test = '\n      <scope>test</scope>';
   return `<?xml version="1.0" encoding="UTF-8"?>
@@ -301,7 +331,7 @@ export function renderQuarkusPom(artifactId: string, groupId = 'com.example'): s
         <version>\${cucumber.version}</version>
         <type>pom</type>
         <scope>import</scope>
-      </dependency>
+      </dependency>${serviceBus ? AZURE_BOM : ''}
     </dependencies>
   </dependencyManagement>
 
@@ -323,7 +353,7 @@ ${dep('io.opentelemetry', 'opentelemetry-exporter-otlp', `
         </exclusion>
       </exclusions>`)}
 ${dep('io.opentelemetry', 'opentelemetry-exporter-sender-jdk')}
-${dep('com.rabbitmq', 'amqp-client', `\n      <version>${JVM_VERSIONS.amqpClient}</version>`)}
+${dep('com.rabbitmq', 'amqp-client', `\n      <version>${JVM_VERSIONS.amqpClient}</version>`)}${serviceBus ? AZURE_DEPS : ''}
 
 ${dep('io.quarkus', 'quarkus-junit5', test)}
 ${dep('io.opentelemetry', 'opentelemetry-sdk-testing', test)}
@@ -396,7 +426,7 @@ ${dep('org.junit.platform', 'junit-platform-suite', test)}
 `;
 }
 
-export function renderPom(artifactId: string, groupId = 'com.example'): string {
+export function renderPom(artifactId: string, groupId = 'com.example', { serviceBus = false } = {}): string {
   return `<?xml version="1.0" encoding="UTF-8"?>
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
   xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
@@ -437,7 +467,7 @@ export function renderPom(artifactId: string, groupId = 'com.example'): string {
         <version>\${cucumber.version}</version>
         <type>pom</type>
         <scope>import</scope>
-      </dependency>
+      </dependency>${serviceBus ? AZURE_BOM : ''}
     </dependencies>
   </dependencyManagement>
 
@@ -474,7 +504,7 @@ export function renderPom(artifactId: string, groupId = 'com.example'): string {
     <dependency>
       <groupId>com.rabbitmq</groupId>
       <artifactId>amqp-client</artifactId>
-    </dependency>
+    </dependency>${serviceBus ? AZURE_DEPS : ''}
 
     <dependency>
       <groupId>org.springframework.boot</groupId>

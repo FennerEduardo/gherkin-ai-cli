@@ -202,7 +202,7 @@ fun main(args: Array<String>) {
   };
 }
 
-export function renderGradleKts(groupId = 'com.example'): string {
+export function renderGradleKts(groupId = 'com.example', { serviceBus = false } = {}): string {
   return `plugins {
     id("org.springframework.boot") version "${JVM_VERSIONS.springBoot}"
     id("io.spring.dependency-management") version "${JVM_VERSIONS.springDependencyManagement}"
@@ -227,7 +227,8 @@ repositories {
 dependencyManagement {
     imports {
         mavenBom("io.opentelemetry:opentelemetry-bom:${JVM_VERSIONS.openTelemetry}")
-        mavenBom("io.cucumber:cucumber-bom:${JVM_VERSIONS.cucumber}")
+        mavenBom("io.cucumber:cucumber-bom:${JVM_VERSIONS.cucumber}")${serviceBus ? `
+        mavenBom("com.azure:azure-sdk-bom:${JVM_VERSIONS.azureSdkBom}")` : ''}
     }
 }
 
@@ -240,7 +241,10 @@ dependencies {
     implementation("io.opentelemetry:opentelemetry-api")
     implementation("io.opentelemetry:opentelemetry-sdk")
     implementation("io.opentelemetry:opentelemetry-exporter-otlp")
-    implementation("com.rabbitmq:amqp-client")
+    implementation("com.rabbitmq:amqp-client")${serviceBus ? `
+    implementation("com.azure:azure-messaging-servicebus") { exclude(group = "com.azure", module = "azure-core-http-netty") }
+    implementation("com.azure:azure-identity") { exclude(group = "com.azure", module = "azure-core-http-netty") }
+    implementation("com.azure:azure-core-http-jdk-httpclient")` : ''}
     runtimeOnly("org.postgresql:postgresql")
 
     testImplementation("org.springframework.boot:spring-boot-starter-test")

@@ -7,6 +7,7 @@ import { CLI_VERSION } from '../version';
 import { renderPom, renderQuarkusPom } from './kernel/java';
 import { jvmGroupId } from './preset-java-spring';
 import { isSpringFramework } from './stack-support';
+import { usesServiceBus } from './kernel/runtime/jvm';
 import { industryForConfig } from '../core/profiles/industries';
 import { tagValues } from '../core/profiles/industries/lint-helpers';
 import { dotnetNamespace } from './preset-csharp-dotnet';
@@ -499,16 +500,16 @@ docker run --rm -v "$(pwd)":/app -w /app -e DOTNET_CLI_TELEMETRY_OPTOUT=1 -e DOT
   } else if (config.stack.language === 'java' && (config.stack.framework || '').toLowerCase() === 'quarkus') {
     projectRootFile = {
       filename: `pom.xml`,
-      content: renderQuarkusPom(toKebab(config.projectName || 'demo'), jvmGroupId(config))
+      content: renderQuarkusPom(toKebab(config.projectName || 'demo'), jvmGroupId(config), { serviceBus: usesServiceBus(config.stack.messaging) })
     };
   } else if (config.stack.language === 'java' && isSpringFramework(config.stack.framework)) {
     projectRootFile = {
       filename: `pom.xml`,
-      content: renderPom(toKebab(config.projectName || 'demo'), jvmGroupId(config))
+      content: renderPom(toKebab(config.projectName || 'demo'), jvmGroupId(config), { serviceBus: usesServiceBus(config.stack.messaging) })
     };
   } else if (config.stack.language === 'kotlin' && isSpringFramework(config.stack.framework)) {
     projectRootFile = [
-      { filename: `build.gradle.kts`, content: renderGradleKts(jvmGroupId(config)) },
+      { filename: `build.gradle.kts`, content: renderGradleKts(jvmGroupId(config), { serviceBus: usesServiceBus(config.stack.messaging) }) },
       { filename: `settings.gradle.kts`, content: renderGradleSettings(toKebab(config.projectName || 'demo')) }
     ];
   } else if (config.stack.language === 'go') {

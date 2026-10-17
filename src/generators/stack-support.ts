@@ -60,6 +60,7 @@ export const STACK_SUPPORT: StackSupport[] = [
   { id: 'contracts/graphql', label: 'GraphQL SDL', kind: 'contracts', tier: 'stable', golden: 'grpc-graphql', notes: 'Enable with contracts.graphql: true.' },
 
   { id: 'messaging/gcp-pubsub', label: 'Google Cloud Pub/Sub broker (JVM runtime kernel: Spring Java/Kotlin, Quarkus)', kind: 'infrastructure', tier: 'beta', golden: 'quarkus-pubsub', notes: 'stack.messaging "pubsub" makes it the default; GHK_BROKER=pubsub selects it at run time. REST API, emulator-verified.' },
+  { id: 'messaging/azure-servicebus', label: 'Azure Service Bus broker (JVM runtime kernel: Spring Java/Kotlin, Quarkus)', kind: 'infrastructure', tier: 'beta', golden: 'quarkus-servicebus', notes: 'stack.messaging "servicebus" (adds the Azure SDK); Entra ID via SERVICEBUS_NAMESPACE or a connection string. Emulator-verified.' },
   { id: 'infrastructure/aws-cdk', label: 'AWS CDK v2 (SNS/SQS + DLQ alarm, DynamoDB, Secrets Manager, EKS + IRSA)', kind: 'infrastructure', tier: 'stable', golden: 'aws-cdk', notes: 'Enable with infrastructure.awsCdk: true (default when messaging is sqs/sns). Verified with assertion tests and cdk synth.' }
 ];
 
