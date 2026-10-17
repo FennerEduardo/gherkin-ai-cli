@@ -35,7 +35,7 @@ export function generateKotlinSpringPreset(parsed: ParsedFeature, config?: Gherk
     ...renderKotlinKernel(m, pkg),
     ...renderKotlinKernelTests(m, pkg),
     // Runtime kernel (Java, shared with the Java preset): verified with gradle integrationTest (docs/RUNTIME-KERNEL.md).
-    ...renderJvmRuntime(m, pkg, { kotlin: true, siblings }),
+    ...renderJvmRuntime(m, pkg, { kotlin: true, siblings, messaging: config?.stack?.messaging }),
     ...sharedInfra
   ];
 }

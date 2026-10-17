@@ -18,6 +18,10 @@ export interface ExtraService {
   environment?: Record<string, string>;
   /** Variables for the test container (e.g. S3_ENDPOINT). */
   env?: Record<string, string>;
+  /** Command (and arguments) that replaces the image default, e.g. an emulator start command. */
+  command?: string[];
+  /** Readiness probe run inside the container with docker exec (exit 0 = ready). */
+  ready?: string[];
 }
 
 export interface RunningServices {
@@ -74,7 +78,7 @@ export function startServices(label: string, extra: ExtraService[] = [], opts: {
     if (mqRun.code !== 0) throw new Error(`cannot start RabbitMQ: ${mqRun.out}`);
     for (const s of extra) {
       const run = docker(['run', '-d', '--name', `ghk-${s.name}-${id}`, '--network', network, '--network-alias', s.name,
-        ...Object.entries(s.environment ?? {}).flatMap(([k, v]) => ['-e', `${k}=${v}`]), s.image]);
+        ...Object.entries(s.environment ?? {}).flatMap(([k, v]) => ['-e', `${k}=${v}`]), s.image, ...(s.command ?? [])]);
       if (run.code !== 0) throw new Error(`cannot start ${s.name}: ${run.out}`);
       Object.assign(env, s.env ?? {});
     }
@@ -82,6 +86,10 @@ export function startServices(label: string, extra: ExtraService[] = [], opts: {
     // Probe as the rabbitmq user: the image sets HOME=/var/lib/rabbitmq, so a root probe that runs before
     // the server creates .erlang.cookie writes it root-only and the server then fails to start (eacces).
     waitFor(docker, 'RabbitMQ', () => docker(['exec', '-u', 'rabbitmq', mq, 'rabbitmq-diagnostics', '-q', 'check_port_connectivity']).code === 0, mq, timeoutMs);
+    for (const s of extra.filter(x => x.ready)) {
+      const container = `ghk-${s.name}-${id}`;
+      waitFor(docker, s.name, () => docker(['exec', container, ...s.ready!]).code === 0, container, timeoutMs);
+    }
   } catch (err) {
     stop();
     throw err;

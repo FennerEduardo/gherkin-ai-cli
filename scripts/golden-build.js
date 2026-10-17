@@ -90,7 +90,7 @@ function dockerPath(p) {
 function buildInDocker(dir, def, name) {
   const volumes = (def.caches || []).flatMap(([vol, target]) => ['-v', `ghk-cache-${vol}:${target}`]);
   const integration = def.integration && !skipIntegration ? def.integration : [];
-  const services = integration.length ? startServices(name) : undefined;
+  const services = integration.length ? startServices(name, def.services || []) : undefined;
   // Only the integration step sees DATABASE_URL / AMQP_URL: unit tests stay hermetic.
   const exports = services ? Object.entries(services.env).map(([k, v]) => `export ${k}='${v}'`) : [];
   const script = [...(def.build || []), ...(def.test || []), ...exports, ...integration].join(' && ');

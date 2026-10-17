@@ -11,6 +11,15 @@
 
 const base = { database: 'postgresql', auth: 'jwt', messaging: 'none' };
 
+/** Google Cloud Pub/Sub emulator (src/core/services.ts extra service), selected with GHK_BROKER=pubsub. */
+const PUBSUB_EMULATOR = {
+  name: 'pubsub',
+  image: 'gcr.io/google.com/cloudsdktool/google-cloud-cli:emulators',
+  command: ['gcloud', 'beta', 'emulators', 'pubsub', 'start', '--host-port=0.0.0.0:8085', '--project=ghk-golden'],
+  ready: ['curl', '-sf', 'http://localhost:8085'],
+  env: { GHK_BROKER: 'pubsub', PUBSUB_EMULATOR_HOST: 'pubsub:8085', PUBSUB_PROJECT_ID: 'ghk-golden' }
+};
+
 function nestGolden(stack = {}) {
   return {
     stack: { ...base, language: 'typescript', framework: 'nestjs', orm: 'prisma', validation: 'zod', messaging: 'rabbitmq', testing: 'jest', ...stack },
@@ -122,6 +131,16 @@ const STACKS = {
     stack: { ...base, language: 'java', framework: 'quarkus', orm: 'jdbc', validation: 'jakarta-validation', testing: 'junit' },
     image: 'maven:3.9-eclipse-temurin-21',
     caches: [['m2', '/root/.m2']],
+    build: ['mvn -q -B -ntp -DskipTests package'],
+    test: ['mvn -B -ntp test'],
+    integration: ['mvn -B -ntp test -Pintegration']
+  },
+  // The same Quarkus service with Google Cloud Pub/Sub as the broker (official emulator; REST adapter in the JVM runtime).
+  'quarkus-pubsub': {
+    stack: { ...base, language: 'java', framework: 'quarkus', orm: 'jdbc', validation: 'jakarta-validation', testing: 'junit', messaging: 'pubsub' },
+    image: 'maven:3.9-eclipse-temurin-21',
+    caches: [['m2', '/root/.m2']],
+    services: [PUBSUB_EMULATOR],
     build: ['mvn -q -B -ntp -DskipTests package'],
     test: ['mvn -B -ntp test'],
     integration: ['mvn -B -ntp test -Pintegration']

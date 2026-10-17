@@ -16,8 +16,14 @@ export interface JvmRuntimeFile {
 
 const j = (s: string) => JSON.stringify(s); // JSON strings are valid Java string literals here
 
+/** Broker the generated runtime defaults to for a stack.messaging value (GHK_BROKER overrides it at run time). */
+export function defaultJvmBroker(messaging?: string): 'rabbitmq' | 'pubsub' {
+  return /pubsub|pub-sub/i.test(messaging || '') ? 'pubsub' : 'rabbitmq';
+}
+
 /** @param kotlin the domain kernel is Kotlin (data-class getters instead of record accessors) */
-export function renderJvmRuntime(m: DomainModel, pkg: string, { kotlin = false, siblings = [] as DomainModel[] } = {}): JvmRuntimeFile[] {
+export function renderJvmRuntime(m: DomainModel, pkg: string, { kotlin = false, siblings = [] as DomainModel[], messaging = undefined as string | undefined } = {}): JvmRuntimeFile[] {
+  const defaultBroker = defaultJvmBroker(messaging);
   const all = [m, ...siblings];
   const t = topology(m);
   const dir = `src/main/java/${javaPackagePath(pkg)}/runtime`;
@@ -297,32 +303,390 @@ ${a.commands.map(c => `            case ${j(c.snake)} -> aggregate.${c.method}(c
 }
 `;
 
-  const topologyJava = `${p}import com.rabbitmq.client.Channel;
-import java.io.IOException;
-import java.util.Map;
-
-/** Topic exchange -> consumer queue, which dead-letters rejected messages to a fanout DLX -> DLQ. */
+  const topologyJava = `${p}/**
+ * Event bus destinations: events are published to {@code exchange} (RabbitMQ topic exchange / Pub/Sub topic)
+ * and consumed from {@code queue} (queue / pull subscription); dead-lettered messages go to {@code dlx}
+ * and can be read from {@code dlq}.
+ */
 public record Topology(String exchange, String queue, String dlx, String dlq) {
     public static final Topology DEFAULT = new Topology(${j(t.exchange)}, ${j(t.queue)}, ${j(t.dlx)}, ${j(t.dlq)});
 
     public static Topology forPrefix(String prefix) {
         return new Topology(prefix + ".events", prefix + ".consumer", prefix + ".dlx", prefix + ".dlq");
     }
+}
+`;
 
-    public void declare(Channel channel) throws IOException {
-        channel.exchangeDeclare(exchange, "topic", true);
-        channel.exchangeDeclare(dlx, "fanout", true);
-        channel.queueDeclare(dlq, true, false, false, null);
-        channel.queueBind(dlq, dlx, "");
-        channel.queueDeclare(queue, true, false, false, Map.of("x-dead-letter-exchange", dlx));
-        channel.queueBind(queue, exchange, "#");
+  const brokerMessage = `${p}/** A domain event on the wire, independent of the broker. */
+public record BrokerMessage(String messageId, String eventType, String tenantId, String traceparent, byte[] body) {}
+`;
+
+  const eventPublisher = `${p}/** Publishes to one destination; publish returns only once the broker has durably accepted the message. */
+public interface EventPublisher extends AutoCloseable {
+    String system();
+
+    String destination();
+
+    void publish(BrokerMessage message) throws Exception;
+}
+`;
+
+  const eventSubscription = `${p}/** Pulls messages from one queue / subscription. */
+public interface EventSubscription extends AutoCloseable {
+    @FunctionalInterface
+    interface Action {
+        void run() throws Exception;
+    }
+
+    /** A received message: ack() once processed; deadLetter() moves it to the DLQ (it is not redelivered). */
+    record Delivery(BrokerMessage message, Action ack, Action deadLetter) {}
+
+    String system();
+
+    String source();
+
+    /** The next waiting message, or null when there is none. */
+    Delivery poll() throws Exception;
+}
+`;
+
+  const broker = `${p}/**
+ * The event broker behind the outbox relay and the inbox consumer, chosen at run time so one image runs on
+ * any cloud: GHK_BROKER=rabbitmq (AMQP_URL) or GHK_BROKER=pubsub (PUBSUB_PROJECT_ID or GOOGLE_CLOUD_PROJECT;
+ * PUBSUB_EMULATOR_HOST for the emulator). Without GHK_BROKER the configured variables decide.
+ */
+public interface Broker extends AutoCloseable {
+    /** Broker of the generated configuration (stack.messaging). */
+    String DEFAULT_KIND = ${j(defaultBroker)};
+
+    String system();
+
+    /** Creates the topology if missing (idempotent); in production it usually comes from infrastructure as code. */
+    void declare(Topology topology) throws Exception;
+
+    EventPublisher publisher(String destination) throws Exception;
+
+    /** @param topology where dead-lettered messages go */
+    EventSubscription subscribe(String source, Topology topology) throws Exception;
+
+    static String kind() {
+        String explicit = System.getenv("GHK_BROKER");
+        if (explicit != null && !explicit.isBlank()) return explicit.trim().toLowerCase();
+        if (System.getenv("AMQP_URL") != null) return "rabbitmq";
+        if (System.getenv("PUBSUB_PROJECT_ID") != null || System.getenv("PUBSUB_EMULATOR_HOST") != null) return "pubsub";
+        return DEFAULT_KIND;
+    }
+
+    /** Whether the variables of the selected broker are set. */
+    static boolean configured() {
+        return switch (kind()) {
+            case "pubsub" -> System.getenv("PUBSUB_PROJECT_ID") != null || System.getenv("GOOGLE_CLOUD_PROJECT") != null;
+            default -> System.getenv("AMQP_URL") != null && !System.getenv("AMQP_URL").isBlank();
+        };
+    }
+
+    static Broker fromEnv() throws Exception {
+        return switch (kind()) {
+            case "pubsub" -> PubSubBroker.fromEnv();
+            case "rabbitmq" -> {
+                String url = System.getenv("AMQP_URL");
+                if (url == null || url.isBlank()) throw new IllegalStateException("AMQP_URL is not set (amqp://user:password@host:5672)");
+                yield RabbitMqBroker.connect(url);
+            }
+            default -> throw new IllegalStateException("Unsupported GHK_BROKER: " + kind() + " (rabbitmq, pubsub)");
+        };
     }
 }
 `;
 
-  const relay = `${p}import com.rabbitmq.client.AMQP;
+  const rabbit = `${p}import com.rabbitmq.client.AMQP;
 import com.rabbitmq.client.Channel;
-import io.opentelemetry.api.trace.Span;
+import com.rabbitmq.client.GetResponse;
+import java.util.HashMap;
+import java.util.Map;
+
+/** RabbitMQ 0-9-1: topic exchange, publisher confirms, dead-lettering through the queue's DLX. */
+public final class RabbitMqBroker implements Broker {
+    private final com.rabbitmq.client.Connection connection;
+
+    public RabbitMqBroker(com.rabbitmq.client.Connection connection) {
+        this.connection = connection;
+    }
+
+    public static RabbitMqBroker connect(String url) throws Exception {
+        var factory = new com.rabbitmq.client.ConnectionFactory();
+        factory.setUri(url);
+        factory.setConnectionTimeout(30_000);
+        factory.setHandshakeTimeout(30_000);
+        // A busy host can delay the AMQP handshake: retry before failing.
+        for (int attempt = 1; ; attempt++) {
+            try {
+                return new RabbitMqBroker(factory.newConnection());
+            } catch (java.io.IOException | java.util.concurrent.TimeoutException e) {
+                if (attempt == 5) throw e;
+                Thread.sleep(2000L * attempt);
+            }
+        }
+    }
+
+    @Override
+    public String system() {
+        return "rabbitmq";
+    }
+
+    @Override
+    public void declare(Topology t) throws Exception {
+        try (Channel channel = connection.createChannel()) {
+            channel.exchangeDeclare(t.exchange(), "topic", true);
+            channel.exchangeDeclare(t.dlx(), "fanout", true);
+            channel.queueDeclare(t.dlq(), true, false, false, null);
+            channel.queueBind(t.dlq(), t.dlx(), "");
+            channel.queueDeclare(t.queue(), true, false, false, Map.of("x-dead-letter-exchange", t.dlx()));
+            channel.queueBind(t.queue(), t.exchange(), "#");
+        }
+    }
+
+    @Override
+    public EventPublisher publisher(String exchange) throws Exception {
+        Channel channel = connection.createChannel();
+        channel.confirmSelect();
+        return new EventPublisher() {
+            @Override
+            public String system() {
+                return "rabbitmq";
+            }
+
+            @Override
+            public String destination() {
+                return exchange;
+            }
+
+            @Override
+            public void publish(BrokerMessage m) throws Exception {
+                Map<String, Object> headers = new HashMap<>();
+                if (m.tenantId() != null) headers.put("tenant_id", m.tenantId());
+                if (m.traceparent() != null) headers.put("traceparent", m.traceparent());
+                AMQP.BasicProperties props = new AMQP.BasicProperties.Builder()
+                    .messageId(m.messageId()).deliveryMode(2).contentType("application/json").type(m.eventType()).headers(headers).build();
+                channel.basicPublish(exchange, m.eventType() == null ? "" : m.eventType(), props, m.body());
+                channel.waitForConfirmsOrDie(10_000);
+            }
+
+            @Override
+            public void close() throws Exception {
+                if (channel.isOpen()) channel.close();
+            }
+        };
+    }
+
+    @Override
+    public EventSubscription subscribe(String queue, Topology topology) throws Exception {
+        Channel channel = connection.createChannel();
+        return new EventSubscription() {
+            @Override
+            public String system() {
+                return "rabbitmq";
+            }
+
+            @Override
+            public String source() {
+                return queue;
+            }
+
+            @Override
+            public Delivery poll() throws Exception {
+                GetResponse r = channel.basicGet(queue, false);
+                if (r == null) return null;
+                var props = r.getProps();
+                Map<String, Object> h = props.getHeaders() == null ? Map.of() : props.getHeaders();
+                long tag = r.getEnvelope().getDeliveryTag();
+                BrokerMessage m = new BrokerMessage(props.getMessageId(), props.getType(), text(h.get("tenant_id")), text(h.get("traceparent")), r.getBody());
+                // Rejected without requeue: RabbitMQ dead-letters it through the queue's DLX.
+                return new Delivery(m, () -> channel.basicAck(tag, false), () -> channel.basicNack(tag, false, false));
+            }
+
+            @Override
+            public void close() throws Exception {
+                if (channel.isOpen()) channel.close();
+            }
+        };
+    }
+
+    private static String text(Object value) {
+        return value == null ? null : value.toString();
+    }
+
+    @Override
+    public void close() throws Exception {
+        if (connection.isOpen()) connection.close();
+    }
+}
+`;
+
+  const pubsub = `${p}import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import java.io.IOException;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.time.Duration;
+import java.util.Base64;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+/**
+ * Google Cloud Pub/Sub over its REST API (no client library): topics for the exchange and the DLX, pull
+ * subscriptions for the queue and the DLQ. publish returns once Pub/Sub has stored the message. A failed
+ * message is dead-lettered by the consumer: published to the DLX topic, then acknowledged.
+ * Auth: none against the emulator (PUBSUB_EMULATOR_HOST); otherwise GOOGLE_OAUTH_ACCESS_TOKEN or the
+ * metadata-server token of the workload's service account (Cloud Run, GKE workload identity).
+ */
+public final class PubSubBroker implements Broker {
+    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final String METADATA_TOKEN = "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token";
+    private final HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
+    private final String project;
+    private final String root;
+    private final boolean emulator;
+    private String token;
+    private long tokenExpiresAt;
+
+    public PubSubBroker(String project, String emulatorHost) {
+        this.project = project;
+        this.emulator = emulatorHost != null && !emulatorHost.isBlank();
+        this.root = (emulator ? "http://" + emulatorHost : "https://pubsub.googleapis.com") + "/v1/projects/" + project;
+    }
+
+    public static PubSubBroker fromEnv() {
+        String project = System.getenv("PUBSUB_PROJECT_ID") != null ? System.getenv("PUBSUB_PROJECT_ID") : System.getenv("GOOGLE_CLOUD_PROJECT");
+        if (project == null || project.isBlank()) throw new IllegalStateException("PUBSUB_PROJECT_ID (or GOOGLE_CLOUD_PROJECT) is not set");
+        return new PubSubBroker(project, System.getenv("PUBSUB_EMULATOR_HOST"));
+    }
+
+    @Override
+    public String system() {
+        return "gcp_pubsub";
+    }
+
+    private synchronized String bearer() throws Exception {
+        if (emulator) return null;
+        String fixed = System.getenv("GOOGLE_OAUTH_ACCESS_TOKEN");
+        if (fixed != null && !fixed.isBlank()) return fixed;
+        if (token == null || System.currentTimeMillis() > tokenExpiresAt) {
+            HttpRequest req = HttpRequest.newBuilder(URI.create(METADATA_TOKEN)).header("Metadata-Flavor", "Google").timeout(Duration.ofSeconds(5)).build();
+            JsonNode body = JSON.readTree(http.send(req, HttpResponse.BodyHandlers.ofString()).body());
+            token = body.get("access_token").asText();
+            tokenExpiresAt = System.currentTimeMillis() + (body.get("expires_in").asLong() - 60) * 1000;
+        }
+        return token;
+    }
+
+    /** Calls the API; a status listed in {@code accepted} returns null instead of failing. */
+    private JsonNode call(String method, String path, Object body, int... accepted) throws Exception {
+        HttpRequest.Builder req = HttpRequest.newBuilder(URI.create(root + path)).timeout(Duration.ofSeconds(30))
+            .header("Content-Type", "application/json")
+            .method(method, body == null ? HttpRequest.BodyPublishers.noBody() : HttpRequest.BodyPublishers.ofString(JSON.writeValueAsString(body)));
+        String bearer = bearer();
+        if (bearer != null) req.header("Authorization", "Bearer " + bearer);
+        HttpResponse<String> res = http.send(req.build(), HttpResponse.BodyHandlers.ofString());
+        if (res.statusCode() / 100 == 2) return res.body().isBlank() ? JSON.createObjectNode() : JSON.readTree(res.body());
+        for (int status : accepted) if (res.statusCode() == status) return null;
+        throw new IOException("Pub/Sub " + method + " " + path + " failed: " + res.statusCode() + " " + res.body());
+    }
+
+    @Override
+    public void declare(Topology t) throws Exception {
+        // 409: it already exists (created earlier or by infrastructure as code).
+        call("PUT", "/topics/" + t.exchange(), Map.of(), 409);
+        call("PUT", "/topics/" + t.dlx(), Map.of(), 409);
+        call("PUT", "/subscriptions/" + t.queue(), Map.of("topic", "projects/" + project + "/topics/" + t.exchange(), "ackDeadlineSeconds", 60), 409);
+        call("PUT", "/subscriptions/" + t.dlq(), Map.of("topic", "projects/" + project + "/topics/" + t.dlx(), "ackDeadlineSeconds", 60), 409);
+    }
+
+    private void publishTo(String topic, BrokerMessage m) throws Exception {
+        Map<String, String> attributes = new HashMap<>();
+        attributes.put("ghk_message_id", m.messageId());
+        if (m.eventType() != null) attributes.put("event_type", m.eventType());
+        if (m.tenantId() != null) attributes.put("tenant_id", m.tenantId());
+        if (m.traceparent() != null) attributes.put("traceparent", m.traceparent());
+        JsonNode res = call("POST", "/topics/" + topic + ":publish",
+            Map.of("messages", List.of(Map.of("data", Base64.getEncoder().encodeToString(m.body()), "attributes", attributes))));
+        if (res.path("messageIds").size() != 1) throw new IOException("Pub/Sub did not accept message " + m.messageId());
+    }
+
+    @Override
+    public EventPublisher publisher(String topic) {
+        return new EventPublisher() {
+            @Override
+            public String system() {
+                return "gcp_pubsub";
+            }
+
+            @Override
+            public String destination() {
+                return topic;
+            }
+
+            @Override
+            public void publish(BrokerMessage m) throws Exception {
+                publishTo(topic, m);
+            }
+
+            @Override
+            public void close() {
+            }
+        };
+    }
+
+    @Override
+    public EventSubscription subscribe(String subscription, Topology topology) {
+        return new EventSubscription() {
+            @Override
+            public String system() {
+                return "gcp_pubsub";
+            }
+
+            @Override
+            public String source() {
+                return subscription;
+            }
+
+            @Override
+            public Delivery poll() throws Exception {
+                JsonNode received = call("POST", "/subscriptions/" + subscription + ":pull", Map.of("maxMessages", 1, "returnImmediately", true)).path("receivedMessages");
+                if (received.size() == 0) return null;
+                JsonNode msg = received.get(0).path("message");
+                JsonNode attrs = msg.path("attributes");
+                String ackId = received.get(0).path("ackId").asText();
+                BrokerMessage m = new BrokerMessage(text(attrs, "ghk_message_id", msg.path("messageId").asText()), text(attrs, "event_type", null),
+                    text(attrs, "tenant_id", null), text(attrs, "traceparent", null), Base64.getDecoder().decode(msg.path("data").asText("")));
+                Action ack = () -> call("POST", "/subscriptions/" + subscription + ":acknowledge", Map.of("ackIds", List.of(ackId)));
+                return new Delivery(m, ack, () -> {
+                    publishTo(topology.dlx(), m);
+                    ack.run();
+                });
+            }
+
+            @Override
+            public void close() {
+            }
+        };
+    }
+
+    private static String text(JsonNode node, String field, String fallback) {
+        JsonNode value = node.get(field);
+        return value == null || value.isNull() ? fallback : value.asText();
+    }
+
+    @Override
+    public void close() {
+    }
+}
+`;
+
+  const relay = `${p}import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.SpanKind;
 import io.opentelemetry.api.trace.StatusCode;
 import io.opentelemetry.context.Context;
@@ -331,31 +695,27 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 
 /**
  * Publishes pending outbox rows. Rows are claimed with FOR UPDATE SKIP LOCKED and a lease, so
- * concurrent relays never publish the same row; publisher confirms guarantee delivery to the broker
- * before a row is marked published. Use one relay (and channel) per thread.
+ * concurrent relays never publish the same row; the publisher returns only once the broker has accepted
+ * the message (RabbitMQ confirms, Pub/Sub publish response), before a row is marked published.
+ * Use one relay (and publisher) per thread.
  */
 public class OutboxRelay {
     private final ConnectionFactory connections;
-    private final Channel channel;
-    private final String exchange;
+    private final EventPublisher publisher;
     private final String s;
     private final int leaseSeconds;
     private final int maxAttempts;
 
-    public OutboxRelay(ConnectionFactory connections, Channel channel, String exchange, String schema) throws java.io.IOException {
+    public OutboxRelay(ConnectionFactory connections, EventPublisher publisher, String schema) {
         this.connections = connections;
-        this.channel = channel;
-        this.exchange = exchange;
+        this.publisher = publisher;
         this.s = Schema.name(schema);
         this.leaseSeconds = ${LEASE_SECONDS};
         this.maxAttempts = ${MAX_PUBLISH_ATTEMPTS};
-        channel.confirmSelect();
     }
 
     private record Claimed(String id, String tenantId, String eventType, String payload, String traceparent) {}
@@ -377,18 +737,12 @@ public class OutboxRelay {
         try (Connection conn = connections.open()) {
             for (Claimed row : batch) {
                 Context parent = Telemetry.contextFrom(row.traceparent());
-                Span span = Telemetry.tracer().spanBuilder(exchange + " publish").setParent(parent).setSpanKind(SpanKind.PRODUCER)
-                    .setAttribute("messaging.system", "rabbitmq").setAttribute("messaging.destination.name", exchange)
+                Span span = Telemetry.tracer().spanBuilder(publisher.destination() + " publish").setParent(parent).setSpanKind(SpanKind.PRODUCER)
+                    .setAttribute("messaging.system", publisher.system()).setAttribute("messaging.destination.name", publisher.destination())
                     .setAttribute("messaging.message.id", row.id()).setAttribute("tenant.id", row.tenantId()).startSpan();
                 try {
-                    Map<String, Object> headers = new HashMap<>();
-                    headers.put("tenant_id", row.tenantId());
                     String traceparent = Telemetry.traceparentOf(parent, span);
-                    if (traceparent != null) headers.put("traceparent", traceparent);
-                    AMQP.BasicProperties props = new AMQP.BasicProperties.Builder()
-                        .messageId(row.id()).deliveryMode(2).contentType("application/json").type(row.eventType()).headers(headers).build();
-                    channel.basicPublish(exchange, row.eventType(), props, row.payload().getBytes(StandardCharsets.UTF_8));
-                    channel.waitForConfirmsOrDie(10_000);
+                    publisher.publish(new BrokerMessage(row.id(), row.eventType(), row.tenantId(), traceparent, row.payload().getBytes(StandardCharsets.UTF_8)));
                     CommandService.update(conn, "UPDATE " + s + ".ghk_outbox SET published_at = now(), claimed_until = NULL WHERE id = ? AND claimed_by = ?", row.id(), workerId);
                     published++;
                 } catch (Exception e) {
@@ -407,8 +761,6 @@ public class OutboxRelay {
 `;
 
   const inbox = `${p}import com.fasterxml.jackson.databind.ObjectMapper;
-import com.rabbitmq.client.Channel;
-import com.rabbitmq.client.GetResponse;
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.SpanKind;
 import io.opentelemetry.api.trace.StatusCode;
@@ -418,7 +770,7 @@ import java.util.Map;
 /**
  * Idempotent consumer: the message id is recorded in ghk_inbox in the same transaction as the
  * handler, so redeliveries are acknowledged without running the handler twice. A handler error
- * rejects the message without requeue, so RabbitMQ dead-letters it to the DLQ.
+ * dead-letters the message (RabbitMQ DLX, Pub/Sub dead-letter topic): it is not redelivered.
  */
 public class InboxConsumer {
     public record Meta(String messageId, String tenantId, String eventType, Connection connection) {}
@@ -430,32 +782,30 @@ public class InboxConsumer {
 
     private static final ObjectMapper JSON = new ObjectMapper();
     private final ConnectionFactory connections;
-    private final Channel channel;
-    private final String queue;
+    private final EventSubscription subscription;
     private final String consumerName;
     private final Handler handler;
     private final String s;
 
-    public InboxConsumer(ConnectionFactory connections, Channel channel, String queue, String consumerName, Handler handler, String schema) {
+    public InboxConsumer(ConnectionFactory connections, EventSubscription subscription, String consumerName, Handler handler, String schema) {
         this.connections = connections;
-        this.channel = channel;
-        this.queue = queue;
+        this.subscription = subscription;
         this.consumerName = consumerName;
         this.handler = handler;
         this.s = Schema.name(schema);
     }
 
-    /** Processes messages until the queue stays empty for idleMillis; returns how many were processed. */
+    /** Processes messages until the source stays empty for idleMillis; returns how many were processed. */
     public int drain(long idleMillis) throws Exception {
         int processed = 0;
         long idleSince = System.currentTimeMillis();
         while (System.currentTimeMillis() - idleSince < idleMillis) {
-            GetResponse response = channel.basicGet(queue, false);
-            if (response == null) {
+            EventSubscription.Delivery delivery = subscription.poll();
+            if (delivery == null) {
                 Thread.sleep(50);
                 continue;
             }
-            process(response);
+            process(delivery);
             processed++;
             idleSince = System.currentTimeMillis();
         }
@@ -463,25 +813,20 @@ public class InboxConsumer {
     }
 
     @SuppressWarnings("unchecked")
-    private void process(GetResponse response) throws Exception {
-        var props = response.getProps();
-        Map<String, Object> headers = props.getHeaders() == null ? Map.of() : props.getHeaders();
-        Object traceparent = headers.get("traceparent");
-        Span span = Telemetry.tracer().spanBuilder(queue + " process")
-            .setParent(Telemetry.contextFrom(traceparent == null ? null : traceparent.toString())).setSpanKind(SpanKind.CONSUMER)
-            .setAttribute("messaging.system", "rabbitmq").setAttribute("messaging.destination.name", queue)
-            .setAttribute("messaging.message.id", String.valueOf(props.getMessageId())).startSpan();
-        long tag = response.getEnvelope().getDeliveryTag();
+    private void process(EventSubscription.Delivery delivery) throws Exception {
+        BrokerMessage message = delivery.message();
+        Span span = Telemetry.tracer().spanBuilder(subscription.source() + " process")
+            .setParent(Telemetry.contextFrom(message.traceparent())).setSpanKind(SpanKind.CONSUMER)
+            .setAttribute("messaging.system", subscription.system()).setAttribute("messaging.destination.name", subscription.source())
+            .setAttribute("messaging.message.id", String.valueOf(message.messageId())).startSpan();
         try (Connection conn = connections.open()) {
             conn.setAutoCommit(false);
             try {
-                if (CommandService.update(conn, "INSERT INTO " + s + ".ghk_inbox (consumer, message_id) VALUES (?, ?) ON CONFLICT DO NOTHING", consumerName, props.getMessageId()) == 1) {
-                    Object tenant = headers.get("tenant_id");
-                    handler.handle(JSON.readValue(response.getBody(), Map.class),
-                        new Meta(props.getMessageId(), tenant == null ? null : tenant.toString(), props.getType(), conn));
+                if (CommandService.update(conn, "INSERT INTO " + s + ".ghk_inbox (consumer, message_id) VALUES (?, ?) ON CONFLICT DO NOTHING", consumerName, message.messageId()) == 1) {
+                    handler.handle(JSON.readValue(message.body(), Map.class), new Meta(message.messageId(), message.tenantId(), message.eventType(), conn));
                 }
                 conn.commit();
-                channel.basicAck(tag, false);
+                delivery.ack().run();
             } catch (Exception e) {
                 conn.rollback();
                 throw e;
@@ -489,7 +834,7 @@ public class InboxConsumer {
         } catch (Exception e) {
             span.recordException(e);
             span.setStatus(StatusCode.ERROR);
-            channel.basicNack(tag, false, false);
+            delivery.deadLetter().run();
         } finally {
             span.end();
         }
@@ -584,8 +929,6 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import ${pkg}.domain.DomainValidationException;
-import com.rabbitmq.client.Channel;
-import com.rabbitmq.client.GetResponse;
 import io.opentelemetry.api.GlobalOpenTelemetry;
 import io.opentelemetry.api.trace.SpanKind;
 import io.opentelemetry.sdk.OpenTelemetrySdk;
@@ -604,49 +947,43 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
-/** Runtime integration tests (docs/RUNTIME-KERNEL.md, IT1-IT7). Requires DATABASE_URL and AMQP_URL. */
+/**
+ * Runtime integration tests (docs/RUNTIME-KERNEL.md, IT1-IT7). Requires DATABASE_URL and the selected
+ * broker (GHK_BROKER: rabbitmq with AMQP_URL, or pubsub with PUBSUB_PROJECT_ID [+ PUBSUB_EMULATOR_HOST]).
+ */
 @Tag("integration")
 class RuntimeIntegrationTest {
     private static final String COMMAND = ${j(first.snake)};
     private static final String EVENT = ${j(first.event)};
     private static final InMemorySpanExporter EXPORTER = InMemorySpanExporter.create();
     private static ConnectionFactory connections;
-    private static com.rabbitmq.client.Connection amqp;
+    private static Broker broker;
     private String schema;
     private Topology topology;
 
     @BeforeAll
     static void connect() throws Exception {
         String dbUrl = System.getenv("DATABASE_URL");
-        String amqpUrl = System.getenv("AMQP_URL");
-        if (dbUrl == null || amqpUrl == null) throw new IllegalStateException("Integration tests need DATABASE_URL and AMQP_URL (see docs/RUNTIME-KERNEL.md).");
+        if (dbUrl == null || !Broker.configured()) throw new IllegalStateException("Integration tests need DATABASE_URL and the broker variables (see docs/RUNTIME-KERNEL.md).");
         GlobalOpenTelemetry.resetForTest();
         OpenTelemetrySdk.builder().setTracerProvider(SdkTracerProvider.builder().addSpanProcessor(SimpleSpanProcessor.create(EXPORTER)).build()).buildAndRegisterGlobal();
         connections = ConnectionFactory.fromUrl(dbUrl);
-        var factory = new com.rabbitmq.client.ConnectionFactory();
-        factory.setUri(amqpUrl);
-        factory.setConnectionTimeout(30_000);
-        factory.setHandshakeTimeout(30_000);
-        // A busy CI host can delay the AMQP handshake: retry before failing the suite.
-        for (int attempt = 1; ; attempt++) {
-            try {
-                amqp = factory.newConnection();
-                break;
-            } catch (java.io.IOException | java.util.concurrent.TimeoutException e) {
-                if (attempt == 5) throw e;
-                Thread.sleep(2000L * attempt);
-            }
-        }
+        broker = Broker.fromEnv();
+    }
+
+    @AfterAll
+    static void disconnect() throws Exception {
+        if (broker != null) broker.close();
     }
 
     @BeforeEach
@@ -655,6 +992,7 @@ class RuntimeIntegrationTest {
         schema = "it_" + uid;
         topology = Topology.forPrefix("it-" + uid);
         Schema.migrate(connections, schema);
+        broker.declare(topology);
         EXPORTER.reset();
     }
 
@@ -675,18 +1013,24 @@ class RuntimeIntegrationTest {
         }
     }
 
-    private static List<GetResponse> drainQueue(Channel channel, String queue) throws Exception {
-        List<GetResponse> out = new ArrayList<>();
-        for (GetResponse r = channel.basicGet(queue, true); r != null; r = channel.basicGet(queue, true)) out.add(r);
-        return out;
-    }
-
-    private static void waitFor(Callable<Boolean> check) throws Exception {
-        long deadline = System.currentTimeMillis() + 10_000;
-        while (!check.call()) {
-            if (System.currentTimeMillis() > deadline) throw new AssertionError("timed out waiting for condition");
-            Thread.sleep(50);
+    /** Receives and acknowledges messages until the expected number arrived and the source stays quiet for 500 ms (10 s at most). */
+    private List<BrokerMessage> receive(String source, int expected) throws Exception {
+        List<BrokerMessage> out = new ArrayList<>();
+        try (EventSubscription subscription = broker.subscribe(source, topology)) {
+            long deadline = System.currentTimeMillis() + 10_000;
+            long quietSince = System.currentTimeMillis();
+            while (System.currentTimeMillis() < deadline && (out.size() < expected || System.currentTimeMillis() - quietSince < 500)) {
+                EventSubscription.Delivery delivery = subscription.poll();
+                if (delivery == null) {
+                    Thread.sleep(50);
+                    continue;
+                }
+                out.add(delivery.message());
+                delivery.ack().run();
+                quietSince = System.currentTimeMillis();
+            }
         }
+        return out;
     }
 
     @Test
@@ -729,16 +1073,16 @@ class RuntimeIntegrationTest {
     void it3ConcurrentRelaysPublishExactlyOnce() throws Exception {
         var service = new CommandService(connections, schema);
         for (int i = 0; i < 20; i++) service.handle(new CommandService.Request("t1", "agg-" + i, COMMAND));
-        Channel setup = amqp.createChannel();
-        topology.declare(setup);
         ExecutorService pool = Executors.newFixedThreadPool(2);
         List<Future<Integer>> totals = new ArrayList<>();
         for (String worker : List.of("relay-a", "relay-b")) {
             totals.add(pool.submit(() -> {
-                var relay = new OutboxRelay(connections, amqp.createChannel(), topology.exchange(), schema);
-                int total = 0;
-                for (int n = relay.publishBatch(worker, 3); n > 0; n = relay.publishBatch(worker, 3)) total += n;
-                return total;
+                try (EventPublisher publisher = broker.publisher(topology.exchange())) {
+                    var relay = new OutboxRelay(connections, publisher, schema);
+                    int total = 0;
+                    for (int n = relay.publishBatch(worker, 3); n > 0; n = relay.publishBatch(worker, 3)) total += n;
+                    return total;
+                }
             }));
         }
         int published = 0;
@@ -746,11 +1090,11 @@ class RuntimeIntegrationTest {
         pool.shutdown();
         assertEquals(20, published);
         assertEquals(0, count("ghk_outbox", "published_at IS NULL"));
-        waitFor(() -> setup.queueDeclarePassive(topology.queue()).getMessageCount() == 20);
+        List<BrokerMessage> received = receive(topology.queue(), 20);
+        assertEquals(20, received.size());
         Set<String> ids = new HashSet<>();
-        for (GetResponse r : drainQueue(setup, topology.queue())) ids.add(r.getProps().getMessageId());
+        for (BrokerMessage m : received) ids.add(m.messageId());
         assertEquals(20, ids.size());
-        setup.close();
     }
 
     @Test
@@ -781,25 +1125,23 @@ class RuntimeIntegrationTest {
 
     @Test
     void it6InboxDeduplicatesAndDeadLetters() throws Exception {
-        Channel channel = amqp.createChannel();
-        topology.declare(channel);
         List<String> handled = new ArrayList<>();
-        var consumer = new InboxConsumer(connections, channel, topology.queue(), "it-consumer", (event, meta) -> {
-            if (Boolean.TRUE.equals(event.get("poison"))) throw new IllegalStateException("cannot process");
-            handled.add(meta.messageId());
-        }, schema);
-        for (String[] m : new String[][] {{"m-1", "{\\"ok\\": true}"}, {"m-1", "{\\"ok\\": true}"}, {"m-poison", "{\\"poison\\": true}"}}) {
-            var props = new com.rabbitmq.client.AMQP.BasicProperties.Builder().messageId(m[0]).headers(Map.of("tenant_id", "t1")).build();
-            channel.basicPublish(topology.exchange(), "Test", props, m[1].getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        try (EventPublisher publisher = broker.publisher(topology.exchange());
+             EventSubscription subscription = broker.subscribe(topology.queue(), topology)) {
+            var consumer = new InboxConsumer(connections, subscription, "it-consumer", (event, meta) -> {
+                if (Boolean.TRUE.equals(event.get("poison"))) throw new IllegalStateException("cannot process");
+                handled.add(meta.messageId());
+            }, schema);
+            for (String[] m : new String[][] {{"m-1", "{\\"ok\\": true}"}, {"m-1", "{\\"ok\\": true}"}, {"m-poison", "{\\"poison\\": true}"}}) {
+                publisher.publish(new BrokerMessage(m[0], "Test", "t1", null, m[1].getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+            }
+            consumer.drain(1000);
         }
-        consumer.drain(1000);
         assertEquals(List.of("m-1"), handled);
         assertEquals(1, count("ghk_inbox", "consumer = ?", "it-consumer"));
-        waitFor(() -> channel.queueDeclarePassive(topology.dlq()).getMessageCount() == 1);
-        var dead = drainQueue(channel, topology.dlq());
+        List<BrokerMessage> dead = receive(topology.dlq(), 1);
         assertEquals(1, dead.size());
-        assertEquals("m-poison", dead.get(0).getProps().getMessageId());
-        channel.close();
+        assertEquals("m-poison", dead.get(0).messageId());
     }
 
     @Test
@@ -810,11 +1152,13 @@ class RuntimeIntegrationTest {
             rs.next();
             assertTrue(rs.getString(1).contains(${j(TEST_TRACE_ID)}));
         }
-        Channel channel = amqp.createChannel();
-        topology.declare(channel);
-        assertEquals(1, new OutboxRelay(connections, channel, topology.exchange(), schema).publishBatch("relay", 10));
+        try (EventPublisher publisher = broker.publisher(topology.exchange())) {
+            assertEquals(1, new OutboxRelay(connections, publisher, schema).publishBatch("relay", 10));
+        }
         List<String> received = new ArrayList<>();
-        new InboxConsumer(connections, amqp.createChannel(), topology.queue(), "trace-consumer", (event, meta) -> received.add(meta.messageId()), schema).drain(1000);
+        try (EventSubscription subscription = broker.subscribe(topology.queue(), topology)) {
+            new InboxConsumer(connections, subscription, "trace-consumer", (event, meta) -> received.add(meta.messageId()), schema).drain(1000);
+        }
         assertEquals(1, received.size());
 
         SpanData command = null, producer = null, consumer = null;
@@ -828,7 +1172,6 @@ class RuntimeIntegrationTest {
         assertEquals(${j(TEST_TRACE_ID)}, producer.getTraceId());
         assertEquals(${j(TEST_TRACE_ID)}, consumer.getTraceId());
         assertEquals(producer.getSpanId(), consumer.getParentSpanId());
-        channel.close();
     }
 }
 `;
@@ -839,6 +1182,12 @@ class RuntimeIntegrationTest {
     { filename: `${dir}/Telemetry.java`, content: telemetry },
     { filename: `${dir}/CommandService.java`, content: commandService },
     { filename: `${dir}/Topology.java`, content: topologyJava },
+    { filename: `${dir}/BrokerMessage.java`, content: brokerMessage },
+    { filename: `${dir}/EventPublisher.java`, content: eventPublisher },
+    { filename: `${dir}/EventSubscription.java`, content: eventSubscription },
+    { filename: `${dir}/Broker.java`, content: broker },
+    { filename: `${dir}/RabbitMqBroker.java`, content: rabbit },
+    { filename: `${dir}/PubSubBroker.java`, content: pubsub },
     { filename: `${dir}/OutboxRelay.java`, content: relay },
     { filename: `${dir}/InboxConsumer.java`, content: inbox },
     { filename: `${dir}/SagaOrchestrator.java`, content: saga },

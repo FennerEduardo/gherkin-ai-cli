@@ -50,7 +50,7 @@ export function generateJavaSpringPreset(parsed: ParsedFeature, config?: Gherkin
     ...renderJavaKernel(m, pkg),
     ...renderJavaKernelTests(m, pkg),
     // Runtime kernel: PostgreSQL + RabbitMQ + OpenTelemetry, verified with -Pintegration (docs/RUNTIME-KERNEL.md).
-    ...renderJvmRuntime(m, pkg, { siblings }),
+    ...renderJvmRuntime(m, pkg, { siblings, messaging: config?.stack?.messaging }),
     // Application layer wired to the kernel (kernel/app/shared.ts): REST, JWT tenant, DataSource, relay worker.
     ...renderSpringAppLayer(m, pkg, tenantClaim(config)),
     ...underBasePackage([

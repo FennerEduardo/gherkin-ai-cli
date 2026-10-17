@@ -29,7 +29,7 @@ export function generateJavaQuarkusPreset(parsed: ParsedFeature, config?: Gherki
     ...renderJavaKernel(m, pkg),
     ...renderJavaKernelTests(m, pkg),
     // Runtime kernel: PostgreSQL + RabbitMQ + OpenTelemetry, verified with -Pintegration (docs/RUNTIME-KERNEL.md).
-    ...renderJvmRuntime(m, pkg, { siblings }),
+    ...renderJvmRuntime(m, pkg, { siblings, messaging: config?.stack?.messaging }),
     // Application layer wired to the kernel: Quarkus REST, JWT tenant, Agroal from DATABASE_URL, relay, health.
     ...renderQuarkusAppLayer(m, pkg, tenantClaim(config))
   ];

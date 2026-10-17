@@ -38,7 +38,10 @@ Where readiness equals liveness, the stack does not yet check its dependencies i
 | Variable | Required | Purpose |
 |---|---|---|
 | `DATABASE_URL` | yes | `postgres://user:password@host:5432/db`. Quarkus maps it to its Agroal pool |
-| `AMQP_URL` | for publishing | `amqp://user:password@host:5672`. Without it, events stay in the outbox |
+| `AMQP_URL` | for publishing (RabbitMQ) | `amqp://user:password@host:5672`. Without a configured broker, events stay in the outbox |
+| `GHK_BROKER` | no | JVM backends (Spring, Quarkus): `rabbitmq` or `pubsub`. Default: the variables that are set, then `stack.messaging` |
+| `PUBSUB_PROJECT_ID` (or `GOOGLE_CLOUD_PROJECT`) | Pub/Sub | GCP project of the topics and subscriptions. The token comes from the workload identity (metadata server) or `GOOGLE_OAUTH_ACCESS_TOKEN` |
+| `PUBSUB_EMULATOR_HOST` | no | `host:8085` of the Pub/Sub emulator (local development and tests) |
 | `JWT_SECRET` | yes | HS256 secret of bearer tokens. The tenant comes from the token claim only |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | no | OpenTelemetry collector |
 | `GHK_OUTBOX_RELAY` | no | `false` turns off the in-process relay (Spring and Quarkus), e.g. when a separate relay runs |

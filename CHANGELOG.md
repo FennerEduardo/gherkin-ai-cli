@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file. See [commit
 ## [3.2.0] - Unreleased
 
 ### Added
+- **Broker adapters in the JVM runtime kernel (Spring Java and Kotlin, Quarkus): RabbitMQ and Google Cloud Pub/Sub (beta, golden `quarkus-pubsub`).**
+  - **Ports.** The outbox relay and the inbox consumer use broker-neutral ports (`EventPublisher`, `EventSubscription`, `Broker`).
+  - **Selection at run time.** `GHK_BROKER` picks the broker; otherwise the configured variables decide. `stack.messaging: "pubsub"` sets the default. One image can run on any cloud.
+  - **Pub/Sub adapter.** It uses the REST API with no client library: it authenticates through the metadata server (workload identity) or `GOOGLE_OAUTH_ACCESS_TOKEN`, publish waits for Pub/Sub to accept the message, and the consumer dead-letters failed messages to the DLX topic.
+  - **Tests.** IT1–IT7 now go through the adapters and pass against both RabbitMQ and the Pub/Sub emulator.
+  - **Harness.** Extra services (`src/core/services.ts`) accept a start command and a readiness probe.
 - **Production container image for every backend.** `ghk generate` writes a `Dockerfile` and `.dockerignore`.
   - **Image.** The build is multi-stage and the image runs as a non-root user. It is configured only with environment variables, so one image runs on ECS, Cloud Run, Container Apps and Kubernetes.
   - **Health.** NestJS and Spring (Java and Kotlin) get `/health` and `/health/ready`, which checks PostgreSQL. Each stack's probe paths are in `resolveHealth`.
