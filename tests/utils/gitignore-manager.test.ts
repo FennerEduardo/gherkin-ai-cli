@@ -14,7 +14,7 @@ describe('ensureGitignore', () => {
   it('creates a .gitignore with gherkin-ai entries and build outputs', () => {
     ensureGitignore(dir);
     const lines = read();
-    for (const entry of ['.ghe/', '.gherkin-ai/', 'node_modules/', 'target/', 'build/', '.gradle/', '**/obj/', '_build/']) expect(lines).toContain(entry);
+    for (const entry of ['.ghe/', '.gherkin-ai/*', '!.gherkin-ai/constitution.yaml', 'node_modules/', 'target/', 'build/', '.gradle/', '**/obj/', '_build/']) expect(lines).toContain(entry);
     // Rails keeps real code in bin/: only .NET build folders are ignored.
     expect(lines).not.toContain('bin/');
     expect(lines).toContain('**/bin/Debug/');
@@ -28,5 +28,9 @@ describe('ensureGitignore', () => {
     expect(lines.filter(l => l === 'target/')).toHaveLength(1);
     expect(lines.filter(l => l === '.gradle/')).toHaveLength(1);
     expect(lines.filter(l => l === '# Build outputs')).toHaveLength(1);
+    // The old whole-directory entry is replaced, so the constitution can be versioned.
+    expect(lines).not.toContain('.gherkin-ai/');
+    expect(lines.filter(l => l === '.gherkin-ai/*')).toHaveLength(1);
+    expect(lines.filter(l => l === '!.gherkin-ai/constitution.yaml')).toHaveLength(1);
   });
 });

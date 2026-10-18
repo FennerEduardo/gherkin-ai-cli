@@ -7,9 +7,13 @@ import path from 'path';
 import { fileExistsSync, readFileSync, writeFileSync } from './file-system';
 import { logger } from './logger';
 
+// .gherkin-ai/ holds credentials (auth.json), logs and caches, but the constitution is the team's architecture
+// policy (ghk init --enterprise) and is versioned: ignore the directory's contents, then re-include it.
+const GHK_LOCAL_DIR = ['.gherkin-ai/*', '!.gherkin-ai/constitution.yaml'];
+
 const GHK_DEFAULT_IGNORES = [
   '.ghe/',
-  '.gherkin-ai/',
+  ...GHK_LOCAL_DIR,
   '*.log',
   '*.jsonl',
   'telemetry.jsonl',
@@ -43,7 +47,7 @@ export function ensureGitignore(workspaceDir: string = process.cwd()): string {
   if (!fileExistsSync(gitignorePath)) {
     const content = `# gherkin-ai CLI Logs, Telemetry & Secrets
 .ghe/
-.gherkin-ai/
+${GHK_LOCAL_DIR.join('\n')}
 *.log
 *.jsonl
 telemetry.jsonl
@@ -79,6 +83,12 @@ Thumbs.db
       .join('\n');
     writeFileSync(gitignorePath, existingContent);
     logger.info(`Removed "generated-specs/" from .gitignore so contracts are tracked in Git at: ${gitignorePath}`);
+  }
+
+  // Earlier versions ignored the whole directory, which git cannot re-include from: switch to its contents.
+  if (existingContent.split(/\r?\n/).some(l => l.trim() === '.gherkin-ai/' || l.trim() === '.gherkin-ai')) {
+    existingContent = existingContent.split(/\r?\n/).map(l => (l.trim() === '.gherkin-ai/' || l.trim() === '.gherkin-ai') ? GHK_LOCAL_DIR.join('\n') : l).join('\n');
+    writeFileSync(gitignorePath, existingContent);
   }
 
   const lines = existingContent.split(/\r?\n/).map(l => l.trim());
