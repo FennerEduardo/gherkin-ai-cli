@@ -4,6 +4,7 @@
    ========================================================================== */
 
 import { DomainModel } from '../domain-model';
+import { defaultJvmBroker as defaultBrokerFor } from './jvm';
 import { LEASE_SECONDS, MAX_PUBLISH_ATTEMPTS, RLS_NOTE, RUNTIME_SCHEMA_SQL, SCHEMA_TOKEN, TEST_PARENT_SPAN_ID, TEST_TRACEPARENT, TEST_TRACE_ID, topology } from './shared';
 
 export interface ExRuntimeFile {
@@ -30,7 +31,9 @@ end
 
 const ex = (s: string) => JSON.stringify(s).replace(/#\{/g, '\\#{');
 
-export function renderExRuntime(m: DomainModel, otp: string, mod: string, siblings: DomainModel[] = []): ExRuntimeFile[] {
+export function renderExRuntime(m: DomainModel, otp: string, mod: string, siblings: DomainModel[] = [], { messaging = undefined as string | undefined } = {}): ExRuntimeFile[] {
+  // Service Bus has no official Elixir SDK: stack.messaging "servicebus" keeps RabbitMQ as the default broker.
+  const defaultBroker = defaultBrokerFor(messaging) === 'pubsub' ? 'pubsub' : 'rabbitmq';
   const all = [m, ...siblings];
   const t = topology(m);
   const agg = `${mod}.Domain.${m.pascal}Aggregate`;
@@ -247,18 +250,229 @@ end
 `;
 
   const topologyEx = `defmodule ${ns}.Topology do
-  @moduledoc "Topic exchange -> consumer queue, which dead-letters rejected messages to a fanout DLX -> DLQ."
+  @moduledoc "Event bus destinations: publish to exchange (topic), consume from queue (subscription); dead letters go to dlx, read from dlq."
   defstruct exchange: ${ex(t.exchange)}, queue: ${ex(t.queue)}, dlx: ${ex(t.dlx)}, dlq: ${ex(t.dlq)}
 
   def for_prefix(prefix), do: %__MODULE__{exchange: "#{prefix}.events", queue: "#{prefix}.consumer", dlx: "#{prefix}.dlx", dlq: "#{prefix}.dlq"}
+end
+`;
 
-  def declare(chan, %__MODULE__{} = t) do
+  const brokerEx = `defmodule ${ns}.Broker do
+  @moduledoc """
+  The event broker behind the outbox relay and the inbox consumer, chosen at run time so one image runs on any
+  cloud: GHK_BROKER=rabbitmq (AMQP_URL) or pubsub (PUBSUB_PROJECT_ID or GOOGLE_CLOUD_PROJECT; PUBSUB_EMULATOR_HOST).
+  Without GHK_BROKER the configured variables decide, then stack.messaging.
+  Azure Service Bus has no official Elixir SDK: on Azure use self-managed RabbitMQ or CloudAMQP (AMQP_URL).
+
+  Messages are maps: %{message_id, event_type, tenant_id, traceparent, body}. poll/1 returns nil or
+  %{message: message, ack: fun, dead_letter: fun}; dead_letter moves the message to the DLQ (it is not redelivered).
+  """
+
+  @default_kind ${ex(defaultBroker)}
+  @metadata_token ~c"http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token"
+
+  defp env(key) do
+    case System.get_env(key) do
+      nil -> nil
+      value -> if String.trim(value) == "", do: nil, else: value
+    end
+  end
+
+  def kind do
+    cond do
+      env("GHK_BROKER") -> env("GHK_BROKER") |> String.trim() |> String.downcase()
+      env("AMQP_URL") -> "rabbitmq"
+      env("PUBSUB_PROJECT_ID") || env("PUBSUB_EMULATOR_HOST") -> "pubsub"
+      true -> @default_kind
+    end
+  end
+
+  @doc "Whether the variables of the selected broker are set."
+  def configured? do
+    if kind() == "pubsub", do: (env("PUBSUB_PROJECT_ID") || env("GOOGLE_CLOUD_PROJECT")) != nil, else: env("AMQP_URL") != nil
+  end
+
+  def connect do
+    case kind() do
+      "rabbitmq" ->
+        url = env("AMQP_URL") || raise "AMQP_URL is not set (amqp://user:password@host:5672)"
+        {:ok, connection} = AMQP.Connection.open(url)
+        %{type: :rabbitmq, connection: connection}
+
+      "pubsub" ->
+        {:ok, _} = Application.ensure_all_started([:inets, :ssl])
+        project = env("PUBSUB_PROJECT_ID") || env("GOOGLE_CLOUD_PROJECT") || raise "PUBSUB_PROJECT_ID (or GOOGLE_CLOUD_PROJECT) is not set"
+        host = env("PUBSUB_EMULATOR_HOST")
+        base = if host, do: "http://#{host}", else: "https://pubsub.googleapis.com"
+        %{type: :pubsub, project: project, root: "#{base}/v1/projects/#{project}", emulator: host != nil}
+
+      "servicebus" ->
+        raise "Azure Service Bus has no official Elixir SDK: use RabbitMQ (self-managed or CloudAMQP) on Azure"
+
+      other ->
+        raise "Unsupported GHK_BROKER: #{other} (rabbitmq, pubsub)"
+    end
+  end
+
+  def system(%{type: :rabbitmq}), do: "rabbitmq"
+  def system(%{type: :pubsub}), do: "gcp_pubsub"
+
+  def close(%{type: :rabbitmq, connection: connection}), do: AMQP.Connection.close(connection)
+  def close(_broker), do: :ok
+
+  @doc "Creates the topology if missing (idempotent); in production it usually comes from infrastructure as code."
+  def declare(%{type: :rabbitmq, connection: connection}, t) do
+    {:ok, chan} = AMQP.Channel.open(connection)
     :ok = AMQP.Exchange.declare(chan, t.exchange, :topic, durable: true)
     :ok = AMQP.Exchange.declare(chan, t.dlx, :fanout, durable: true)
     {:ok, _} = AMQP.Queue.declare(chan, t.dlq, durable: true)
     :ok = AMQP.Queue.bind(chan, t.dlq, t.dlx)
     {:ok, _} = AMQP.Queue.declare(chan, t.queue, durable: true, arguments: [{"x-dead-letter-exchange", :longstr, t.dlx}])
     :ok = AMQP.Queue.bind(chan, t.queue, t.exchange, routing_key: "#")
+    AMQP.Channel.close(chan)
+    :ok
+  end
+
+  def declare(%{type: :pubsub, project: project} = b, t) do
+    # 409: it already exists (created earlier or by infrastructure as code).
+    call(b, :put, "/topics/#{t.exchange}", %{}, [409])
+    call(b, :put, "/topics/#{t.dlx}", %{}, [409])
+    call(b, :put, "/subscriptions/#{t.queue}", %{topic: "projects/#{project}/topics/#{t.exchange}", ackDeadlineSeconds: 60}, [409])
+    call(b, :put, "/subscriptions/#{t.dlq}", %{topic: "projects/#{project}/topics/#{t.dlx}", ackDeadlineSeconds: 60}, [409])
+    :ok
+  end
+
+  @doc "A publisher for one destination; publish/2 returns only once the broker has durably accepted the message."
+  def publisher(%{type: :rabbitmq, connection: connection}, exchange) do
+    {:ok, chan} = AMQP.Channel.open(connection)
+    :ok = AMQP.Confirm.select(chan)
+    %{type: :rabbitmq, chan: chan, destination: exchange}
+  end
+
+  def publisher(%{type: :pubsub} = b, topic), do: %{type: :pubsub, broker: b, destination: topic}
+
+  def publish(%{type: :rabbitmq, chan: chan, destination: exchange}, m) do
+    headers =
+      [{"tenant_id", m.tenant_id}, {"traceparent", m.traceparent}]
+      |> Enum.reject(fn {_, v} -> is_nil(v) end)
+      |> Enum.map(fn {k, v} -> {k, :longstr, v} end)
+
+    :ok = AMQP.Basic.publish(chan, exchange, m.event_type || "", m.body, message_id: m.message_id, persistent: true, content_type: "application/json", type: m.event_type, headers: headers)
+    true = AMQP.Confirm.wait_for_confirms(chan, 10_000)
+    :ok
+  end
+
+  def publish(%{type: :pubsub, broker: b, destination: topic}, m), do: publish_to(b, topic, m)
+
+  def close_publisher(%{type: :rabbitmq, chan: chan}), do: AMQP.Channel.close(chan)
+  def close_publisher(_publisher), do: :ok
+
+  @doc "A subscription on a queue / pull subscription; t says where dead-lettered messages go."
+  def subscribe(%{type: :rabbitmq, connection: connection}, queue, _t) do
+    {:ok, chan} = AMQP.Channel.open(connection)
+    %{type: :rabbitmq, chan: chan, source: queue}
+  end
+
+  def subscribe(%{type: :pubsub} = b, subscription, t), do: %{type: :pubsub, broker: b, source: subscription, dlx: t.dlx}
+
+  def close_subscription(%{type: :rabbitmq, chan: chan}), do: AMQP.Channel.close(chan)
+  def close_subscription(_subscription), do: :ok
+
+  @doc "The next waiting message, or nil."
+  def poll(%{type: :rabbitmq, chan: chan, source: queue}) do
+    case AMQP.Basic.get(chan, queue, no_ack: false) do
+      {:ok, body, meta} ->
+        message = %{message_id: to_string(meta.message_id), event_type: meta.type, tenant_id: header(meta, "tenant_id"), traceparent: header(meta, "traceparent"), body: body}
+        # Rejected without requeue: RabbitMQ dead-letters it through the queue's DLX.
+        %{message: message, ack: fn -> AMQP.Basic.ack(chan, meta.delivery_tag) end, dead_letter: fn -> AMQP.Basic.reject(chan, meta.delivery_tag, requeue: false) end}
+
+      {:empty, _} ->
+        nil
+    end
+  end
+
+  def poll(%{type: :pubsub, broker: b, source: subscription, dlx: dlx}) do
+    case call(b, :post, "/subscriptions/#{subscription}:pull", %{maxMessages: 1, returnImmediately: true}) do
+      %{"receivedMessages" => [first | _]} ->
+        msg = first["message"]
+        attrs = msg["attributes"] || %{}
+
+        message = %{
+          message_id: attrs["ghk_message_id"] || msg["messageId"],
+          event_type: attrs["event_type"],
+          tenant_id: attrs["tenant_id"],
+          traceparent: attrs["traceparent"],
+          body: Base.decode64!(msg["data"] || "")
+        }
+
+        ack = fn -> call(b, :post, "/subscriptions/#{subscription}:acknowledge", %{ackIds: [first["ackId"]]}) end
+
+        %{message: message, ack: ack, dead_letter: fn ->
+          publish_to(b, dlx, message)
+          ack.()
+        end}
+
+      _ ->
+        nil
+    end
+  end
+
+  defp header(meta, name) do
+    headers = if is_list(meta.headers), do: meta.headers, else: []
+
+    case List.keyfind(headers, name, 0) do
+      {_, _, value} -> value
+      _ -> nil
+    end
+  end
+
+  defp publish_to(b, topic, m) do
+    attributes =
+      %{"ghk_message_id" => m.message_id, "event_type" => m.event_type, "tenant_id" => m.tenant_id, "traceparent" => m.traceparent}
+      |> Enum.reject(fn {_, v} -> is_nil(v) end)
+      |> Map.new()
+
+    case call(b, :post, "/topics/#{topic}:publish", %{messages: [%{data: Base.encode64(m.body), attributes: attributes}]}) do
+      %{"messageIds" => [_]} -> :ok
+      other -> raise "Pub/Sub did not accept message #{m.message_id}: #{inspect(other)}"
+    end
+  end
+
+  # Calls the API; a status listed in accepted returns nil instead of failing.
+  defp call(b, method, path, body, accepted \\\\ []) do
+    headers = Enum.map(List.wrap(bearer(b)), &{~c"authorization", String.to_charlist("Bearer " <> &1)})
+    request = {String.to_charlist(b.root <> path), headers, ~c"application/json", Jason.encode!(body)}
+    http_opts = [timeout: 30_000] ++ if(b.emulator, do: [], else: [ssl: ssl_opts()])
+
+    case :httpc.request(method, request, http_opts, body_format: :binary) do
+      {:ok, {{_, status, _}, _headers, response}} when status in 200..299 -> if response == "", do: %{}, else: Jason.decode!(response)
+      {:ok, {{_, status, _}, _headers, response}} -> if status in accepted, do: nil, else: raise("Pub/Sub #{method} #{path} failed: #{status} #{response}")
+      {:error, reason} -> raise "Pub/Sub #{method} #{path} failed: #{inspect(reason)}"
+    end
+  end
+
+  defp ssl_opts, do: [verify: :verify_peer, cacerts: :public_key.cacerts_get(), customize_hostname_check: [match_fun: :public_key.pkix_verify_hostname_match_fun(:https)]]
+
+  defp bearer(%{emulator: true}), do: nil
+
+  defp bearer(_b) do
+    case env("GOOGLE_OAUTH_ACCESS_TOKEN") do
+      nil ->
+        case :persistent_term.get({__MODULE__, :token}, nil) do
+          {token, expires} when expires > 0 -> if System.system_time(:second) < expires, do: token, else: fetch_token()
+          _ -> fetch_token()
+        end
+
+      token ->
+        token
+    end
+  end
+
+  defp fetch_token do
+    {:ok, {{_, 200, _}, _, body}} = :httpc.request(:get, {@metadata_token, [{~c"metadata-flavor", ~c"Google"}]}, [timeout: 5_000], body_format: :binary)
+    %{"access_token" => token, "expires_in" => expires_in} = Jason.decode!(body)
+    :persistent_term.put({__MODULE__, :token}, {token, System.system_time(:second) + expires_in - 60})
+    token
   end
 end
 `;
@@ -266,18 +480,16 @@ end
   const relay = `defmodule ${ns}.OutboxRelay do
   @moduledoc """
   Publishes pending outbox rows. Rows are claimed with FOR UPDATE SKIP LOCKED and a lease, so
-  concurrent relays never publish the same row; publisher confirms guarantee delivery to the
-  broker before a row is marked published. Use one relay (and channel) per process.
+  concurrent relays never publish the same row; the publisher returns only once the broker has
+  accepted the message (RabbitMQ confirms, Pub/Sub publish), before a row is marked published.
+  Use one relay (and publisher, from Broker.publisher/2) per process.
   """
-  alias ${ns}.{Schema, Telemetry}
+  alias ${ns}.{Broker, Schema, Telemetry}
 
   @lease_seconds ${LEASE_SECONDS}
   @max_attempts ${MAX_PUBLISH_ATTEMPTS}
 
-  @doc "Puts the channel in confirm mode; call once per channel."
-  def prepare(chan), do: AMQP.Confirm.select(chan)
-
-  def publish_batch(conn, chan, exchange, schema, worker_id, limit \\\\ 50) do
+  def publish_batch(conn, publisher, schema, worker_id, limit \\\\ 50) do
     s = Schema.name(schema)
 
     %{rows: rows} =
@@ -289,23 +501,22 @@ end
         [worker_id, @lease_seconds * 1.0, limit]
       )
 
-    Enum.count(rows, fn row -> publish(conn, chan, exchange, s, worker_id, row) end)
+    Enum.count(rows, fn row -> publish(conn, publisher, s, worker_id, row) end)
   end
 
-  defp publish(conn, chan, exchange, s, worker_id, [id, tenant, event_type, payload, traceparent]) do
+  defp publish(conn, publisher, s, worker_id, [id, tenant, event_type, payload, traceparent]) do
+    destination = publisher.destination
+
     {span, ctx} =
-      Telemetry.start_span(Telemetry.context_from(traceparent), "#{exchange} publish", :producer, %{
-        "messaging.system" => "rabbitmq",
-        "messaging.destination.name" => exchange,
+      Telemetry.start_span(Telemetry.context_from(traceparent), "#{destination} publish", :producer, %{
+        "messaging.system" => Broker.system(Map.get(publisher, :broker, publisher)),
+        "messaging.destination.name" => destination,
         "messaging.message.id" => id,
         "tenant.id" => tenant
       })
 
-    headers = [{"tenant_id", :longstr, tenant}] ++ Enum.map(List.wrap(Telemetry.traceparent_of(ctx)), &{"traceparent", :longstr, &1})
-
     try do
-      :ok = AMQP.Basic.publish(chan, exchange, event_type, payload, message_id: id, persistent: true, content_type: "application/json", type: event_type, headers: headers)
-      true = AMQP.Confirm.wait_for_confirms(chan, 10_000)
+      :ok = Broker.publish(publisher, %{message_id: id, event_type: event_type, tenant_id: tenant, traceparent: Telemetry.traceparent_of(ctx), body: payload})
       Postgrex.query!(conn, "UPDATE #{s}.ghk_outbox SET published_at = now(), claimed_until = NULL WHERE id = $1 AND claimed_by = $2", [id, worker_id])
       true
     rescue
@@ -329,63 +540,54 @@ end
   @moduledoc """
   Idempotent consumer: the message id is recorded in ghk_inbox in the same transaction as the
   handler, so redeliveries are acknowledged without running the handler twice. A handler error
-  rejects the message without requeue, so RabbitMQ dead-letters it to the DLQ.
+  dead-letters the message (RabbitMQ DLX, Pub/Sub dead-letter topic): it is not redelivered.
   """
-  alias ${ns}.{Schema, Telemetry}
+  alias ${ns}.{Broker, Schema, Telemetry}
 
-  @doc "Processes messages until the queue stays empty for idle_ms; returns how many were processed. handler.(event, meta)"
-  def drain(conn, chan, queue, consumer, schema, handler, idle_ms \\\\ 1000) do
-    loop(conn, chan, queue, consumer, Schema.name(schema), handler, idle_ms, System.monotonic_time(:millisecond), 0)
+  @doc "Processes messages until the subscription stays empty for idle_ms; returns how many were processed. handler.(event, meta)"
+  def drain(conn, subscription, consumer, schema, handler, idle_ms \\\\ 1000) do
+    loop(conn, subscription, consumer, Schema.name(schema), handler, idle_ms, System.monotonic_time(:millisecond), 0)
   end
 
-  defp loop(conn, chan, queue, consumer, s, handler, idle_ms, idle_since, processed) do
+  defp loop(conn, subscription, consumer, s, handler, idle_ms, idle_since, processed) do
     if System.monotonic_time(:millisecond) - idle_since >= idle_ms do
       processed
     else
-      case AMQP.Basic.get(chan, queue, no_ack: false) do
-        {:ok, payload, meta} ->
-          process(conn, chan, queue, consumer, s, handler, payload, meta)
-          loop(conn, chan, queue, consumer, s, handler, idle_ms, System.monotonic_time(:millisecond), processed + 1)
-
-        {:empty, _} ->
+      case Broker.poll(subscription) do
+        nil ->
           Process.sleep(50)
-          loop(conn, chan, queue, consumer, s, handler, idle_ms, idle_since, processed)
+          loop(conn, subscription, consumer, s, handler, idle_ms, idle_since, processed)
+
+        delivery ->
+          process(conn, subscription, consumer, s, handler, delivery)
+          loop(conn, subscription, consumer, s, handler, idle_ms, System.monotonic_time(:millisecond), processed + 1)
       end
     end
   end
 
-  defp header(meta, name) do
-    headers = if is_list(meta.headers), do: meta.headers, else: []
-
-    case List.keyfind(headers, name, 0) do
-      {_, _, value} -> value
-      _ -> nil
-    end
-  end
-
-  defp process(conn, chan, queue, consumer, s, handler, payload, meta) do
+  defp process(conn, subscription, consumer, s, handler, %{message: m} = delivery) do
     {span, _ctx} =
-      Telemetry.start_span(Telemetry.context_from(header(meta, "traceparent")), "#{queue} process", :consumer, %{
-        "messaging.system" => "rabbitmq",
-        "messaging.destination.name" => queue,
-        "messaging.message.id" => to_string(meta.message_id)
+      Telemetry.start_span(Telemetry.context_from(m.traceparent), "#{subscription.source} process", :consumer, %{
+        "messaging.system" => Broker.system(Map.get(subscription, :broker, subscription)),
+        "messaging.destination.name" => subscription.source,
+        "messaging.message.id" => to_string(m.message_id)
       })
 
     try do
       {:ok, _} =
         Postgrex.transaction(conn, fn tx ->
-          %{num_rows: first} = Postgrex.query!(tx, "INSERT INTO #{s}.ghk_inbox (consumer, message_id) VALUES ($1, $2) ON CONFLICT DO NOTHING", [consumer, meta.message_id])
+          %{num_rows: first} = Postgrex.query!(tx, "INSERT INTO #{s}.ghk_inbox (consumer, message_id) VALUES ($1, $2) ON CONFLICT DO NOTHING", [consumer, m.message_id])
 
           if first == 1 do
-            handler.(Jason.decode!(payload), %{message_id: meta.message_id, tenant_id: header(meta, "tenant_id"), event_type: meta.type, conn: tx})
+            handler.(Jason.decode!(m.body), %{message_id: m.message_id, tenant_id: m.tenant_id, event_type: m.event_type, conn: tx})
           end
         end)
 
-      AMQP.Basic.ack(chan, meta.delivery_tag)
+      delivery.ack.()
     rescue
       e ->
         Telemetry.error(span, e)
-        AMQP.Basic.reject(chan, meta.delivery_tag, requeue: false)
+        delivery.dead_letter.()
     after
       :otel_span.end_span(span)
     end
@@ -459,7 +661,10 @@ end
 
   const first = m.commands[0];
   const test = `defmodule ${ns}.IntegrationTest do
-  @moduledoc "Runtime integration tests (docs/RUNTIME-KERNEL.md, IT1-IT7). Requires DATABASE_URL and AMQP_URL."
+  @moduledoc """
+  Runtime integration tests (docs/RUNTIME-KERNEL.md, IT1-IT7). Requires DATABASE_URL and the selected broker
+  (GHK_BROKER: rabbitmq with AMQP_URL, pubsub with PUBSUB_PROJECT_ID [+ PUBSUB_EMULATOR_HOST]).
+  """
   use ExUnit.Case, async: false
   require Record
 
@@ -467,27 +672,31 @@ end
 
   Record.defrecordp(:span, Record.extract(:span, from_lib: "opentelemetry/include/otel_span.hrl"))
 
-  alias ${ns}.{CommandService, InboxConsumer, OutboxRelay, Saga, Schema, Topology}
+  alias ${ns}.{Broker, CommandService, InboxConsumer, OutboxRelay, Saga, Schema, Topology}
 
   @command ${ex(first.snake)}
   @event ${ex(first.event)}
 
   setup_all do
-    database_url = System.get_env("DATABASE_URL") || flunk("Integration tests need DATABASE_URL and AMQP_URL (see docs/RUNTIME-KERNEL.md).")
-    amqp_url = System.get_env("AMQP_URL") || flunk("Integration tests need DATABASE_URL and AMQP_URL (see docs/RUNTIME-KERNEL.md).")
+    database_url = System.get_env("DATABASE_URL") || flunk("Integration tests need DATABASE_URL and the broker variables (see docs/RUNTIME-KERNEL.md).")
+    unless Broker.configured?(), do: flunk("Integration tests need the broker variables (see docs/RUNTIME-KERNEL.md).")
     {:ok, conn} = Postgrex.start_link(Schema.connection_opts(database_url) ++ [pool_size: 10])
-    %{conn: conn, amqp_url: amqp_url}
+    %{conn: conn}
   end
 
   setup %{conn: conn} do
     uid = :crypto.strong_rand_bytes(6) |> Base.encode16(case: :lower)
     schema = "it_#{uid}"
     Schema.migrate(conn, schema)
+    broker = Broker.connect()
+    topology = Topology.for_prefix("it-#{uid}")
+    :ok = Broker.declare(broker, topology)
     on_exit(fn ->
+      Broker.close(broker)
       {:ok, c} = Postgrex.start_link(Schema.connection_opts(System.get_env("DATABASE_URL")))
       Postgrex.query!(c, "DROP SCHEMA IF EXISTS #{schema} CASCADE", [])
     end)
-    %{schema: schema, topology: Topology.for_prefix("it-#{uid}")}
+    %{schema: schema, topology: topology, broker: broker}
   end
 
   defp count(conn, schema, table, where \\\\ "true", params \\\\ []) do
@@ -495,24 +704,30 @@ end
     n
   end
 
-  defp channel(url) do
-    {:ok, connection} = AMQP.Connection.open(url)
-    {:ok, chan} = AMQP.Channel.open(connection)
-    {connection, chan}
+  # Receives and acknowledges messages until expected arrived and the source stays quiet for 500 ms (10 s at most).
+  defp receive_messages(broker, t, source, expected) do
+    subscription = Broker.subscribe(broker, source, t)
+    deadline = System.monotonic_time(:millisecond) + 10_000
+    messages = receive_loop(subscription, expected, deadline, System.monotonic_time(:millisecond), [])
+    Broker.close_subscription(subscription)
+    messages
   end
 
-  defp drain_queue(chan, queue) do
-    case AMQP.Basic.get(chan, queue, no_ack: true) do
-      {:ok, _payload, meta} -> [meta | drain_queue(chan, queue)]
-      {:empty, _} -> []
-    end
-  end
+  defp receive_loop(subscription, expected, deadline, quiet_since, acc) do
+    now = System.monotonic_time(:millisecond)
 
-  defp wait_for(fun, deadline \\\\ System.monotonic_time(:millisecond) + 10_000) do
-    cond do
-      fun.() -> :ok
-      System.monotonic_time(:millisecond) > deadline -> flunk("timed out waiting for condition")
-      true -> Process.sleep(50) && wait_for(fun, deadline)
+    if now >= deadline or (length(acc) >= expected and now - quiet_since >= 500) do
+      Enum.reverse(acc)
+    else
+      case Broker.poll(subscription) do
+        nil ->
+          Process.sleep(50)
+          receive_loop(subscription, expected, deadline, quiet_since, acc)
+
+        delivery ->
+          delivery.ack.()
+          receive_loop(subscription, expected, deadline, System.monotonic_time(:millisecond), [delivery.message | acc])
+      end
     end
   end
 
@@ -545,19 +760,16 @@ end
     assert Enum.uniq(Enum.map(results, &{&1.event_type, &1.version})) == [{@event, 1}]
   end
 
-  test "IT3 two concurrent relays publish every outbox event exactly once", %{conn: conn, schema: schema, topology: t, amqp_url: url} do
+  test "IT3 two concurrent relays publish every outbox event exactly once", %{conn: conn, schema: schema, topology: t, broker: broker} do
     for i <- 0..19, do: CommandService.handle(conn, schema, request("t1", "agg-#{i}"))
-    {setup_connection, setup} = channel(url)
-    Topology.declare(setup, t)
 
     totals =
       ["relay-a", "relay-b"]
       |> Enum.map(fn worker ->
         Task.async(fn ->
-          {connection, chan} = channel(url)
-          :ok = OutboxRelay.prepare(chan)
-          total = Stream.repeatedly(fn -> OutboxRelay.publish_batch(conn, chan, t.exchange, schema, worker, 3) end) |> Enum.take_while(&(&1 > 0)) |> Enum.sum()
-          AMQP.Connection.close(connection)
+          publisher = Broker.publisher(broker, t.exchange)
+          total = Stream.repeatedly(fn -> OutboxRelay.publish_batch(conn, publisher, schema, worker, 3) end) |> Enum.take_while(&(&1 > 0)) |> Enum.sum()
+          Broker.close_publisher(publisher)
           total
         end)
       end)
@@ -565,9 +777,9 @@ end
 
     assert Enum.sum(totals) == 20
     assert count(conn, schema, "ghk_outbox", "published_at IS NULL") == 0
-    wait_for(fn -> AMQP.Queue.message_count(setup, t.queue) == 20 end)
-    assert drain_queue(setup, t.queue) |> Enum.map(& &1.message_id) |> Enum.uniq() |> length() == 20
-    AMQP.Connection.close(setup_connection)
+    received = receive_messages(broker, t, t.queue, 20)
+    assert length(received) == 20
+    assert received |> Enum.map(& &1.message_id) |> Enum.uniq() |> length() == 20
   end
 
   test "IT4 tenants cannot read or change each other's aggregates", %{conn: conn, schema: schema} do
@@ -593,28 +805,29 @@ end
     assert Saga.run(conn, schema, "saga-2", "t1", [step.("reserve", false), step.("charge", false)]) == "COMPLETED"
   end
 
-  test "IT6 a redelivered message is handled once and a failing message is dead-lettered", %{conn: conn, schema: schema, topology: t, amqp_url: url} do
-    {connection, chan} = channel(url)
-    Topology.declare(chan, t)
+  test "IT6 a redelivered message is handled once and a failing message is dead-lettered", %{conn: conn, schema: schema, topology: t, broker: broker} do
     {:ok, handled} = Agent.start_link(fn -> [] end)
+    publisher = Broker.publisher(broker, t.exchange)
 
     for {id, body} <- [{"m-1", ~s({"ok": true})}, {"m-1", ~s({"ok": true})}, {"m-poison", ~s({"poison": true})}] do
-      :ok = AMQP.Basic.publish(chan, t.exchange, "Test", body, message_id: id, headers: [{"tenant_id", :longstr, "t1"}])
+      :ok = Broker.publish(publisher, %{message_id: id, event_type: "Test", tenant_id: "t1", traceparent: nil, body: body})
     end
 
-    InboxConsumer.drain(conn, chan, t.queue, "it-consumer", schema, fn event, meta ->
+    Broker.close_publisher(publisher)
+    subscription = Broker.subscribe(broker, t.queue, t)
+
+    InboxConsumer.drain(conn, subscription, "it-consumer", schema, fn event, meta ->
       if event["poison"], do: raise("cannot process")
       Agent.update(handled, &(&1 ++ [meta.message_id]))
     end)
 
+    Broker.close_subscription(subscription)
     assert Agent.get(handled, & &1) == ["m-1"]
     assert count(conn, schema, "ghk_inbox", "consumer = $1", ["it-consumer"]) == 1
-    wait_for(fn -> AMQP.Queue.message_count(chan, t.dlq) == 1 end)
-    assert drain_queue(chan, t.dlq) |> Enum.map(& &1.message_id) == ["m-poison"]
-    AMQP.Connection.close(connection)
+    assert receive_messages(broker, t, t.dlq, 1) |> Enum.map(& &1.message_id) == ["m-poison"]
   end
 
-  test "IT7 the incoming trace context flows through command, outbox, publish and consume spans", %{conn: conn, schema: schema, topology: t, amqp_url: url} do
+  test "IT7 the incoming trace context flows through command, outbox, publish and consume spans", %{conn: conn, schema: schema, topology: t, broker: broker} do
     # The test env uses otel_simple_processor (config/config.exs); route its exports to this process.
     # Restarting the SDK is not an option: tracers are cached with their processors in persistent_term.
     :otel_simple_processor.set_exporter(:otel_exporter_pid, self())
@@ -625,14 +838,14 @@ end
     %{rows: [[stored]]} = Postgrex.query!(conn, "SELECT traceparent FROM #{schema}.ghk_outbox", [])
     assert stored =~ ${ex(TEST_TRACE_ID)}
 
-    {connection, chan} = channel(url)
-    Topology.declare(chan, t)
-    :ok = OutboxRelay.prepare(chan)
-    assert OutboxRelay.publish_batch(conn, chan, t.exchange, schema, "relay", 10) == 1
+    publisher = Broker.publisher(broker, t.exchange)
+    assert OutboxRelay.publish_batch(conn, publisher, schema, "relay", 10) == 1
+    Broker.close_publisher(publisher)
     {:ok, received} = Agent.start_link(fn -> 0 end)
-    InboxConsumer.drain(conn, chan, t.queue, "trace-consumer", schema, fn _event, _meta -> Agent.update(received, &(&1 + 1)) end)
+    subscription = Broker.subscribe(broker, t.queue, t)
+    InboxConsumer.drain(conn, subscription, "trace-consumer", schema, fn _event, _meta -> Agent.update(received, &(&1 + 1)) end)
+    Broker.close_subscription(subscription)
     assert Agent.get(received, & &1) == 1
-    AMQP.Connection.close(connection)
 
     hex = fn id, size -> id |> Integer.to_string(16) |> String.downcase() |> String.pad_leading(size, "0") end
     command_name = "${m.pascal}.#{@command}"
@@ -666,6 +879,7 @@ end
     { filename: `${dir}/telemetry.ex`, content: telemetry },
     { filename: `${dir}/command_service.ex`, content: commandService },
     { filename: `${dir}/topology.ex`, content: topologyEx },
+    { filename: `${dir}/broker.ex`, content: brokerEx },
     { filename: `${dir}/outbox_relay.ex`, content: relay },
     { filename: `${dir}/inbox_consumer.ex`, content: inbox },
     { filename: `${dir}/saga.ex`, content: saga },

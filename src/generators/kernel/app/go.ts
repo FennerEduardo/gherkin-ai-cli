@@ -266,7 +266,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
-	amqp "github.com/rabbitmq/amqp091-go"
 
 	"${module}/internal/httpapi"
 	"${module}/internal/runtime"
@@ -285,10 +284,10 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	if url := os.Getenv("AMQP_URL"); url != "" {
-		go relayOutbox(ctx, pool, url)
+	if runtime.BrokerConfigured() {
+		go relayOutbox(ctx, pool)
 	} else {
-		log.Print("AMQP_URL is not set: outbox events are stored but not published")
+		log.Print("no event broker is configured (AMQP_URL, PUBSUB_PROJECT_ID or SERVICEBUS_*): outbox events are stored but not published")
 	}
 
 	server := &http.Server{Addr: ":" + envOr("PORT", "8080"), Handler: httpapi.NewRouter(commands, os.Getenv("JWT_SECRET"))}
@@ -304,11 +303,12 @@ func main() {
 	}
 }
 
-// relayOutbox publishes the outbox every ${RELAY_INTERVAL_MS} ms, reconnecting after broker errors.
-func relayOutbox(ctx context.Context, pool *pgxpool.Pool, url string) {
+// relayOutbox publishes the outbox every ${RELAY_INTERVAL_MS} ms through the configured broker (internal/runtime/broker.go),
+// reconnecting after broker errors.
+func relayOutbox(ctx context.Context, pool *pgxpool.Pool) {
 	workerID := ${goStr(m.kebab + '-')} + uuid.NewString()
 	for ctx.Err() == nil {
-		if err := relayUntilError(ctx, pool, url, workerID); err != nil {
+		if err := relayUntilError(ctx, pool, workerID); err != nil {
 			log.Printf("outbox relay: %v (retrying)", err)
 		}
 		select {
@@ -318,20 +318,21 @@ func relayOutbox(ctx context.Context, pool *pgxpool.Pool, url string) {
 	}
 }
 
-func relayUntilError(ctx context.Context, pool *pgxpool.Pool, url, workerID string) error {
-	conn, err := amqp.Dial(url)
+func relayUntilError(ctx context.Context, pool *pgxpool.Pool, workerID string) error {
+	broker, err := runtime.ConnectBroker(ctx)
 	if err != nil {
 		return err
 	}
-	defer conn.Close()
-	ch, err := conn.Channel()
+	defer broker.Close()
+	if err := broker.Declare(ctx, runtime.DefaultTopology); err != nil {
+		return err
+	}
+	publisher, err := broker.Publisher(ctx, runtime.DefaultTopology.Exchange)
 	if err != nil {
 		return err
 	}
-	if err := runtime.DeclareTopology(ch, runtime.DefaultTopology); err != nil {
-		return err
-	}
-	relay, err := runtime.NewOutboxRelay(pool, ch, runtime.DefaultTopology.Exchange, "public")
+	defer publisher.Close()
+	relay, err := runtime.NewOutboxRelay(pool, publisher, "public")
 	if err != nil {
 		return err
 	}

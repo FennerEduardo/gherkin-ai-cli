@@ -104,19 +104,20 @@ end
   const rake = `# frozen_string_literal: true
 
 namespace :outbox do
-  desc "Publish the transactional outbox to RabbitMQ until interrupted (DATABASE_URL, AMQP_URL)"
+  desc "Publish the transactional outbox to the event broker until interrupted (DATABASE_URL; AMQP_URL or PUBSUB_*)"
   task relay: :environment do
-    connection = Bunny.new(ENV.fetch("AMQP_URL"), logger: Logger.new(nil)).tap(&:start)
-    channel = connection.create_channel
-    RuntimeTopology.default.declare(channel)
-    relay = OutboxRelay.new(ENV.fetch("DATABASE_URL"), channel, RuntimeTopology.default.exchange)
+    broker = EventBroker.connect
+    broker.declare(RuntimeTopology.default)
+    publisher = broker.publisher(RuntimeTopology.default.exchange)
+    relay = OutboxRelay.new(ENV.fetch("DATABASE_URL"), publisher)
     worker_id = "${m.kebab}-#{SecureRandom.hex(6)}"
     loop do
       relay.publish_batch(worker_id)
       sleep ${RELAY_INTERVAL_MS / 1000.0}
     end
   ensure
-    connection&.close
+    publisher&.close
+    broker&.close
   end
 end
 `;

@@ -26,7 +26,7 @@ export function generateElixirPhoenixPreset(parsed: ParsedFeature, config?: Gher
   const app = renderPhoenixAppLayer(m, { otp, mod }, tenantClaim(config), { liveview });
   const replaced = new Set(app.map(f => f.filename));
   return [
-    ...renderElixirProject(m, { otp, mod }, featureFile || `features/${m.kebab}.feature`, { liveview, siblings }).filter(f => !replaced.has(f.filename)),
+    ...renderElixirProject(m, { otp, mod }, featureFile || `features/${m.kebab}.feature`, { liveview, siblings, messaging: config?.stack?.messaging }).filter(f => !replaced.has(f.filename)),
     ...app
   ];
 }

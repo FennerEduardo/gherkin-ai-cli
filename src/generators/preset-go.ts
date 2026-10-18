@@ -32,7 +32,7 @@ export function generateGoPreset(parsed: ParsedFeature, config?: GherkinAIConfig
     // The kernel's in-memory HTTP router and server are replaced by the application layer below.
     ...renderGoKernel(m, module).filter(f => !replaced.has(f.filename)),
     // Runtime kernel: PostgreSQL + RabbitMQ + OpenTelemetry, verified with -tags integration (docs/RUNTIME-KERNEL.md).
-    ...renderGoRuntime(m, module, siblings),
+    ...renderGoRuntime(m, module, siblings, { messaging: config?.stack?.messaging }),
     // Application layer wired to the kernel (kernel/app/shared.ts): HTTP commands, JWT tenant, relay worker.
     ...app
   ];

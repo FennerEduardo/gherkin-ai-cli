@@ -9,6 +9,7 @@ import { jvmGroupId } from './preset-java-spring';
 import { isSpringFramework } from './stack-support';
 import { usesServiceBus } from './kernel/runtime/jvm';
 import { CS_SERVICEBUS_PACKAGES } from './kernel/runtime/csharp';
+import { GO_SERVICEBUS_REQUIRES } from './kernel/runtime/go';
 import { industryForConfig } from '../core/profiles/industries';
 import { tagValues } from '../core/profiles/industries/lint-helpers';
 import { dotnetNamespace } from './preset-csharp-dotnet';
@@ -515,7 +516,7 @@ docker run --rm -v "$(pwd)":/app -w /app -e DOTNET_CLI_TELEMETRY_OPTOUT=1 -e DOT
     ];
   } else if (config.stack.language === 'go') {
     projectRootFile = [
-      { filename: 'go.mod', content: renderGoMod(toKebab(config.projectName || 'app')) },
+      { filename: 'go.mod', content: renderGoMod(toKebab(config.projectName || 'app'), { extraRequires: usesServiceBus(config.stack.messaging) ? GO_SERVICEBUS_REQUIRES : [] }) },
       { filename: 'internal/contracts/ports.go', content: GO_CONTRACT_PORTS }
     ];
   } else if (['typescript', 'javascript', 'node'].includes(config.stack.language || '')) {

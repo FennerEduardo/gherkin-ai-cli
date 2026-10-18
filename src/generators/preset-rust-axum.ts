@@ -28,7 +28,7 @@ export function generateRustAxumPreset(parsed: ParsedFeature, config?: GherkinAI
   const app = renderAxumAppLayer(m, crate, tenantClaim(config), siblings);
   const replaced = new Set(app.map(f => f.filename));
   return [
-    ...renderRustProject(m, crate, featureFile || `features/${m.kebab}.feature`, siblings)
+    ...renderRustProject(m, crate, featureFile || `features/${m.kebab}.feature`, siblings, { messaging: config?.stack?.messaging })
       .filter(f => !replaced.has(f.filename))
       .map(f => (f.filename === 'Cargo.toml' ? { ...f, content: f.content.replace(/^\[dependencies\]\n/m, `[dependencies]\n${RS_APP_DEPS}\n`) } : f)),
     ...app

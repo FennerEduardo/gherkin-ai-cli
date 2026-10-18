@@ -153,17 +153,17 @@ pub fn sign_jwt(claims: &Value, secret: &str) -> String {
   const main = `use std::sync::Arc;
 use std::time::Duration;
 
-use ${crate}::runtime::{declare_topology, CommandService, OutboxRelay, Topology};
+use ${crate}::runtime::{broker_configured, Broker, CommandService, OutboxRelay, Topology};
 
 #[tokio::main]
 async fn main() {
     let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL (postgres://user:password@host:5432/db)");
     let pool = sqlx::PgPool::connect(&database_url).await.expect("database");
     let commands = CommandService::new(pool.clone(), "public").expect("command service");
-    if let Ok(amqp_url) = std::env::var("AMQP_URL") {
-        tokio::spawn(relay_outbox(pool.clone(), amqp_url));
+    if broker_configured() {
+        tokio::spawn(relay_outbox(pool.clone()));
     } else {
-        eprintln!("AMQP_URL is not set: outbox events are stored but not published");
+        eprintln!("no event broker is configured (AMQP_URL or PUBSUB_PROJECT_ID): outbox events are stored but not published");
     }
 
     let port = std::env::var("PORT").unwrap_or_else(|_| "8080".into());
@@ -173,23 +173,24 @@ async fn main() {
     axum::serve(listener, app).await.expect("server");
 }
 
-/// Publishes the outbox every ${RELAY_INTERVAL_MS} ms, reconnecting after broker errors.
-async fn relay_outbox(pool: sqlx::PgPool, amqp_url: String) {
+/// Publishes the outbox every ${RELAY_INTERVAL_MS} ms through the configured broker (runtime/broker.rs),
+/// reconnecting after broker errors.
+async fn relay_outbox(pool: sqlx::PgPool) {
     let worker_id = format!("${m.kebab}-{}", uuid::Uuid::new_v4());
     loop {
-        if let Err(e) = relay_until_error(&pool, &amqp_url, &worker_id).await {
+        if let Err(e) = relay_until_error(&pool, &worker_id).await {
             eprintln!("outbox relay: {e} (retrying)");
         }
         tokio::time::sleep(Duration::from_secs(5)).await;
     }
 }
 
-async fn relay_until_error(pool: &sqlx::PgPool, amqp_url: &str, worker_id: &str) -> Result<(), Box<dyn std::error::Error>> {
-    let connection = lapin::Connection::connect(amqp_url, lapin::ConnectionProperties::default()).await?;
-    let channel = connection.create_channel().await?;
+async fn relay_until_error(pool: &sqlx::PgPool, worker_id: &str) -> Result<(), Box<dyn std::error::Error>> {
+    let broker = Broker::connect().await?;
     let topology = Topology::default();
-    declare_topology(&channel, &topology).await?;
-    let relay = OutboxRelay::new(pool.clone(), channel, &topology.exchange, "public").await?;
+    broker.declare(&topology).await?;
+    let publisher = broker.publisher(&topology.exchange).await?;
+    let relay = OutboxRelay::new(pool.clone(), publisher, "public")?;
     loop {
         relay.publish_batch(worker_id, 50).await?;
         tokio::time::sleep(Duration::from_millis(${RELAY_INTERVAL_MS})).await;

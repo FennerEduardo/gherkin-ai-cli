@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file. See [commit
 ## [3.2.0] - Unreleased
 
 ### Added
+- **Broker adapters for the Go, Rust, Ruby, Elixir and PHP runtime kernels (beta).**
+  - **Pub/Sub in all five.** REST with no client library (Go `net/http`, Rust `reqwest`, Ruby `Net::HTTP`, Elixir `:httpc`, PHP streams), behind the same ports and run-time selection as the other stacks.
+  - **Service Bus in Go only.** `runtime/servicebus_broker.go` uses `azservicebus` and `azidentity`, and is generated only with `stack.messaging: "servicebus"`.
+  - **No Service Bus for Rust, Ruby, Elixir and PHP.** They have no official SDK. On Azure, use self-managed RabbitMQ or CloudAMQP (`AMQP_URL`). With `stack.messaging: "servicebus"`, RabbitMQ stays the default broker.
+  - **Inbox.** The consumers poll the subscription and dead-letter through the adapter. IT1–IT7 run through the ports.
+  - **Goldens.** `go-pubsub`, `go-servicebus`, `rust-pubsub`, `rails-pubsub`, `phoenix-pubsub` and `laravel-pubsub`.
 - **Pub/Sub and Service Bus adapters for the .NET and Python runtime kernels (beta).**
   - **.NET.** `Runtime/Brokers.cs` and `Runtime/ServiceBusBroker.cs`, with Azure.Messaging.ServiceBus and Azure.Identity.
   - **Python.** `app/runtime/broker.py` and `servicebus_broker.py`, with azure-servicebus and azure-identity.

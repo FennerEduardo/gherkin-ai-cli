@@ -26,7 +26,7 @@ export function generateRubyRailsPreset(parsed: ParsedFeature, config?: GherkinA
     // The skeleton's in-memory controller and its request spec are replaced by the application layer below.
     ...renderRailsApp(m, /^[A-Z]/.test(appModule) ? appModule : `App${appModule}`, siblings).filter(f => !replaced.has(f.filename)),
     // Runtime kernel: PostgreSQL + RabbitMQ + OpenTelemetry, verified by rspec --tag integration (docs/RUNTIME-KERNEL.md).
-    ...renderRbRuntime(m, siblings),
+    ...renderRbRuntime(m, siblings, { messaging: config?.stack?.messaging }),
     // Application layer wired to the kernel (kernel/app/shared.ts): HTTP commands, JWT tenant, `rails outbox:relay`.
     ...app
   ];

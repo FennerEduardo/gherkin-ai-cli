@@ -4,6 +4,7 @@
    ========================================================================== */
 
 import { DomainModel } from '../domain-model';
+import { defaultJvmBroker as defaultBrokerFor } from './jvm';
 import { LEASE_SECONDS, MAX_PUBLISH_ATTEMPTS, RLS_NOTE, RUNTIME_SCHEMA_SQL, SCHEMA_TOKEN, TEST_PARENT_SPAN_ID, TEST_TRACEPARENT, TEST_TRACE_ID, topology } from './shared';
 
 export interface RsRuntimeFile {
@@ -16,6 +17,7 @@ const rsStr = (s: string) => JSON.stringify(s);
 /** Cargo dependencies of the runtime kernel (appended to [dependencies]). */
 export const RS_RUNTIME_DEPS = `futures-util = "0.3"
 lapin = "2"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
 opentelemetry = "0.33"
 opentelemetry_sdk = "0.33"
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "postgres"] }
@@ -27,13 +29,16 @@ export const RS_RUNTIME_FEATURES = `[features]
 # Runtime integration tests (PostgreSQL + RabbitMQ): cargo test --features integration --test runtime_integration
 integration = []`;
 
-export function renderRsRuntime(m: DomainModel, crate: string, siblings: DomainModel[] = []): RsRuntimeFile[] {
+export function renderRsRuntime(m: DomainModel, crate: string, siblings: DomainModel[] = [], { messaging = undefined as string | undefined } = {}): RsRuntimeFile[] {
+  // Service Bus has no official Rust SDK: stack.messaging "servicebus" keeps RabbitMQ as the default broker.
+  const defaultBroker = defaultBrokerFor(messaging) === 'pubsub' ? 'pubsub' : 'rabbitmq';
   const all = [m, ...siblings];
   const t = topology(m);
   const A = `${m.pascal}Aggregate`;
   const first = m.commands[0];
 
   const mod = `//! Verified persistence, messaging and tracing path (docs/RUNTIME-KERNEL.md).
+mod broker;
 mod command_service;
 mod error;
 mod inbox_consumer;
@@ -45,7 +50,8 @@ pub mod telemetry;
 pub use command_service::{CommandRequest, CommandResult, CommandService, Snapshot};
 pub use error::RuntimeError;
 pub use inbox_consumer::{InboxConsumer, Meta};
-pub use outbox_relay::{declare_topology, OutboxRelay, Topology};
+pub use broker::{broker_configured, broker_kind, Broker, BrokerMessage, Delivery, EventPublisher, EventSubscription, PubSubBroker, Topology, DEFAULT_BROKER};
+pub use outbox_relay::OutboxRelay;
 pub use saga::{SagaOrchestrator, SagaStep};
 pub use schema::{migrate, schema_name};
 `;
@@ -380,17 +386,25 @@ ${all.map(a => `            ${rsStr(a.pascal)} => apply_${a.snake}(stored, &req.
 }
 `;
 
-  const relay = `use std::time::Duration;
+  const broker = `//! The event broker behind the outbox relay and the inbox consumer, chosen at run time so one image runs on
+//! any cloud: GHK_BROKER=rabbitmq (AMQP_URL) or pubsub (PUBSUB_PROJECT_ID or GOOGLE_CLOUD_PROJECT;
+//! PUBSUB_EMULATOR_HOST). Without GHK_BROKER the configured variables decide, then stack.messaging.
+//! Azure Service Bus has no official Rust SDK: on Azure use self-managed RabbitMQ or CloudAMQP (AMQP_URL).
+use std::sync::Arc;
+use std::time::{Duration, Instant};
 
-use lapin::options::{BasicPublishOptions, ConfirmSelectOptions, ExchangeDeclareOptions, QueueBindOptions, QueueDeclareOptions};
+use base64::engine::general_purpose::STANDARD;
+use base64::Engine;
+use lapin::message::Delivery as AmqpDelivery;
+use lapin::options::{BasicAckOptions, BasicGetOptions, BasicNackOptions, BasicPublishOptions, ConfirmSelectOptions, ExchangeDeclareOptions, QueueBindOptions, QueueDeclareOptions};
 use lapin::types::{AMQPValue, FieldTable};
-use lapin::{BasicProperties, Channel, ExchangeKind};
-use opentelemetry::trace::SpanKind;
-use opentelemetry::KeyValue;
-use sqlx::PgPool;
+use lapin::{BasicProperties, Channel, Connection, ConnectionProperties, ExchangeKind};
+use serde_json::{json, Value};
+use tokio::sync::Mutex;
 
-use super::{schema_name, telemetry, RuntimeError};
+use super::RuntimeError;
 
+/// Publish to \`exchange\` (topic), consume from \`queue\` (subscription); dead letters go to \`dlx\`, read from \`dlq\`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Topology {
     pub exchange: String,
@@ -412,41 +426,421 @@ impl Default for Topology {
     }
 }
 
-fn durable_queue() -> QueueDeclareOptions {
-    QueueDeclareOptions { durable: true, ..Default::default() }
+/// Broker of the generated configuration (stack.messaging).
+pub const DEFAULT_BROKER: &str = ${rsStr(defaultBroker)};
+
+/// A domain event on the wire, independent of the broker.
+#[derive(Debug, Clone)]
+pub struct BrokerMessage {
+    pub message_id: String,
+    pub event_type: Option<String>,
+    pub tenant_id: Option<String>,
+    pub traceparent: Option<String>,
+    pub body: Vec<u8>,
 }
 
-/// Declares a topic exchange -> consumer queue that dead-letters to a fanout DLX -> DLQ.
-pub async fn declare_topology(channel: &Channel, t: &Topology) -> Result<(), RuntimeError> {
-    let durable = ExchangeDeclareOptions { durable: true, ..Default::default() };
-    channel.exchange_declare(&t.exchange, ExchangeKind::Topic, durable, FieldTable::default()).await?;
-    channel.exchange_declare(&t.dlx, ExchangeKind::Fanout, durable, FieldTable::default()).await?;
-    channel.queue_declare(&t.dlq, durable_queue(), FieldTable::default()).await?;
-    channel.queue_bind(&t.dlq, &t.dlx, "", QueueBindOptions::default(), FieldTable::default()).await?;
-    let mut args = FieldTable::default();
-    args.insert("x-dead-letter-exchange".into(), AMQPValue::LongString(t.dlx.clone().into()));
-    channel.queue_declare(&t.queue, durable_queue(), args).await?;
-    channel.queue_bind(&t.queue, &t.exchange, "#", QueueBindOptions::default(), FieldTable::default()).await?;
-    Ok(())
+fn env(key: &str) -> Option<String> {
+    std::env::var(key).ok().filter(|v| !v.trim().is_empty())
 }
+
+/// GHK_BROKER, else the broker whose variables are set, else DEFAULT_BROKER.
+pub fn broker_kind() -> String {
+    if let Some(kind) = env("GHK_BROKER") {
+        return kind.trim().to_lowercase();
+    }
+    if env("AMQP_URL").is_some() {
+        return "rabbitmq".into();
+    }
+    if env("PUBSUB_PROJECT_ID").is_some() || env("PUBSUB_EMULATOR_HOST").is_some() {
+        return "pubsub".into();
+    }
+    DEFAULT_BROKER.into()
+}
+
+/// Whether the variables of the selected broker are set.
+pub fn broker_configured() -> bool {
+    match broker_kind().as_str() {
+        "pubsub" => env("PUBSUB_PROJECT_ID").is_some() || env("GOOGLE_CLOUD_PROJECT").is_some(),
+        _ => env("AMQP_URL").is_some(),
+    }
+}
+
+/// The event broker (enum dispatch keeps the adapters free of async traits).
+pub enum Broker {
+    RabbitMq(Connection),
+    PubSub(PubSubBroker),
+}
+
+impl Broker {
+    pub async fn connect() -> Result<Self, RuntimeError> {
+        match broker_kind().as_str() {
+            "rabbitmq" => {
+                let url = env("AMQP_URL").ok_or_else(|| RuntimeError::Other("AMQP_URL is not set (amqp://user:password@host:5672)".into()))?;
+                // A busy host can delay the AMQP handshake: retry before failing.
+                let mut attempt = 1;
+                loop {
+                    match Connection::connect(&url, ConnectionProperties::default()).await {
+                        Ok(connection) => return Ok(Broker::RabbitMq(connection)),
+                        Err(e) if attempt == 5 => return Err(e.into()),
+                        Err(_) => {
+                            tokio::time::sleep(Duration::from_secs(2 * attempt)).await;
+                            attempt += 1;
+                        }
+                    }
+                }
+            }
+            "pubsub" => Ok(Broker::PubSub(PubSubBroker::from_env()?)),
+            "servicebus" => Err(RuntimeError::Other("Azure Service Bus has no official Rust SDK: use RabbitMQ (self-managed or CloudAMQP) on Azure".into())),
+            kind => Err(RuntimeError::Other(format!("unsupported GHK_BROKER: {kind} (rabbitmq, pubsub)"))),
+        }
+    }
+
+    pub fn system(&self) -> &'static str {
+        match self {
+            Broker::RabbitMq(_) => "rabbitmq",
+            Broker::PubSub(_) => "gcp_pubsub",
+        }
+    }
+
+    /// Creates the topology if missing (idempotent); in production it usually comes from infrastructure as code.
+    pub async fn declare(&self, t: &Topology) -> Result<(), RuntimeError> {
+        match self {
+            Broker::RabbitMq(connection) => {
+                let channel = connection.create_channel().await?;
+                let durable = ExchangeDeclareOptions { durable: true, ..Default::default() };
+                let queue = QueueDeclareOptions { durable: true, ..Default::default() };
+                channel.exchange_declare(&t.exchange, ExchangeKind::Topic, durable, FieldTable::default()).await?;
+                channel.exchange_declare(&t.dlx, ExchangeKind::Fanout, durable, FieldTable::default()).await?;
+                channel.queue_declare(&t.dlq, queue, FieldTable::default()).await?;
+                channel.queue_bind(&t.dlq, &t.dlx, "", QueueBindOptions::default(), FieldTable::default()).await?;
+                let mut args = FieldTable::default();
+                args.insert("x-dead-letter-exchange".into(), AMQPValue::LongString(t.dlx.clone().into()));
+                channel.queue_declare(&t.queue, queue, args).await?;
+                channel.queue_bind(&t.queue, &t.exchange, "#", QueueBindOptions::default(), FieldTable::default()).await?;
+                let _ = channel.close(200, "declared").await;
+                Ok(())
+            }
+            Broker::PubSub(pubsub) => pubsub.declare(t).await,
+        }
+    }
+
+    pub async fn publisher(&self, destination: &str) -> Result<EventPublisher, RuntimeError> {
+        match self {
+            Broker::RabbitMq(connection) => {
+                let channel = connection.create_channel().await?;
+                channel.confirm_select(ConfirmSelectOptions::default()).await?;
+                Ok(EventPublisher::RabbitMq { channel, exchange: destination.to_string() })
+            }
+            Broker::PubSub(pubsub) => Ok(EventPublisher::PubSub { broker: pubsub.clone(), topic: destination.to_string() }),
+        }
+    }
+
+    /// \`t\` says where dead-lettered messages go.
+    pub async fn subscribe(&self, source: &str, t: &Topology) -> Result<EventSubscription, RuntimeError> {
+        match self {
+            Broker::RabbitMq(connection) => Ok(EventSubscription::RabbitMq { channel: connection.create_channel().await?, queue: source.to_string() }),
+            Broker::PubSub(pubsub) => Ok(EventSubscription::PubSub { broker: pubsub.clone(), subscription: source.to_string(), dlx: t.dlx.clone() }),
+        }
+    }
+
+    pub async fn close(&self) {
+        if let Broker::RabbitMq(connection) = self {
+            let _ = connection.close(200, "done").await;
+        }
+    }
+}
+
+/// Publishes to one destination; publish returns only once the broker has durably accepted the message.
+pub enum EventPublisher {
+    RabbitMq { channel: Channel, exchange: String },
+    PubSub { broker: PubSubBroker, topic: String },
+}
+
+impl EventPublisher {
+    pub fn system(&self) -> &'static str {
+        match self {
+            EventPublisher::RabbitMq { .. } => "rabbitmq",
+            EventPublisher::PubSub { .. } => "gcp_pubsub",
+        }
+    }
+
+    pub fn destination(&self) -> &str {
+        match self {
+            EventPublisher::RabbitMq { exchange, .. } => exchange,
+            EventPublisher::PubSub { topic, .. } => topic,
+        }
+    }
+
+    pub async fn publish(&self, m: &BrokerMessage) -> Result<(), RuntimeError> {
+        match self {
+            EventPublisher::RabbitMq { channel, exchange } => {
+                let mut headers = FieldTable::default();
+                if let Some(tenant) = &m.tenant_id {
+                    headers.insert("tenant_id".into(), AMQPValue::LongString(tenant.clone().into()));
+                }
+                if let Some(tp) = &m.traceparent {
+                    headers.insert("traceparent".into(), AMQPValue::LongString(tp.clone().into()));
+                }
+                let key = m.event_type.clone().unwrap_or_default();
+                let properties = BasicProperties::default()
+                    .with_message_id(m.message_id.clone().into())
+                    .with_delivery_mode(2)
+                    .with_content_type("application/json".into())
+                    .with_type(key.clone().into())
+                    .with_headers(headers);
+                let confirm = channel.basic_publish(exchange, &key, BasicPublishOptions::default(), &m.body, properties).await?;
+                let confirmation = tokio::time::timeout(Duration::from_secs(10), confirm)
+                    .await
+                    .map_err(|_| RuntimeError::Other("publisher confirm timed out".into()))??;
+                if confirmation.is_ack() {
+                    Ok(())
+                } else {
+                    Err(RuntimeError::Other("message was not acknowledged by the broker".into()))
+                }
+            }
+            EventPublisher::PubSub { broker, topic } => broker.publish_to(topic, m).await,
+        }
+    }
+
+    pub async fn close(&self) {
+        if let EventPublisher::RabbitMq { channel, .. } = self {
+            let _ = channel.close(200, "done").await;
+        }
+    }
+}
+
+/// How a received message is acknowledged or dead-lettered.
+enum Settle {
+    RabbitMq(AmqpDelivery),
+    PubSub { broker: PubSubBroker, subscription: String, ack_id: String, dlx: String },
+}
+
+/// A received message: ack() once processed; dead_letter() moves it to the DLQ (it is not redelivered).
+pub struct Delivery {
+    pub message: BrokerMessage,
+    settle: Settle,
+}
+
+impl Delivery {
+    pub async fn ack(&self) -> Result<(), RuntimeError> {
+        match &self.settle {
+            Settle::RabbitMq(delivery) => Ok(delivery.ack(BasicAckOptions::default()).await?),
+            Settle::PubSub { broker, subscription, ack_id, .. } => broker.acknowledge(subscription, ack_id).await,
+        }
+    }
+
+    pub async fn dead_letter(&self) -> Result<(), RuntimeError> {
+        match &self.settle {
+            // Rejected without requeue: RabbitMQ dead-letters it through the queue's DLX.
+            Settle::RabbitMq(delivery) => Ok(delivery.nack(BasicNackOptions { requeue: false, ..Default::default() }).await?),
+            Settle::PubSub { broker, subscription, ack_id, dlx } => {
+                broker.publish_to(dlx, &self.message).await?;
+                broker.acknowledge(subscription, ack_id).await
+            }
+        }
+    }
+}
+
+/// Pulls messages from one queue / subscription.
+pub enum EventSubscription {
+    RabbitMq { channel: Channel, queue: String },
+    PubSub { broker: PubSubBroker, subscription: String, dlx: String },
+}
+
+fn header(headers: &Option<FieldTable>, key: &str) -> Option<String> {
+    match headers.as_ref()?.inner().get(key)? {
+        AMQPValue::LongString(value) => Some(String::from_utf8_lossy(value.as_bytes()).into_owned()),
+        AMQPValue::ShortString(value) => Some(value.as_str().to_string()),
+        _ => None,
+    }
+}
+
+impl EventSubscription {
+    pub fn system(&self) -> &'static str {
+        match self {
+            EventSubscription::RabbitMq { .. } => "rabbitmq",
+            EventSubscription::PubSub { .. } => "gcp_pubsub",
+        }
+    }
+
+    pub fn source(&self) -> &str {
+        match self {
+            EventSubscription::RabbitMq { queue, .. } => queue,
+            EventSubscription::PubSub { subscription, .. } => subscription,
+        }
+    }
+
+    /// The next waiting message, or None when there is none.
+    pub async fn poll(&self) -> Result<Option<Delivery>, RuntimeError> {
+        match self {
+            EventSubscription::RabbitMq { channel, queue } => {
+                let Some(got) = channel.basic_get(queue, BasicGetOptions { no_ack: false }).await? else { return Ok(None) };
+                let delivery = got.delivery;
+                let props = &delivery.properties;
+                let message = BrokerMessage {
+                    message_id: props.message_id().as_ref().map(|id| id.as_str().to_string()).unwrap_or_default(),
+                    event_type: props.kind().as_ref().map(|k| k.as_str().to_string()),
+                    tenant_id: header(props.headers(), "tenant_id"),
+                    traceparent: header(props.headers(), "traceparent"),
+                    body: delivery.data.clone(),
+                };
+                Ok(Some(Delivery { message, settle: Settle::RabbitMq(delivery) }))
+            }
+            EventSubscription::PubSub { broker, subscription, dlx } => broker.pull(subscription, dlx).await,
+        }
+    }
+
+    pub async fn close(&self) {
+        if let EventSubscription::RabbitMq { channel, .. } = self {
+            let _ = channel.close(200, "done").await;
+        }
+    }
+}
+
+const METADATA_TOKEN: &str = "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token";
+
+/// Google Cloud Pub/Sub over its REST API (no client library): topics for the exchange and the DLX, pull
+/// subscriptions for the queue and the DLQ. publish returns once Pub/Sub has stored the message. A failed message is
+/// dead-lettered by the consumer: published to the DLX topic, then acknowledged.
+/// Auth: none against the emulator (PUBSUB_EMULATOR_HOST); otherwise GOOGLE_OAUTH_ACCESS_TOKEN or the metadata-server
+/// token of the workload's service account (Cloud Run, GKE workload identity).
+#[derive(Clone)]
+pub struct PubSubBroker {
+    http: reqwest::Client,
+    project: String,
+    root: String,
+    emulator: bool,
+    token: Arc<Mutex<Option<(String, Instant)>>>,
+}
+
+impl PubSubBroker {
+    pub fn new(project: &str, emulator_host: Option<String>) -> Self {
+        let emulator = emulator_host.is_some();
+        let base = emulator_host.map(|h| format!("http://{h}")).unwrap_or_else(|| "https://pubsub.googleapis.com".into());
+        let http = reqwest::Client::builder().timeout(Duration::from_secs(30)).build().expect("http client");
+        Self { http, project: project.to_string(), root: format!("{base}/v1/projects/{project}"), emulator, token: Arc::new(Mutex::new(None)) }
+    }
+
+    pub fn from_env() -> Result<Self, RuntimeError> {
+        let project = env("PUBSUB_PROJECT_ID").or_else(|| env("GOOGLE_CLOUD_PROJECT"))
+            .ok_or_else(|| RuntimeError::Other("PUBSUB_PROJECT_ID (or GOOGLE_CLOUD_PROJECT) is not set".into()))?;
+        Ok(Self::new(&project, env("PUBSUB_EMULATOR_HOST")))
+    }
+
+    async fn bearer(&self) -> Result<Option<String>, RuntimeError> {
+        if self.emulator {
+            return Ok(None);
+        }
+        if let Some(token) = env("GOOGLE_OAUTH_ACCESS_TOKEN") {
+            return Ok(Some(token));
+        }
+        let mut cached = self.token.lock().await;
+        if let Some((token, expires)) = cached.as_ref() {
+            if Instant::now() < *expires {
+                return Ok(Some(token.clone()));
+            }
+        }
+        let res = self.http.get(METADATA_TOKEN).header("Metadata-Flavor", "Google").send().await.map_err(other)?;
+        let body: Value = serde_json::from_slice(&res.bytes().await.map_err(other)?)?;
+        let token = body["access_token"].as_str().unwrap_or_default().to_string();
+        let expires = Instant::now() + Duration::from_secs(body["expires_in"].as_u64().unwrap_or(300).saturating_sub(60));
+        *cached = Some((token.clone(), expires));
+        Ok(Some(token))
+    }
+
+    /// Calls the API; a status listed in \`accepted\` returns Ok(None) instead of failing.
+    async fn call(&self, method: reqwest::Method, path: &str, body: Value, accepted: &[u16]) -> Result<Option<Value>, RuntimeError> {
+        let mut req = self.http.request(method.clone(), format!("{}{path}", self.root)).header("Content-Type", "application/json").body(body.to_string());
+        if let Some(token) = self.bearer().await? {
+            req = req.bearer_auth(token);
+        }
+        let res = req.send().await.map_err(other)?;
+        let status = res.status();
+        let raw = res.bytes().await.map_err(other)?;
+        if status.is_success() {
+            return Ok(Some(if raw.is_empty() { json!({}) } else { serde_json::from_slice(&raw)? }));
+        }
+        if accepted.contains(&status.as_u16()) {
+            return Ok(None);
+        }
+        Err(RuntimeError::Other(format!("pub/sub {method} {path} failed: {status} {}", String::from_utf8_lossy(&raw))))
+    }
+
+    async fn declare(&self, t: &Topology) -> Result<(), RuntimeError> {
+        // 409: it already exists (created earlier or by infrastructure as code).
+        let project = &self.project;
+        self.call(reqwest::Method::PUT, &format!("/topics/{}", t.exchange), json!({}), &[409]).await?;
+        self.call(reqwest::Method::PUT, &format!("/topics/{}", t.dlx), json!({}), &[409]).await?;
+        self.call(reqwest::Method::PUT, &format!("/subscriptions/{}", t.queue), json!({"topic": format!("projects/{project}/topics/{}", t.exchange), "ackDeadlineSeconds": 60}), &[409]).await?;
+        self.call(reqwest::Method::PUT, &format!("/subscriptions/{}", t.dlq), json!({"topic": format!("projects/{project}/topics/{}", t.dlx), "ackDeadlineSeconds": 60}), &[409]).await?;
+        Ok(())
+    }
+
+    async fn publish_to(&self, topic: &str, m: &BrokerMessage) -> Result<(), RuntimeError> {
+        let mut attributes = serde_json::Map::new();
+        attributes.insert("ghk_message_id".into(), json!(m.message_id));
+        for (key, value) in [("event_type", &m.event_type), ("tenant_id", &m.tenant_id), ("traceparent", &m.traceparent)] {
+            if let Some(v) = value {
+                attributes.insert(key.into(), json!(v));
+            }
+        }
+        let res = self.call(reqwest::Method::POST, &format!("/topics/{topic}:publish"), json!({"messages": [{"data": STANDARD.encode(&m.body), "attributes": attributes}]}), &[]).await?;
+        match res.as_ref().and_then(|r| r["messageIds"].as_array()).map(|ids| ids.len()) {
+            Some(1) => Ok(()),
+            _ => Err(RuntimeError::Other(format!("pub/sub did not accept message {}", m.message_id))),
+        }
+    }
+
+    async fn acknowledge(&self, subscription: &str, ack_id: &str) -> Result<(), RuntimeError> {
+        self.call(reqwest::Method::POST, &format!("/subscriptions/{subscription}:acknowledge"), json!({"ackIds": [ack_id]}), &[]).await.map(|_| ())
+    }
+
+    async fn pull(&self, subscription: &str, dlx: &str) -> Result<Option<Delivery>, RuntimeError> {
+        let res = self.call(reqwest::Method::POST, &format!("/subscriptions/{subscription}:pull"), json!({"maxMessages": 1, "returnImmediately": true}), &[]).await?;
+        let Some(first) = res.as_ref().and_then(|r| r["receivedMessages"].as_array()).and_then(|a| a.first()).cloned() else { return Ok(None) };
+        let msg = &first["message"];
+        let attr = |key: &str| msg["attributes"][key].as_str().map(str::to_string);
+        let body = STANDARD.decode(msg["data"].as_str().unwrap_or_default()).map_err(other)?;
+        let message = BrokerMessage {
+            message_id: attr("ghk_message_id").unwrap_or_else(|| msg["messageId"].as_str().unwrap_or_default().to_string()),
+            event_type: attr("event_type"),
+            tenant_id: attr("tenant_id"),
+            traceparent: attr("traceparent"),
+            body,
+        };
+        let ack_id = first["ackId"].as_str().unwrap_or_default().to_string();
+        Ok(Some(Delivery { message, settle: Settle::PubSub { broker: self.clone(), subscription: subscription.to_string(), ack_id, dlx: dlx.to_string() } }))
+    }
+}
+
+fn other(e: impl std::fmt::Display) -> RuntimeError {
+    RuntimeError::Other(e.to_string())
+}
+`;
+
+  const relay = `use opentelemetry::trace::SpanKind;
+use opentelemetry::KeyValue;
+use sqlx::PgPool;
+
+use super::broker::{BrokerMessage, EventPublisher};
+use super::{schema_name, telemetry, RuntimeError};
 
 /// Publishes pending outbox rows. Rows are claimed with FOR UPDATE SKIP LOCKED and a lease, so
-/// concurrent relays never publish the same row; publisher confirms guarantee delivery to the
-/// broker before a row is marked published. Use one relay (and channel) per task.
+/// concurrent relays never publish the same row; the publisher returns only once the broker has
+/// accepted the message (RabbitMQ confirms, Pub/Sub publish), before a row is marked published.
+/// Use one relay (and publisher) per task.
 pub struct OutboxRelay {
     pool: PgPool,
-    channel: Channel,
-    exchange: String,
+    publisher: EventPublisher,
     s: String,
     pub lease_seconds: f64,
     pub max_attempts: i32,
 }
 
 impl OutboxRelay {
-    pub async fn new(pool: PgPool, channel: Channel, exchange: &str, schema: &str) -> Result<Self, RuntimeError> {
+    pub fn new(pool: PgPool, publisher: EventPublisher, schema: &str) -> Result<Self, RuntimeError> {
         let s = schema_name(schema)?;
-        channel.confirm_select(ConfirmSelectOptions::default()).await?;
-        Ok(Self { pool, channel, exchange: exchange.to_string(), s, lease_seconds: ${LEASE_SECONDS}.0, max_attempts: ${MAX_PUBLISH_ATTEMPTS} })
+        Ok(Self { pool, publisher, s, lease_seconds: ${LEASE_SECONDS}.0, max_attempts: ${MAX_PUBLISH_ATTEMPTS} })
     }
 
     pub async fn publish_batch(&self, worker_id: &str, limit: i64) -> Result<usize, RuntimeError> {
@@ -464,23 +858,26 @@ impl OutboxRelay {
 
         let mut published = 0;
         for (id, tenant, event_type, payload, traceparent) in claimed {
+            let destination = self.publisher.destination().to_string();
             let cx = telemetry::start_span(
                 &telemetry::context_from(traceparent.as_deref()),
-                format!("{} publish", self.exchange),
+                format!("{destination} publish"),
                 SpanKind::Producer,
                 vec![
-                    KeyValue::new("messaging.system", "rabbitmq"),
-                    KeyValue::new("messaging.destination.name", self.exchange.clone()),
+                    KeyValue::new("messaging.system", self.publisher.system()),
+                    KeyValue::new("messaging.destination.name", destination),
                     KeyValue::new("messaging.message.id", id.clone()),
                     KeyValue::new("tenant.id", tenant.clone()),
                 ],
             );
-            let mut headers = FieldTable::default();
-            headers.insert("tenant_id".into(), AMQPValue::LongString(tenant.into()));
-            if let Some(tp) = telemetry::traceparent_of(&cx) {
-                headers.insert("traceparent".into(), AMQPValue::LongString(tp.into()));
-            }
-            let mut outcome = self.publish(&event_type, &id, &payload, headers).await;
+            let message = BrokerMessage {
+                message_id: id.clone(),
+                event_type: Some(event_type),
+                tenant_id: Some(tenant),
+                traceparent: telemetry::traceparent_of(&cx),
+                body: payload.into_bytes(),
+            };
+            let mut outcome = self.publisher.publish(&message).await;
             if outcome.is_ok() {
                 outcome = sqlx::query(&format!("UPDATE {s}.ghk_outbox SET published_at = now(), claimed_until = NULL WHERE id = $1 AND claimed_by = $2"))
                     .bind(&id)
@@ -508,40 +905,18 @@ impl OutboxRelay {
         }
         Ok(published)
     }
-
-    async fn publish(&self, key: &str, id: &str, body: &str, headers: FieldTable) -> Result<(), RuntimeError> {
-        let properties = BasicProperties::default()
-            .with_message_id(id.into())
-            .with_delivery_mode(2)
-            .with_content_type("application/json".into())
-            .with_type(key.into())
-            .with_headers(headers);
-        let confirm = self.channel.basic_publish(&self.exchange, key, BasicPublishOptions::default(), body.as_bytes(), properties).await?;
-        let confirmation = tokio::time::timeout(Duration::from_secs(10), confirm)
-            .await
-            .map_err(|_| RuntimeError::Other("publisher confirm timed out".into()))??;
-        if confirmation.is_ack() {
-            Ok(())
-        } else {
-            Err(RuntimeError::Other("message was not acknowledged by the broker".into()))
-        }
-    }
 }
 `;
 
   const inbox = `use std::time::Duration;
 
 use futures_util::future::BoxFuture;
-use futures_util::StreamExt;
-use lapin::message::Delivery;
-use lapin::options::{BasicAckOptions, BasicCancelOptions, BasicConsumeOptions, BasicNackOptions};
-use lapin::types::{AMQPValue, FieldTable};
-use lapin::Channel;
 use opentelemetry::trace::SpanKind;
 use opentelemetry::KeyValue;
 use serde_json::Value;
 use sqlx::{PgConnection, PgPool};
 
+use super::broker::{Delivery, EventSubscription};
 use super::{schema_name, telemetry, RuntimeError};
 
 /// Describes a delivered message.
@@ -556,70 +931,70 @@ pub struct Meta {
 type Handler = Box<dyn for<'a> Fn(Value, Meta, &'a mut PgConnection) -> BoxFuture<'a, Result<(), String>> + Send + Sync>;
 
 /// Records the message id in ghk_inbox in the same transaction as the handler, so redeliveries
-/// are acknowledged without running the handler twice. A handler error rejects the message
-/// without requeue, so RabbitMQ dead-letters it to the DLQ.
+/// are acknowledged without running the handler twice. A handler error dead-letters the message
+/// (RabbitMQ DLX, Pub/Sub dead-letter topic): it is not redelivered.
 pub struct InboxConsumer {
     pool: PgPool,
-    channel: Channel,
-    queue: String,
+    subscription: EventSubscription,
     name: String,
     handler: Handler,
     s: String,
 }
 
-fn header(headers: &Option<FieldTable>, key: &str) -> Option<String> {
-    match headers.as_ref()?.inner().get(key)? {
-        AMQPValue::LongString(value) => Some(String::from_utf8_lossy(value.as_bytes()).into_owned()),
-        AMQPValue::ShortString(value) => Some(value.as_str().to_string()),
-        _ => None,
-    }
-}
-
 impl InboxConsumer {
-    pub fn new<F>(pool: PgPool, channel: Channel, queue: &str, name: &str, schema: &str, handler: F) -> Result<Self, RuntimeError>
+    pub fn new<F>(pool: PgPool, subscription: EventSubscription, name: &str, schema: &str, handler: F) -> Result<Self, RuntimeError>
     where
         F: for<'a> Fn(Value, Meta, &'a mut PgConnection) -> BoxFuture<'a, Result<(), String>> + Send + Sync + 'static,
     {
-        Ok(Self { pool, channel, queue: queue.to_string(), name: name.to_string(), handler: Box::new(handler), s: schema_name(schema)? })
+        Ok(Self { pool, subscription, name: name.to_string(), handler: Box::new(handler), s: schema_name(schema)? })
     }
 
-    /// Processes messages until the queue stays idle for \`idle\`; returns how many were processed.
+    /// Processes messages until the source stays idle for \`idle\`; returns how many were processed.
     pub async fn drain(&self, idle: Duration) -> Result<usize, RuntimeError> {
-        let mut deliveries = self.channel.basic_consume(&self.queue, &self.name, BasicConsumeOptions::default(), FieldTable::default()).await?;
         let mut processed = 0;
-        while let Ok(Some(delivery)) = tokio::time::timeout(idle, deliveries.next()).await {
-            self.process(delivery?).await;
-            processed += 1;
+        let mut idle_since = std::time::Instant::now();
+        while idle_since.elapsed() < idle {
+            match self.subscription.poll().await? {
+                Some(delivery) => {
+                    self.process(delivery).await;
+                    processed += 1;
+                    idle_since = std::time::Instant::now();
+                }
+                None => tokio::time::sleep(Duration::from_millis(50)).await,
+            }
         }
-        self.channel.basic_cancel(&self.name, BasicCancelOptions::default()).await?;
         Ok(processed)
     }
 
+    /// Closes the underlying subscription (channel).
+    pub async fn close(&self) {
+        self.subscription.close().await;
+    }
+
     async fn process(&self, delivery: Delivery) {
-        let props = &delivery.properties;
-        let message_id = props.message_id().as_ref().map(|id| id.as_str().to_string()).unwrap_or_default();
+        let message = &delivery.message;
         let meta = Meta {
-            message_id: message_id.clone(),
-            tenant_id: header(props.headers(), "tenant_id").unwrap_or_default(),
-            event_type: props.kind().as_ref().map(|k| k.as_str().to_string()).unwrap_or_default(),
+            message_id: message.message_id.clone(),
+            tenant_id: message.tenant_id.clone().unwrap_or_default(),
+            event_type: message.event_type.clone().unwrap_or_default(),
         };
         let cx = telemetry::start_span(
-            &telemetry::context_from(header(props.headers(), "traceparent").as_deref()),
-            format!("{} process", self.queue),
+            &telemetry::context_from(message.traceparent.as_deref()),
+            format!("{} process", self.subscription.source()),
             SpanKind::Consumer,
             vec![
-                KeyValue::new("messaging.system", "rabbitmq"),
-                KeyValue::new("messaging.destination.name", self.queue.clone()),
-                KeyValue::new("messaging.message.id", message_id),
+                KeyValue::new("messaging.system", self.subscription.system()),
+                KeyValue::new("messaging.destination.name", self.subscription.source().to_string()),
+                KeyValue::new("messaging.message.id", message.message_id.clone()),
             ],
         );
-        match self.handle(&delivery.data, meta).await {
+        match self.handle(&message.body, meta).await {
             Ok(()) => {
-                let _ = delivery.ack(BasicAckOptions::default()).await;
+                let _ = delivery.ack().await;
                 telemetry::finish(&cx, None);
             }
             Err(error) => {
-                let _ = delivery.nack(BasicNackOptions { requeue: false, ..Default::default() }).await;
+                let _ = delivery.dead_letter().await;
                 telemetry::finish(&cx, Some(error));
             }
         }
@@ -733,8 +1108,9 @@ impl SagaOrchestrator {
 }
 `;
 
-  const test = `//! Runtime integration tests (docs/RUNTIME-KERNEL.md, IT1-IT7) against PostgreSQL and RabbitMQ.
-//! Requires DATABASE_URL and AMQP_URL. Run with:
+  const test = `//! Runtime integration tests (docs/RUNTIME-KERNEL.md, IT1-IT7) against PostgreSQL and the selected broker
+//! (GHK_BROKER: rabbitmq with AMQP_URL, pubsub with PUBSUB_PROJECT_ID [+ PUBSUB_EMULATOR_HOST]).
+//! Requires DATABASE_URL. Run with:
 //! cargo test --features integration --test runtime_integration -- --test-threads=1
 #![cfg(feature = "integration")]
 
@@ -743,15 +1119,12 @@ use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 use futures_util::future::join_all;
-use lapin::options::{BasicGetOptions, BasicPublishOptions, QueueDeclareOptions};
-use lapin::types::{AMQPValue, FieldTable};
-use lapin::{BasicProperties, Channel, Connection, ConnectionProperties};
 use opentelemetry::trace::SpanKind;
 use opentelemetry_sdk::trace::{InMemorySpanExporter, SdkTracerProvider};
 use sqlx::postgres::PgPoolOptions;
 use sqlx::PgPool;
 
-use ${crate}::runtime::{declare_topology, migrate, CommandRequest, CommandService, InboxConsumer, OutboxRelay, SagaOrchestrator, SagaStep, Topology};
+use ${crate}::runtime::{broker_configured, migrate, Broker, BrokerMessage, CommandRequest, CommandService, InboxConsumer, OutboxRelay, SagaOrchestrator, SagaStep, Topology};
 
 const COMMAND: &str = ${rsStr(first.snake)};
 const EVENT: &str = ${rsStr(first.event)};
@@ -767,14 +1140,30 @@ fn exporter() -> &'static InMemorySpanExporter {
 
 struct Env {
     pool: PgPool,
-    connection: Connection,
+    broker: Broker,
     schema: String,
     topology: Topology,
 }
 
 impl Env {
-    async fn channel(&self) -> Channel {
-        self.connection.create_channel().await.expect("channel")
+    /// Receives and acknowledges messages until \`expected\` arrived and the source stays quiet for 500 ms (10 s at most).
+    async fn receive(&self, source: &str, expected: usize) -> Vec<BrokerMessage> {
+        let subscription = self.broker.subscribe(source, &self.topology).await.expect("subscribe");
+        let mut out = Vec::new();
+        let deadline = Instant::now() + Duration::from_secs(10);
+        let mut quiet_since = Instant::now();
+        while Instant::now() < deadline && (out.len() < expected || quiet_since.elapsed() < Duration::from_millis(500)) {
+            match subscription.poll().await.expect("poll") {
+                Some(delivery) => {
+                    delivery.ack().await.expect("ack");
+                    out.push(delivery.message);
+                    quiet_since = Instant::now();
+                }
+                None => tokio::time::sleep(Duration::from_millis(50)).await,
+            }
+        }
+        subscription.close().await;
+        out
     }
 
     fn service(&self) -> CommandService {
@@ -793,7 +1182,7 @@ impl Env {
 
     async fn teardown(self) {
         let _ = sqlx::raw_sql(&format!("DROP SCHEMA IF EXISTS {} CASCADE", self.schema)).execute(&self.pool).await;
-        let _ = self.connection.close(200, "done").await;
+        self.broker.close().await;
     }
 }
 
@@ -803,34 +1192,14 @@ fn uid() -> String {
 
 async fn setup() -> Env {
     let db_url = std::env::var("DATABASE_URL").expect("integration tests need DATABASE_URL (see docs/RUNTIME-KERNEL.md)");
-    let amqp_url = std::env::var("AMQP_URL").expect("integration tests need AMQP_URL (see docs/RUNTIME-KERNEL.md)");
+    assert!(broker_configured(), "integration tests need the broker variables (see docs/RUNTIME-KERNEL.md)");
     exporter().reset();
     let pool = PgPoolOptions::new().max_connections(10).connect(&db_url).await.expect("postgres");
-    let connection = Connection::connect(&amqp_url, ConnectionProperties::default()).await.expect("rabbitmq");
-    let env = Env { pool, connection, schema: format!("it_{}", uid()), topology: Topology::for_prefix(&format!("it-{}", uid())) };
+    let broker = Broker::connect().await.expect("broker");
+    let env = Env { pool, broker, schema: format!("it_{}", uid()), topology: Topology::for_prefix(&format!("it-{}", uid())) };
     migrate(&env.pool, &env.schema).await.expect("migrate");
+    env.broker.declare(&env.topology).await.expect("topology");
     env
-}
-
-async fn message_count(channel: &Channel, queue: &str) -> u32 {
-    let passive = QueueDeclareOptions { passive: true, durable: true, ..Default::default() };
-    channel.queue_declare(queue, passive, FieldTable::default()).await.map(|q| q.message_count()).unwrap_or(0)
-}
-
-async fn wait_for_messages(channel: &Channel, queue: &str, expected: u32) {
-    let deadline = Instant::now() + Duration::from_secs(10);
-    while message_count(channel, queue).await != expected {
-        assert!(Instant::now() < deadline, "timed out waiting for {expected} message(s) in {queue}");
-        tokio::time::sleep(Duration::from_millis(50)).await;
-    }
-}
-
-async fn drain_queue(channel: &Channel, queue: &str) -> Vec<String> {
-    let mut ids = Vec::new();
-    while let Some(message) = channel.basic_get(queue, BasicGetOptions { no_ack: true }).await.expect("basic_get") {
-        ids.push(message.delivery.properties.message_id().as_ref().map(|id| id.as_str().to_string()).unwrap_or_default());
-    }
-    ids
 }
 
 #[tokio::test]
@@ -877,12 +1246,11 @@ async fn it3_concurrent_relays_publish_exactly_once() {
     for i in 0..20 {
         service.handle(CommandRequest::new("t1", format!("agg-{i}"), COMMAND)).await.expect("command");
     }
-    let setup_channel = env.channel().await;
-    declare_topology(&setup_channel, &env.topology).await.expect("topology");
     let run = |worker: &'static str| {
         let env = &env;
         async move {
-            let relay = OutboxRelay::new(env.pool.clone(), env.channel().await, &env.topology.exchange, &env.schema).await.expect("relay");
+            let publisher = env.broker.publisher(&env.topology.exchange).await.expect("publisher");
+            let relay = OutboxRelay::new(env.pool.clone(), publisher, &env.schema).expect("relay");
             let mut total = 0;
             loop {
                 let published = relay.publish_batch(worker, 3).await.expect("publish");
@@ -896,9 +1264,9 @@ async fn it3_concurrent_relays_publish_exactly_once() {
     let totals = join_all([run("relay-a"), run("relay-b")]).await;
     assert_eq!(totals.iter().sum::<usize>(), 20, "published {totals:?}");
     assert_eq!(env.count("ghk_outbox", "published_at IS NULL", None).await, 0);
-    wait_for_messages(&setup_channel, &env.topology.queue, 20).await;
-    let ids: HashSet<String> = drain_queue(&setup_channel, &env.topology.queue).await.into_iter().collect();
-    assert_eq!(ids.len(), 20);
+    let received = env.receive(&env.topology.queue, 20).await;
+    let ids: HashSet<String> = received.iter().map(|m| m.message_id.clone()).collect();
+    assert_eq!((received.len(), ids.len()), (20, 20));
     env.teardown().await;
 }
 
@@ -955,11 +1323,10 @@ async fn it5_saga_compensates_in_reverse_order() {
 #[tokio::test]
 async fn it6_inbox_deduplicates_and_dead_letters() {
     let env = setup().await;
-    let channel = env.channel().await;
-    declare_topology(&channel, &env.topology).await.expect("topology");
     let handled = Arc::new(Mutex::new(Vec::<String>::new()));
     let seen = handled.clone();
-    let consumer = InboxConsumer::new(env.pool.clone(), env.channel().await, &env.topology.queue, "it-consumer", &env.schema, move |event, meta, _conn| {
+    let subscription = env.broker.subscribe(&env.topology.queue, &env.topology).await.expect("subscribe");
+    let consumer = InboxConsumer::new(env.pool.clone(), subscription, "it-consumer", &env.schema, move |event, meta, _conn| {
         let seen = seen.clone();
         Box::pin(async move {
             if event["poison"] == true {
@@ -970,17 +1337,18 @@ async fn it6_inbox_deduplicates_and_dead_letters() {
         })
     })
     .expect("consumer");
+    let publisher = env.broker.publisher(&env.topology.exchange).await.expect("publisher");
     for (id, body) in [("m-1", r#"{"ok": true}"#), ("m-1", r#"{"ok": true}"#), ("m-poison", r#"{"poison": true}"#)] {
-        let mut headers = FieldTable::default();
-        headers.insert("tenant_id".into(), AMQPValue::LongString("t1".into()));
-        let properties = BasicProperties::default().with_message_id(id.into()).with_headers(headers);
-        channel.basic_publish(&env.topology.exchange, "Test", BasicPublishOptions::default(), body.as_bytes(), properties).await.expect("publish");
+        let message = BrokerMessage { message_id: id.into(), event_type: Some("Test".into()), tenant_id: Some("t1".into()), traceparent: None, body: body.as_bytes().to_vec() };
+        publisher.publish(&message).await.expect("publish");
     }
+    publisher.close().await;
     consumer.drain(Duration::from_secs(1)).await.expect("drain");
+    consumer.close().await;
     assert_eq!(*handled.lock().unwrap(), vec!["m-1"]);
     assert_eq!(env.count("ghk_inbox", "consumer = $1", Some("it-consumer")).await, 1);
-    wait_for_messages(&channel, &env.topology.dlq, 1).await;
-    assert_eq!(drain_queue(&channel, &env.topology.dlq).await, vec!["m-poison"]);
+    let dead: Vec<String> = env.receive(&env.topology.dlq, 1).await.into_iter().map(|m| m.message_id).collect();
+    assert_eq!(dead, vec!["m-poison"]);
     env.teardown().await;
 }
 
@@ -994,18 +1362,19 @@ async fn it7_trace_context_propagation() {
     let (stored,): (Option<String>,) = sqlx::query_as(&format!("SELECT traceparent FROM {}.ghk_outbox", env.schema)).fetch_one(&env.pool).await.unwrap();
     assert!(stored.as_deref().unwrap_or_default().contains(${rsStr(TEST_TRACE_ID)}), "outbox traceparent {stored:?}");
 
-    let channel = env.channel().await;
-    declare_topology(&channel, &env.topology).await.expect("topology");
-    let relay = OutboxRelay::new(env.pool.clone(), channel, &env.topology.exchange, &env.schema).await.expect("relay");
+    let publisher = env.broker.publisher(&env.topology.exchange).await.expect("publisher");
+    let relay = OutboxRelay::new(env.pool.clone(), publisher, &env.schema).expect("relay");
     assert_eq!(relay.publish_batch("relay", 10).await.expect("publish"), 1);
     let received = Arc::new(Mutex::new(0));
     let counter = received.clone();
-    let consumer = InboxConsumer::new(env.pool.clone(), env.channel().await, &env.topology.queue, "trace-consumer", &env.schema, move |_, _, _| {
+    let subscription = env.broker.subscribe(&env.topology.queue, &env.topology).await.expect("subscribe");
+    let consumer = InboxConsumer::new(env.pool.clone(), subscription, "trace-consumer", &env.schema, move |_, _, _| {
         *counter.lock().unwrap() += 1;
         Box::pin(async { Ok(()) })
     })
     .expect("consumer");
     consumer.drain(Duration::from_secs(1)).await.expect("drain");
+    consumer.close().await;
     assert_eq!(*received.lock().unwrap(), 1);
 
     let spans = exporter().get_finished_spans().expect("spans");
@@ -1026,6 +1395,7 @@ async fn it7_trace_context_propagation() {
     { filename: 'src/runtime/schema.rs', content: schema },
     { filename: 'src/runtime/telemetry.rs', content: telemetry },
     { filename: 'src/runtime/command_service.rs', content: commandService },
+    { filename: 'src/runtime/broker.rs', content: broker },
     { filename: 'src/runtime/outbox_relay.rs', content: relay },
     { filename: 'src/runtime/inbox_consumer.rs', content: inbox },
     { filename: 'src/runtime/saga.rs', content: saga },

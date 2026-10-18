@@ -303,9 +303,10 @@ function withBroker(name, messaging) {
   };
 }
 
-for (const name of ['dotnet', 'fastapi']) {
-  STACKS[`${name}-pubsub`] = withBroker(name, 'pubsub');
-  STACKS[`${name}-servicebus`] = withBroker(name, 'servicebus');
+// Service Bus only where an official SDK exists (no Rust, Ruby, Elixir or PHP SDK: RabbitMQ / CloudAMQP on Azure).
+const NATIVE_BROKERS = { dotnet: ['pubsub', 'servicebus'], fastapi: ['pubsub', 'servicebus'], go: ['pubsub', 'servicebus'], rust: ['pubsub'], rails: ['pubsub'], phoenix: ['pubsub'], laravel: ['pubsub'] };
+for (const [name, brokers] of Object.entries(NATIVE_BROKERS)) {
+  for (const messaging of brokers) STACKS[`${name}-${messaging}`] = withBroker(name, messaging);
 }
 
 module.exports = { STACKS, SERVICEBUS_EMULATOR, PUBSUB_EMULATOR };

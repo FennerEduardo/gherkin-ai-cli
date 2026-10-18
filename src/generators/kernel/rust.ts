@@ -14,7 +14,7 @@ const rsStr = (s: string) => JSON.stringify(s);
 // Raw string literal r#"..."# so regex backslashes stay literal.
 const rsRaw = (s: string) => `r#"${s.replace(/"#/g, '"\\#')}"#`;
 
-export function renderRustProject(m: DomainModel, crate: string, featureFile: string, siblings: DomainModel[] = []): RsFile[] {
+export function renderRustProject(m: DomainModel, crate: string, featureFile: string, siblings: DomainModel[] = [], { messaging = undefined as string | undefined } = {}): RsFile[] {
   const modules = [...new Set([m, ...siblings].map(a => a.snake))].sort();
   const first = m.commands[0];
   const files: RsFile[] = [
@@ -29,7 +29,7 @@ edition = "2021"
 axum = "0.7"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "time"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "time", "sync"] }
 ${RS_RUNTIME_DEPS}
 
 [dev-dependencies]
@@ -377,6 +377,6 @@ fn every_feature_step_is_defined() {
 `
     }
   ];
-  files.push(...renderRsRuntime(m, crate));
+  files.push(...renderRsRuntime(m, crate, [], { messaging }));
   return files;
 }

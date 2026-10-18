@@ -25,8 +25,8 @@ export function generatePhpLaravelPreset(parsed: ParsedFeature, config?: Gherkin
     ...renderPhpKernel(m),
     // The kernel's in-memory API test is replaced by the application layer's tests below.
     ...renderPhpTests(m).filter(f => !replaced.has(f.filename)),
-    // Runtime kernel: PostgreSQL + RabbitMQ + OpenTelemetry, verified by phpunit --group integration (docs/RUNTIME-KERNEL.md).
-    ...renderPhpRuntime(m, siblings),
+    // Runtime kernel: PostgreSQL + RabbitMQ or Pub/Sub + OpenTelemetry, verified by phpunit --group integration (docs/RUNTIME-KERNEL.md).
+    ...renderPhpRuntime(m, siblings, { messaging: config?.stack?.messaging }),
     // Application layer wired to the kernel (kernel/app/shared.ts): HTTP commands, JWT tenant, `artisan outbox:relay`.
     ...app
   ];

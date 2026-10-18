@@ -82,37 +82,36 @@ end
 `;
 
   const relay = `defmodule ${n.mod}.OutboxRelayWorker do
-  @moduledoc "Publishes the outbox every ${RELAY_INTERVAL_MS} ms (AMQP_URL); reconnects after broker errors."
+  @moduledoc "Publishes the outbox every ${RELAY_INTERVAL_MS} ms through the configured broker (Runtime.Broker); reconnects after broker errors."
   use GenServer
   require Logger
 
-  def start_link(amqp_url), do: GenServer.start_link(__MODULE__, amqp_url, name: __MODULE__)
+  def start_link(_opts), do: GenServer.start_link(__MODULE__, nil, name: __MODULE__)
 
   @impl true
-  def init(amqp_url) do
+  def init(_) do
     send(self(), :connect)
-    {:ok, %{url: amqp_url, chan: nil, worker_id: "${m.kebab}-" <> Base.encode16(:crypto.strong_rand_bytes(6), case: :lower)}}
+    {:ok, %{publisher: nil, worker_id: "${m.kebab}-" <> Base.encode16(:crypto.strong_rand_bytes(6), case: :lower)}}
   end
 
   @impl true
   def handle_info(:connect, state) do
-    with {:ok, connection} <- AMQP.Connection.open(state.url),
-         {:ok, chan} <- AMQP.Channel.open(connection),
-         :ok <- ${rt}.Topology.declare(chan, %${rt}.Topology{}),
-         :ok <- ${rt}.OutboxRelay.prepare(chan) do
+    try do
+      broker = ${rt}.Broker.connect()
+      :ok = ${rt}.Broker.declare(broker, %${rt}.Topology{})
       send(self(), :tick)
-      {:noreply, %{state | chan: chan}}
-    else
-      error ->
-        Logger.error("outbox relay cannot connect: #{inspect(error)}")
+      {:noreply, %{state | publisher: ${rt}.Broker.publisher(broker, %${rt}.Topology{}.exchange)}}
+    rescue
+      e ->
+        Logger.error("outbox relay cannot connect: #{Exception.message(e)}")
         Process.send_after(self(), :connect, 5_000)
         {:noreply, state}
     end
   end
 
-  def handle_info(:tick, %{chan: chan} = state) do
+  def handle_info(:tick, %{publisher: publisher} = state) do
     try do
-      ${rt}.OutboxRelay.publish_batch(${n.mod}.DB, chan, %${rt}.Topology{}.exchange, "public", state.worker_id)
+      ${rt}.OutboxRelay.publish_batch(${n.mod}.DB, publisher, "public", state.worker_id)
     rescue
       e -> Logger.error("outbox relay failed: #{Exception.message(e)}")
     end
@@ -130,12 +129,10 @@ end
   @impl true
   def start(_type, _args) do
     database_url = System.get_env("DATABASE_URL")
-    amqp_url = System.get_env("AMQP_URL")
-
-    # The command service needs DATABASE_URL; the relay also needs AMQP_URL (off in tests: config :outbox_relay).
+    # The command service needs DATABASE_URL; the relay also needs a broker (AMQP_URL or PUBSUB_*; off in tests: config :outbox_relay).
     children =
       if(database_url, do: [{Postgrex, ${rt}.Schema.connection_opts(database_url) ++ [name: ${n.mod}.DB, pool_size: 10]}], else: []) ++
-        if(database_url && amqp_url && Application.get_env(:${n.otp}, :outbox_relay, true), do: [{${n.mod}.OutboxRelayWorker, amqp_url}], else: []) ++
+        if(database_url && ${rt}.Broker.configured?() && Application.get_env(:${n.otp}, :outbox_relay, true), do: [{${n.mod}.OutboxRelayWorker, []}], else: []) ++
         [${web}.Endpoint]
 
     Supervisor.start_link(children, strategy: :one_for_one, name: ${n.mod}.Supervisor)

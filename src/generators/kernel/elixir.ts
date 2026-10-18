@@ -21,7 +21,7 @@ export interface ElixirNames {
   mod: string;
 }
 
-export function renderElixirProject(m: DomainModel, n: ElixirNames, featureFile: string, opts: { liveview?: boolean; siblings?: DomainModel[] } = {}): ExFile[] {
+export function renderElixirProject(m: DomainModel, n: ElixirNames, featureFile: string, opts: { liveview?: boolean; siblings?: DomainModel[]; messaging?: string } = {}): ExFile[] {
   const siblings = opts.siblings ?? [];
   // LiveView routes cover every feature of the service, sorted so "/" is stable across generations.
   const features = [m, ...siblings].sort((a, b) => a.pascal.localeCompare(b.pascal));
@@ -48,7 +48,8 @@ export function renderElixirProject(m: DomainModel, n: ElixirNames, featureFile:
   end
 
   def application do
-    [mod: {${n.mod}.Application, []}, extra_applications: [:logger]]
+    # :inets / :ssl: HTTP client of the Pub/Sub adapter (runtime/broker.ex).
+    [mod: {${n.mod}.Application, []}, extra_applications: [:logger, :inets, :ssl]]
   end
 
   defp elixirc_paths(:test), do: ["lib", "test/support"]
@@ -383,7 +384,7 @@ end
   ];
 
   // Runtime kernel: PostgreSQL + RabbitMQ + OpenTelemetry (docs/RUNTIME-KERNEL.md).
-  files.push(...renderExRuntime(m, n.otp, n.mod, siblings));
+  files.push(...renderExRuntime(m, n.otp, n.mod, siblings, { messaging: opts.messaging }));
   if (lv) files.push(...renderLiveView(m, n, agg, web));
   return files;
 }

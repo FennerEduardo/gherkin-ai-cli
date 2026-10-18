@@ -5,6 +5,7 @@
    ========================================================================== */
 
 import { DomainModel } from '../domain-model';
+import { defaultJvmBroker as defaultBrokerFor } from './jvm';
 import { LEASE_SECONDS, MAX_PUBLISH_ATTEMPTS, RLS_NOTE, RUNTIME_SCHEMA_SQL, SCHEMA_TOKEN, TEST_PARENT_SPAN_ID, TEST_TRACEPARENT, TEST_TRACE_ID, topology } from './shared';
 
 export interface RbRuntimeFile {
@@ -19,7 +20,9 @@ gem "opentelemetry-sdk", "~> 1.5"
 
 const rb = (s: string) => JSON.stringify(s); // JSON strings are valid Ruby double-quoted literals here (no #{)
 
-export function renderRbRuntime(m: DomainModel, siblings: DomainModel[] = []): RbRuntimeFile[] {
+export function renderRbRuntime(m: DomainModel, siblings: DomainModel[] = [], { messaging = undefined as string | undefined } = {}): RbRuntimeFile[] {
+  // Service Bus has no official Ruby SDK: stack.messaging "servicebus" keeps RabbitMQ as the default broker.
+  const defaultBroker = defaultBrokerFor(messaging) === 'pubsub' ? 'pubsub' : 'rabbitmq';
   const all = [m, ...siblings];
   const t = topology(m);
   const A = `${m.pascal}Aggregate`;
@@ -172,7 +175,8 @@ end
 
   const topologyRb = `# frozen_string_literal: true
 
-# Topic exchange -> consumer queue, which dead-letters rejected messages to a fanout DLX -> DLQ.
+# Event bus destinations: publish to exchange (topic), consume from queue (subscription);
+# dead-lettered messages go to dlx and are read from dlq.
 RuntimeTopology = Struct.new(:exchange, :queue, :dlx, :dlq) do
   def self.default
     new(${rb(t.exchange)}, ${rb(t.queue)}, ${rb(t.dlx)}, ${rb(t.dlq)})
@@ -181,12 +185,299 @@ RuntimeTopology = Struct.new(:exchange, :queue, :dlx, :dlq) do
   def self.for_prefix(prefix)
     new("#{prefix}.events", "#{prefix}.consumer", "#{prefix}.dlx", "#{prefix}.dlq")
   end
+end
+`;
 
-  def declare(channel)
-    events = channel.topic(exchange, durable: true)
-    dead = channel.fanout(dlx, durable: true)
-    channel.queue(dlq, durable: true).bind(dead)
-    channel.queue(queue, durable: true, arguments: { "x-dead-letter-exchange" => dlx }).bind(events, routing_key: "#")
+  const brokerMessageRb = `# frozen_string_literal: true
+
+# A domain event on the wire, independent of the broker.
+BrokerMessage = Struct.new(:message_id, :event_type, :tenant_id, :traceparent, :body, keyword_init: true)
+`;
+
+  const brokerDeliveryRb = `# frozen_string_literal: true
+
+# A received message: ack once processed; dead_letter moves it to the DLQ (it is not redelivered).
+BrokerDelivery = Struct.new(:message, :on_ack, :on_dead_letter) do
+  def ack
+    on_ack.call
+  end
+
+  def dead_letter
+    on_dead_letter.call
+  end
+end
+`;
+
+  const eventBrokerRb = `# frozen_string_literal: true
+
+# The event broker behind the outbox relay and the inbox consumer, chosen at run time so one image runs on any
+# cloud: GHK_BROKER=rabbitmq (AMQP_URL) or pubsub (PUBSUB_PROJECT_ID or GOOGLE_CLOUD_PROJECT; PUBSUB_EMULATOR_HOST).
+# Without GHK_BROKER the configured variables decide, then stack.messaging.
+# Azure Service Bus has no official Ruby SDK: on Azure use self-managed RabbitMQ or CloudAMQP (AMQP_URL).
+#
+# Brokers answer: system, dynamic_topology?, declare(topology), publisher(destination), subscribe(source, topology),
+# close. Publishers: system, destination, publish(message) (returns once the broker accepted it), close.
+# Subscriptions: system, source, poll (a BrokerDelivery or nil), close.
+module EventBroker
+  # Broker of the generated configuration (stack.messaging).
+  DEFAULT_KIND = ${rb(defaultBroker)}
+
+  def self.env(key)
+    value = ENV.fetch(key, "").strip
+    value.empty? ? nil : value
+  end
+
+  def self.kind
+    return env("GHK_BROKER").downcase if env("GHK_BROKER")
+    return "rabbitmq" if env("AMQP_URL")
+    return "pubsub" if env("PUBSUB_PROJECT_ID") || env("PUBSUB_EMULATOR_HOST")
+
+    DEFAULT_KIND
+  end
+
+  # Whether the variables of the selected broker are set.
+  def self.configured?
+    kind == "pubsub" ? !(env("PUBSUB_PROJECT_ID") || env("GOOGLE_CLOUD_PROJECT")).nil? : !env("AMQP_URL").nil?
+  end
+
+  def self.connect
+    case kind
+    when "rabbitmq"
+      RabbitMqBroker.new(env("AMQP_URL") || raise("AMQP_URL is not set (amqp://user:password@host:5672)"))
+    when "pubsub" then PubSubBroker.from_env
+    when "servicebus" then raise "Azure Service Bus has no official Ruby SDK: use RabbitMQ (self-managed or CloudAMQP) on Azure"
+    else raise "Unsupported GHK_BROKER: #{kind} (rabbitmq, pubsub)"
+    end
+  end
+end
+`;
+
+  const rabbitRb = `# frozen_string_literal: true
+
+require "bunny"
+
+# RabbitMQ 0-9-1: topic exchange, publisher confirms, dead-lettering through the queue's DLX.
+class RabbitMqBroker
+  def initialize(url)
+    @connection = Bunny.new(url, logger: Logger.new(nil)).tap(&:start)
+  end
+
+  def system = "rabbitmq"
+  def dynamic_topology? = true
+
+  def declare(topology)
+    channel = @connection.create_channel
+    events = channel.topic(topology.exchange, durable: true)
+    dead = channel.fanout(topology.dlx, durable: true)
+    channel.queue(topology.dlq, durable: true).bind(dead)
+    channel.queue(topology.queue, durable: true, arguments: { "x-dead-letter-exchange" => topology.dlx }).bind(events, routing_key: "#")
+  ensure
+    channel&.close
+  end
+
+  def publisher(exchange)
+    Publisher.new(@connection.create_channel, exchange)
+  end
+
+  def subscribe(queue, _topology)
+    Subscription.new(@connection.create_channel, queue)
+  end
+
+  def close
+    @connection.close if @connection.open?
+  end
+
+  # One channel per publisher (use one per thread).
+  class Publisher
+    attr_reader :destination
+
+    def initialize(channel, exchange)
+      @channel = channel
+      @channel.confirm_select
+      @exchange = channel.topic(exchange, durable: true)
+      @destination = exchange
+    end
+
+    def system = "rabbitmq"
+
+    def publish(message)
+      headers = {}
+      headers["tenant_id"] = message.tenant_id if message.tenant_id
+      headers["traceparent"] = message.traceparent if message.traceparent
+      @exchange.publish(message.body, routing_key: message.event_type.to_s, message_id: message.message_id, persistent: true,
+                                      content_type: "application/json", type: message.event_type, headers: headers)
+      raise "broker did not confirm #{message.message_id}" unless @channel.wait_for_confirms
+    end
+
+    def close
+      @channel.close if @channel.open?
+    end
+  end
+
+  class Subscription
+    attr_reader :source
+
+    def initialize(channel, queue)
+      @channel = channel
+      @queue = channel.queue(queue, passive: true)
+      @source = queue
+    end
+
+    def system = "rabbitmq"
+
+    def poll
+      delivery, properties, body = @queue.pop(manual_ack: true)
+      return nil if delivery.nil?
+
+      headers = properties.headers || {}
+      message = BrokerMessage.new(message_id: properties.message_id.to_s, event_type: properties.type, tenant_id: headers["tenant_id"]&.to_s,
+                                  traceparent: headers["traceparent"]&.to_s, body: body)
+      tag = delivery.delivery_tag
+      # Rejected without requeue: RabbitMQ dead-letters it through the queue's DLX.
+      BrokerDelivery.new(message, -> { @channel.ack(tag) }, -> { @channel.reject(tag, false) })
+    end
+
+    def close
+      @channel.close if @channel.open?
+    end
+  end
+end
+`;
+
+  const pubsubRb = `# frozen_string_literal: true
+
+require "json"
+require "net/http"
+require "uri"
+
+# Google Cloud Pub/Sub over its REST API (no client library): topics for the exchange and the DLX, pull subscriptions
+# for the queue and the DLQ. publish returns once Pub/Sub has stored the message. A failed message is dead-lettered by
+# the consumer: published to the DLX topic, then acknowledged.
+# Auth: none against the emulator (PUBSUB_EMULATOR_HOST); otherwise GOOGLE_OAUTH_ACCESS_TOKEN or the metadata-server
+# token of the workload's service account (Cloud Run, GKE workload identity).
+class PubSubBroker
+  METADATA_TOKEN = "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token"
+
+  def self.from_env
+    project = EventBroker.env("PUBSUB_PROJECT_ID") || EventBroker.env("GOOGLE_CLOUD_PROJECT") ||
+              raise("PUBSUB_PROJECT_ID (or GOOGLE_CLOUD_PROJECT) is not set")
+    new(project, EventBroker.env("PUBSUB_EMULATOR_HOST"))
+  end
+
+  def initialize(project, emulator_host = nil)
+    @project = project
+    @emulator = !emulator_host.nil?
+    @root = "#{@emulator ? "http://#{emulator_host}" : "https://pubsub.googleapis.com"}/v1/projects/#{project}"
+    @lock = Mutex.new
+  end
+
+  def system = "gcp_pubsub"
+  def dynamic_topology? = true
+  def close; end
+
+  def declare(topology)
+    # 409: it already exists (created earlier or by infrastructure as code).
+    call(:put, "/topics/#{topology.exchange}", {}, accepted: [409])
+    call(:put, "/topics/#{topology.dlx}", {}, accepted: [409])
+    call(:put, "/subscriptions/#{topology.queue}", { topic: "projects/#{@project}/topics/#{topology.exchange}", ackDeadlineSeconds: 60 }, accepted: [409])
+    call(:put, "/subscriptions/#{topology.dlq}", { topic: "projects/#{@project}/topics/#{topology.dlx}", ackDeadlineSeconds: 60 }, accepted: [409])
+  end
+
+  def publisher(topic)
+    Publisher.new(self, topic)
+  end
+
+  def subscribe(subscription, topology)
+    Subscription.new(self, subscription, topology)
+  end
+
+  def publish_to(topic, message)
+    attributes = { "ghk_message_id" => message.message_id }
+    attributes["event_type"] = message.event_type if message.event_type
+    attributes["tenant_id"] = message.tenant_id if message.tenant_id
+    attributes["traceparent"] = message.traceparent if message.traceparent
+    res = call(:post, "/topics/#{topic}:publish", { messages: [{ data: [message.body].pack("m0"), attributes: attributes }] })
+    raise "Pub/Sub did not accept message #{message.message_id}" unless res&.dig("messageIds")&.size == 1
+  end
+
+  # Calls the API; a status listed in accepted returns nil instead of failing.
+  def call(method, path, body = nil, accepted: [])
+    uri = URI("#{@root}#{path}")
+    request = (method == :put ? Net::HTTP::Put : Net::HTTP::Post).new(uri, "Content-Type" => "application/json")
+    request.body = JSON.generate(body) unless body.nil?
+    token = bearer
+    request["Authorization"] = "Bearer #{token}" if token
+    response = Net::HTTP.start(uri.host, uri.port, use_ssl: uri.scheme == "https", read_timeout: 30) { |http| http.request(request) }
+    code = response.code.to_i
+    return (response.body.to_s.strip.empty? ? {} : JSON.parse(response.body)) if code.between?(200, 299)
+    return nil if accepted.include?(code)
+
+    raise "Pub/Sub #{method.upcase} #{path} failed: #{code} #{response.body}"
+  end
+
+  private
+
+  def bearer
+    return nil if @emulator
+    return EventBroker.env("GOOGLE_OAUTH_ACCESS_TOKEN") if EventBroker.env("GOOGLE_OAUTH_ACCESS_TOKEN")
+
+    @lock.synchronize do
+      if @token.nil? || Time.now > @expires_at
+        uri = URI(METADATA_TOKEN)
+        body = Net::HTTP.start(uri.host, uri.port, read_timeout: 5) { |http| http.get(uri.path, "Metadata-Flavor" => "Google") }.body
+        data = JSON.parse(body)
+        @token = data.fetch("access_token")
+        @expires_at = Time.now + data.fetch("expires_in").to_i - 60
+      end
+      @token
+    end
+  end
+
+  class Publisher
+    attr_reader :destination
+
+    def initialize(broker, topic)
+      @broker = broker
+      @destination = topic
+    end
+
+    def system = "gcp_pubsub"
+
+    def publish(message)
+      @broker.publish_to(@destination, message)
+    end
+
+    def close; end
+  end
+
+  class Subscription
+    attr_reader :source
+
+    def initialize(broker, subscription, topology)
+      @broker = broker
+      @source = subscription
+      @topology = topology
+    end
+
+    def system = "gcp_pubsub"
+
+    def poll
+      res = @broker.call(:post, "/subscriptions/#{@source}:pull", { maxMessages: 1, returnImmediately: true }) || {}
+      first = (res["receivedMessages"] || []).first
+      return nil if first.nil?
+
+      msg = first["message"]
+      attrs = msg["attributes"] || {}
+      message = BrokerMessage.new(message_id: attrs["ghk_message_id"] || msg["messageId"], event_type: attrs["event_type"], tenant_id: attrs["tenant_id"],
+                                  traceparent: attrs["traceparent"], body: msg.fetch("data", "").unpack1("m"))
+      ack = -> { @broker.call(:post, "/subscriptions/#{@source}:acknowledge", { ackIds: [first["ackId"]] }) }
+      BrokerDelivery.new(message, ack, lambda {
+        @broker.publish_to(@topology.dlx, message)
+        ack.call
+      })
+    end
+
+    def close; end
   end
 end
 `;
@@ -194,14 +485,13 @@ end
   const relay = `# frozen_string_literal: true
 
 # Publishes pending outbox rows. Rows are claimed with FOR UPDATE SKIP LOCKED and a lease, so
-# concurrent relays never publish the same row; publisher confirms guarantee delivery to the broker
-# before a row is marked published. Use one relay (and channel) per thread.
+# concurrent relays never publish the same row; the publisher returns only once the broker has
+# accepted the message (RabbitMQ confirms, Pub/Sub publish), before a row is marked published.
+# Use one relay (and publisher) per thread.
 class OutboxRelay
-  def initialize(database_url, channel, exchange = RuntimeTopology.default.exchange, schema = "public", lease_seconds: ${LEASE_SECONDS}, max_attempts: ${MAX_PUBLISH_ATTEMPTS})
+  def initialize(database_url, publisher, schema = "public", lease_seconds: ${LEASE_SECONDS}, max_attempts: ${MAX_PUBLISH_ATTEMPTS})
     @database_url = database_url
-    @channel = channel
-    @channel.confirm_select
-    @exchange = channel.topic(exchange, durable: true)
+    @publisher = publisher
     @s = RuntimeSchema.name_for(schema)
     @lease_seconds = lease_seconds
     @max_attempts = max_attempts
@@ -224,15 +514,12 @@ class OutboxRelay
 
   def publish(conn, row, worker_id)
     parent = RuntimeTelemetry.context_from(row["traceparent"])
-    span = RuntimeTelemetry.tracer.start_span("#{@exchange.name} publish", with_parent: parent, kind: :producer,
-                                              attributes: { "messaging.system" => "rabbitmq", "messaging.destination.name" => @exchange.name,
+    destination = @publisher.destination
+    span = RuntimeTelemetry.tracer.start_span("#{destination} publish", with_parent: parent, kind: :producer,
+                                              attributes: { "messaging.system" => @publisher.system, "messaging.destination.name" => destination,
                                                             "messaging.message.id" => row["id"], "tenant.id" => row["tenant_id"] })
-    headers = { "tenant_id" => row["tenant_id"] }
-    traceparent = RuntimeTelemetry.traceparent_of(span, parent)
-    headers["traceparent"] = traceparent if traceparent
-    @exchange.publish(row["payload"], routing_key: row["event_type"], message_id: row["id"], persistent: true,
-                                      content_type: "application/json", type: row["event_type"], headers: headers)
-    raise "broker did not confirm #{row['id']}" unless @channel.wait_for_confirms
+    @publisher.publish(BrokerMessage.new(message_id: row["id"], event_type: row["event_type"], tenant_id: row["tenant_id"],
+                                         traceparent: RuntimeTelemetry.traceparent_of(span, parent), body: row["payload"]))
 
     conn.exec_params("UPDATE #{@s}.ghk_outbox SET published_at = now(), claimed_until = NULL WHERE id = $1 AND claimed_by = $2", [row["id"], worker_id])
     true
@@ -254,28 +541,27 @@ require "json"
 
 # Idempotent consumer: the message id is recorded in ghk_inbox in the same transaction as the
 # handler, so redeliveries are acknowledged without running the handler twice. A handler error
-# rejects the message without requeue, so RabbitMQ dead-letters it to the DLQ.
+# dead-letters the message (RabbitMQ DLX, Pub/Sub dead-letter topic): it is not redelivered.
 class InboxConsumer
-  def initialize(database_url, channel, queue, consumer_name, schema = "public", &handler)
+  def initialize(database_url, subscription, consumer_name, schema = "public", &handler)
     @database_url = database_url
-    @channel = channel
-    @queue = channel.queue(queue, passive: true)
+    @subscription = subscription
     @consumer_name = consumer_name
     @handler = handler
     @s = RuntimeSchema.name_for(schema)
   end
 
-  # Processes messages until the queue stays empty for idle_seconds; returns how many were processed.
+  # Processes messages until the source stays empty for idle_seconds; returns how many were processed.
   def drain(idle_seconds = 1.0)
     processed = 0
     idle_since = Time.now
     while Time.now - idle_since < idle_seconds
-      delivery, properties, body = @queue.pop(manual_ack: true)
+      delivery = @subscription.poll
       if delivery.nil?
         sleep 0.05
         next
       end
-      process(delivery, properties, body)
+      process(delivery)
       processed += 1
       idle_since = Time.now
     end
@@ -284,23 +570,24 @@ class InboxConsumer
 
   private
 
-  def process(delivery, properties, body)
-    headers = properties.headers || {}
-    span = RuntimeTelemetry.tracer.start_span("#{@queue.name} process", with_parent: RuntimeTelemetry.context_from(headers["traceparent"]), kind: :consumer,
-                                              attributes: { "messaging.system" => "rabbitmq", "messaging.destination.name" => @queue.name,
-                                                            "messaging.message.id" => properties.message_id.to_s })
+  def process(delivery)
+    message = delivery.message
+    source = @subscription.source
+    span = RuntimeTelemetry.tracer.start_span("#{source} process", with_parent: RuntimeTelemetry.context_from(message.traceparent), kind: :consumer,
+                                              attributes: { "messaging.system" => @subscription.system, "messaging.destination.name" => source,
+                                                            "messaging.message.id" => message.message_id.to_s })
     conn = PG.connect(@database_url)
     conn.transaction do |tx|
-      first = tx.exec_params("INSERT INTO #{@s}.ghk_inbox (consumer, message_id) VALUES ($1, $2) ON CONFLICT DO NOTHING", [@consumer_name, properties.message_id])
+      first = tx.exec_params("INSERT INTO #{@s}.ghk_inbox (consumer, message_id) VALUES ($1, $2) ON CONFLICT DO NOTHING", [@consumer_name, message.message_id])
       if first.cmd_tuples == 1
-        @handler.call(JSON.parse(body), { message_id: properties.message_id, tenant_id: headers["tenant_id"], event_type: properties.type, connection: tx })
+        @handler.call(JSON.parse(message.body), { message_id: message.message_id, tenant_id: message.tenant_id, event_type: message.event_type, connection: tx })
       end
     end
-    @channel.ack(delivery.delivery_tag)
+    delivery.ack
   rescue StandardError => e
     span.record_exception(e)
     span.status = OpenTelemetry::Trace::Status.error(e.message)
-    @channel.reject(delivery.delivery_tag, false)
+    delivery.dead_letter
   ensure
     conn&.close
     span.finish
@@ -368,11 +655,11 @@ end
   const first = m.commands[0];
   const spec = `# frozen_string_literal: true
 
-# Runtime integration tests (docs/RUNTIME-KERNEL.md, IT1-IT7) against PostgreSQL and RabbitMQ.
-# Requires DATABASE_URL and AMQP_URL. Run with: bundle exec rspec --tag integration
+# Runtime integration tests (docs/RUNTIME-KERNEL.md, IT1-IT7) against PostgreSQL and the selected broker
+# (GHK_BROKER: rabbitmq with AMQP_URL, pubsub with PUBSUB_PROJECT_ID [+ PUBSUB_EMULATOR_HOST]).
+# Requires DATABASE_URL. Run with: bundle exec rspec --tag integration
 ENV["OTEL_TRACES_EXPORTER"] ||= "none"
 require "rails_helper"
-require "bunny"
 require "opentelemetry/sdk"
 require "securerandom"
 
@@ -380,17 +667,17 @@ EXPORTER = OpenTelemetry::SDK::Trace::Export::InMemorySpanExporter.new
 OpenTelemetry::SDK.configure { |c| c.add_span_processor(OpenTelemetry::SDK::Trace::Export::SimpleSpanProcessor.new(EXPORTER)) }
 
 RSpec.describe "${m.pascal} runtime (PostgreSQL + RabbitMQ)", :integration do
-  let(:database_url) { ENV.fetch("DATABASE_URL") { raise "Integration tests need DATABASE_URL and AMQP_URL (see docs/RUNTIME-KERNEL.md)." } }
-  let(:amqp_url) { ENV.fetch("AMQP_URL") { raise "Integration tests need DATABASE_URL and AMQP_URL (see docs/RUNTIME-KERNEL.md)." } }
+  let(:database_url) { ENV.fetch("DATABASE_URL") { raise "Integration tests need DATABASE_URL and the broker variables (see docs/RUNTIME-KERNEL.md)." } }
   let(:uid) { SecureRandom.hex(6) }
   let(:schema) { "it_#{uid}" }
   let(:topology) { RuntimeTopology.for_prefix("it-#{uid}") }
   let(:command) { ${rb(first.snake)} }
   let(:event) { ${rb(first.event)} }
   let(:service) { CommandService.new(database_url, schema) }
+  let(:broker) do
+    raise "Integration tests need the broker variables (see docs/RUNTIME-KERNEL.md)." unless EventBroker.configured?
 
-  def connect_amqp
-    Bunny.new(amqp_url, logger: Logger.new(nil)).tap(&:start)
+    EventBroker.connect
   end
 
   def count(table, where = "true", params = [])
@@ -400,26 +687,30 @@ RSpec.describe "${m.pascal} runtime (PostgreSQL + RabbitMQ)", :integration do
     conn&.close
   end
 
-  def drain_queue(channel, queue)
-    q = channel.queue(queue, passive: true)
+  # Receives and acknowledges messages until expected arrived and the source stays quiet for 0.5 s (10 s at most).
+  def receive(source, expected)
+    subscription = broker.subscribe(source, topology)
     out = []
-    loop do
-      _delivery, properties, _body = q.pop
-      break if properties.nil?
-
-      out << properties
+    deadline = Time.now + 10
+    quiet_since = Time.now
+    while Time.now < deadline && (out.size < expected || Time.now - quiet_since < 0.5)
+      delivery = subscription.poll
+      if delivery.nil?
+        sleep 0.05
+        next
+      end
+      out << delivery.message
+      delivery.ack
+      quiet_since = Time.now
     end
     out
-  end
-
-  def wait_for
-    deadline = Time.now + 10
-    sleep 0.05 until yield || Time.now > deadline
-    raise "timed out waiting for condition" unless yield
+  ensure
+    subscription&.close
   end
 
   before do
     RuntimeSchema.migrate(database_url, schema)
+    broker.declare(topology)
     EXPORTER.reset
   end
 
@@ -427,6 +718,7 @@ RSpec.describe "${m.pascal} runtime (PostgreSQL + RabbitMQ)", :integration do
     conn = PG.connect(database_url)
     conn.exec("DROP SCHEMA IF EXISTS #{schema} CASCADE")
     conn.close
+    broker.close
   end
 
   it "IT1 persists the aggregate and one outbox row atomically; a domain error persists nothing" do
@@ -451,25 +743,23 @@ RSpec.describe "${m.pascal} runtime (PostgreSQL + RabbitMQ)", :integration do
 
   it "IT3 two concurrent relays publish every outbox event exactly once" do
     20.times { |i| service.handle(tenant_id: "t1", aggregate_id: "agg-#{i}", command: command) }
-    amqp = connect_amqp
-    setup = amqp.create_channel
-    topology.declare(setup)
     totals = %w[relay-a relay-b].map do |worker|
       Thread.new do
-        relay = OutboxRelay.new(database_url, amqp.create_channel, topology.exchange, schema)
+        publisher = broker.publisher(topology.exchange)
+        relay = OutboxRelay.new(database_url, publisher, schema)
         total = 0
         while (n = relay.publish_batch(worker, 3)).positive?
           total += n
         end
+        publisher.close
         total
       end
     end.map(&:value)
     expect(totals.sum).to eq(20)
     expect(count("ghk_outbox", "published_at IS NULL")).to eq(0)
-    wait_for { setup.queue(topology.queue, passive: true).message_count == 20 }
-    expect(drain_queue(setup, topology.queue).map(&:message_id).uniq.size).to eq(20)
-  ensure
-    amqp&.close
+    received = receive(topology.queue, 20)
+    expect(received.size).to eq(20)
+    expect(received.map(&:message_id).uniq.size).to eq(20)
   end
 
   it "IT4 tenants cannot read or change each other's aggregates" do
@@ -494,26 +784,23 @@ RSpec.describe "${m.pascal} runtime (PostgreSQL + RabbitMQ)", :integration do
   end
 
   it "IT6 a redelivered message is handled once and a failing message is dead-lettered" do
-    amqp = connect_amqp
-    channel = amqp.create_channel
-    topology.declare(channel)
     handled = []
-    consumer = InboxConsumer.new(database_url, channel, topology.queue, "it-consumer", schema) do |payload, meta|
+    publisher = broker.publisher(topology.exchange)
+    [["m-1", '{"ok": true}'], ["m-1", '{"ok": true}'], ["m-poison", '{"poison": true}']].each do |id, body|
+      publisher.publish(BrokerMessage.new(message_id: id, event_type: "Test", tenant_id: "t1", body: body))
+    end
+    publisher.close
+    subscription = broker.subscribe(topology.queue, topology)
+    consumer = InboxConsumer.new(database_url, subscription, "it-consumer", schema) do |payload, meta|
       raise "cannot process" if payload["poison"]
 
       handled << meta[:message_id]
     end
-    exchange = channel.topic(topology.exchange, durable: true)
-    [["m-1", '{"ok": true}'], ["m-1", '{"ok": true}'], ["m-poison", '{"poison": true}']].each do |id, body|
-      exchange.publish(body, routing_key: "Test", message_id: id, headers: { "tenant_id" => "t1" })
-    end
     consumer.drain(1.0)
+    subscription.close
     expect(handled).to eq(["m-1"])
     expect(count("ghk_inbox", "consumer = $1", ["it-consumer"])).to eq(1)
-    wait_for { channel.queue(topology.dlq, passive: true).message_count == 1 }
-    expect(drain_queue(channel, topology.dlq).map(&:message_id)).to eq(["m-poison"])
-  ensure
-    amqp&.close
+    expect(receive(topology.dlq, 1).map(&:message_id)).to eq(["m-poison"])
   end
 
   it "IT7 the incoming trace context flows through command, outbox, publish and consume spans" do
@@ -521,12 +808,13 @@ RSpec.describe "${m.pascal} runtime (PostgreSQL + RabbitMQ)", :integration do
     conn = PG.connect(database_url)
     expect(conn.exec("SELECT traceparent FROM #{schema}.ghk_outbox").getvalue(0, 0)).to include(${rb(TEST_TRACE_ID)})
     conn.close
-    amqp = connect_amqp
-    channel = amqp.create_channel
-    topology.declare(channel)
-    expect(OutboxRelay.new(database_url, channel, topology.exchange, schema).publish_batch("relay", 10)).to eq(1)
+    publisher = broker.publisher(topology.exchange)
+    expect(OutboxRelay.new(database_url, publisher, schema).publish_batch("relay", 10)).to eq(1)
+    publisher.close
     received = []
-    InboxConsumer.new(database_url, amqp.create_channel, topology.queue, "trace-consumer", schema) { |_payload, meta| received << meta }.drain(1.0)
+    subscription = broker.subscribe(topology.queue, topology)
+    InboxConsumer.new(database_url, subscription, "trace-consumer", schema) { |_payload, meta| received << meta }.drain(1.0)
+    subscription.close
     expect(received.size).to eq(1)
 
     spans = EXPORTER.finished_spans.group_by(&:kind).transform_values(&:last)
@@ -535,8 +823,6 @@ RSpec.describe "${m.pascal} runtime (PostgreSQL + RabbitMQ)", :integration do
     expect(spans[:producer].hex_trace_id).to eq(${rb(TEST_TRACE_ID)})
     expect(spans[:consumer].hex_trace_id).to eq(${rb(TEST_TRACE_ID)})
     expect(spans[:consumer].hex_parent_span_id).to eq(spans[:producer].hex_span_id)
-  ensure
-    amqp&.close
   end
 end
 `;
@@ -546,6 +832,11 @@ end
     { filename: 'app/runtime/runtime_telemetry.rb', content: telemetry },
     { filename: 'app/runtime/command_service.rb', content: commandService },
     { filename: 'app/runtime/runtime_topology.rb', content: topologyRb },
+    { filename: 'app/runtime/broker_message.rb', content: brokerMessageRb },
+    { filename: 'app/runtime/broker_delivery.rb', content: brokerDeliveryRb },
+    { filename: 'app/runtime/event_broker.rb', content: eventBrokerRb },
+    { filename: 'app/runtime/rabbit_mq_broker.rb', content: rabbitRb },
+    { filename: 'app/runtime/pub_sub_broker.rb', content: pubsubRb },
     { filename: 'app/runtime/outbox_relay.rb', content: relay },
     { filename: 'app/runtime/inbox_consumer.rb', content: inbox },
     { filename: 'app/runtime/saga_orchestrator.rb', content: saga },

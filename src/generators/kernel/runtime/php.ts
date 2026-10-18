@@ -1,10 +1,12 @@
 /* ==========================================================================
    gherkin-ai-cli - Runtime kernel for PHP (Laravel)
-   PDO pgsql + php-amqplib + OpenTelemetry PHP. Contract: docs/RUNTIME-KERNEL.md.
+   PDO pgsql + RabbitMQ (php-amqplib) or Google Cloud Pub/Sub (REST) + OpenTelemetry PHP.
+   Contract: docs/RUNTIME-KERNEL.md.
    Needs the pdo_pgsql and sockets extensions (see PHP_RUNTIME_EXTENSIONS).
    ========================================================================== */
 
 import { DomainModel } from '../domain-model';
+import { defaultJvmBroker as defaultBrokerFor } from './jvm';
 import { LEASE_SECONDS, MAX_PUBLISH_ATTEMPTS, RLS_NOTE, RUNTIME_SCHEMA_SQL, SCHEMA_TOKEN, TEST_PARENT_SPAN_ID, TEST_TRACEPARENT, TEST_TRACE_ID, topology } from './shared';
 
 export interface PhpRuntimeFile {
@@ -25,7 +27,9 @@ export const PHP_RUNTIME_EXTENSIONS = 'apk add --no-cache $PHPIZE_DEPS postgresq
 
 const php = (s: string) => `'${s.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`;
 
-export function renderPhpRuntime(m: DomainModel, siblings: DomainModel[] = []): PhpRuntimeFile[] {
+export function renderPhpRuntime(m: DomainModel, siblings: DomainModel[] = [], { messaging = undefined as string | undefined } = {}): PhpRuntimeFile[] {
+  // Service Bus has no official PHP SDK: stack.messaging "servicebus" keeps RabbitMQ as the default broker.
+  const defaultBroker = defaultBrokerFor(messaging) === 'pubsub' ? 'pubsub' : 'rabbitmq';
   const all = [m, ...siblings];
   const t = topology(m);
   const domainNs = `App\\Domain\\${m.pascal}`;
@@ -257,11 +261,10 @@ ${all.map(a => `            ${php(a.pascal)} => new ${a.pascal}Command($aggregat
 }
 `;
 
-  const amqp = `${head}use PhpAmqpLib\\Channel\\AMQPChannel;
-use PhpAmqpLib\\Connection\\AMQPStreamConnection;
-use PhpAmqpLib\\Wire\\AMQPTable;
-
-/** RabbitMQ connection and topology: topic exchange -> consumer queue dead-lettering to a fanout DLX -> DLQ. */
+  const amqp = `${head}/**
+ * Event bus destinations: publish to exchange (topic), consume from queue (subscription); dead-lettered messages
+ * go to dlx and are read from dlq.
+ */
 final class Messaging
 {
     public const DEFAULT_PREFIX = ${php(m.kebab)};
@@ -274,62 +277,461 @@ final class Messaging
     {
         return new self("{$prefix}.events", "{$prefix}.consumer", "{$prefix}.dlx", "{$prefix}.dlq");
     }
+}
+`;
+
+  const brokerMessage = `${head}/** A domain event on the wire, independent of the broker. */
+final class BrokerMessage
+{
+    public function __construct(
+        public readonly string $messageId,
+        public readonly ?string $eventType,
+        public readonly ?string $tenantId,
+        public readonly ?string $traceparent,
+        public readonly string $body,
+    ) {
+    }
+}
+`;
+
+  const delivery = `${head}/** A received message: ack() once processed; deadLetter() moves it to the DLQ (it is not redelivered). */
+final class Delivery
+{
+    public function __construct(public readonly BrokerMessage $message, private readonly \\Closure $onAck, private readonly \\Closure $onDeadLetter)
+    {
+    }
+
+    public function ack(): void
+    {
+        ($this->onAck)();
+    }
+
+    public function deadLetter(): void
+    {
+        ($this->onDeadLetter)();
+    }
+}
+`;
+
+  const eventPublisher = `${head}/** Publishes to one destination; publish() returns only once the broker has durably accepted the message. */
+interface EventPublisher
+{
+    public function system(): string;
+
+    public function destination(): string;
+
+    public function publish(BrokerMessage $message): void;
+
+    public function close(): void;
+}
+`;
+
+  const eventSubscription = `${head}/** Pulls messages from one queue / subscription. */
+interface EventSubscription
+{
+    public function system(): string;
+
+    public function source(): string;
+
+    /** The next waiting message, or null when there is none. */
+    public function poll(): ?Delivery;
+
+    public function close(): void;
+}
+`;
+
+  const brokerInterface = `${head}interface Broker
+{
+    public function system(): string;
+
+    /** Creates the topology if missing (idempotent); in production it usually comes from infrastructure as code. */
+    public function declare(Messaging $topology): void;
+
+    public function publisher(string $destination): EventPublisher;
+
+    /** $topology says where dead-lettered messages go. */
+    public function subscribe(string $source, Messaging $topology): EventSubscription;
+
+    public function close(): void;
+}
+`;
+
+  const brokers = `${head}/**
+ * The event broker behind the outbox relay and the inbox consumer, chosen at run time so one image runs on any
+ * cloud: GHK_BROKER=rabbitmq (AMQP_URL) or pubsub (PUBSUB_PROJECT_ID or GOOGLE_CLOUD_PROJECT; PUBSUB_EMULATOR_HOST).
+ * Without GHK_BROKER the configured variables decide, then stack.messaging.
+ * Azure Service Bus has no official PHP SDK: on Azure use self-managed RabbitMQ or CloudAMQP (AMQP_URL).
+ */
+final class Brokers
+{
+    /** Broker of the generated configuration (stack.messaging). */
+    public const DEFAULT_KIND = ${php(defaultBroker)};
+
+    public static function env(string $key): ?string
+    {
+        $value = getenv($key);
+        return $value === false || trim($value) === '' ? null : $value;
+    }
+
+    public static function kind(): string
+    {
+        if (self::env('GHK_BROKER') !== null) {
+            return strtolower(trim((string) self::env('GHK_BROKER')));
+        }
+        if (self::env('AMQP_URL') !== null) {
+            return 'rabbitmq';
+        }
+        if (self::env('PUBSUB_PROJECT_ID') !== null || self::env('PUBSUB_EMULATOR_HOST') !== null) {
+            return 'pubsub';
+        }
+        return self::DEFAULT_KIND;
+    }
+
+    /** Whether the variables of the selected broker are set. */
+    public static function configured(): bool
+    {
+        return self::kind() === 'pubsub'
+            ? (self::env('PUBSUB_PROJECT_ID') ?? self::env('GOOGLE_CLOUD_PROJECT')) !== null
+            : self::env('AMQP_URL') !== null;
+    }
+
+    public static function connect(): Broker
+    {
+        return match (self::kind()) {
+            'rabbitmq' => RabbitMqBroker::connect(self::env('AMQP_URL') ?? throw new \\RuntimeException('AMQP_URL is not set (amqp://user:password@host:5672)')),
+            'pubsub' => PubSubBroker::fromEnv(),
+            'servicebus' => throw new \\RuntimeException('Azure Service Bus has no official PHP SDK: use RabbitMQ (self-managed or CloudAMQP) on Azure'),
+            default => throw new \\RuntimeException('Unsupported GHK_BROKER: ' . self::kind() . ' (rabbitmq, pubsub)'),
+        };
+    }
+}
+`;
+
+  const rabbitBroker = `${head}use PhpAmqpLib\\Channel\\AMQPChannel;
+use PhpAmqpLib\\Connection\\AMQPStreamConnection;
+use PhpAmqpLib\\Message\\AMQPMessage;
+use PhpAmqpLib\\Wire\\AMQPTable;
+
+/** RabbitMQ 0-9-1: topic exchange, publisher confirms, dead-lettering through the queue's DLX. */
+final class RabbitMqBroker implements Broker
+{
+    public function __construct(private readonly AMQPStreamConnection $connection)
+    {
+    }
 
     /** From an AMQP URL: amqp://user:password@host:5672/vhost */
-    public static function connect(string $amqpUrl): AMQPStreamConnection
+    public static function connect(string $amqpUrl): self
     {
         $url = parse_url($amqpUrl);
         $vhost = isset($url['path']) && $url['path'] !== '/' && $url['path'] !== '' ? urldecode(substr($url['path'], 1)) : '/';
-        return new AMQPStreamConnection($url['host'], $url['port'] ?? 5672, urldecode($url['user'] ?? 'guest'), urldecode($url['pass'] ?? 'guest'), $vhost);
+        return new self(new AMQPStreamConnection($url['host'], $url['port'] ?? 5672, urldecode($url['user'] ?? 'guest'), urldecode($url['pass'] ?? 'guest'), $vhost));
     }
 
-    public function declare(AMQPChannel $channel): void
+    public function system(): string
     {
-        $channel->exchange_declare($this->exchange, 'topic', false, true, false);
-        $channel->exchange_declare($this->dlx, 'fanout', false, true, false);
-        $channel->queue_declare($this->dlq, false, true, false, false);
-        $channel->queue_bind($this->dlq, $this->dlx, '');
-        $channel->queue_declare($this->queue, false, true, false, false, false, new AMQPTable(['x-dead-letter-exchange' => $this->dlx]));
-        $channel->queue_bind($this->queue, $this->exchange, '#');
+        return 'rabbitmq';
     }
 
-    public static function messageCount(AMQPChannel $channel, string $queue): int
+    public function declare(Messaging $t): void
     {
-        [, $count] = $channel->queue_declare($queue, true);
-        return (int) $count;
+        $channel = $this->connection->channel();
+        $channel->exchange_declare($t->exchange, 'topic', false, true, false);
+        $channel->exchange_declare($t->dlx, 'fanout', false, true, false);
+        $channel->queue_declare($t->dlq, false, true, false, false);
+        $channel->queue_bind($t->dlq, $t->dlx, '');
+        $channel->queue_declare($t->queue, false, true, false, false, false, new AMQPTable(['x-dead-letter-exchange' => $t->dlx]));
+        $channel->queue_bind($t->queue, $t->exchange, '#');
+        $channel->close();
+    }
+
+    public function publisher(string $exchange): EventPublisher
+    {
+        $channel = $this->connection->channel();
+        return new class ($channel, $exchange) implements EventPublisher {
+            private bool $nacked = false;
+
+            public function __construct(private readonly AMQPChannel $channel, private readonly string $exchange)
+            {
+                $this->channel->confirm_select();
+                $this->channel->set_nack_handler(function (): void {
+                    $this->nacked = true;
+                });
+            }
+
+            public function system(): string
+            {
+                return 'rabbitmq';
+            }
+
+            public function destination(): string
+            {
+                return $this->exchange;
+            }
+
+            public function publish(BrokerMessage $m): void
+            {
+                $headers = array_filter(['tenant_id' => $m->tenantId, 'traceparent' => $m->traceparent], fn ($v) => $v !== null);
+                $this->nacked = false;
+                $this->channel->basic_publish(new AMQPMessage($m->body, [
+                    'message_id' => $m->messageId, 'delivery_mode' => AMQPMessage::DELIVERY_MODE_PERSISTENT,
+                    'content_type' => 'application/json', 'type' => (string) $m->eventType, 'application_headers' => new AMQPTable($headers),
+                ]), $this->exchange, (string) $m->eventType);
+                $this->channel->wait_for_pending_acks(10);
+                if ($this->nacked) {
+                    throw new \\RuntimeException("Broker rejected {$m->messageId}");
+                }
+            }
+
+            public function close(): void
+            {
+                $this->channel->close();
+            }
+        };
+    }
+
+    public function subscribe(string $queue, Messaging $topology): EventSubscription
+    {
+        $channel = $this->connection->channel();
+        return new class ($channel, $queue) implements EventSubscription {
+            public function __construct(private readonly AMQPChannel $channel, private readonly string $queue)
+            {
+            }
+
+            public function system(): string
+            {
+                return 'rabbitmq';
+            }
+
+            public function source(): string
+            {
+                return $this->queue;
+            }
+
+            public function poll(): ?Delivery
+            {
+                $message = $this->channel->basic_get($this->queue);
+                if ($message === null) {
+                    return null;
+                }
+                $headers = $message->has('application_headers') ? $message->get('application_headers')->getNativeData() : [];
+                $brokerMessage = new BrokerMessage(
+                    $message->has('message_id') ? (string) $message->get('message_id') : '',
+                    $message->has('type') ? (string) $message->get('type') : null,
+                    isset($headers['tenant_id']) ? (string) $headers['tenant_id'] : null,
+                    isset($headers['traceparent']) ? (string) $headers['traceparent'] : null,
+                    $message->getBody(),
+                );
+                // Rejected without requeue: RabbitMQ dead-letters it through the queue's DLX.
+                return new Delivery($brokerMessage, fn () => $message->ack(), fn () => $message->reject(false));
+            }
+
+            public function close(): void
+            {
+                $this->channel->close();
+            }
+        };
+    }
+
+    public function close(): void
+    {
+        $this->connection->close();
+    }
+}
+`;
+
+  const pubsubBroker = `${head}/**
+ * Google Cloud Pub/Sub over its REST API (no client library, PHP streams): topics for the exchange and the DLX, pull
+ * subscriptions for the queue and the DLQ. publish() returns once Pub/Sub has stored the message. A failed message is
+ * dead-lettered by the consumer: published to the DLX topic, then acknowledged.
+ * Auth: none against the emulator (PUBSUB_EMULATOR_HOST); otherwise GOOGLE_OAUTH_ACCESS_TOKEN or the metadata-server
+ * token of the workload's service account (Cloud Run, GKE workload identity).
+ */
+final class PubSubBroker implements Broker
+{
+    private const METADATA_TOKEN = 'http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token';
+    private readonly string $root;
+    private ?string $token = null;
+    private int $tokenExpiresAt = 0;
+
+    public function __construct(private readonly string $project, private readonly ?string $emulatorHost = null)
+    {
+        $this->root = ($emulatorHost !== null ? "http://{$emulatorHost}" : 'https://pubsub.googleapis.com') . "/v1/projects/{$project}";
+    }
+
+    public static function fromEnv(): self
+    {
+        $project = Brokers::env('PUBSUB_PROJECT_ID') ?? Brokers::env('GOOGLE_CLOUD_PROJECT')
+            ?? throw new \\RuntimeException('PUBSUB_PROJECT_ID (or GOOGLE_CLOUD_PROJECT) is not set');
+        return new self($project, Brokers::env('PUBSUB_EMULATOR_HOST'));
+    }
+
+    public function system(): string
+    {
+        return 'gcp_pubsub';
+    }
+
+    private function bearer(): ?string
+    {
+        if ($this->emulatorHost !== null) {
+            return null;
+        }
+        if (Brokers::env('GOOGLE_OAUTH_ACCESS_TOKEN') !== null) {
+            return Brokers::env('GOOGLE_OAUTH_ACCESS_TOKEN');
+        }
+        if ($this->token === null || time() > $this->tokenExpiresAt) {
+            $context = stream_context_create(['http' => ['header' => "Metadata-Flavor: Google\\r\\n", 'timeout' => 5]]);
+            $data = json_decode((string) file_get_contents(self::METADATA_TOKEN, false, $context), true, 512, JSON_THROW_ON_ERROR);
+            $this->token = $data['access_token'];
+            $this->tokenExpiresAt = time() + (int) $data['expires_in'] - 60;
+        }
+        return $this->token;
+    }
+
+    /**
+     * Calls the API; a status listed in $accepted returns null instead of failing.
+     *
+     * @param list<int> $accepted
+     */
+    public function call(string $method, string $path, array $body, array $accepted = []): ?array
+    {
+        $headers = "Content-Type: application/json\\r\\n";
+        $token = $this->bearer();
+        if ($token !== null) {
+            $headers .= "Authorization: Bearer {$token}\\r\\n";
+        }
+        $context = stream_context_create(['http' => [
+            'method' => $method, 'header' => $headers, 'content' => json_encode((object) $body, JSON_THROW_ON_ERROR), 'ignore_errors' => true, 'timeout' => 30,
+        ]]);
+        $stream = fopen($this->root . $path, 'r', false, $context);
+        if ($stream === false) {
+            throw new \\RuntimeException("Pub/Sub {$method} {$path} failed: no response");
+        }
+        $response = stream_get_contents($stream);
+        // The status line is the first wrapper header (read from the metadata: $http_response_header is deprecated).
+        $status = preg_match('/\\s(\\d{3})(\\s|$)/', (string) (stream_get_meta_data($stream)['wrapper_data'][0] ?? ''), $m) ? (int) $m[1] : 0;
+        fclose($stream);
+        if ($status >= 200 && $status < 300) {
+            return trim((string) $response) === '' ? [] : json_decode((string) $response, true, 512, JSON_THROW_ON_ERROR);
+        }
+        if (in_array($status, $accepted, true)) {
+            return null;
+        }
+        throw new \\RuntimeException("Pub/Sub {$method} {$path} failed: {$status} {$response}");
+    }
+
+    public function declare(Messaging $t): void
+    {
+        // 409: it already exists (created earlier or by infrastructure as code).
+        $this->call('PUT', "/topics/{$t->exchange}", [], [409]);
+        $this->call('PUT', "/topics/{$t->dlx}", [], [409]);
+        $this->call('PUT', "/subscriptions/{$t->queue}", ['topic' => "projects/{$this->project}/topics/{$t->exchange}", 'ackDeadlineSeconds' => 60], [409]);
+        $this->call('PUT', "/subscriptions/{$t->dlq}", ['topic' => "projects/{$this->project}/topics/{$t->dlx}", 'ackDeadlineSeconds' => 60], [409]);
+    }
+
+    public function publishTo(string $topic, BrokerMessage $m): void
+    {
+        $attributes = array_filter(['ghk_message_id' => $m->messageId, 'event_type' => $m->eventType, 'tenant_id' => $m->tenantId, 'traceparent' => $m->traceparent], fn ($v) => $v !== null);
+        $res = $this->call('POST', "/topics/{$topic}:publish", ['messages' => [['data' => base64_encode($m->body), 'attributes' => (object) $attributes]]]);
+        if (count($res['messageIds'] ?? []) !== 1) {
+            throw new \\RuntimeException("Pub/Sub did not accept message {$m->messageId}");
+        }
+    }
+
+    public function publisher(string $topic): EventPublisher
+    {
+        return new class ($this, $topic) implements EventPublisher {
+            public function __construct(private readonly PubSubBroker $broker, private readonly string $topic)
+            {
+            }
+
+            public function system(): string
+            {
+                return 'gcp_pubsub';
+            }
+
+            public function destination(): string
+            {
+                return $this->topic;
+            }
+
+            public function publish(BrokerMessage $message): void
+            {
+                $this->broker->publishTo($this->topic, $message);
+            }
+
+            public function close(): void
+            {
+            }
+        };
+    }
+
+    public function subscribe(string $subscription, Messaging $topology): EventSubscription
+    {
+        return new class ($this, $subscription, $topology) implements EventSubscription {
+            public function __construct(private readonly PubSubBroker $broker, private readonly string $subscription, private readonly Messaging $topology)
+            {
+            }
+
+            public function system(): string
+            {
+                return 'gcp_pubsub';
+            }
+
+            public function source(): string
+            {
+                return $this->subscription;
+            }
+
+            public function poll(): ?Delivery
+            {
+                $res = $this->broker->call('POST', "/subscriptions/{$this->subscription}:pull", ['maxMessages' => 1, 'returnImmediately' => true]);
+                $first = $res['receivedMessages'][0] ?? null;
+                if ($first === null) {
+                    return null;
+                }
+                $msg = $first['message'];
+                $attrs = $msg['attributes'] ?? [];
+                $message = new BrokerMessage($attrs['ghk_message_id'] ?? $msg['messageId'], $attrs['event_type'] ?? null, $attrs['tenant_id'] ?? null,
+                    $attrs['traceparent'] ?? null, base64_decode($msg['data'] ?? '', true) ?: '');
+                $ack = fn () => $this->broker->call('POST', "/subscriptions/{$this->subscription}:acknowledge", ['ackIds' => [$first['ackId']]]);
+                return new Delivery($message, $ack, function () use ($message, $ack): void {
+                    $this->broker->publishTo($this->topology->dlx, $message);
+                    $ack();
+                });
+            }
+
+            public function close(): void
+            {
+            }
+        };
+    }
+
+    public function close(): void
+    {
     }
 }
 `;
 
   const relay = `${head}use OpenTelemetry\\API\\Trace\\SpanKind;
 use OpenTelemetry\\API\\Trace\\StatusCode;
-use PhpAmqpLib\\Channel\\AMQPChannel;
-use PhpAmqpLib\\Message\\AMQPMessage;
-use PhpAmqpLib\\Wire\\AMQPTable;
 
 /**
  * Publishes pending outbox rows. Rows are claimed with FOR UPDATE SKIP LOCKED and a lease, so
- * concurrent relays never publish the same row; publisher confirms guarantee delivery to the broker
- * before a row is marked published. Use one relay (and channel) per process.
+ * concurrent relays never publish the same row; the publisher returns only once the broker has
+ * accepted the message, so a row is marked published only after delivery. Use one relay per process.
  */
 final class OutboxRelay
 {
     private readonly string $s;
-    private bool $nacked = false;
 
     public function __construct(
         private readonly string $databaseUrl,
-        private readonly AMQPChannel $channel,
-        private readonly string $exchange,
+        private readonly EventPublisher $publisher,
         string $schema = 'public',
         private readonly int $leaseSeconds = ${LEASE_SECONDS},
         private readonly int $maxAttempts = ${MAX_PUBLISH_ATTEMPTS},
     ) {
         $this->s = Schema::name($schema);
-        $this->channel->confirm_select();
-        $this->channel->set_nack_handler(function (): void {
-            $this->nacked = true;
-        });
     }
 
     public function publishBatch(string $workerId, int $limit = 50): int
@@ -344,24 +746,13 @@ final class OutboxRelay
         $published = 0;
         foreach ($rows as $row) {
             $parent = Telemetry::contextFrom($row['traceparent']);
-            $span = Telemetry::tracer()->spanBuilder("{$this->exchange} publish")->setParent($parent)->setSpanKind(SpanKind::KIND_PRODUCER)
-                ->setAttribute('messaging.system', 'rabbitmq')->setAttribute('messaging.destination.name', $this->exchange)
+            $destination = $this->publisher->destination();
+            $span = Telemetry::tracer()->spanBuilder("{$destination} publish")->setParent($parent)->setSpanKind(SpanKind::KIND_PRODUCER)
+                ->setAttribute('messaging.system', $this->publisher->system())->setAttribute('messaging.destination.name', $destination)
                 ->setAttribute('messaging.message.id', $row['id'])->setAttribute('tenant.id', $row['tenant_id'])->startSpan();
             try {
-                $headers = ['tenant_id' => $row['tenant_id']];
-                $traceparent = Telemetry::traceparentOf($span, $parent);
-                if ($traceparent !== null) {
-                    $headers['traceparent'] = $traceparent;
-                }
-                $this->nacked = false;
-                $this->channel->basic_publish(new AMQPMessage((string) $row['payload'], [
-                    'message_id' => $row['id'], 'delivery_mode' => AMQPMessage::DELIVERY_MODE_PERSISTENT,
-                    'content_type' => 'application/json', 'type' => $row['event_type'], 'application_headers' => new AMQPTable($headers),
-                ]), $this->exchange, (string) $row['event_type']);
-                $this->channel->wait_for_pending_acks(10);
-                if ($this->nacked) {
-                    throw new \\RuntimeException("Broker rejected {$row['id']}");
-                }
+                $this->publisher->publish(new BrokerMessage((string) $row['id'], $row['event_type'], $row['tenant_id'],
+                    Telemetry::traceparentOf($span, $parent), (string) $row['payload']));
                 Database::exec($pdo, "UPDATE {$s}.ghk_outbox SET published_at = now(), claimed_until = NULL WHERE id = ? AND claimed_by = ?", [$row['id'], $workerId]);
                 $published++;
             } catch (\\Throwable $e) {
@@ -380,14 +771,12 @@ final class OutboxRelay
 
   const inbox = `${head}use OpenTelemetry\\API\\Trace\\SpanKind;
 use OpenTelemetry\\API\\Trace\\StatusCode;
-use PhpAmqpLib\\Channel\\AMQPChannel;
-use PhpAmqpLib\\Message\\AMQPMessage;
 use PDO;
 
 /**
  * Idempotent consumer: the message id is recorded in ghk_inbox in the same transaction as the
  * handler, so redeliveries are acknowledged without running the handler twice. A handler error
- * rejects the message without requeue, so RabbitMQ dead-letters it to the DLQ.
+ * dead-letters the message to the DLQ.
  */
 final class InboxConsumer
 {
@@ -396,8 +785,7 @@ final class InboxConsumer
     /** @param \\Closure(array<string, mixed>, array{messageId: string, tenantId: ?string, eventType: ?string, pdo: PDO}): void $handler */
     public function __construct(
         private readonly string $databaseUrl,
-        private readonly AMQPChannel $channel,
-        private readonly string $queue,
+        private readonly EventSubscription $subscription,
         private readonly string $consumerName,
         private readonly \\Closure $handler,
         string $schema = 'public',
@@ -411,45 +799,45 @@ final class InboxConsumer
         $processed = 0;
         $idleSince = microtime(true);
         while (microtime(true) - $idleSince < $idleSeconds) {
-            $message = $this->channel->basic_get($this->queue);
-            if ($message === null) {
+            $delivery = $this->subscription->poll();
+            if ($delivery === null) {
                 usleep(50_000);
                 continue;
             }
-            $this->process($message);
+            $this->process($delivery);
             $processed++;
             $idleSince = microtime(true);
         }
         return $processed;
     }
 
-    private function process(AMQPMessage $message): void
+    private function process(Delivery $delivery): void
     {
-        $headers = $message->has('application_headers') ? $message->get('application_headers')->getNativeData() : [];
-        $messageId = $message->has('message_id') ? (string) $message->get('message_id') : '';
-        $span = Telemetry::tracer()->spanBuilder("{$this->queue} process")->setParent(Telemetry::contextFrom($headers['traceparent'] ?? null))
-            ->setSpanKind(SpanKind::KIND_CONSUMER)->setAttribute('messaging.system', 'rabbitmq')
-            ->setAttribute('messaging.destination.name', $this->queue)->setAttribute('messaging.message.id', $messageId)->startSpan();
+        $message = $delivery->message;
+        $source = $this->subscription->source();
+        $span = Telemetry::tracer()->spanBuilder("{$source} process")->setParent(Telemetry::contextFrom($message->traceparent))
+            ->setSpanKind(SpanKind::KIND_CONSUMER)->setAttribute('messaging.system', $this->subscription->system())
+            ->setAttribute('messaging.destination.name', $source)->setAttribute('messaging.message.id', $message->messageId)->startSpan();
         $pdo = Database::connect($this->databaseUrl);
         try {
             $pdo->beginTransaction();
-            if (Database::exec($pdo, "INSERT INTO {$this->s}.ghk_inbox (consumer, message_id) VALUES (?, ?) ON CONFLICT DO NOTHING", [$this->consumerName, $messageId]) === 1) {
-                ($this->handler)(json_decode($message->getBody(), true, 512, JSON_THROW_ON_ERROR), [
-                    'messageId' => $messageId,
-                    'tenantId' => $headers['tenant_id'] ?? null,
-                    'eventType' => $message->has('type') ? (string) $message->get('type') : null,
+            if (Database::exec($pdo, "INSERT INTO {$this->s}.ghk_inbox (consumer, message_id) VALUES (?, ?) ON CONFLICT DO NOTHING", [$this->consumerName, $message->messageId]) === 1) {
+                ($this->handler)(json_decode($message->body, true, 512, JSON_THROW_ON_ERROR), [
+                    'messageId' => $message->messageId,
+                    'tenantId' => $message->tenantId,
+                    'eventType' => $message->eventType,
                     'pdo' => $pdo,
                 ]);
             }
             $pdo->commit();
-            $message->ack();
+            $delivery->ack();
         } catch (\\Throwable $e) {
             if ($pdo->inTransaction()) {
                 $pdo->rollBack();
             }
             $span->recordException($e);
             $span->setStatus(StatusCode::STATUS_ERROR);
-            $message->reject(false);
+            $delivery->deadLetter();
         } finally {
             $span->end();
         }
@@ -531,8 +919,8 @@ declare(strict_types=1);
 // Worker process for the concurrency tests (IT2, IT3): php worker.php <handle|relay> '<json args>'
 require __DIR__ . '/../../vendor/autoload.php';
 
+use App\\Runtime\\Brokers;
 use App\\Runtime\\CommandService;
-use App\\Runtime\\Messaging;
 use App\\Runtime\\OutboxRelay;
 
 [$mode, $json] = [$argv[1], $argv[2]];
@@ -545,13 +933,15 @@ if ($mode === 'handle') {
     exit(0);
 }
 
-$connection = Messaging::connect((string) getenv('AMQP_URL'));
-$relay = new OutboxRelay($databaseUrl, $connection->channel(), $args['exchange'], $args['schema']);
+$broker = Brokers::connect();
+$publisher = $broker->publisher($args['exchange']);
+$relay = new OutboxRelay($databaseUrl, $publisher, $args['schema']);
 $total = 0;
 while (($n = $relay->publishBatch($args['worker'], 3)) > 0) {
     $total += $n;
 }
-$connection->close();
+$publisher->close();
+$broker->close();
 echo json_encode(['published' => $total]);
 `;
 
@@ -563,6 +953,9 @@ declare(strict_types=1);
 namespace Tests\\Integration;
 
 use App\\Domain\\${m.pascal}\\DomainValidationException;
+use App\\Runtime\\Broker;
+use App\\Runtime\\BrokerMessage;
+use App\\Runtime\\Brokers;
 use App\\Runtime\\CommandService;
 use App\\Runtime\\Database;
 use App\\Runtime\\InboxConsumer;
@@ -575,12 +968,10 @@ use OpenTelemetry\\SDK\\Sdk;
 use OpenTelemetry\\SDK\\Trace\\SpanExporter\\InMemoryExporter;
 use OpenTelemetry\\SDK\\Trace\\SpanProcessor\\SimpleSpanProcessor;
 use OpenTelemetry\\SDK\\Trace\\TracerProvider;
-use PhpAmqpLib\\Message\\AMQPMessage;
-use PhpAmqpLib\\Wire\\AMQPTable;
 use PHPUnit\\Framework\\Attributes\\Group;
 use PHPUnit\\Framework\\TestCase;
 
-/** Runtime integration tests (docs/RUNTIME-KERNEL.md, IT1-IT7). Requires DATABASE_URL and AMQP_URL. */
+/** Runtime integration tests (docs/RUNTIME-KERNEL.md, IT1-IT7). Requires DATABASE_URL and the broker variables. */
 #[Group('integration')]
 final class RuntimeIntegrationTest extends TestCase
 {
@@ -588,9 +979,9 @@ final class RuntimeIntegrationTest extends TestCase
     private const EVENT = ${php(first.event)};
     private static InMemoryExporter $exporter;
     private string $databaseUrl;
-    private string $amqpUrl;
     private string $schema;
     private Messaging $topology;
+    private ?Broker $broker = null;
 
     public static function setUpBeforeClass(): void
     {
@@ -601,9 +992,8 @@ final class RuntimeIntegrationTest extends TestCase
     protected function setUp(): void
     {
         $this->databaseUrl = (string) getenv('DATABASE_URL');
-        $this->amqpUrl = (string) getenv('AMQP_URL');
-        if ($this->databaseUrl === '' || $this->amqpUrl === '') {
-            self::fail('Integration tests need DATABASE_URL and AMQP_URL (see docs/RUNTIME-KERNEL.md).');
+        if ($this->databaseUrl === '' || !Brokers::configured()) {
+            self::fail('Integration tests need DATABASE_URL and the broker variables (see docs/RUNTIME-KERNEL.md).');
         }
         $uid = bin2hex(random_bytes(6));
         $this->schema = "it_{$uid}";
@@ -614,7 +1004,43 @@ final class RuntimeIntegrationTest extends TestCase
 
     protected function tearDown(): void
     {
+        $this->broker?->close();
         Database::connect($this->databaseUrl)->exec("DROP SCHEMA IF EXISTS {$this->schema} CASCADE");
+    }
+
+    /** The broker with this test's topology declared. */
+    private function broker(): Broker
+    {
+        if ($this->broker === null) {
+            $this->broker = Brokers::connect();
+            $this->broker->declare($this->topology);
+        }
+        return $this->broker;
+    }
+
+    /**
+     * Receives and acknowledges messages until $expected arrived and the source stays quiet for 0.5 s (10 s at most).
+     *
+     * @return list<BrokerMessage>
+     */
+    private function receive(string $source, int $expected): array
+    {
+        $subscription = $this->broker()->subscribe($source, $this->topology);
+        $out = [];
+        $deadline = microtime(true) + 10;
+        $quietSince = microtime(true);
+        while (microtime(true) < $deadline && (count($out) < $expected || microtime(true) - $quietSince < 0.5)) {
+            $delivery = $subscription->poll();
+            if ($delivery === null) {
+                usleep(50_000);
+                continue;
+            }
+            $out[] = $delivery->message;
+            $delivery->ack();
+            $quietSince = microtime(true);
+        }
+        $subscription->close();
+        return $out;
     }
 
     private function countRows(string $table, string $where = 'true', array $params = []): int
@@ -642,26 +1068,6 @@ final class RuntimeIntegrationTest extends TestCase
         return $outputs;
     }
 
-    private static function waitFor(callable $check): void
-    {
-        $deadline = microtime(true) + 10;
-        while (!$check()) {
-            if (microtime(true) > $deadline) {
-                self::fail('Timed out waiting for condition');
-            }
-            usleep(50_000);
-        }
-    }
-
-    /** @return list<AMQPMessage> */
-    private static function drainQueue($channel, string $queue): array
-    {
-        $messages = [];
-        while (($message = $channel->basic_get($queue, true)) !== null) {
-            $messages[] = $message;
-        }
-        return $messages;
-    }
 
     public function testIT1AtomicWriteAndRollback(): void
     {
@@ -699,19 +1105,16 @@ final class RuntimeIntegrationTest extends TestCase
         for ($i = 0; $i < 20; $i++) {
             $service->handle('t1', "agg-{$i}", self::COMMAND);
         }
-        $connection = Messaging::connect($this->amqpUrl);
-        $channel = $connection->channel();
-        $this->topology->declare($channel);
+        $this->broker();
         $outputs = $this->runWorkers('relay', [
             ['schema' => $this->schema, 'exchange' => $this->topology->exchange, 'worker' => 'relay-a'],
             ['schema' => $this->schema, 'exchange' => $this->topology->exchange, 'worker' => 'relay-b'],
         ]);
         self::assertSame(20, array_sum(array_column($outputs, 'published')));
         self::assertSame(0, $this->countRows('ghk_outbox', 'published_at IS NULL'));
-        self::waitFor(fn () => Messaging::messageCount($channel, $this->topology->queue) === 20);
-        $ids = array_map(fn (AMQPMessage $m) => $m->get('message_id'), self::drainQueue($channel, $this->topology->queue));
-        self::assertCount(20, array_unique($ids));
-        $connection->close();
+        $received = $this->receive($this->topology->queue, 20);
+        self::assertCount(20, $received);
+        self::assertCount(20, array_unique(array_map(fn (BrokerMessage $m) => $m->messageId, $received)));
     }
 
     public function testIT4TenantIsolation(): void
@@ -751,25 +1154,24 @@ final class RuntimeIntegrationTest extends TestCase
 
     public function testIT6InboxDeduplicatesAndDeadLetters(): void
     {
-        $connection = Messaging::connect($this->amqpUrl);
-        $channel = $connection->channel();
-        $this->topology->declare($channel);
+        $broker = $this->broker();
+        $publisher = $broker->publisher($this->topology->exchange);
+        foreach ([['m-1', '{"ok": true}'], ['m-1', '{"ok": true}'], ['m-poison', '{"poison": true}']] as [$id, $body]) {
+            $publisher->publish(new BrokerMessage($id, 'Test', 't1', null, $body));
+        }
+        $publisher->close();
         $handled = [];
-        $consumer = new InboxConsumer($this->databaseUrl, $channel, $this->topology->queue, 'it-consumer', function (array $event, array $meta) use (&$handled): void {
+        $subscription = $broker->subscribe($this->topology->queue, $this->topology);
+        (new InboxConsumer($this->databaseUrl, $subscription, 'it-consumer', function (array $event, array $meta) use (&$handled): void {
             if (!empty($event['poison'])) {
                 throw new \\RuntimeException('cannot process');
             }
             $handled[] = $meta['messageId'];
-        }, $this->schema);
-        foreach ([['m-1', '{"ok": true}'], ['m-1', '{"ok": true}'], ['m-poison', '{"poison": true}']] as [$id, $body]) {
-            $channel->basic_publish(new AMQPMessage($body, ['message_id' => $id, 'application_headers' => new AMQPTable(['tenant_id' => 't1'])]), $this->topology->exchange, 'Test');
-        }
-        $consumer->drain(1.0);
+        }, $this->schema))->drain(1.0);
+        $subscription->close();
         self::assertSame(['m-1'], $handled);
         self::assertSame(1, $this->countRows('ghk_inbox', 'consumer = ?', ['it-consumer']));
-        self::waitFor(fn () => Messaging::messageCount($channel, $this->topology->dlq) === 1);
-        self::assertSame(['m-poison'], array_map(fn (AMQPMessage $m) => $m->get('message_id'), self::drainQueue($channel, $this->topology->dlq)));
-        $connection->close();
+        self::assertSame(['m-poison'], array_map(fn (BrokerMessage $m) => $m->messageId, $this->receive($this->topology->dlq, 1)));
     }
 
     public function testIT7TraceContextPropagation(): void
@@ -778,16 +1180,17 @@ final class RuntimeIntegrationTest extends TestCase
         $service->handle('t1', 'agg-1', self::COMMAND, [], null, ${php(TEST_TRACEPARENT)});
         $row = Database::rows(Database::connect($this->databaseUrl), "SELECT traceparent FROM {$this->schema}.ghk_outbox")[0];
         self::assertStringContainsString(${php(TEST_TRACE_ID)}, (string) $row['traceparent']);
-        $connection = Messaging::connect($this->amqpUrl);
-        $channel = $connection->channel();
-        $this->topology->declare($channel);
-        self::assertSame(1, (new OutboxRelay($this->databaseUrl, $channel, $this->topology->exchange, $this->schema))->publishBatch('relay', 10));
+        $broker = $this->broker();
+        $publisher = $broker->publisher($this->topology->exchange);
+        self::assertSame(1, (new OutboxRelay($this->databaseUrl, $publisher, $this->schema))->publishBatch('relay', 10));
+        $publisher->close();
         $received = 0;
-        (new InboxConsumer($this->databaseUrl, $connection->channel(), $this->topology->queue, 'trace-consumer', function () use (&$received): void {
+        $subscription = $broker->subscribe($this->topology->queue, $this->topology);
+        (new InboxConsumer($this->databaseUrl, $subscription, 'trace-consumer', function () use (&$received): void {
             $received++;
         }, $this->schema))->drain(1.0);
+        $subscription->close();
         self::assertSame(1, $received);
-        $connection->close();
 
         $byKind = [];
         foreach (self::$exporter->getSpans() as $span) {
@@ -808,6 +1211,14 @@ final class RuntimeIntegrationTest extends TestCase
     { filename: 'app/Runtime/Telemetry.php', content: telemetry },
     { filename: 'app/Runtime/CommandService.php', content: commandService },
     { filename: 'app/Runtime/Messaging.php', content: amqp },
+    { filename: 'app/Runtime/BrokerMessage.php', content: brokerMessage },
+    { filename: 'app/Runtime/Delivery.php', content: delivery },
+    { filename: 'app/Runtime/EventPublisher.php', content: eventPublisher },
+    { filename: 'app/Runtime/EventSubscription.php', content: eventSubscription },
+    { filename: 'app/Runtime/Broker.php', content: brokerInterface },
+    { filename: 'app/Runtime/Brokers.php', content: brokers },
+    { filename: 'app/Runtime/RabbitMqBroker.php', content: rabbitBroker },
+    { filename: 'app/Runtime/PubSubBroker.php', content: pubsubBroker },
     { filename: 'app/Runtime/OutboxRelay.php', content: relay },
     { filename: 'app/Runtime/InboxConsumer.php', content: inbox },
     { filename: 'app/Runtime/SagaOrchestrator.php', content: saga },
