@@ -17,6 +17,7 @@ export interface PhpRuntimeFile {
 export const PHP_RUNTIME_REQUIRE = {
   'ext-pdo_pgsql': '*',
   'ext-sockets': '*',
+  'ext-curl': '*',
   'php-amqplib/php-amqplib': '^3.7',
   'open-telemetry/api': '^1.1',
   'open-telemetry/sdk': '^1.2'
@@ -540,7 +541,7 @@ final class RabbitMqBroker implements Broker
 `;
 
   const pubsubBroker = `${head}/**
- * Google Cloud Pub/Sub over its REST API (no client library, PHP streams): topics for the exchange and the DLX, pull
+ * Google Cloud Pub/Sub over its REST API (no client library, ext-curl): topics for the exchange and the DLX, pull
  * subscriptions for the queue and the DLQ. publish() returns once Pub/Sub has stored the message. A failed message is
  * dead-lettered by the consumer: published to the DLX topic, then acknowledged.
  * Auth: none against the emulator (PUBSUB_EMULATOR_HOST); otherwise GOOGLE_OAUTH_ACCESS_TOKEN or the metadata-server
@@ -579,12 +580,38 @@ final class PubSubBroker implements Broker
             return Brokers::env('GOOGLE_OAUTH_ACCESS_TOKEN');
         }
         if ($this->token === null || time() > $this->tokenExpiresAt) {
-            $context = stream_context_create(['http' => ['header' => "Metadata-Flavor: Google\\r\\n", 'timeout' => 5]]);
-            $data = json_decode((string) file_get_contents(self::METADATA_TOKEN, false, $context), true, 512, JSON_THROW_ON_ERROR);
+            [$status, $response] = self::request('GET', self::METADATA_TOKEN, ['Metadata-Flavor: Google'], null, 5);
+            if ($status !== 200) {
+                throw new \\RuntimeException("Metadata server token request failed: {$status}");
+            }
+            $data = json_decode($response, true, 512, JSON_THROW_ON_ERROR);
             $this->token = $data['access_token'];
             $this->tokenExpiresAt = time() + (int) $data['expires_in'] - 60;
         }
         return $this->token;
+    }
+
+    /**
+     * One HTTP request with ext-curl (PHP's http:// stream wrapper waits for the server to close the connection).
+     *
+     * @param list<string> $headers
+     * @return array{0: int, 1: string} status and body
+     */
+    private static function request(string $method, string $url, array $headers, ?string $body, int $timeout): array
+    {
+        $curl = curl_init($url);
+        curl_setopt_array($curl, [
+            CURLOPT_CUSTOMREQUEST => $method, CURLOPT_HTTPHEADER => $headers, CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT => $timeout, CURLOPT_CONNECTTIMEOUT => 5,
+        ]);
+        if ($body !== null) {
+            curl_setopt($curl, CURLOPT_POSTFIELDS, $body);
+        }
+        $response = curl_exec($curl);
+        if ($response === false) {
+            throw new \\RuntimeException("{$method} {$url} failed: " . curl_error($curl));
+        }
+        return [(int) curl_getinfo($curl, CURLINFO_RESPONSE_CODE), (string) $response];
     }
 
     /**
@@ -594,22 +621,12 @@ final class PubSubBroker implements Broker
      */
     public function call(string $method, string $path, array $body, array $accepted = []): ?array
     {
-        $headers = "Content-Type: application/json\\r\\n";
+        $headers = ['Content-Type: application/json'];
         $token = $this->bearer();
         if ($token !== null) {
-            $headers .= "Authorization: Bearer {$token}\\r\\n";
+            $headers[] = "Authorization: Bearer {$token}";
         }
-        $context = stream_context_create(['http' => [
-            'method' => $method, 'header' => $headers, 'content' => json_encode((object) $body, JSON_THROW_ON_ERROR), 'ignore_errors' => true, 'timeout' => 30,
-        ]]);
-        $stream = fopen($this->root . $path, 'r', false, $context);
-        if ($stream === false) {
-            throw new \\RuntimeException("Pub/Sub {$method} {$path} failed: no response");
-        }
-        $response = stream_get_contents($stream);
-        // The status line is the first wrapper header (read from the metadata: $http_response_header is deprecated).
-        $status = preg_match('/\\s(\\d{3})(\\s|$)/', (string) (stream_get_meta_data($stream)['wrapper_data'][0] ?? ''), $m) ? (int) $m[1] : 0;
-        fclose($stream);
+        [$status, $response] = self::request($method, $this->root . $path, $headers, json_encode((object) $body, JSON_THROW_ON_ERROR), 30);
         if ($status >= 200 && $status < 300) {
             return trim((string) $response) === '' ? [] : json_decode((string) $response, true, 512, JSON_THROW_ON_ERROR);
         }

@@ -6,7 +6,7 @@ All notable changes to this project will be documented in this file. See [commit
 
 ### Added
 - **Broker adapters for the Go, Rust, Ruby, Elixir and PHP runtime kernels (beta).**
-  - **Pub/Sub in all five.** REST with no client library (Go `net/http`, Rust `reqwest`, Ruby `Net::HTTP`, Elixir `:httpc`, PHP streams), behind the same ports and run-time selection as the other stacks.
+  - **Pub/Sub in all five.** REST with no client library (Go `net/http`, Rust `reqwest`, Ruby `Net::HTTP`, Elixir `:httpc`, PHP `ext-curl`), behind the same ports and run-time selection as the other stacks.
   - **Service Bus in Go only.** `runtime/servicebus_broker.go` uses `azservicebus` and `azidentity`, and is generated only with `stack.messaging: "servicebus"`.
   - **No Service Bus for Rust, Ruby, Elixir and PHP.** They have no official SDK. On Azure, use self-managed RabbitMQ or CloudAMQP (`AMQP_URL`). With `stack.messaging: "servicebus"`, RabbitMQ stays the default broker.
   - **Inbox.** The consumers poll the subscription and dead-letter through the adapter. IT1–IT7 run through the ports.
