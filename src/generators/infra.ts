@@ -4,6 +4,7 @@
 
 import { GherkinAIConfig } from '../core/config';
 import { resolveAppRuntimeEnv, resolveToolchain } from './toolchains';
+import { brokerEnvExample, runtimeBroker } from './deploy/broker-env';
 
 export interface StackDockerDetails {
   image: string;
@@ -39,7 +40,21 @@ export function generateInfra(config: GherkinAIConfig): { dockerComposeYaml: str
     `postgresql://dev_user:dev_password@${host}:5432/${dbName}`;
   // RabbitMQ only lets `guest` in from localhost, so compose creates a dev user.
   const amqpUrl = (host: string) => `amqp://dev_user:dev_password@${host}:5672`;
-  const hasBroker = !['none', 'native-events'].includes(messaging);
+  // Cloud brokers (Pub/Sub, Service Bus) run as the runtime kernel's adapter (deploy/broker-env.ts): compose starts
+  // the Pub/Sub emulator, RabbitMQ where the stack has no Service Bus adapter, and nothing for Service Bus (its
+  // emulator needs SQL Edge and a fixed entity file: point SERVICEBUS_CONNECTION_STRING at a namespace or emulator).
+  const broker = runtimeBroker(config);
+  const cloudBroker = /pub-?sub|service-?bus/i.test(messaging);
+  const brokerService = cloudBroker ? (broker === 'servicebus' ? undefined : broker) : messaging;
+  const hasBroker = !['none', 'native-events'].includes(messaging) && brokerService !== undefined;
+  const appBrokerEnv = broker === 'pubsub' && cloudBroker
+    ? ['GHK_BROKER=pubsub', 'PUBSUB_PROJECT_ID=${PUBSUB_PROJECT_ID:-local-project}', 'PUBSUB_EMULATOR_HOST=${PUBSUB_EMULATOR_HOST:-pubsub:8085}']
+    : broker === 'servicebus'
+      ? ['GHK_BROKER=servicebus', 'SERVICEBUS_CONNECTION_STRING=${SERVICEBUS_CONNECTION_STRING:-}']
+      : messaging === 'rabbitmq' || cloudBroker ? [`AMQP_URL=\${AMQP_URL:-${amqpUrl('rabbitmq')}}`] : [];
+  const brokerImage = brokerService === 'pubsub' ? 'gcr.io/google.com/cloudsdktool/google-cloud-cli:emulators'
+    : messaging === 'sqs' ? 'localstack/localstack' : messaging === 'kafka' ? 'confluentinc/cp-kafka' : 'rabbitmq:4-management-alpine';
+  const isRabbit = brokerService === 'rabbitmq';
 
   if (db.includes('mysql') || db.includes('mariadb')) {
     dbImage = 'mysql:8.0';
@@ -69,13 +84,13 @@ services:
     working_dir: /app
     environment:
 ${Object.entries(runtime.vars).map(([k, v]) => `      - ${k}=${v}`).join('\n')}
-      - DATABASE_URL=\${DATABASE_URL:-${databaseUrl(db)}}${messaging === 'rabbitmq' ? `
-      - AMQP_URL=\${AMQP_URL:-${amqpUrl(messaging)}}` : ''}
+      - DATABASE_URL=\${DATABASE_URL:-${databaseUrl(db)}}${appBrokerEnv.map(e => `
+      - ${e}`).join('')}
     ports:
       - "${runtime.port}:${runtime.port}"
     depends_on:
       - ${db}${hasBroker ? `
-      - ${messaging}` : ''}
+      - ${brokerService}` : ''}
 
   # Database Service (${db})
   ${db}:
@@ -90,16 +105,17 @@ ${Object.entries(runtime.vars).map(([k, v]) => `      - ${k}=${v}`).join('\n')}
 
   ${!hasBroker ? '' : `
   # Message Broker
-  ${messaging}:
-    image: ${messaging === 'sqs' ? 'localstack/localstack' : (messaging === 'kafka' ? 'confluentinc/cp-kafka' : 'rabbitmq:4-management-alpine')}
+  ${brokerService}:
+    image: ${brokerImage}
     container_name: ${config.projectName}-mq
-    restart: always${messaging === 'rabbitmq' ? `
+    restart: always${isRabbit ? `
     environment:
       RABBITMQ_DEFAULT_USER: \${RABBITMQ_DEFAULT_USER:-dev_user}
-      RABBITMQ_DEFAULT_PASS: \${RABBITMQ_DEFAULT_PASS:-dev_password}` : ''}
+      RABBITMQ_DEFAULT_PASS: \${RABBITMQ_DEFAULT_PASS:-dev_password}` : ''}${brokerService === 'pubsub' ? `
+    command: ["gcloud", "beta", "emulators", "pubsub", "start", "--host-port=0.0.0.0:8085", "--project=local-project"]` : ''}
     ports:
-      - "${messaging === 'sqs' ? '4566:4566' : (messaging === 'kafka' ? '9092:9092' : '5672:5672')}"
-      ${messaging === 'rabbitmq' ? '- "15672:15672"' : ''}
+      - "${brokerService === 'pubsub' ? '8085:8085' : messaging === 'sqs' ? '4566:4566' : (messaging === 'kafka' ? '9092:9092' : '5672:5672')}"
+      ${isRabbit ? '- "15672:15672"' : ''}
   `}
 
   # Redis Cache
@@ -146,7 +162,7 @@ ${Object.entries(runtime.vars).map(([k, v]) => `${k}=${v}`).join('\n')}
 
 # Database and message broker (read by the runtime kernel)
 DATABASE_URL=${databaseUrl('localhost')}
-AMQP_URL=${amqpUrl('localhost')}${messaging === 'kafka' ? '\nKAFKA_BROKERS=localhost:9092' : ''}
+${brokerEnvExample(config, amqpUrl('localhost'))}${messaging === 'kafka' ? '\nKAFKA_BROKERS=localhost:9092' : ''}
 
 # Security & Authentication
 JWT_SECRET=<YOUR_SUPER_SECRET_JWT_KEY_MIN_32_CHARS>

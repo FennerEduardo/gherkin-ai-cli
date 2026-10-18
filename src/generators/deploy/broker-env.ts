@@ -1,0 +1,56 @@
+/* ==========================================================================
+   gherkin-ai-cli - Broker configuration of the generated service
+
+   The runtime kernel picks its broker at start-up (GHK_BROKER, then the
+   variables that are set, then stack.messaging). These helpers give the
+   variables of that default broker to docker-compose, .env.example and the
+   Dockerfile header, so local runs and deployments use the same broker as
+   the generated code (docs/DEPLOYMENT.md).
+   ========================================================================== */
+
+import type { GherkinAIConfig } from '../../core/config';
+import { defaultJvmBroker } from '../kernel/runtime/jvm';
+
+export type RuntimeBroker = 'rabbitmq' | 'pubsub' | 'servicebus';
+
+/** Languages whose runtime has no Service Bus adapter (no official SDK): they keep RabbitMQ on Azure. */
+const NO_SERVICEBUS = ['rust', 'ruby', 'elixir', 'php'];
+
+/** The broker the generated runtime uses by default for this configuration. */
+export function runtimeBroker(config: Pick<GherkinAIConfig, 'stack'>): RuntimeBroker {
+  const broker = defaultJvmBroker(config.stack?.messaging);
+  if (broker === 'servicebus' && NO_SERVICEBUS.includes((config.stack?.language || '').toLowerCase())) return 'rabbitmq';
+  return broker;
+}
+
+/** Names of the variables that configure the broker in production (Dockerfile header, deployment docs). */
+export function brokerVariables(config: Pick<GherkinAIConfig, 'stack'>): string[] {
+  switch (runtimeBroker(config)) {
+    case 'pubsub': return ['GHK_BROKER', 'PUBSUB_PROJECT_ID'];
+    case 'servicebus': return ['GHK_BROKER', 'SERVICEBUS_NAMESPACE'];
+    default: return ['AMQP_URL'];
+  }
+}
+
+/** .env.example lines for the broker, for a service running on the host (emulators on localhost). */
+export function brokerEnvExample(config: Pick<GherkinAIConfig, 'stack'>, amqpUrl: string): string {
+  switch (runtimeBroker(config)) {
+    case 'pubsub':
+      return [
+        'GHK_BROKER=pubsub',
+        'PUBSUB_PROJECT_ID=<gcp-project-id>',
+        '# Local Pub/Sub emulator (docker compose up pubsub); unset in GCP, where the workload identity is used',
+        'PUBSUB_EMULATOR_HOST=localhost:8085'
+      ].join('\n');
+    case 'servicebus':
+      return [
+        'GHK_BROKER=servicebus',
+        '# Microsoft Entra ID (managed identity) in Azure',
+        'SERVICEBUS_NAMESPACE=<namespace>.servicebus.windows.net',
+        '# Or a shared-access-key connection string (also used for the Service Bus emulator)',
+        '# SERVICEBUS_CONNECTION_STRING=Endpoint=sb://localhost;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=SAS_KEY_VALUE;UseDevelopmentEmulator=true;'
+      ].join('\n');
+    default:
+      return `AMQP_URL=${amqpUrl}`;
+  }
+}
