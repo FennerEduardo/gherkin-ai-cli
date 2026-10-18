@@ -39,7 +39,7 @@ Where readiness equals liveness, the stack does not yet check its dependencies i
 |---|---|---|
 | `DATABASE_URL` | yes | `postgres://user:password@host:5432/db`. Quarkus maps it to its Agroal pool |
 | `AMQP_URL` | for publishing (RabbitMQ) | `amqp://user:password@host:5672`. Without a configured broker, events stay in the outbox |
-| `GHK_BROKER` | no | JVM (Spring, Quarkus) and TypeScript (NestJS, Express) backends: `rabbitmq`, `pubsub` or `servicebus`. Default: the variables that are set, then `stack.messaging` |
+| `GHK_BROKER` | no | JVM (Spring, Quarkus), TypeScript (NestJS, Express), .NET and Python (FastAPI, Django) backends: `rabbitmq`, `pubsub` or `servicebus`. Default: the variables that are set, then `stack.messaging` |
 | `PUBSUB_PROJECT_ID` (or `GOOGLE_CLOUD_PROJECT`) | Pub/Sub | GCP project of the topics and subscriptions. The token comes from the workload identity (metadata server) or `GOOGLE_OAUTH_ACCESS_TOKEN` |
 | `PUBSUB_EMULATOR_HOST` | no | `host:8085` of the Pub/Sub emulator (local development and tests) |
 | `SERVICEBUS_NAMESPACE` | Service Bus | `<name>.servicebus.windows.net`, authenticated with Microsoft Entra ID (managed identity) |
@@ -50,8 +50,8 @@ Where readiness equals liveness, the stack does not yet check its dependencies i
 | Cloud | Broker | Adapter | Notes |
 |---|---|---|---|
 | AWS | Amazon MQ for RabbitMQ | RabbitMQ (all backends) | Managed RabbitMQ: set `AMQP_URL` to the broker's `amqps://` endpoint. No code change |
-| GCP | Pub/Sub | `pubsub` (JVM and TypeScript backends, beta) | Workload identity token from the metadata server; topics and subscriptions are created if missing |
-| Azure | Service Bus (Standard or Premium; topics need Standard+) | `servicebus` (JVM and TypeScript backends, beta, opt-in) | Generated only with `stack.messaging: "servicebus"`, because it adds the Azure SDK. Uses Entra ID through `SERVICEBUS_NAMESPACE` |
+| GCP | Pub/Sub | `pubsub` (JVM, TypeScript, .NET and Python backends, beta) | Workload identity token from the metadata server; topics and subscriptions are created if missing |
+| Azure | Service Bus (Standard or Premium; topics need Standard+) | `servicebus` (JVM, TypeScript, .NET and Python backends, beta, opt-in) | Generated only with `stack.messaging: "servicebus"`, because it adds the Azure SDK. Uses Entra ID through `SERVICEBUS_NAMESPACE` |
 | Any | Self-managed RabbitMQ (or CloudAMQP) | RabbitMQ | Kubernetes operator or a hosted service |
 
 The adapter is chosen when the service starts: `GHK_BROKER` if set, otherwise the broker whose variables are present, otherwise `stack.messaging`. For every broker, the outbox relay marks a row as published only after the broker has accepted the message. A message that fails in the consumer goes to the dead-letter destination (`<service>.dlx` → `<service>.dlq`) and is not redelivered.

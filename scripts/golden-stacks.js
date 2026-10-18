@@ -292,4 +292,20 @@ const STACKS = {
   }
 };
 
+/** A golden backend run against a native cloud broker emulator instead of RabbitMQ (same build and tests). */
+function withBroker(name, messaging) {
+  const def = STACKS[name];
+  const project = `golden-${name}-${messaging}`;
+  return {
+    ...def,
+    stack: { ...def.stack, messaging },
+    services: messaging === 'servicebus' ? SERVICEBUS_EMULATOR(project) : [PUBSUB_EMULATOR]
+  };
+}
+
+for (const name of ['dotnet', 'fastapi']) {
+  STACKS[`${name}-pubsub`] = withBroker(name, 'pubsub');
+  STACKS[`${name}-servicebus`] = withBroker(name, 'servicebus');
+}
+
 module.exports = { STACKS, SERVICEBUS_EMULATOR, PUBSUB_EMULATOR };

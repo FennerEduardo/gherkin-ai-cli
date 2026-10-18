@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file. See [commit
 ## [3.2.0] - Unreleased
 
 ### Added
+- **Pub/Sub and Service Bus adapters for the .NET and Python runtime kernels (beta).**
+  - **.NET.** `Runtime/Brokers.cs` and `Runtime/ServiceBusBroker.cs`, with Azure.Messaging.ServiceBus and Azure.Identity.
+  - **Python.** `app/runtime/broker.py` and `servicebus_broker.py`, with azure-servicebus and azure-identity.
+  - **Service Bus is opt-in.** It is generated only with `stack.messaging: "servicebus"`.
+  - **Goldens.** `dotnet-pubsub`, `dotnet-servicebus`, `fastapi-pubsub` and `fastapi-servicebus`.
 - **Pub/Sub and Service Bus adapters for the TypeScript runtime kernel (NestJS, Express; beta, goldens `nestjs-pubsub` and `nestjs-servicebus`).**
   - **Same contract as the JVM.** `runtime/broker.ts` has the ports, RabbitMQ and Pub/Sub (REST over `fetch`), and run-time selection.
   - **Service Bus.** `runtime/servicebus-broker.ts` uses `@azure/service-bus` and `@azure/identity`, and is generated only with `stack.messaging: "servicebus"`.

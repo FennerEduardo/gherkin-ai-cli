@@ -80,9 +80,10 @@ def tenant_from_authorization(authorization: Optional[str], secret: Optional[str
 `;
 }
 
-/** Outbox relay in a daemon thread (pika is not thread-safe: the connection lives in that thread). */
+/** Outbox relay in a daemon thread (the publisher, e.g. a pika connection, lives in that thread). */
 export function renderPyWorker(m: DomainModel): string {
-  return `"""Outbox relay worker: publishes the outbox every ${RELAY_INTERVAL_MS} ms while AMQP_URL is set."""
+  return `"""Outbox relay worker: publishes the outbox every ${RELAY_INTERVAL_MS} ms through the configured broker
+(app/runtime/broker.py: GHK_BROKER, AMQP_URL, PUBSUB_*, SERVICEBUS_*)."""
 from __future__ import annotations
 
 import logging
@@ -90,14 +91,13 @@ import threading
 import uuid
 from typing import Callable
 
-import pika
-
-from app.runtime.outbox_relay import DEFAULT_TOPOLOGY, OutboxRelay, declare_topology
+from app.runtime.broker import DEFAULT_TOPOLOGY, connect_broker
+from app.runtime.outbox_relay import OutboxRelay
 
 log = logging.getLogger(__name__)
 
 
-def start_outbox_relay(dsn: str, amqp_url: str, interval: float = ${RELAY_INTERVAL_MS / 1000}) -> Callable[[], None]:
+def start_outbox_relay(dsn: str, interval: float = ${RELAY_INTERVAL_MS / 1000}) -> Callable[[], None]:
     """Starts the relay thread; returns a function that stops it."""
     stop = threading.Event()
     worker_id = f"${m.kebab}-{uuid.uuid4()}"
@@ -105,17 +105,17 @@ def start_outbox_relay(dsn: str, amqp_url: str, interval: float = ${RELAY_INTERV
     def run() -> None:
         while not stop.is_set():
             try:
-                connection = pika.BlockingConnection(pika.URLParameters(amqp_url))
+                broker = connect_broker()
+                broker.declare(DEFAULT_TOPOLOGY)
+                publisher = broker.publisher(DEFAULT_TOPOLOGY.exchange)
                 try:
-                    channel = connection.channel()
-                    declare_topology(channel)
-                    relay = OutboxRelay(dsn, channel, DEFAULT_TOPOLOGY.exchange)
+                    relay = OutboxRelay(dsn, publisher)
                     while not stop.is_set():
                         relay.publish_batch(worker_id)
                         stop.wait(interval)
                 finally:
-                    if connection.is_open:
-                        connection.close()
+                    publisher.close()
+                    broker.close()
             except Exception:  # broker or database unavailable: retry
                 log.exception("outbox relay failed; retrying")
                 stop.wait(5)
@@ -141,6 +141,7 @@ from fastapi import Depends, FastAPI, Header, HTTPException, Response
 from app.auth import tenant_from_authorization
 from app.domain import DomainValidationError
 from app.runtime.command_service import CommandService
+from app.runtime.broker import broker_configured
 from app.worker import start_outbox_relay
 
 STATUS = {"created": 202, "replayed": 200, "in-progress": 409}
@@ -154,8 +155,8 @@ def command_service() -> CommandService:
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     stop = None
-    if os.environ.get("AMQP_URL") and os.environ.get("DATABASE_URL"):
-        stop = start_outbox_relay(os.environ["DATABASE_URL"], os.environ["AMQP_URL"])
+    if broker_configured() and os.environ.get("DATABASE_URL"):
+        stop = start_outbox_relay(os.environ["DATABASE_URL"])
     yield
     if stop:
         stop()
@@ -376,7 +377,7 @@ def execute(request, aggregate_id: str, command: str, aggregate_type: str = ${py
 }
 
 export function renderDjangoRelayCommand(): string {
-  return `"""python manage.py outbox_relay: publishes the outbox to RabbitMQ (DATABASE_URL, AMQP_URL)."""
+  return `"""python manage.py outbox_relay: publishes the outbox to the configured broker (DATABASE_URL; AMQP_URL, PUBSUB_* or SERVICEBUS_*)."""
 import os
 import signal
 import threading
@@ -387,10 +388,10 @@ from app.worker import start_outbox_relay
 
 
 class Command(BaseCommand):
-    help = "Publish the transactional outbox to RabbitMQ until interrupted."
+    help = "Publish the transactional outbox to the event broker until interrupted."
 
     def handle(self, *args, **options):
-        stop = start_outbox_relay(os.environ["DATABASE_URL"], os.environ["AMQP_URL"])
+        stop = start_outbox_relay(os.environ["DATABASE_URL"])
         done = threading.Event()
         signal.signal(signal.SIGTERM, lambda *_: done.set())
         try:

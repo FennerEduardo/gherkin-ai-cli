@@ -41,7 +41,7 @@ export function generateCsharpDotnetPreset(parsed: ParsedFeature, config?: Gherk
     { filename: `${testsDir}/Domain/${m.pascal}AggregateTests.cs`, content: renderCsAggregateTests(m, namespace) },
     { filename: `${testsDir}/Steps/${m.pascal}StepDefinitions.cs`, content: renderReqnrollSteps(m, namespace) },
     // Runtime kernel: PostgreSQL + RabbitMQ + OpenTelemetry, verified by Category=Integration tests (docs/RUNTIME-KERNEL.md).
-    ...renderCsRuntime(m, namespace, testsDir, siblings),
+    ...renderCsRuntime(m, namespace, testsDir, siblings, { messaging: config?.stack?.messaging }),
     // Application layer wired to the kernel (kernel/app/shared.ts): HTTP commands, JWT tenant, relay worker.
     ...renderAspNetAppLayer(m, namespace, testsDir, tenantClaim(config), siblings),
     { filename: `src/Infrastructure/Resilience/ResilienceExtensions.cs`, content: generateResiliencePipelines(namespace) },

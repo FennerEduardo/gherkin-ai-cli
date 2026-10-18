@@ -5,6 +5,13 @@
    ========================================================================== */
 
 import { DomainModel } from '../domain-model';
+import { defaultJvmBroker as defaultBrokerFor, usesServiceBus } from './jvm';
+
+/** Azure SDK packages, added to the application project only for stack.messaging "servicebus". */
+export const CS_SERVICEBUS_PACKAGES = [
+  '<PackageReference Include="Azure.Messaging.ServiceBus" Version="7.21.0" />',
+  '<PackageReference Include="Azure.Identity" Version="1.21.0" />'
+];
 import { LEASE_SECONDS, MAX_PUBLISH_ATTEMPTS, RLS_NOTE, RUNTIME_SCHEMA_SQL, SCHEMA_TOKEN, TEST_PARENT_SPAN_ID, TEST_TRACEPARENT, TEST_TRACE_ID, topology } from './shared';
 
 export interface CsRuntimeFile {
@@ -21,7 +28,9 @@ export const CS_RUNTIME_TEST_PACKAGES = ['<PackageReference Include="OpenTelemet
 
 const cs = (s: string) => JSON.stringify(s); // JSON strings are valid C# regular string literals here
 
-export function renderCsRuntime(m: DomainModel, ns: string, testsDir: string, siblings: DomainModel[] = []): CsRuntimeFile[] {
+export function renderCsRuntime(m: DomainModel, ns: string, testsDir: string, siblings: DomainModel[] = [], { messaging = undefined as string | undefined } = {}): CsRuntimeFile[] {
+  const serviceBus = usesServiceBus(messaging);
+  const defaultBroker = defaultBrokerFor(messaging);
   const all = [m, ...siblings];
   const t = topology(m);
   const A = `${m.pascal}Aggregate`;
@@ -246,24 +255,435 @@ ${a.commands.map(c => `                ${cs(c.snake)} => aggregate.${c.name}(cmd
 }
 `;
 
-  const topologyCs = `using RabbitMQ.Client;
-
-${n}
-/// <summary>Topic exchange -> consumer queue, which dead-letters rejected messages to a fanout DLX -> DLQ.</summary>
+  const topologyCs = `${n}
+/// <summary>
+/// Event bus destinations: events are published to Exchange (RabbitMQ topic exchange / Pub/Sub or Service Bus
+/// topic) and consumed from Queue (queue / subscription); dead-lettered messages go to Dlx and are read from Dlq.
+/// </summary>
 public sealed record Topology(string Exchange, string Queue, string Dlx, string Dlq)
 {
     public static readonly Topology Default = new(${cs(t.exchange)}, ${cs(t.queue)}, ${cs(t.dlx)}, ${cs(t.dlq)});
 
     public static Topology ForPrefix(string prefix) => new($"{prefix}.events", $"{prefix}.consumer", $"{prefix}.dlx", $"{prefix}.dlq");
+}
+`;
 
-    public void Declare(IModel channel)
+  const brokersCs = `using System.Net.Http.Headers;
+using System.Text;
+using System.Text.Json;
+using RabbitMQ.Client;
+
+${n}
+/// <summary>A domain event on the wire, independent of the broker.</summary>
+public sealed record BrokerMessage(string MessageId, string? EventType, string? TenantId, string? Traceparent, byte[] Body);
+
+/// <summary>Publishes to one destination; PublishAsync completes only once the broker has durably accepted the message.</summary>
+public interface IEventPublisher : IAsyncDisposable
+{
+    string MessagingSystem { get; }
+    string Destination { get; }
+    Task PublishAsync(BrokerMessage message, CancellationToken ct = default);
+}
+
+/// <summary>A received message: Ack once processed; DeadLetter moves it to the DLQ (it is not redelivered).</summary>
+public sealed record Delivery(BrokerMessage Message, Func<Task> Ack, Func<Task> DeadLetter);
+
+/// <summary>Pulls messages from one queue / subscription.</summary>
+public interface IEventSubscription : IAsyncDisposable
+{
+    string MessagingSystem { get; }
+    string Source { get; }
+    /// <summary>The next waiting message, or null when there is none.</summary>
+    Task<Delivery?> PollAsync(CancellationToken ct = default);
+}
+
+public interface IBroker : IAsyncDisposable
+{
+    string MessagingSystem { get; }
+    /// <summary>False when topics cannot be created at run time (Service Bus emulator: fixed Config.json).</summary>
+    bool DynamicTopology => true;
+    /// <summary>Creates the topology if missing (idempotent); in production it usually comes from infrastructure as code.</summary>
+    Task DeclareAsync(Topology topology, CancellationToken ct = default);
+    Task<IEventPublisher> PublisherAsync(string destination, CancellationToken ct = default);
+    /// <param name="topology">where dead-lettered messages go</param>
+    Task<IEventSubscription> SubscribeAsync(string source, Topology topology, CancellationToken ct = default);
+}
+
+/// <summary>
+/// The event broker behind the outbox relay and the inbox consumer, chosen at run time so one image runs on any
+/// cloud: GHK_BROKER=rabbitmq (AMQP_URL), pubsub (PUBSUB_PROJECT_ID or GOOGLE_CLOUD_PROJECT; PUBSUB_EMULATOR_HOST)
+/// or servicebus (SERVICEBUS_NAMESPACE or SERVICEBUS_CONNECTION_STRING). Without GHK_BROKER the configured
+/// variables decide, then stack.messaging.
+/// </summary>
+public static class Brokers
+{
+    /// <summary>Broker of the generated configuration (stack.messaging).</summary>
+    public const string DefaultKind = ${cs(defaultBroker)};
+
+    private static string? Env(string key) => Environment.GetEnvironmentVariable(key) is { Length: > 0 } value ? value : null;
+
+    public static string Kind()
     {
-        channel.ExchangeDeclare(Exchange, "topic", durable: true);
-        channel.ExchangeDeclare(Dlx, "fanout", durable: true);
-        channel.QueueDeclare(Dlq, durable: true, exclusive: false, autoDelete: false);
-        channel.QueueBind(Dlq, Dlx, "");
-        channel.QueueDeclare(Queue, durable: true, exclusive: false, autoDelete: false, arguments: new Dictionary<string, object> { ["x-dead-letter-exchange"] = Dlx });
-        channel.QueueBind(Queue, Exchange, "#");
+        if (Env("GHK_BROKER") is { } explicitKind) return explicitKind.Trim().ToLowerInvariant();
+        if (Env("AMQP_URL") is not null) return "rabbitmq";
+        if (Env("PUBSUB_PROJECT_ID") is not null || Env("PUBSUB_EMULATOR_HOST") is not null) return "pubsub";
+        if (Env("SERVICEBUS_CONNECTION_STRING") is not null || Env("SERVICEBUS_NAMESPACE") is not null) return "servicebus";
+        return DefaultKind;
+    }
+
+    /// <summary>Whether the variables of the selected broker are set.</summary>
+    public static bool Configured() => Kind() switch
+    {
+        "pubsub" => Env("PUBSUB_PROJECT_ID") is not null || Env("GOOGLE_CLOUD_PROJECT") is not null,
+        "servicebus" => Env("SERVICEBUS_CONNECTION_STRING") is not null || Env("SERVICEBUS_NAMESPACE") is not null,
+        _ => Env("AMQP_URL") is not null
+    };
+
+    public static async Task<IBroker> ConnectAsync() => Kind() switch
+    {
+        "rabbitmq" => (IBroker)await RabbitMqBroker.ConnectAsync(Env("AMQP_URL") ?? throw new InvalidOperationException("AMQP_URL is not set (amqp://user:password@host:5672)")),
+        "pubsub" => (IBroker)PubSubBroker.FromEnv(),
+        "servicebus" => ${serviceBus ? '(IBroker)ServiceBusBroker.FromEnv()' : 'throw new InvalidOperationException("The Azure Service Bus adapter is not generated: set stack.messaging to \\"servicebus\\" and regenerate")'},
+        var kind => throw new InvalidOperationException($"Unsupported GHK_BROKER: {kind} (rabbitmq, pubsub, servicebus)")
+    };
+}
+
+/// <summary>RabbitMQ 0-9-1: topic exchange, publisher confirms, dead-lettering through the queue's DLX.</summary>
+public sealed class RabbitMqBroker(IConnection connection) : IBroker
+{
+    public string MessagingSystem => "rabbitmq";
+
+    public static async Task<RabbitMqBroker> ConnectAsync(string url)
+    {
+        // A busy host can delay the AMQP handshake: retry before failing.
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                return new RabbitMqBroker(new ConnectionFactory { Uri = new Uri(url) }.CreateConnection());
+            }
+            catch (Exception) when (attempt < 5)
+            {
+                await Task.Delay(2000 * attempt);
+            }
+        }
+    }
+
+    public Task DeclareAsync(Topology t, CancellationToken ct = default)
+    {
+        using var channel = connection.CreateModel();
+        channel.ExchangeDeclare(t.Exchange, "topic", durable: true);
+        channel.ExchangeDeclare(t.Dlx, "fanout", durable: true);
+        channel.QueueDeclare(t.Dlq, durable: true, exclusive: false, autoDelete: false);
+        channel.QueueBind(t.Dlq, t.Dlx, "");
+        channel.QueueDeclare(t.Queue, durable: true, exclusive: false, autoDelete: false, arguments: new Dictionary<string, object> { ["x-dead-letter-exchange"] = t.Dlx });
+        channel.QueueBind(t.Queue, t.Exchange, "#");
+        return Task.CompletedTask;
+    }
+
+    public Task<IEventPublisher> PublisherAsync(string exchange, CancellationToken ct = default)
+    {
+        var channel = connection.CreateModel();
+        channel.ConfirmSelect();
+        return Task.FromResult<IEventPublisher>(new Publisher(channel, exchange));
+    }
+
+    public Task<IEventSubscription> SubscribeAsync(string queue, Topology topology, CancellationToken ct = default) =>
+        Task.FromResult<IEventSubscription>(new Subscription(connection.CreateModel(), queue));
+
+    public ValueTask DisposeAsync()
+    {
+        connection.Dispose();
+        return ValueTask.CompletedTask;
+    }
+
+    private sealed class Publisher(IModel channel, string exchange) : IEventPublisher
+    {
+        public string MessagingSystem => "rabbitmq";
+        public string Destination => exchange;
+
+        public Task PublishAsync(BrokerMessage m, CancellationToken ct = default)
+        {
+            var props = channel.CreateBasicProperties();
+            props.MessageId = m.MessageId;
+            props.Persistent = true;
+            props.ContentType = "application/json";
+            props.Type = m.EventType;
+            props.Headers = new Dictionary<string, object>();
+            if (m.TenantId is not null) props.Headers["tenant_id"] = m.TenantId;
+            if (m.Traceparent is not null) props.Headers["traceparent"] = m.Traceparent;
+            channel.BasicPublish(exchange, m.EventType ?? "", props, m.Body);
+            channel.WaitForConfirmsOrDie(TimeSpan.FromSeconds(10));
+            return Task.CompletedTask;
+        }
+
+        public ValueTask DisposeAsync()
+        {
+            channel.Dispose();
+            return ValueTask.CompletedTask;
+        }
+    }
+
+    private sealed class Subscription(IModel channel, string queue) : IEventSubscription
+    {
+        public string MessagingSystem => "rabbitmq";
+        public string Source => queue;
+
+        private static string? Header(IBasicProperties props, string key) =>
+            props.Headers is not null && props.Headers.TryGetValue(key, out var value)
+                ? value is byte[] bytes ? Encoding.UTF8.GetString(bytes) : value?.ToString()
+                : null;
+
+        public Task<Delivery?> PollAsync(CancellationToken ct = default)
+        {
+            var r = channel.BasicGet(queue, autoAck: false);
+            if (r is null) return Task.FromResult<Delivery?>(null);
+            var props = r.BasicProperties;
+            var message = new BrokerMessage(props.MessageId, props.Type, Header(props, "tenant_id"), Header(props, "traceparent"), r.Body.ToArray());
+            // Rejected without requeue: RabbitMQ dead-letters it through the queue's DLX.
+            return Task.FromResult<Delivery?>(new Delivery(message,
+                () => { channel.BasicAck(r.DeliveryTag, multiple: false); return Task.CompletedTask; },
+                () => { channel.BasicNack(r.DeliveryTag, multiple: false, requeue: false); return Task.CompletedTask; }));
+        }
+
+        public ValueTask DisposeAsync()
+        {
+            channel.Dispose();
+            return ValueTask.CompletedTask;
+        }
+    }
+}
+
+/// <summary>
+/// Google Cloud Pub/Sub over its REST API (no client library): topics for the exchange and the DLX, pull
+/// subscriptions for the queue and the DLQ. PublishAsync completes once Pub/Sub has stored the message. A failed
+/// message is dead-lettered by the consumer: published to the DLX topic, then acknowledged.
+/// Auth: none against the emulator (PUBSUB_EMULATOR_HOST); otherwise GOOGLE_OAUTH_ACCESS_TOKEN or the
+/// metadata-server token of the workload's service account (Cloud Run, GKE workload identity).
+/// </summary>
+public sealed class PubSubBroker : IBroker
+{
+    private const string MetadataToken = "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token";
+    private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(30) };
+    private readonly string _project;
+    private readonly string _root;
+    private readonly bool _emulator;
+    private string? _token;
+    private DateTime _tokenExpiresAt;
+
+    public PubSubBroker(string project, string? emulatorHost)
+    {
+        _project = project;
+        _emulator = !string.IsNullOrWhiteSpace(emulatorHost);
+        _root = (_emulator ? $"http://{emulatorHost}" : "https://pubsub.googleapis.com") + $"/v1/projects/{project}";
+    }
+
+    public static PubSubBroker FromEnv()
+    {
+        var project = Environment.GetEnvironmentVariable("PUBSUB_PROJECT_ID") is { Length: > 0 } p ? p : Environment.GetEnvironmentVariable("GOOGLE_CLOUD_PROJECT");
+        if (string.IsNullOrWhiteSpace(project)) throw new InvalidOperationException("PUBSUB_PROJECT_ID (or GOOGLE_CLOUD_PROJECT) is not set");
+        return new PubSubBroker(project, Environment.GetEnvironmentVariable("PUBSUB_EMULATOR_HOST"));
+    }
+
+    public string MessagingSystem => "gcp_pubsub";
+
+    private async Task<string?> BearerAsync(CancellationToken ct)
+    {
+        if (_emulator) return null;
+        if (Environment.GetEnvironmentVariable("GOOGLE_OAUTH_ACCESS_TOKEN") is { Length: > 0 } fixedToken) return fixedToken;
+        if (_token is null || DateTime.UtcNow > _tokenExpiresAt)
+        {
+            using var req = new HttpRequestMessage(HttpMethod.Get, MetadataToken);
+            req.Headers.Add("Metadata-Flavor", "Google");
+            using var res = await Http.SendAsync(req, ct);
+            using var body = JsonDocument.Parse(await res.Content.ReadAsStringAsync(ct));
+            _token = body.RootElement.GetProperty("access_token").GetString();
+            _tokenExpiresAt = DateTime.UtcNow.AddSeconds(body.RootElement.GetProperty("expires_in").GetInt32() - 60);
+        }
+        return _token;
+    }
+
+    /// <summary>Calls the API; a status listed in <paramref name="accepted"/> returns null instead of failing.</summary>
+    private async Task<JsonElement?> CallAsync(HttpMethod method, string path, object? body, CancellationToken ct, params int[] accepted)
+    {
+        using var req = new HttpRequestMessage(method, _root + path);
+        if (body is not null) req.Content = new StringContent(JsonSerializer.Serialize(body), Encoding.UTF8, "application/json");
+        if (await BearerAsync(ct) is { } bearer) req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearer);
+        using var res = await Http.SendAsync(req, ct);
+        var text = await res.Content.ReadAsStringAsync(ct);
+        if (res.IsSuccessStatusCode) return string.IsNullOrWhiteSpace(text) ? null : JsonDocument.Parse(text).RootElement.Clone();
+        if (accepted.Contains((int)res.StatusCode)) return null;
+        throw new HttpRequestException($"Pub/Sub {method} {path} failed: {(int)res.StatusCode} {text}");
+    }
+
+    public async Task DeclareAsync(Topology t, CancellationToken ct = default)
+    {
+        // 409: it already exists (created earlier or by infrastructure as code).
+        await CallAsync(HttpMethod.Put, $"/topics/{t.Exchange}", new { }, ct, 409);
+        await CallAsync(HttpMethod.Put, $"/topics/{t.Dlx}", new { }, ct, 409);
+        await CallAsync(HttpMethod.Put, $"/subscriptions/{t.Queue}", new { topic = $"projects/{_project}/topics/{t.Exchange}", ackDeadlineSeconds = 60 }, ct, 409);
+        await CallAsync(HttpMethod.Put, $"/subscriptions/{t.Dlq}", new { topic = $"projects/{_project}/topics/{t.Dlx}", ackDeadlineSeconds = 60 }, ct, 409);
+    }
+
+    private async Task PublishToAsync(string topic, BrokerMessage m, CancellationToken ct)
+    {
+        var attributes = new Dictionary<string, string> { ["ghk_message_id"] = m.MessageId };
+        if (m.EventType is not null) attributes["event_type"] = m.EventType;
+        if (m.TenantId is not null) attributes["tenant_id"] = m.TenantId;
+        if (m.Traceparent is not null) attributes["traceparent"] = m.Traceparent;
+        var res = await CallAsync(HttpMethod.Post, $"/topics/{topic}:publish", new { messages = new[] { new { data = Convert.ToBase64String(m.Body), attributes } } }, ct);
+        if (res is not { } r || !r.TryGetProperty("messageIds", out var ids) || ids.GetArrayLength() != 1)
+            throw new HttpRequestException($"Pub/Sub did not accept message {m.MessageId}");
+    }
+
+    public Task<IEventPublisher> PublisherAsync(string topic, CancellationToken ct = default) => Task.FromResult<IEventPublisher>(new Publisher(this, topic));
+
+    public Task<IEventSubscription> SubscribeAsync(string subscription, Topology topology, CancellationToken ct = default) =>
+        Task.FromResult<IEventSubscription>(new Subscription(this, subscription, topology));
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
+    private sealed class Publisher(PubSubBroker broker, string topic) : IEventPublisher
+    {
+        public string MessagingSystem => "gcp_pubsub";
+        public string Destination => topic;
+        public Task PublishAsync(BrokerMessage m, CancellationToken ct = default) => broker.PublishToAsync(topic, m, ct);
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    }
+
+    private sealed class Subscription(PubSubBroker broker, string subscription, Topology topology) : IEventSubscription
+    {
+        public string MessagingSystem => "gcp_pubsub";
+        public string Source => subscription;
+
+        private static string? Attr(JsonElement attrs, string key) =>
+            attrs.ValueKind == JsonValueKind.Object && attrs.TryGetProperty(key, out var v) ? v.GetString() : null;
+
+        public async Task<Delivery?> PollAsync(CancellationToken ct = default)
+        {
+            var res = await broker.CallAsync(HttpMethod.Post, $"/subscriptions/{subscription}:pull", new { maxMessages = 1, returnImmediately = true }, ct);
+            if (res is not { } r || !r.TryGetProperty("receivedMessages", out var received) || received.GetArrayLength() == 0) return null;
+            var first = received[0];
+            var msg = first.GetProperty("message");
+            var attrs = msg.TryGetProperty("attributes", out var a) ? a : default;
+            var ackId = first.GetProperty("ackId").GetString()!;
+            var data = msg.TryGetProperty("data", out var d) ? d.GetString() ?? "" : "";
+            var message = new BrokerMessage(Attr(attrs, "ghk_message_id") ?? msg.GetProperty("messageId").GetString()!, Attr(attrs, "event_type"),
+                Attr(attrs, "tenant_id"), Attr(attrs, "traceparent"), Convert.FromBase64String(data));
+            Func<Task> ack = () => broker.CallAsync(HttpMethod.Post, $"/subscriptions/{subscription}:acknowledge", new { ackIds = new[] { ackId } }, CancellationToken.None);
+            return new Delivery(message, ack, async () =>
+            {
+                await broker.PublishToAsync(topology.Dlx, message, CancellationToken.None);
+                await ack();
+            });
+        }
+
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    }
+}
+`;
+
+  const serviceBusCs = `using Azure.Identity;
+using Azure.Messaging.ServiceBus;
+using Azure.Messaging.ServiceBus.Administration;
+
+${n}
+/// <summary>
+/// Azure Service Bus (official SDK, AMQP): topics for the exchange and the DLX, subscriptions for the queue and
+/// the DLQ. Auth: SERVICEBUS_CONNECTION_STRING (shared access key; the emulator) or SERVICEBUS_NAMESPACE
+/// (e.g. orders.servicebus.windows.net) with Microsoft Entra ID (managed identity in Container Apps / AKS).
+/// A failed message is dead-lettered by the consumer: sent to the DLX topic, then completed.
+/// </summary>
+public sealed class ServiceBusBroker : IBroker
+{
+    private readonly ServiceBusClient _client;
+    private readonly string? _connectionString;
+    private readonly string? _namespace;
+
+    public ServiceBusBroker(string? connectionString, string? @namespace)
+    {
+        _connectionString = string.IsNullOrWhiteSpace(connectionString) ? null : connectionString;
+        _namespace = @namespace;
+        _client = _connectionString is not null ? new ServiceBusClient(_connectionString) : new ServiceBusClient(_namespace, new DefaultAzureCredential());
+        DynamicTopology = !(_connectionString?.Contains("UseDevelopmentEmulator=true") ?? false);
+    }
+
+    public static ServiceBusBroker FromEnv()
+    {
+        var connectionString = Environment.GetEnvironmentVariable("SERVICEBUS_CONNECTION_STRING");
+        var ns = Environment.GetEnvironmentVariable("SERVICEBUS_NAMESPACE");
+        if (string.IsNullOrWhiteSpace(connectionString) && string.IsNullOrWhiteSpace(ns))
+            throw new InvalidOperationException("SERVICEBUS_CONNECTION_STRING or SERVICEBUS_NAMESPACE is not set");
+        return new ServiceBusBroker(connectionString, ns);
+    }
+
+    public string MessagingSystem => "servicebus";
+    public bool DynamicTopology { get; }
+
+    public async Task DeclareAsync(Topology t, CancellationToken ct = default)
+    {
+        // The emulator only knows the entities of its Config.json; in Azure they usually come from Terraform.
+        if (!DynamicTopology) return;
+        var admin = _connectionString is not null ? new ServiceBusAdministrationClient(_connectionString) : new ServiceBusAdministrationClient(_namespace, new DefaultAzureCredential());
+        foreach (var topic in new[] { t.Exchange, t.Dlx })
+            if (!(await admin.TopicExistsAsync(topic, ct)).Value) await admin.CreateTopicAsync(topic, ct);
+        if (!(await admin.SubscriptionExistsAsync(t.Exchange, t.Queue, ct)).Value) await admin.CreateSubscriptionAsync(t.Exchange, t.Queue, ct);
+        if (!(await admin.SubscriptionExistsAsync(t.Dlx, t.Dlq, ct)).Value) await admin.CreateSubscriptionAsync(t.Dlx, t.Dlq, ct);
+    }
+
+    private static ServiceBusMessage ToMessage(BrokerMessage m)
+    {
+        var message = new ServiceBusMessage(m.Body) { MessageId = m.MessageId, ContentType = "application/json", Subject = m.EventType };
+        if (m.TenantId is not null) message.ApplicationProperties["tenant_id"] = m.TenantId;
+        if (m.Traceparent is not null) message.ApplicationProperties["ghk_traceparent"] = m.Traceparent;
+        return message;
+    }
+
+    public Task<IEventPublisher> PublisherAsync(string topic, CancellationToken ct = default) =>
+        Task.FromResult<IEventPublisher>(new Publisher(_client.CreateSender(topic), topic));
+
+    public Task<IEventSubscription> SubscribeAsync(string subscription, Topology topology, CancellationToken ct = default)
+    {
+        var topic = subscription == topology.Dlq ? topology.Dlx : topology.Exchange;
+        var receiver = _client.CreateReceiver(topic, subscription, new ServiceBusReceiverOptions { ReceiveMode = ServiceBusReceiveMode.PeekLock });
+        return Task.FromResult<IEventSubscription>(new Subscription(_client, receiver, subscription, topology));
+    }
+
+    public ValueTask DisposeAsync() => _client.DisposeAsync();
+
+    private sealed class Publisher(ServiceBusSender sender, string topic) : IEventPublisher
+    {
+        public string MessagingSystem => "servicebus";
+        public string Destination => topic;
+        public Task PublishAsync(BrokerMessage m, CancellationToken ct = default) => sender.SendMessageAsync(ToMessage(m), ct);
+        public ValueTask DisposeAsync() => sender.DisposeAsync();
+    }
+
+    private sealed class Subscription(ServiceBusClient client, ServiceBusReceiver receiver, string subscription, Topology topology) : IEventSubscription
+    {
+        private ServiceBusSender? _deadLetters;
+        public string MessagingSystem => "servicebus";
+        public string Source => subscription;
+
+        public async Task<Delivery?> PollAsync(CancellationToken ct = default)
+        {
+            var msg = await receiver.ReceiveMessageAsync(TimeSpan.FromMilliseconds(500), ct);
+            if (msg is null) return null;
+            string? Prop(string key) => msg.ApplicationProperties.TryGetValue(key, out var v) ? v?.ToString() : null;
+            var message = new BrokerMessage(msg.MessageId, msg.Subject, Prop("tenant_id"), Prop("ghk_traceparent"), msg.Body.ToArray());
+            return new Delivery(message, () => receiver.CompleteMessageAsync(msg), async () =>
+            {
+                _deadLetters ??= client.CreateSender(topology.Dlx);
+                await _deadLetters.SendMessageAsync(ToMessage(message));
+                await receiver.CompleteMessageAsync(msg);
+            });
+        }
+
+        public async ValueTask DisposeAsync()
+        {
+            if (_deadLetters is not null) await _deadLetters.DisposeAsync();
+            await receiver.DisposeAsync();
+        }
     }
 }
 `;
@@ -271,30 +691,27 @@ public sealed record Topology(string Exchange, string Queue, string Dlx, string 
   const relay = `using System.Diagnostics;
 using System.Text;
 using Npgsql;
-using RabbitMQ.Client;
 
 ${n}
 /// <summary>
 /// Publishes pending outbox rows. Rows are claimed with FOR UPDATE SKIP LOCKED and a lease, so
-/// concurrent relays never publish the same row; publisher confirms guarantee delivery to the broker
-/// before a row is marked published. Use one relay (and channel) per thread.
+/// concurrent relays never publish the same row; the publisher completes only once the broker has
+/// accepted the message (RabbitMQ confirms, Pub/Sub / Service Bus send), before a row is marked
+/// published. Use one relay (and publisher) per worker.
 /// </summary>
 public sealed class OutboxRelay
 {
     private readonly NpgsqlDataSource _db;
-    private readonly IModel _channel;
-    private readonly string _exchange;
+    private readonly IEventPublisher _publisher;
     private readonly string _s;
     public int LeaseSeconds { get; init; } = ${LEASE_SECONDS};
     public int MaxAttempts { get; init; } = ${MAX_PUBLISH_ATTEMPTS};
 
-    public OutboxRelay(NpgsqlDataSource db, IModel channel, string exchange, string? schema = null)
+    public OutboxRelay(NpgsqlDataSource db, IEventPublisher publisher, string? schema = null)
     {
         _db = db;
-        _channel = channel;
-        _exchange = exchange;
+        _publisher = publisher;
         _s = Schema.Name(schema);
-        _channel.ConfirmSelect();
     }
 
     private sealed record Claimed(string Id, string TenantId, string EventType, string Payload, string? Traceparent);
@@ -317,22 +734,14 @@ public sealed class OutboxRelay
         var published = 0;
         foreach (var row in batch)
         {
-            using var activity = Telemetry.Source.StartActivity($"{_exchange} publish", ActivityKind.Producer, Telemetry.ParentFrom(row.Traceparent));
-            activity?.SetTag("messaging.system", "rabbitmq");
-            activity?.SetTag("messaging.destination.name", _exchange);
+            using var activity = Telemetry.Source.StartActivity($"{_publisher.Destination} publish", ActivityKind.Producer, Telemetry.ParentFrom(row.Traceparent));
+            activity?.SetTag("messaging.system", _publisher.MessagingSystem);
+            activity?.SetTag("messaging.destination.name", _publisher.Destination);
             activity?.SetTag("messaging.message.id", row.Id);
             activity?.SetTag("tenant.id", row.TenantId);
             try
             {
-                var props = _channel.CreateBasicProperties();
-                props.MessageId = row.Id;
-                props.Persistent = true;
-                props.ContentType = "application/json";
-                props.Type = row.EventType;
-                props.Headers = new Dictionary<string, object> { ["tenant_id"] = row.TenantId };
-                if (Telemetry.TraceparentOf(activity) is { } traceparent) props.Headers["traceparent"] = traceparent;
-                _channel.BasicPublish(_exchange, row.EventType, props, Encoding.UTF8.GetBytes(row.Payload));
-                _channel.WaitForConfirmsOrDie(TimeSpan.FromSeconds(10));
+                await _publisher.PublishAsync(new BrokerMessage(row.Id, row.EventType, row.TenantId, Telemetry.TraceparentOf(activity), Encoding.UTF8.GetBytes(row.Payload)), ct);
                 await CommandService.Exec(conn, $"UPDATE {_s}.ghk_outbox SET published_at = now(), claimed_until = NULL WHERE id = $1 AND claimed_by = $2", ct, row.Id, workerId);
                 published++;
             }
@@ -349,86 +758,77 @@ public sealed class OutboxRelay
 `;
 
   const inbox = `using System.Diagnostics;
-using System.Text;
 using System.Text.Json;
 using Npgsql;
-using RabbitMQ.Client;
 
 ${n}
 /// <summary>
 /// Idempotent consumer: the message id is recorded in ghk_inbox in the same transaction as the
 /// handler, so redeliveries are acknowledged without running the handler twice. A handler error
-/// rejects the message without requeue, so RabbitMQ dead-letters it to the DLQ.
+/// dead-letters the message (RabbitMQ DLX, Pub/Sub / Service Bus dead-letter topic): it is not redelivered.
 /// </summary>
 public sealed class InboxConsumer
 {
     public sealed record Meta(string MessageId, string? TenantId, string? EventType, NpgsqlConnection Connection);
 
     private readonly NpgsqlDataSource _db;
-    private readonly IModel _channel;
-    private readonly string _queue;
+    private readonly IEventSubscription _subscription;
     private readonly string _name;
     private readonly Func<JsonElement, Meta, Task> _handler;
     private readonly string _s;
 
-    public InboxConsumer(NpgsqlDataSource db, IModel channel, string queue, string consumerName, Func<JsonElement, Meta, Task> handler, string? schema = null)
+    public InboxConsumer(NpgsqlDataSource db, IEventSubscription subscription, string consumerName, Func<JsonElement, Meta, Task> handler, string? schema = null)
     {
         _db = db;
-        _channel = channel;
-        _queue = queue;
+        _subscription = subscription;
         _name = consumerName;
         _handler = handler;
         _s = Schema.Name(schema);
     }
 
-    /// <summary>Processes messages until the queue stays empty for <paramref name="idle"/>; returns how many were processed.</summary>
-    public async Task<int> DrainAsync(TimeSpan idle)
+    /// <summary>Processes messages until the source stays empty for <paramref name="idle"/>; returns how many were processed.</summary>
+    public async Task<int> DrainAsync(TimeSpan idle, CancellationToken ct = default)
     {
         var processed = 0;
         var idleSince = DateTime.UtcNow;
         while (DateTime.UtcNow - idleSince < idle)
         {
-            var message = _channel.BasicGet(_queue, autoAck: false);
-            if (message is null)
+            var delivery = await _subscription.PollAsync(ct);
+            if (delivery is null)
             {
-                await Task.Delay(50);
+                await Task.Delay(50, ct);
                 continue;
             }
-            await ProcessAsync(message);
+            await ProcessAsync(delivery);
             processed++;
             idleSince = DateTime.UtcNow;
         }
         return processed;
     }
 
-    private static string? Header(IBasicProperties props, string key) =>
-        props.Headers is not null && props.Headers.TryGetValue(key, out var value)
-            ? value is byte[] bytes ? Encoding.UTF8.GetString(bytes) : value?.ToString()
-            : null;
-
-    private async Task ProcessAsync(BasicGetResult message)
+    private async Task ProcessAsync(Delivery delivery)
     {
-        var props = message.BasicProperties;
-        using var activity = Telemetry.Source.StartActivity($"{_queue} process", ActivityKind.Consumer, Telemetry.ParentFrom(Header(props, "traceparent")));
-        activity?.SetTag("messaging.system", "rabbitmq");
-        activity?.SetTag("messaging.destination.name", _queue);
-        activity?.SetTag("messaging.message.id", props.MessageId);
+        var message = delivery.Message;
+        using var activity = Telemetry.Source.StartActivity($"{_subscription.Source} process", ActivityKind.Consumer, Telemetry.ParentFrom(message.Traceparent));
+        activity?.SetTag("messaging.system", _subscription.MessagingSystem);
+        activity?.SetTag("messaging.destination.name", _subscription.Source);
+        activity?.SetTag("messaging.message.id", message.MessageId);
         try
         {
             await using var conn = await _db.OpenConnectionAsync();
             await using var tx = await conn.BeginTransactionAsync();
-            if (await CommandService.Exec(conn, $"INSERT INTO {_s}.ghk_inbox (consumer, message_id) VALUES ($1, $2) ON CONFLICT DO NOTHING", CancellationToken.None, _name, props.MessageId) == 1)
+            if (await CommandService.Exec(conn, $"INSERT INTO {_s}.ghk_inbox (consumer, message_id) VALUES ($1, $2) ON CONFLICT DO NOTHING", CancellationToken.None, _name, message.MessageId) == 1)
             {
                 using var json = JsonDocument.Parse(message.Body);
-                await _handler(json.RootElement.Clone(), new Meta(props.MessageId, Header(props, "tenant_id"), props.Type, conn));
+                await _handler(json.RootElement.Clone(), new Meta(message.MessageId, message.TenantId, message.EventType, conn));
             }
             await tx.CommitAsync();
-            _channel.BasicAck(message.DeliveryTag, multiple: false);
+            await delivery.Ack();
         }
         catch (Exception e)
         {
             activity?.SetStatus(ActivityStatusCode.Error, e.Message);
-            _channel.BasicNack(message.DeliveryTag, multiple: false, requeue: false);
+            await delivery.DeadLetter();
         }
     }
 }
@@ -510,12 +910,14 @@ using ${ns}.Runtime;
 using Npgsql;
 using OpenTelemetry;
 using OpenTelemetry.Trace;
-using RabbitMQ.Client;
 using Xunit;
 
 namespace ${ns}.Tests.Runtime;
 
-/// <summary>Runtime integration tests (docs/RUNTIME-KERNEL.md, IT1-IT7). Requires DATABASE_URL and AMQP_URL.</summary>
+/// <summary>
+/// Runtime integration tests (docs/RUNTIME-KERNEL.md, IT1-IT7). Requires DATABASE_URL and the selected broker
+/// (GHK_BROKER: rabbitmq with AMQP_URL, pubsub with PUBSUB_PROJECT_ID [+ PUBSUB_EMULATOR_HOST], servicebus).
+/// </summary>
 [Trait("Category", "Integration")]
 [Collection("runtime")]
 public sealed class RuntimeIntegrationTests : IAsyncLifetime
@@ -523,30 +925,62 @@ public sealed class RuntimeIntegrationTests : IAsyncLifetime
     private const string Command = ${cs(first.snake)};
     private const string Event = ${cs(first.event)};
     private readonly NpgsqlDataSource _db;
-    private readonly IConnection _amqp;
     private readonly string _schema;
-    private readonly Topology _topology;
+    private readonly string _uid;
+    private IBroker _broker = null!;
+    private Topology _topology = null!;
 
     public RuntimeIntegrationTests()
     {
         var dbUrl = Environment.GetEnvironmentVariable("DATABASE_URL");
-        var amqpUrl = Environment.GetEnvironmentVariable("AMQP_URL");
-        if (string.IsNullOrEmpty(dbUrl) || string.IsNullOrEmpty(amqpUrl))
-            throw new InvalidOperationException("Integration tests need DATABASE_URL and AMQP_URL (see docs/RUNTIME-KERNEL.md).");
+        if (string.IsNullOrEmpty(dbUrl) || !Brokers.Configured())
+            throw new InvalidOperationException("Integration tests need DATABASE_URL and the broker variables (see docs/RUNTIME-KERNEL.md).");
         _db = Connections.FromUrl(dbUrl);
-        _amqp = new ConnectionFactory { Uri = new Uri(amqpUrl) }.CreateConnection();
-        var uid = Guid.NewGuid().ToString("N")[..12];
-        _schema = $"it_{uid}";
-        _topology = Topology.ForPrefix($"it-{uid}");
+        _uid = Guid.NewGuid().ToString("N")[..12];
+        _schema = $"it_{_uid}";
     }
 
-    public Task InitializeAsync() => Schema.MigrateAsync(_db, _schema);
+    public async Task InitializeAsync()
+    {
+        await Schema.MigrateAsync(_db, _schema);
+        _broker = await Brokers.ConnectAsync();
+        // Brokers with fixed entities (Service Bus emulator) share one topology, emptied before each test.
+        _topology = _broker.DynamicTopology ? Topology.ForPrefix($"it-{_uid}") : Topology.ForPrefix("it");
+        await _broker.DeclareAsync(_topology);
+        if (!_broker.DynamicTopology)
+        {
+            await Receive(_topology.Queue, 0);
+            await Receive(_topology.Dlq, 0);
+        }
+    }
 
     public async Task DisposeAsync()
     {
         await using (var cmd = _db.CreateCommand($"DROP SCHEMA IF EXISTS {_schema} CASCADE")) await cmd.ExecuteNonQueryAsync();
-        _amqp.Dispose();
+        await _broker.DisposeAsync();
         await _db.DisposeAsync();
+    }
+
+    /// <summary>Receives and acknowledges messages until the expected number arrived and the source stays quiet for 500 ms (10 s at most).</summary>
+    private async Task<List<BrokerMessage>> Receive(string source, int expected)
+    {
+        var received = new List<BrokerMessage>();
+        await using var subscription = await _broker.SubscribeAsync(source, _topology);
+        var deadline = DateTime.UtcNow.AddSeconds(10);
+        var quietSince = DateTime.UtcNow;
+        while (DateTime.UtcNow < deadline && (received.Count < expected || DateTime.UtcNow - quietSince < TimeSpan.FromMilliseconds(500)))
+        {
+            var delivery = await subscription.PollAsync();
+            if (delivery is null)
+            {
+                await Task.Delay(50);
+                continue;
+            }
+            received.Add(delivery.Message);
+            await delivery.Ack();
+            quietSince = DateTime.UtcNow;
+        }
+        return received;
     }
 
     private async Task<long> Count(string table, string where = "true", params object[] args)
@@ -554,23 +988,6 @@ public sealed class RuntimeIntegrationTests : IAsyncLifetime
         await using var cmd = _db.CreateCommand($"SELECT count(*) FROM {_schema}.{table} WHERE {where}");
         foreach (var a in args) cmd.Parameters.Add(new NpgsqlParameter { Value = a });
         return (long)(await cmd.ExecuteScalarAsync())!;
-    }
-
-    private static List<BasicGetResult> DrainQueue(IModel channel, string queue)
-    {
-        var messages = new List<BasicGetResult>();
-        for (var m = channel.BasicGet(queue, autoAck: true); m is not null; m = channel.BasicGet(queue, autoAck: true)) messages.Add(m);
-        return messages;
-    }
-
-    private static async Task WaitFor(Func<bool> check)
-    {
-        var deadline = DateTime.UtcNow.AddSeconds(10);
-        while (!check())
-        {
-            if (DateTime.UtcNow > deadline) throw new TimeoutException("Timed out waiting for condition");
-            await Task.Delay(50);
-        }
     }
 
     [Fact]
@@ -605,12 +1022,10 @@ public sealed class RuntimeIntegrationTests : IAsyncLifetime
     {
         var service = new CommandService(_db, _schema);
         for (var i = 0; i < 20; i++) await service.HandleAsync(new("t1", $"agg-{i}", Command));
-        using var setup = _amqp.CreateModel();
-        _topology.Declare(setup);
         async Task<int> Drain(string worker)
         {
-            using var channel = _amqp.CreateModel();
-            var relay = new OutboxRelay(_db, channel, _topology.Exchange, _schema);
+            await using var publisher = await _broker.PublisherAsync(_topology.Exchange);
+            var relay = new OutboxRelay(_db, publisher, _schema);
             var total = 0;
             for (var n = await relay.PublishBatchAsync(worker, 3); n > 0; n = await relay.PublishBatchAsync(worker, 3)) total += n;
             return total;
@@ -618,8 +1033,9 @@ public sealed class RuntimeIntegrationTests : IAsyncLifetime
         var totals = await Task.WhenAll(Task.Run(() => Drain("relay-a")), Task.Run(() => Drain("relay-b")));
         Assert.Equal(20, totals.Sum());
         Assert.Equal(0, await Count("ghk_outbox", "published_at IS NULL"));
-        await WaitFor(() => setup.QueueDeclarePassive(_topology.Queue).MessageCount == 20);
-        Assert.Equal(20, DrainQueue(setup, _topology.Queue).Select(m => m.BasicProperties.MessageId).Distinct().Count());
+        var received = await Receive(_topology.Queue, 20);
+        Assert.Equal(20, received.Count);
+        Assert.Equal(20, received.Select(m => m.MessageId).Distinct().Count());
     }
 
     [Fact]
@@ -653,27 +1069,23 @@ public sealed class RuntimeIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task IT6_InboxDeduplicatesAndDeadLetters()
     {
-        using var channel = _amqp.CreateModel();
-        _topology.Declare(channel);
         var handled = new List<string>();
-        var consumer = new InboxConsumer(_db, channel, _topology.Queue, "it-consumer", (json, meta) =>
+        await using (var publisher = await _broker.PublisherAsync(_topology.Exchange))
+        await using (var subscription = await _broker.SubscribeAsync(_topology.Queue, _topology))
         {
-            if (json.TryGetProperty("poison", out _)) throw new InvalidOperationException("cannot process");
-            handled.Add(meta.MessageId);
-            return Task.CompletedTask;
-        }, _schema);
-        foreach (var (id, body) in new[] { ("m-1", "{\\"ok\\": true}"), ("m-1", "{\\"ok\\": true}"), ("m-poison", "{\\"poison\\": true}") })
-        {
-            var props = channel.CreateBasicProperties();
-            props.MessageId = id;
-            props.Headers = new Dictionary<string, object> { ["tenant_id"] = "t1" };
-            channel.BasicPublish(_topology.Exchange, "Test", props, Encoding.UTF8.GetBytes(body));
+            var consumer = new InboxConsumer(_db, subscription, "it-consumer", (json, meta) =>
+            {
+                if (json.TryGetProperty("poison", out _)) throw new InvalidOperationException("cannot process");
+                handled.Add(meta.MessageId);
+                return Task.CompletedTask;
+            }, _schema);
+            foreach (var (id, body) in new[] { ("m-1", "{\\"ok\\": true}"), ("m-1", "{\\"ok\\": true}"), ("m-poison", "{\\"poison\\": true}") })
+                await publisher.PublishAsync(new BrokerMessage(id, "Test", "t1", null, Encoding.UTF8.GetBytes(body)));
+            await consumer.DrainAsync(TimeSpan.FromSeconds(1));
         }
-        await consumer.DrainAsync(TimeSpan.FromSeconds(1));
         Assert.Equal(new[] { "m-1" }, handled);
         Assert.Equal(1, await Count("ghk_inbox", "consumer = $1", "it-consumer"));
-        await WaitFor(() => channel.QueueDeclarePassive(_topology.Dlq).MessageCount == 1);
-        Assert.Equal(new[] { "m-poison" }, DrainQueue(channel, _topology.Dlq).Select(m => m.BasicProperties.MessageId));
+        Assert.Equal(new[] { "m-poison" }, (await Receive(_topology.Dlq, 1)).Select(m => m.MessageId));
     }
 
     [Fact]
@@ -685,12 +1097,11 @@ public sealed class RuntimeIntegrationTests : IAsyncLifetime
         await service.HandleAsync(new("t1", "agg-1", Command, Traceparent: ${cs(TEST_TRACEPARENT)}));
         await using (var cmd = _db.CreateCommand($"SELECT traceparent FROM {_schema}.ghk_outbox"))
             Assert.Contains(${cs(TEST_TRACE_ID)}, (string)(await cmd.ExecuteScalarAsync())!);
-        using var channel = _amqp.CreateModel();
-        _topology.Declare(channel);
-        Assert.Equal(1, await new OutboxRelay(_db, channel, _topology.Exchange, _schema).PublishBatchAsync("relay", 10));
+        await using (var publisher = await _broker.PublisherAsync(_topology.Exchange))
+            Assert.Equal(1, await new OutboxRelay(_db, publisher, _schema).PublishBatchAsync("relay", 10));
         var received = 0;
-        using var consumerChannel = _amqp.CreateModel();
-        await new InboxConsumer(_db, consumerChannel, _topology.Queue, "trace-consumer", (_, _) => { received++; return Task.CompletedTask; }, _schema).DrainAsync(TimeSpan.FromSeconds(1));
+        await using (var subscription = await _broker.SubscribeAsync(_topology.Queue, _topology))
+            await new InboxConsumer(_db, subscription, "trace-consumer", (_, _) => { received++; return Task.CompletedTask; }, _schema).DrainAsync(TimeSpan.FromSeconds(1));
         Assert.Equal(1, received);
         provider!.ForceFlush();
 
@@ -712,6 +1123,8 @@ public sealed class RuntimeIntegrationTests : IAsyncLifetime
     { filename: 'src/Runtime/Telemetry.cs', content: telemetry },
     { filename: 'src/Runtime/CommandService.cs', content: commandService },
     { filename: 'src/Runtime/Topology.cs', content: topologyCs },
+    { filename: 'src/Runtime/Brokers.cs', content: brokersCs },
+    ...(serviceBus ? [{ filename: 'src/Runtime/ServiceBusBroker.cs', content: serviceBusCs }] : []),
     { filename: 'src/Runtime/OutboxRelay.cs', content: relay },
     { filename: 'src/Runtime/InboxConsumer.cs', content: inbox },
     { filename: 'src/Runtime/SagaOrchestrator.cs', content: saga },

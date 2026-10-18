@@ -120,11 +120,13 @@ public static class ${m.pascal}Endpoints
 
   const worker = `using ${ns}.Runtime;
 using Npgsql;
-using RabbitMQ.Client;
 
 namespace ${ns}.Api.Workers;
 
-/// <summary>Publishes the outbox every ${RELAY_INTERVAL_MS} ms when AMQP_URL is set.</summary>
+/// <summary>
+/// Publishes the outbox every ${RELAY_INTERVAL_MS} ms when a broker is configured (Runtime/Brokers.cs: GHK_BROKER,
+/// AMQP_URL, PUBSUB_*, SERVICEBUS_*).
+/// </summary>
 public sealed class OutboxRelayWorker(NpgsqlDataSource db, IConfiguration config, ILogger<OutboxRelayWorker> logger) : BackgroundService
 {
     private readonly string _workerId = $"${m.kebab}-{Guid.NewGuid()}";
@@ -132,20 +134,19 @@ public sealed class OutboxRelayWorker(NpgsqlDataSource db, IConfiguration config
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         if (!config.GetValue("Outbox:RelayEnabled", true)) return;
-        var url = config["AMQP_URL"];
-        if (string.IsNullOrWhiteSpace(url))
+        if (!Brokers.Configured())
         {
-            logger.LogWarning("AMQP_URL is not set: outbox events are stored but not published.");
+            logger.LogWarning("No event broker is configured (AMQP_URL, PUBSUB_PROJECT_ID or SERVICEBUS_*): outbox events are stored but not published.");
             return;
         }
         while (!stoppingToken.IsCancellationRequested)
         {
             try
             {
-                using var connection = new ConnectionFactory { Uri = new Uri(url) }.CreateConnection();
-                using var channel = connection.CreateModel();
-                Topology.Default.Declare(channel);
-                var relay = new OutboxRelay(db, channel, Topology.Default.Exchange);
+                await using var broker = await Brokers.ConnectAsync();
+                await broker.DeclareAsync(Topology.Default, stoppingToken);
+                await using var publisher = await broker.PublisherAsync(Topology.Default.Exchange, stoppingToken);
+                var relay = new OutboxRelay(db, publisher);
                 while (!stoppingToken.IsCancellationRequested)
                 {
                     await relay.PublishBatchAsync(_workerId, 50, stoppingToken);

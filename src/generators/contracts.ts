@@ -8,6 +8,7 @@ import { renderPom, renderQuarkusPom } from './kernel/java';
 import { jvmGroupId } from './preset-java-spring';
 import { isSpringFramework } from './stack-support';
 import { usesServiceBus } from './kernel/runtime/jvm';
+import { CS_SERVICEBUS_PACKAGES } from './kernel/runtime/csharp';
 import { industryForConfig } from '../core/profiles/industries';
 import { tagValues } from '../core/profiles/industries/lint-helpers';
 import { dotnetNamespace } from './preset-csharp-dotnet';
@@ -463,7 +464,7 @@ Compliance items are engineering guidance, not certification.
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Npgsql" Version="8.0.5" />
-    <PackageReference Include="RabbitMQ.Client" Version="6.8.1" />
+    <PackageReference Include="RabbitMQ.Client" Version="6.8.1" />${usesServiceBus(config.stack.messaging) ? CS_SERVICEBUS_PACKAGES.map(p => `\n    ${p}`).join('') : ''}
     <PackageReference Include="Polly.Core" Version="8.3.1" />
     <PackageReference Include="Microsoft.Extensions.Http.Resilience" Version="8.3.0" />
     <PackageReference Include="OpenTelemetry.Extensions.Hosting" Version="1.19.1" />

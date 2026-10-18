@@ -12,7 +12,7 @@ import { ParsedFeature } from '../core/gherkin-parser';
 import { GherkinAIConfig } from '../core/config';
 import { buildDomainModel, toKebab } from './kernel/domain-model';
 import { PyFile, pyModulesOf, renderPyImportSmokeTest, renderPyKernel, renderPyKernelTests, renderPytestBdd, withInitFiles } from './kernel/python';
-import { PY_INTEGRATION_MARKER, PY_RUNTIME_DEPENDENCIES, renderPyRuntime } from './kernel/runtime/python';
+import { PY_INTEGRATION_MARKER, pyRuntimeDependencies, renderPyRuntime } from './kernel/runtime/python';
 import { PY_EVENT_BUS, pyEventBusTest, pyFeatureFile, renderPyproject } from './python/python-common';
 import { renderDjangoHttpIntegration, renderDjangoRelayCommand, renderDjangoUnitTest, renderDjangoViews, renderPyAuth, renderPyWorker } from './kernel/app/python';
 import { tenantClaim } from './kernel/app/shared';
@@ -64,7 +64,7 @@ REST_FRAMEWORK = {
 `;
 
 
-  const runtime = renderPyRuntime(m, 'app', siblings);
+  const runtime = renderPyRuntime(m, 'app', siblings, { messaging: config?.stack?.messaging });
   const appFiles: PyFile[] = withInitFiles([
     { filename: 'config/settings.py', content: settings },
     {
@@ -119,7 +119,7 @@ if __name__ == "__main__":
       filename: 'pyproject.toml',
       content: renderPyproject(
         toKebab(config?.projectName || m.kebab),
-        ['django>=5.0,<6', 'djangorestframework>=3.15', ...PY_RUNTIME_DEPENDENCIES],
+        ['django>=5.0,<6', 'djangorestframework>=3.15', ...pyRuntimeDependencies(config?.stack?.messaging)],
         ['pytest>=8.3', 'pytest-django>=4.9', 'pytest-bdd>=7.3'],
         ['DJANGO_SETTINGS_MODULE = "config.settings"', PY_INTEGRATION_MARKER]
       )

@@ -15,14 +15,14 @@ import { renderFastApiHttpIntegration, renderFastApiMain, renderFastApiUnitTest,
 import { tenantClaim } from './kernel/app/shared';
 import { siblingDomainModels } from './kernel/siblings';
 import { PyFile, pyModulesOf, renderPyImportSmokeTest, renderPyKernel, renderPyKernelTests, renderPytestBdd, withInitFiles } from './kernel/python';
-import { PY_INTEGRATION_MARKER, PY_RUNTIME_DEPENDENCIES, renderPyRuntime } from './kernel/runtime/python';
+import { PY_INTEGRATION_MARKER, pyRuntimeDependencies, renderPyRuntime } from './kernel/runtime/python';
 import { PY_DATABASE, PY_EVENT_BUS, pyEventBusTest, pyFeatureFile, renderPyproject } from './python/python-common';
 
 export function generatePythonFastApiPreset(parsed: ParsedFeature, config?: GherkinAIConfig, featureFile?: string): { filename: string; content: string }[] {
   const m = buildDomainModel(parsed, { service: config?.projectName });
   const siblings = siblingDomainModels(m, config, s => `app/domain/${s.snake}.py`);
 
-  const runtime = renderPyRuntime(m, 'app', siblings);
+  const runtime = renderPyRuntime(m, 'app', siblings, { messaging: config?.stack?.messaging });
   const appFiles: PyFile[] = withInitFiles([
     { filename: 'app/database.py', content: PY_DATABASE },
     { filename: 'app/infrastructure/event_bus.py', content: PY_EVENT_BUS },
@@ -48,7 +48,7 @@ export function generatePythonFastApiPreset(parsed: ParsedFeature, config?: Gher
       filename: 'pyproject.toml',
       content: renderPyproject(
         toKebab(config?.projectName || m.kebab),
-        ['fastapi>=0.115', 'uvicorn>=0.30', 'sqlalchemy>=2.0', 'pydantic>=2.7', ...PY_RUNTIME_DEPENDENCIES],
+        ['fastapi>=0.115', 'uvicorn>=0.30', 'sqlalchemy>=2.0', 'pydantic>=2.7', ...pyRuntimeDependencies(config?.stack?.messaging)],
         ['pytest>=8.3', 'pytest-bdd>=7.3', 'httpx>=0.27'],
         [PY_INTEGRATION_MARKER]
       )
