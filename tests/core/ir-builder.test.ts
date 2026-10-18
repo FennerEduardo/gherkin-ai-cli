@@ -459,6 +459,14 @@ describe('IR Builder', () => {
       }
     });
 
+    it('names endpoints like the application layer route: accents removed, @aggregate tag first', () => {
+      const spanish = buildIR(parseGherkinText(['# language: es', 'Característica: Creación de pedidos', '  Escenario: Crear', '    Cuando el cliente crea un pedido', '    Entonces el pedido queda creado'].join('\n')), 'es.feature');
+      for (const ep of spanish.apiEndpoints) expect(ep.path.startsWith('/api/v1/creacion-de-pedidos')).toBe(true);
+      const tagged = buildIR(parseGherkinText(['@aggregate:PaymentExecution', 'Feature: Payments between accounts (BIAN)', '  Scenario: Pay', '    When the debtor creates a payment', '    Then the payment is accepted'].join('\n')), 'pay.feature');
+      for (const ep of tagged.apiEndpoints) expect(ep.path.startsWith('/api/v1/payment-execution')).toBe(true);
+      expect(spanish.apiEndpoints.length * tagged.apiEndpoints.length).toBeGreaterThan(0);
+    });
+
     it('should map verbs to HTTP methods correctly', () => {
       const parsed = parseGherkinText(CRUD_FEATURE);
       const ir = buildIR(parsed, 'test.feature');

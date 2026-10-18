@@ -32,7 +32,7 @@ import {
 import { loadConstitution, Constitution } from './constitution';
 import { resolveDomainProfile } from './profiles/profile-registry';
 import { resolveIndustry } from './profiles/industries';
-import { featurePascalName } from '../utils/naming';
+import { featurePascalName, toKebab } from '../utils/naming';
 import { withoutQuotedText } from '../utils/quoted-text';
 
 // ---------------------------------------------------------------------------
@@ -753,7 +753,9 @@ function extractAPIEndpoints(
   fields: FieldSpec[]
 ): APIEndpointHint[] {
   const endpoints: APIEndpointHint[] = [];
-  const featureSlug = parsed.featureName.toLowerCase().replace(/[^a-z0-9]/g, '-');
+  // The same resource name as the generated application layer (/api/v1/<feature>/{id}/{command}): the
+  // @aggregate tag or the feature name, accents removed (a lowercase [^a-z0-9] replace turned "ó" into "-").
+  const featureSlug = toKebab(featurePascalName(parsed));
 
   // Infer main CRUD endpoints from commands
   const verbMethodMap: Record<string, 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'> = {
