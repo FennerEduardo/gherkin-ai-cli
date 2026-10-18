@@ -67,7 +67,7 @@ void bootstrap();
     { filename: 'jest.config.js', content: renderJestConfig(['<rootDir>/src'], { esm }) },
     { filename: 'jest.integration.config.js', content: renderJestConfig(['<rootDir>/test/integration'], { esm, testMatch: '**/*.int-spec.ts', testTimeout: 60000 }) },
     // Runtime kernel: PostgreSQL + RabbitMQ + OpenTelemetry, verified by test/integration (docs/RUNTIME-KERNEL.md).
-    ...renderTsRuntime(m, `../${m.kebab}/domain/${m.kebab}.aggregate`, siblings.map(s => ({ m: s, aggregateImport: `../${s.kebab}/domain/${s.kebab}.aggregate` }))),
+    ...renderTsRuntime(m, `../${m.kebab}/domain/${m.kebab}.aggregate`, siblings.map(s => ({ m: s, aggregateImport: `../${s.kebab}/domain/${s.kebab}.aggregate` })), { messaging: config?.stack?.messaging }),
     ...renderTsConfigs(),
     { filename: 'src/app.module.ts', content: appModule },
     { filename: 'src/main.ts', content: main },

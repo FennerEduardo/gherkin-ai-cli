@@ -41,7 +41,7 @@ export function generateNodeExpressPreset(parsed: ParsedFeature, config?: Gherki
     { filename: 'jest.config.js', content: renderJestConfig(['<rootDir>/src']) },
     { filename: 'jest.integration.config.js', content: renderJestConfig(['<rootDir>/test/integration'], { testMatch: '**/*.int-spec.ts', testTimeout: 60000 }) },
     // Runtime kernel: PostgreSQL + RabbitMQ + OpenTelemetry, verified by test/integration (docs/RUNTIME-KERNEL.md).
-    ...renderTsRuntime(m, `../domain/${m.kebab}.aggregate`, siblings.map(s => ({ m: s, aggregateImport: `../domain/${s.kebab}.aggregate` }))),
+    ...renderTsRuntime(m, `../domain/${m.kebab}.aggregate`, siblings.map(s => ({ m: s, aggregateImport: `../domain/${s.kebab}.aggregate` })), { messaging: config?.stack?.messaging }),
     ...renderTsConfigs()
   ];
 }

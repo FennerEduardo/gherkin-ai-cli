@@ -14,7 +14,7 @@ import { dotnetNamespace } from './preset-csharp-dotnet';
 import { renderGoMod } from './kernel/go';
 import { renderGradleKts, renderGradleSettings } from './kernel/kotlin';
 import { toKebab } from './kernel/domain-model';
-import { TS_RUNTIME_DEPENDENCIES, TS_RUNTIME_DEV_DEPENDENCIES } from './kernel/runtime/typescript';
+import { TS_RUNTIME_DEV_DEPENDENCIES, tsRuntimeDependencies } from './kernel/runtime/typescript';
 import { NEST_DEPENDENCIES, NodeProfile, PRISMA_VERSION, prismaAdapter, resolveNodeProfile } from './node-profile';
 import { ParsedFeature } from '../core/gherkin-parser';
 import { GherkinAIConfig } from '../core/config';
@@ -97,7 +97,7 @@ function nodeDependencies(config: GherkinAIConfig): NodePackage {
   if (framework === 'express') {
     return {
       scripts: { start: 'node dist/src/server', build: 'tsc -p tsconfig.build.json', test: testScript(false), 'test:integration': integrationScript(false) },
-      dependencies: { express: '^5.1.0', zod: '^4.1.0', ...TS_RUNTIME_DEPENDENCIES, ...prisma.dependencies },
+      dependencies: { express: '^5.1.0', zod: '^4.1.0', ...tsRuntimeDependencies(config.stack.messaging), ...prisma.dependencies },
       devDependencies: { ...TS_TEST_TOOLING, ...TS_RUNTIME_DEV_DEPENDENCIES, '@types/express': '^5.0.0', ...prisma.devDependencies }
     };
   }
@@ -117,7 +117,7 @@ function nodeDependencies(config: GherkinAIConfig): NodePackage {
     dependencies: {
       ...NEST_DEPENDENCIES[profile.nest],
       ...nestPrisma.dependencies,
-      ...TS_RUNTIME_DEPENDENCIES,
+      ...tsRuntimeDependencies(config.stack.messaging),
       'reflect-metadata': '^0.2.0',
       rxjs: '^7.8.0',
       zod: '^4.1.0'

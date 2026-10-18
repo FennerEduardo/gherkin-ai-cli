@@ -117,6 +117,9 @@ const STACKS = {
   'nestjs-12': nestGolden({ frameworkVersion: '12', ormVersion: '7' }),
   'nestjs-12-prisma6': nestGolden({ frameworkVersion: '12' }),
   'nestjs-prisma7': nestGolden({ ormVersion: '7', database: 'mysql' }),
+  // NestJS with the native cloud brokers (TypeScript runtime adapters, verified against the official emulators).
+  'nestjs-pubsub': { ...nestGolden({ messaging: 'pubsub' }), services: [PUBSUB_EMULATOR] },
+  'nestjs-servicebus': { ...nestGolden({ messaging: 'servicebus' }), services: SERVICEBUS_EMULATOR('golden-nestjs-servicebus') },
   'grpc-graphql': {
     stack: { ...base, language: 'typescript', framework: 'nestjs', orm: 'prisma', validation: 'zod', testing: 'jest' },
     config: { contracts: { grpc: true, graphql: true } },

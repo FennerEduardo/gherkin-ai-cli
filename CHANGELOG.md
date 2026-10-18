@@ -5,6 +5,10 @@ All notable changes to this project will be documented in this file. See [commit
 ## [3.2.0] - Unreleased
 
 ### Added
+- **Pub/Sub and Service Bus adapters for the TypeScript runtime kernel (NestJS, Express; beta, goldens `nestjs-pubsub` and `nestjs-servicebus`).**
+  - **Same contract as the JVM.** `runtime/broker.ts` has the ports, RabbitMQ and Pub/Sub (REST over `fetch`), and run-time selection.
+  - **Service Bus.** `runtime/servicebus-broker.ts` uses `@azure/service-bus` and `@azure/identity`, and is generated only with `stack.messaging: "servicebus"`.
+  - **Inbox.** The consumer now polls the subscription (`start()` / `drain()`), so it works the same on every broker.
 - **Azure Service Bus adapter for the JVM runtime kernel (beta, opt-in with `stack.messaging: "servicebus"`, golden `quarkus-servicebus`).**
   - **SDK.** It uses the official Azure SDK (`azure-sdk-bom`), with the JDK HTTP transport instead of Netty.
   - **Auth.** Microsoft Entra ID through `SERVICEBUS_NAMESPACE` (managed identity), or a connection string.
