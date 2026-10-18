@@ -126,6 +126,15 @@ describe('AsyncAPI Validator', () => {
     expect(result.errors.some(e => e.message.includes('channels'))).toBe(true);
   });
 
+  it('accepts an empty channels object (no events) with a warning', () => {
+    const filePath = createTempFile(JSON.stringify({ asyncapi: '2.6.0', info: { title: 'T', version: '1.0.0' }, channels: {} }));
+    tempFiles.push(filePath);
+
+    const result = validateAsyncAPISpec(filePath);
+    expect(result.valid).toBe(true);
+    expect(result.warnings.some(w => w.path === '$.channels')).toBe(true);
+  });
+
   it('should error when a channel has no publish or subscribe', () => {
     const spec = {
       asyncapi: '2.6.0',

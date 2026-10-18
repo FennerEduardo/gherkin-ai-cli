@@ -56,8 +56,11 @@ export function validateAsyncAPISpec(specPath: string): AsyncAPIValidationResult
     }
 
     // 3. Channels
-    if (!doc.channels || Object.keys(doc.channels).length === 0) {
-      result.errors.push({ path: '$.channels', message: 'Missing required "channels" object or no channels defined' });
+    if (!doc.channels || typeof doc.channels !== 'object') {
+      result.errors.push({ path: '$.channels', message: 'Missing required "channels" object' });
+    } else if (Object.keys(doc.channels).length === 0) {
+      // Valid AsyncAPI 2.x (channels is required, may be empty): the feature publishes no events.
+      result.warnings.push({ path: '$.channels', message: 'No channels defined (the specification publishes no events)' });
     } else {
       validateChannels(doc, result);
     }
