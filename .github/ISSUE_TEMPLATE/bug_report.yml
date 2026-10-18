@@ -12,7 +12,7 @@ body:
     attributes:
       label: gherkin-ai version
       description: Output of `ghk --version`.
-      placeholder: 3.1.1
+      placeholder: 3.2.0
     validations:
       required: true
   - type: dropdown
