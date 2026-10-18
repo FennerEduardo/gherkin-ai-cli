@@ -376,11 +376,6 @@ export async function handleInitCommand(options?: {
   logger.banner();
   logger.info('Initializing new gherkin-ai project configuration...');
   
-  if (options?.enterprise) {
-    logger.info('Enterprise mode active: Generating .gherkin-ai/constitution.yaml');
-    generateConstitution();
-  }
-
   const nonInteractive = isNonInteractive(options);
 
   if (nonInteractive) {
@@ -652,6 +647,11 @@ export async function handleInitCommand(options?: {
 
   saveConfig(newConfig);
   logger.success('Successfully created gherkin-ai.config.json');
+  if (options?.enterprise) {
+    // After the answers: the constitution carries this project's stack, architecture and industry compliance.
+    generateConstitution({ config: newConfig });
+    logger.success('Enterprise mode: .gherkin-ai/constitution.yaml (versioned; the rest of .gherkin-ai/ is ignored)');
+  }
   const industry = writeIndustryContext(process.cwd(), newConfig);
   if (industry) logger.success(`Industry: ${industry.label}; rules for AI agents in ${INDUSTRY_CONTEXT_MD}`);
   const tierWarning = supportWarning(getStackSupport(newConfig));

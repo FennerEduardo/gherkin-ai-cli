@@ -1,6 +1,8 @@
 import fs from 'fs';
 import path from 'path';
 import yaml from 'yaml';
+import type { GherkinAIConfig } from './config';
+import { industryForConfig } from './profiles/industries';
 
 // ---------------------------------------------------------------------------
 // Enhanced Constitution Schema
@@ -192,7 +194,32 @@ export function getConstitutionDir(): string {
   return path.join(process.cwd(), '.gherkin-ai');
 }
 
-export function generateConstitution(options?: { enterprise?: boolean }): void {
+/**
+ * The default constitution with the project's own decisions filled in (architecture, stack, broker, auth and the
+ * industry's compliance frameworks), so agents are not told to build a NestJS / RabbitMQ service in, say, a
+ * Quarkus / Pub/Sub project. Comments and the organization's policy defaults are kept.
+ */
+export function constitutionYamlFor(config?: Pick<GherkinAIConfig, 'architecture' | 'stack' | 'frontendStack' | 'industry' | 'domainProfile'>): string {
+  if (!config?.stack) return defaultConstitutionYAML.trim();
+  const doc = yaml.parseDocument(defaultConstitutionYAML.trim());
+  const s = config.stack;
+  if (config.architecture) doc.setIn(['architecture', 'style'], config.architecture);
+  doc.setIn(['security', 'authProvider'], /jwt/i.test(s.auth || '') ? 'JWT bearer tokens (HS256); the tenant comes only from the token claim' : s.auth || 'none');
+  doc.setIn(['security', 'secretsPolicy'], 'Never hardcode secrets: read them from environment variables, provided by the platform secret manager in production.');
+  doc.setIn(['stack', 'backend'], [s.language, s.framework].filter(Boolean).join('-'));
+  doc.setIn(['stack', 'frontend'], config.frontendStack?.framework ? [config.frontendStack.language, config.frontendStack.framework].filter(Boolean).join('-') : 'none');
+  doc.setIn(['stack', 'database'], s.database || 'postgresql');
+  doc.setIn(['stack', 'testing'], s.testing || 'none');
+  doc.setIn(['stack', 'messaging'], s.messaging || 'none');
+  // Unknown until a deployment target is chosen; npm only for Node projects.
+  doc.deleteIn(['stack', 'cloud']);
+  if (!['typescript', 'javascript'].includes((s.language || '').toLowerCase())) doc.deleteIn(['stack', 'packageManager']);
+  const industry = industryForConfig(config);
+  if (industry && industry.compliance.length) doc.setIn(['compliance', 'frameworks'], industry.compliance);
+  return doc.toString().trim();
+}
+
+export function generateConstitution(options?: { enterprise?: boolean; config?: GherkinAIConfig }): void {
   const dir = getConstitutionDir();
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
@@ -210,7 +237,7 @@ export function generateConstitution(options?: { enterprise?: boolean }): void {
   // Write constitution.yaml
   const constitutionPath = path.join(dir, 'constitution.yaml');
   if (!fs.existsSync(constitutionPath)) {
-    fs.writeFileSync(constitutionPath, defaultConstitutionYAML.trim());
+    fs.writeFileSync(constitutionPath, constitutionYamlFor(options?.config));
   }
 
   // Write default agent configs

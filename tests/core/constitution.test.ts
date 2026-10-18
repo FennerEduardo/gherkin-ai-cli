@@ -10,6 +10,7 @@ import {
   getConstraintsByLevel,
   isLLMProviderAllowed
 } from '../../src/core/constitution';
+import { defaultConfig } from '../../src/core/config';
 
 describe('Constitution Engine', () => {
   const testDir = path.join(process.cwd(), '.test-constitution');
@@ -40,6 +41,23 @@ describe('Constitution Engine', () => {
       expect(fs.existsSync(path.join(baseDir, 'policies'))).toBe(true);
       expect(fs.existsSync(path.join(baseDir, 'agents'))).toBe(true);
       expect(fs.existsSync(path.join(baseDir, 'constitution.yaml'))).toBe(true);
+    });
+
+    it('fills in the project stack, architecture and industry compliance', () => {
+      generateConstitution({ config: {
+        ...defaultConfig, architecture: 'hexagonal', industry: { id: 'banking' },
+        stack: { ...defaultConfig.stack, language: 'java', framework: 'quarkus', messaging: 'pubsub', testing: 'junit' }
+      } });
+      const text = fs.readFileSync(path.join(getConstitutionDir(), 'constitution.yaml'), 'utf8');
+      const c = yaml.parse(text);
+      expect(c.architecture.style).toBe('hexagonal');
+      expect(c.stack).toMatchObject({ backend: 'java-quarkus', messaging: 'pubsub', testing: 'junit', frontend: 'none' });
+      expect(c.stack.cloud).toBeUndefined();
+      expect(c.stack.packageManager).toBeUndefined();
+      expect(c.compliance.frameworks.some((f: string) => f.startsWith('PCI DSS'))).toBe(true);
+      expect(c.security.secretsPolicy).not.toContain('process.env');
+      expect(text).toContain('# Gherkin AI Enterprise Constitution');
+      expect(loadConstitution()?.stack.backend).toBe('java-quarkus');
     });
 
     it('should generate default agent configurations', () => {
