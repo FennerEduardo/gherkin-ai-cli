@@ -56,6 +56,7 @@ All notable changes to this project will be documented in this file. See [commit
   - **`ghk validate` and features without events.** It no longer fails (exit 4) on the AsyncAPI document that `generate` writes for a feature with no events. An empty `channels` object is valid AsyncAPI 2.x, so it is now a warning.
   - **Broker configuration.** With `stack.messaging: "pubsub"`, `docker-compose.yml` runs the Pub/Sub emulator and passes its variables to the app. Before, it started RabbitMQ under the name `pubsub`. `.env.example` and the Dockerfile header list the selected broker's variables.
   - **Enterprise constitution.** `ghk init --enterprise` fills `.gherkin-ai/constitution.yaml` from the answers: architecture, stack, broker, JWT auth, and the industry's compliance frameworks. It used to write a fixed NestJS/AWS template. The `.gitignore` now keeps the constitution in version control and ignores the rest of `.gherkin-ai/` (credentials and logs).
+  - **QA agent prompt.** Existing step definitions are listed by their project-relative path. Before, regenerating wrote the machine's absolute paths (such as `/home/<user>/...`) into the committed `prompts/qa-agent.md`.
 
 ## [3.1.1] - 2026-10-13
 

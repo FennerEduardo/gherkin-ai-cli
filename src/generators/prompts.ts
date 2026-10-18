@@ -2,6 +2,7 @@
    gherkin-ai-cli - Executable AI Agent Prompt Generator
    ========================================================================== */
 
+import path from 'path';
 import { ParsedFeature } from '../core/gherkin-parser';
 import { GherkinAIConfig } from '../core/config';
 import { getArchRule } from '../core/arch-rules';
@@ -108,7 +109,9 @@ export function generatePrompts(parsed: ParsedFeature, config: GherkinAIConfig):
     let stepsDict = `\n## [MANDATORY] Step Definitions Dictionary\n`;
     stepsDict += `You MUST reuse the following existing Step Definitions whenever possible instead of inventing new ones:\n\n`;
     ctx.availableSteps.forEach(st => {
-      stepsDict += `- \`${st.keyword} ${st.pattern}\` (found in ${st.filePath})\n`;
+      // Project-relative: the prompts are committed, and must not carry (or depend on) the local checkout path.
+      const where = path.isAbsolute(st.filePath) ? path.relative(process.cwd(), st.filePath).split(path.sep).join('/') : st.filePath;
+      stepsDict += `- \`${st.keyword} ${st.pattern}\` (found in ${where})\n`;
     });
     result['qa-agent.md'] += stepsDict;
   }
