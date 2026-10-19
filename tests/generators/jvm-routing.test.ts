@@ -79,10 +79,17 @@ describe('Java + Quarkus preset', () => {
   });
 });
 
-describe('beta tier warning', () => {
+describe('support tier warning', () => {
+  it('Quarkus is stable (golden "quarkus" in CI): no warning', async () => {
+    const { supportWarning } = await import('../../src/generators/stack-support');
+    const support = getStackSupport(cfg('java', 'quarkus'));
+    expect(support.tier).toBe('stable');
+    expect(supportWarning(support)).toBeUndefined();
+  });
+
   it('says a beta stack with a golden build is built in CI', async () => {
     const { supportWarning } = await import('../../src/generators/stack-support');
-    const warning = supportWarning(getStackSupport(cfg('java', 'quarkus')))!;
+    const warning = supportWarning({ ...getStackSupport(cfg('java', 'quarkus')), tier: 'beta' })!;
     expect(warning).toMatch(/built and tested in CI \(golden "quarkus"\)/);
     expect(warning).not.toMatch(/not built in CI/);
   });

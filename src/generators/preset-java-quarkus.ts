@@ -1,5 +1,5 @@
 /* ==========================================================================
-   gherkin-ai-cli - Java Quarkus & Cucumber-JVM Preset Generator  [beta]
+   gherkin-ai-cli - Java Quarkus & Cucumber-JVM Preset Generator  [stable]
 
    Produces a Maven Quarkus service: the same domain kernel, Cucumber
    (JUnit Platform) runner and runtime kernel (PostgreSQL + RabbitMQ +

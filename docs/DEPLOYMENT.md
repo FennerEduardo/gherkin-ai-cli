@@ -52,8 +52,8 @@ Where readiness equals liveness, the stack does not yet check its dependencies i
 | Cloud | Broker | Adapter | Notes |
 |---|---|---|---|
 | AWS | Amazon MQ for RabbitMQ | RabbitMQ (all backends) | Managed RabbitMQ: set `AMQP_URL` to the broker's `amqps://` endpoint. No code change |
-| GCP | Pub/Sub | `pubsub` (all backends, beta) | Workload identity token from the metadata server; topics and subscriptions are created if missing |
-| Azure | Service Bus (Standard or Premium; topics need Standard+) | `servicebus` (JVM, TypeScript, .NET, Python and Go backends, beta, opt-in) | Generated only with `stack.messaging: "servicebus"`, because it adds the Azure SDK. Uses Entra ID through `SERVICEBUS_NAMESPACE` |
+| GCP | Pub/Sub | `pubsub` (all backends) | Workload identity token from the metadata server; topics and subscriptions are created if missing |
+| Azure | Service Bus (Standard or Premium; topics need Standard+) | `servicebus` (JVM, TypeScript, .NET, Python and Go backends, opt-in) | Generated only with `stack.messaging: "servicebus"`, because it adds the Azure SDK. Uses Entra ID through `SERVICEBUS_NAMESPACE` |
 | Azure | Self-managed RabbitMQ or CloudAMQP | RabbitMQ | **Rust, Ruby (Rails), Elixir (Phoenix) and PHP (Laravel)**: there is no official Service Bus SDK for them. Run RabbitMQ on AKS (operator) or use CloudAMQP on Azure, and set `AMQP_URL` |
 | Any | Self-managed RabbitMQ (or CloudAMQP) | RabbitMQ | Kubernetes operator or a hosted service |
 

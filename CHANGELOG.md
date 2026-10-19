@@ -5,27 +5,27 @@ All notable changes to this project will be documented in this file. See [commit
 ## [3.2.0] - Unreleased
 
 ### Added
-- **Broker adapters for the Go, Rust, Ruby, Elixir and PHP runtime kernels (beta).**
+- **Broker adapters for the Go, Rust, Ruby, Elixir and PHP runtime kernels.**
   - **Pub/Sub in all five.** REST with no client library (Go `net/http`, Rust `reqwest`, Ruby `Net::HTTP`, Elixir `:httpc`, PHP `ext-curl`), behind the same ports and run-time selection as the other stacks.
   - **Service Bus in Go only.** `runtime/servicebus_broker.go` uses `azservicebus` and `azidentity`, and is generated only with `stack.messaging: "servicebus"`.
   - **No Service Bus for Rust, Ruby, Elixir and PHP.** They have no official SDK. On Azure, use self-managed RabbitMQ or CloudAMQP (`AMQP_URL`). With `stack.messaging: "servicebus"`, RabbitMQ stays the default broker.
   - **Inbox.** The consumers poll the subscription and dead-letter through the adapter. IT1–IT7 run through the ports.
   - **Goldens.** `go-pubsub`, `go-servicebus`, `rust-pubsub`, `rails-pubsub`, `phoenix-pubsub` and `laravel-pubsub`.
-- **Pub/Sub and Service Bus adapters for the .NET and Python runtime kernels (beta).**
+- **Pub/Sub and Service Bus adapters for the .NET and Python runtime kernels.**
   - **.NET.** `Runtime/Brokers.cs` and `Runtime/ServiceBusBroker.cs`, with Azure.Messaging.ServiceBus and Azure.Identity.
   - **Python.** `app/runtime/broker.py` and `servicebus_broker.py`, with azure-servicebus and azure-identity.
   - **Service Bus is opt-in.** It is generated only with `stack.messaging: "servicebus"`.
   - **Goldens.** `dotnet-pubsub`, `dotnet-servicebus`, `fastapi-pubsub` and `fastapi-servicebus`.
-- **Pub/Sub and Service Bus adapters for the TypeScript runtime kernel (NestJS, Express; beta, goldens `nestjs-pubsub` and `nestjs-servicebus`).**
+- **Pub/Sub and Service Bus adapters for the TypeScript runtime kernel (NestJS, Express; goldens `nestjs-pubsub` and `nestjs-servicebus`).**
   - **Same contract as the JVM.** `runtime/broker.ts` has the ports, RabbitMQ and Pub/Sub (REST over `fetch`), and run-time selection.
   - **Service Bus.** `runtime/servicebus-broker.ts` uses `@azure/service-bus` and `@azure/identity`, and is generated only with `stack.messaging: "servicebus"`.
   - **Inbox.** The consumer now polls the subscription (`start()` / `drain()`), so it works the same on every broker.
-- **Azure Service Bus adapter for the JVM runtime kernel (beta, opt-in with `stack.messaging: "servicebus"`, golden `quarkus-servicebus`).**
+- **Azure Service Bus adapter for the JVM runtime kernel (opt-in with `stack.messaging: "servicebus"`, golden `quarkus-servicebus`).**
   - **SDK.** It uses the official Azure SDK (`azure-sdk-bom`), with the JDK HTTP transport instead of Netty.
   - **Auth.** Microsoft Entra ID through `SERVICEBUS_NAMESPACE` (managed identity), or a connection string.
   - **Verification.** IT1–IT7 pass against the official emulator (SQL Edge plus fixed entities). The service harness can now mount files, wait on a log line and start services in order.
   - **AWS.** It is covered by Amazon MQ for RabbitMQ with the existing adapter.
-- **Broker adapters in the JVM runtime kernel (Spring Java and Kotlin, Quarkus): RabbitMQ and Google Cloud Pub/Sub (beta, golden `quarkus-pubsub`).**
+- **Broker adapters in the JVM runtime kernel (Spring Java and Kotlin, Quarkus): RabbitMQ and Google Cloud Pub/Sub (golden `quarkus-pubsub`).**
   - **Ports.** The outbox relay and the inbox consumer use broker-neutral ports (`EventPublisher`, `EventSubscription`, `Broker`).
   - **Selection at run time.** `GHK_BROKER` picks the broker; otherwise the configured variables decide. `stack.messaging: "pubsub"` sets the default. One image can run on any cloud.
   - **Pub/Sub adapter.** It uses the REST API with no client library: it authenticates through the metadata server (workload identity) or `GOOGLE_OAUTH_ACCESS_TOKEN`, publish waits for Pub/Sub to accept the message, and the consumer dead-letters failed messages to the DLX topic.
@@ -36,7 +36,7 @@ All notable changes to this project will be documented in this file. See [commit
   - **Health.** NestJS and Spring (Java and Kotlin) get `/health` and `/health/ready`, which checks PostgreSQL. Each stack's probe paths are in `resolveHealth`.
   - **Verification.** Golden builds now build each image, start it next to PostgreSQL and RabbitMQ, and require both probes to answer 200; `--no-image` skips this.
   - **Docs.** See `docs/DEPLOYMENT.md`.
-- **Java + Quarkus 3.40 LTS backend (beta, golden `quarkus`).** Select it with `stack.framework: "quarkus"`.
+- **Java + Quarkus 3.40 LTS backend (golden `quarkus`).** Select it with `stack.framework: "quarkus"`.
   - **Shared kernel.** It uses the same domain kernel, Cucumber runner and runtime kernel (PostgreSQL + RabbitMQ + OpenTelemetry, IT1–IT7) as Spring.
   - **Application layer.** It has the same HTTP contract as Spring: a Quarkus REST resource and the HS256 JWT tenant filter (tenant only from the claim). The Agroal pool is configured from `DATABASE_URL` through a config source. The outbox relay runs on the Quarkus scheduler, and SmallRye Health serves `/q/health/live|ready`.
   - **Build and tests.** Maven on Java 21, with Dev Services off. A `@QuarkusTest` HTTP integration test runs under `-Pintegration`.
@@ -48,6 +48,12 @@ All notable changes to this project will be documented in this file. See [commit
   - **Firewall.** The industry's sensitive paths (PHI, payments, OTA, …) require human approval.
   - **CLI.** New `ghk industry list|show|apply`, `ghk init --industry` (also asked interactively, and it preselects the recommended architecture), and the MCP tool `get_industry_profile`.
   - **Opt-in only.** A legacy `domainProfile` such as `payments` does not turn on an industry; `ghk upgrade` suggests `ghk industry apply banking`.
+
+### Changed
+- **Promoted to stable.** No stack and no command is in beta any more.
+  - **Stacks.** Java + Quarkus and every Pub/Sub and Service Bus broker adapter. Each is built, tested and run against the official emulators by its golden build on every CI run.
+  - **Commands.** `risk`, `quality`, `graph`, `speckit`, `bench` and `web`. Their exit codes and `--json` output are covered by the CLI contract tests and kept across 3.x.
+  - **`ghk quality --json`.** New. It reports `gatePassed`, the `reasons` a human must approve, the risk card and the coverage result, and exits 4 when the gate fails. Before, `--json` gave only `{"ok": false}`.
 
 ### Fixed
 - **Java/Kotlin frameworks without a preset** (`ktor` offered by `ghk init`, `micronaut`, ...) no longer generate Spring Boot code silently. They are reported as experimental and get contracts and prompts only. `stack-detector` recognises Quarkus, Micronaut and Ktor builds.

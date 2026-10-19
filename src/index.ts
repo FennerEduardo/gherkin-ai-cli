@@ -182,9 +182,10 @@ program
 program
   .command('quality')
   .alias('q')
-  .description('Calculate feature quality score index and enterprise gate compliance')
-  .action(async () => {
-    await (await import('./commands/quality')).handleQualityCommand();
+  .description('Calculate feature quality score index and enterprise gate compliance (exit 4 when human approval is required)')
+  .option('--json', 'Output as JSON')
+  .action(async (options) => {
+    await (await import('./commands/quality')).handleQualityCommand({ ...options, json: options.json || program.opts().json });
   });
 
 program

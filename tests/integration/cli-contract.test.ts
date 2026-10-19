@@ -55,6 +55,20 @@ describe.skipIf(!fs.existsSync(DIST))('CLI contract (built binary)', () => {
     expect(version.stdout.trim()).toMatch(/^\d+\.\d+\.\d+/);
   });
 
+  it('quality --json reports the gate with its reasons; exit 4 only when it fails', () => {
+    const res = run(['quality', '--json']);
+    const report = JSON.parse(res.stdout);
+    expect(report).toMatchObject({ gatePassed: expect.any(Boolean), reasons: expect.any(Array), risk: { riskLevel: expect.any(String) }, coverage: { target: expect.any(Number) } });
+    expect(res.code).toBe(report.gatePassed ? 0 : 4);
+    if (!report.gatePassed) expect(report.reasons.length).toBeGreaterThan(0);
+  });
+
+  it('web documents its options and exits 0 without starting the server', () => {
+    const res = run(['web', '--help']);
+    expect(res.code).toBe(0);
+    expect(res.stdout).toContain('--port');
+  });
+
   it('unknown options exit with the usage code (2)', () => {
     expect(run(['lint', '--definitely-not-a-flag']).code).toBe(2);
   });
@@ -65,7 +79,13 @@ describe.skipIf(!fs.existsSync(DIST))('CLI contract (built binary)', () => {
     ['converge', ['converge', '--json']],
     ['config validate', ['config', 'validate', '--json']],
     ['audit', ['audit', '--json']],
-    ['a command without structured output (envelope)', ['--json', 'context']]
+    ['a command without structured output (envelope)', ['--json', 'context']],
+    // Promoted to stable in 3.2.0: their --json output is part of the 3.x contract.
+    ['risk', ['risk', '--files', 'specs/checkout.feature', '--json']],
+    ['quality', ['quality', '--json']],
+    ['graph', ['graph', '--json']],
+    ['speckit export', ['speckit', 'export', '--out', 'speckit-out', '--json']],
+    ['bench init', ['bench', 'init', 'bench-task', '--json']]
   ])('%s prints exactly one JSON document on stdout', (_label, args) => {
     const res = run(args);
     expect(() => JSON.parse(res.stdout), `stdout was:\n${res.stdout}\nstderr:\n${res.stderr}`).not.toThrow();

@@ -6,7 +6,7 @@
                  breaking changes follow semver.
    beta:         generators are unit-tested; generated projects are either not
                  built in CI (expect manual fixes) or, with a golden entry, built
-                 in CI but not yet promoted to stable (new stacks: java/quarkus).
+                 in CI but not yet promoted to stable.
    experimental: skeletons only; may change at any time.
 
    Keep in sync with scripts/golden-stacks.js.
@@ -37,7 +37,7 @@ export const STACK_SUPPORT: StackSupport[] = [
   { id: 'typescript/express-prisma7', label: 'TypeScript · Express 5 + Prisma 7', kind: 'backend', tier: 'stable', golden: 'express-prisma7', notes: 'stack.ormVersion "7".' },
   { id: 'csharp/dotnet', label: 'C# · ASP.NET Core 8 + EF Core', kind: 'backend', tier: 'stable', golden: 'dotnet' },
   { id: 'java/spring', label: 'Java 17 · Spring Boot 3 (Maven)', kind: 'backend', tier: 'stable', golden: 'java' },
-  { id: 'java/quarkus', label: 'Java 21 · Quarkus 3.40 LTS (Maven)', kind: 'backend', tier: 'beta', golden: 'quarkus', notes: 'Agroal + Quarkus REST over the JVM runtime kernel.' },
+  { id: 'java/quarkus', label: 'Java 21 · Quarkus 3.40 LTS (Maven)', kind: 'backend', tier: 'stable', golden: 'quarkus', notes: 'Agroal + Quarkus REST over the JVM runtime kernel.' },
   { id: 'kotlin/spring', label: 'Kotlin · Spring Boot 3 (Gradle)', kind: 'backend', tier: 'stable', golden: 'kotlin', notes: 'Pattern infrastructure is shared Java code compiled alongside Kotlin.' },
   { id: 'python/fastapi', label: 'Python · FastAPI + SQLAlchemy', kind: 'backend', tier: 'stable', golden: 'fastapi' },
   { id: 'python/django', label: 'Python · Django + DRF', kind: 'backend', tier: 'stable', golden: 'django' },
@@ -59,20 +59,20 @@ export const STACK_SUPPORT: StackSupport[] = [
   { id: 'contracts/grpc', label: 'gRPC (Protobuf, buf-linted)', kind: 'contracts', tier: 'stable', golden: 'grpc-graphql', notes: 'Enable with contracts.grpc: true.' },
   { id: 'contracts/graphql', label: 'GraphQL SDL', kind: 'contracts', tier: 'stable', golden: 'grpc-graphql', notes: 'Enable with contracts.graphql: true.' },
 
-  { id: 'messaging/gcp-pubsub', label: 'Google Cloud Pub/Sub broker (JVM runtime kernel: Spring Java/Kotlin, Quarkus)', kind: 'infrastructure', tier: 'beta', golden: 'quarkus-pubsub', notes: 'stack.messaging "pubsub" makes it the default; GHK_BROKER=pubsub selects it at run time. REST API, emulator-verified.' },
-  { id: 'messaging/azure-servicebus', label: 'Azure Service Bus broker (JVM runtime kernel: Spring Java/Kotlin, Quarkus)', kind: 'infrastructure', tier: 'beta', golden: 'quarkus-servicebus', notes: 'stack.messaging "servicebus" (adds the Azure SDK); Entra ID via SERVICEBUS_NAMESPACE or a connection string. Emulator-verified.' },
-  { id: 'messaging/gcp-pubsub-typescript', label: 'Google Cloud Pub/Sub broker (TypeScript runtime kernel: NestJS, Express)', kind: 'infrastructure', tier: 'beta', golden: 'nestjs-pubsub', notes: 'Same adapter contract as the JVM one; REST API, emulator-verified.' },
-  { id: 'messaging/azure-servicebus-typescript', label: 'Azure Service Bus broker (TypeScript runtime kernel: NestJS, Express)', kind: 'infrastructure', tier: 'beta', golden: 'nestjs-servicebus', notes: 'stack.messaging "servicebus" adds @azure/service-bus and @azure/identity. Emulator-verified.' },
-  { id: 'messaging/gcp-pubsub-dotnet', label: 'Google Cloud Pub/Sub broker (.NET runtime kernel)', kind: 'infrastructure', tier: 'beta', golden: 'dotnet-pubsub', notes: 'REST API (HttpClient), emulator-verified.' },
-  { id: 'messaging/azure-servicebus-dotnet', label: 'Azure Service Bus broker (.NET runtime kernel)', kind: 'infrastructure', tier: 'beta', golden: 'dotnet-servicebus', notes: 'stack.messaging "servicebus" adds Azure.Messaging.ServiceBus and Azure.Identity. Emulator-verified.' },
-  { id: 'messaging/gcp-pubsub-python', label: 'Google Cloud Pub/Sub broker (Python runtime kernel: FastAPI, Django)', kind: 'infrastructure', tier: 'beta', golden: 'fastapi-pubsub', notes: 'REST API (urllib), emulator-verified.' },
-  { id: 'messaging/azure-servicebus-python', label: 'Azure Service Bus broker (Python runtime kernel: FastAPI, Django)', kind: 'infrastructure', tier: 'beta', golden: 'fastapi-servicebus', notes: 'stack.messaging "servicebus" adds azure-servicebus and azure-identity. Emulator-verified.' },
-  { id: 'messaging/gcp-pubsub-go', label: 'Google Cloud Pub/Sub broker (Go runtime kernel)', kind: 'infrastructure', tier: 'beta', golden: 'go-pubsub', notes: 'REST API (net/http), emulator-verified.' },
-  { id: 'messaging/azure-servicebus-go', label: 'Azure Service Bus broker (Go runtime kernel)', kind: 'infrastructure', tier: 'beta', golden: 'go-servicebus', notes: 'stack.messaging "servicebus" adds azservicebus and azidentity. Emulator-verified.' },
-  { id: 'messaging/gcp-pubsub-rust', label: 'Google Cloud Pub/Sub broker (Rust runtime kernel)', kind: 'infrastructure', tier: 'beta', golden: 'rust-pubsub', notes: 'REST API (reqwest, rustls), emulator-verified. No Service Bus adapter: there is no official Azure Service Bus SDK for Rust.' },
-  { id: 'messaging/gcp-pubsub-ruby', label: 'Google Cloud Pub/Sub broker (Ruby runtime kernel: Rails)', kind: 'infrastructure', tier: 'beta', golden: 'rails-pubsub', notes: 'REST API (Net::HTTP), emulator-verified. No Service Bus adapter: there is no official Azure Service Bus SDK for Ruby.' },
-  { id: 'messaging/gcp-pubsub-elixir', label: 'Google Cloud Pub/Sub broker (Elixir runtime kernel: Phoenix)', kind: 'infrastructure', tier: 'beta', golden: 'phoenix-pubsub', notes: 'REST API (:httpc), emulator-verified. No Service Bus adapter: there is no official Azure Service Bus SDK for Elixir.' },
-  { id: 'messaging/gcp-pubsub-php', label: 'Google Cloud Pub/Sub broker (PHP runtime kernel: Laravel)', kind: 'infrastructure', tier: 'beta', golden: 'laravel-pubsub', notes: 'REST API (curl), emulator-verified. No Service Bus adapter: there is no official Azure Service Bus SDK for PHP.' },
+  { id: 'messaging/gcp-pubsub', label: 'Google Cloud Pub/Sub broker (JVM runtime kernel: Spring Java/Kotlin, Quarkus)', kind: 'infrastructure', tier: 'stable', golden: 'quarkus-pubsub', notes: 'stack.messaging "pubsub" makes it the default; GHK_BROKER=pubsub selects it at run time. REST API, emulator-verified.' },
+  { id: 'messaging/azure-servicebus', label: 'Azure Service Bus broker (JVM runtime kernel: Spring Java/Kotlin, Quarkus)', kind: 'infrastructure', tier: 'stable', golden: 'quarkus-servicebus', notes: 'stack.messaging "servicebus" (adds the Azure SDK); Entra ID via SERVICEBUS_NAMESPACE or a connection string. Emulator-verified.' },
+  { id: 'messaging/gcp-pubsub-typescript', label: 'Google Cloud Pub/Sub broker (TypeScript runtime kernel: NestJS, Express)', kind: 'infrastructure', tier: 'stable', golden: 'nestjs-pubsub', notes: 'Same adapter contract as the JVM one; REST API, emulator-verified.' },
+  { id: 'messaging/azure-servicebus-typescript', label: 'Azure Service Bus broker (TypeScript runtime kernel: NestJS, Express)', kind: 'infrastructure', tier: 'stable', golden: 'nestjs-servicebus', notes: 'stack.messaging "servicebus" adds @azure/service-bus and @azure/identity. Emulator-verified.' },
+  { id: 'messaging/gcp-pubsub-dotnet', label: 'Google Cloud Pub/Sub broker (.NET runtime kernel)', kind: 'infrastructure', tier: 'stable', golden: 'dotnet-pubsub', notes: 'REST API (HttpClient), emulator-verified.' },
+  { id: 'messaging/azure-servicebus-dotnet', label: 'Azure Service Bus broker (.NET runtime kernel)', kind: 'infrastructure', tier: 'stable', golden: 'dotnet-servicebus', notes: 'stack.messaging "servicebus" adds Azure.Messaging.ServiceBus and Azure.Identity. Emulator-verified.' },
+  { id: 'messaging/gcp-pubsub-python', label: 'Google Cloud Pub/Sub broker (Python runtime kernel: FastAPI, Django)', kind: 'infrastructure', tier: 'stable', golden: 'fastapi-pubsub', notes: 'REST API (urllib), emulator-verified.' },
+  { id: 'messaging/azure-servicebus-python', label: 'Azure Service Bus broker (Python runtime kernel: FastAPI, Django)', kind: 'infrastructure', tier: 'stable', golden: 'fastapi-servicebus', notes: 'stack.messaging "servicebus" adds azure-servicebus and azure-identity. Emulator-verified.' },
+  { id: 'messaging/gcp-pubsub-go', label: 'Google Cloud Pub/Sub broker (Go runtime kernel)', kind: 'infrastructure', tier: 'stable', golden: 'go-pubsub', notes: 'REST API (net/http), emulator-verified.' },
+  { id: 'messaging/azure-servicebus-go', label: 'Azure Service Bus broker (Go runtime kernel)', kind: 'infrastructure', tier: 'stable', golden: 'go-servicebus', notes: 'stack.messaging "servicebus" adds azservicebus and azidentity. Emulator-verified.' },
+  { id: 'messaging/gcp-pubsub-rust', label: 'Google Cloud Pub/Sub broker (Rust runtime kernel)', kind: 'infrastructure', tier: 'stable', golden: 'rust-pubsub', notes: 'REST API (reqwest, rustls), emulator-verified. No Service Bus adapter: there is no official Azure Service Bus SDK for Rust.' },
+  { id: 'messaging/gcp-pubsub-ruby', label: 'Google Cloud Pub/Sub broker (Ruby runtime kernel: Rails)', kind: 'infrastructure', tier: 'stable', golden: 'rails-pubsub', notes: 'REST API (Net::HTTP), emulator-verified. No Service Bus adapter: there is no official Azure Service Bus SDK for Ruby.' },
+  { id: 'messaging/gcp-pubsub-elixir', label: 'Google Cloud Pub/Sub broker (Elixir runtime kernel: Phoenix)', kind: 'infrastructure', tier: 'stable', golden: 'phoenix-pubsub', notes: 'REST API (:httpc), emulator-verified. No Service Bus adapter: there is no official Azure Service Bus SDK for Elixir.' },
+  { id: 'messaging/gcp-pubsub-php', label: 'Google Cloud Pub/Sub broker (PHP runtime kernel: Laravel)', kind: 'infrastructure', tier: 'stable', golden: 'laravel-pubsub', notes: 'REST API (curl), emulator-verified. No Service Bus adapter: there is no official Azure Service Bus SDK for PHP.' },
   { id: 'infrastructure/aws-cdk', label: 'AWS CDK v2 (SNS/SQS + DLQ alarm, DynamoDB, Secrets Manager, EKS + IRSA)', kind: 'infrastructure', tier: 'stable', golden: 'aws-cdk', notes: 'Enable with infrastructure.awsCdk: true (default when messaging is sqs/sns). Verified with assertion tests and cdk synth.' }
 ];
 

@@ -1,5 +1,6 @@
 /* ==========================================================================
    gherkin-ai-cli - 'quality' Command Handler
+   ghk quality [--json]: delivery risk + test coverage gate. Exit 4 when a human must approve the deployment.
    ========================================================================== */
 
 import { ExitCode } from '../core/errors';
@@ -7,17 +8,47 @@ import chalk from 'chalk';
 import { assessDeliveryRisk } from '../core/risk-engine';
 import { loadConfig } from '../core/config';
 import { runCoverage } from '../core/coverage-integration';
+import { emitJson } from '../utils/output';
 
-export async function handleQualityCommand(): Promise<void> {
-  console.log(chalk.bold.cyan('\n📊 Calculating Feature Quality Index Score...\n'));
+export interface QualityOptions {
+  json?: boolean;
+}
 
+export async function handleQualityCommand(options: QualityOptions = {}): Promise<void> {
   const config = loadConfig();
   const riskCard = assessDeliveryRisk(process.cwd(), { config });
+  const coverageResult = runCoverage(process.cwd(), config);
 
+  const coverageBelowTarget = !coverageResult.success && !coverageResult.errorMessage;
+  const reasons = [
+    ...(riskCard.requiresHumanApproval ? [`Delivery risk ${riskCard.riskLevel} (score ${riskCard.overallRiskScore}) requires human approval`] : []),
+    ...(coverageBelowTarget ? [`Code coverage ${coverageResult.coveragePercentage}% is below the target ${coverageResult.targetPercentage}%`] : [])
+  ];
+  const gatePassed = reasons.length === 0;
+  if (!gatePassed) process.exitCode = ExitCode.GATE_FAILED;
+
+  if (options.json) {
+    emitJson({
+      gatePassed,
+      humanApprovalRequired: !gatePassed,
+      reasons,
+      risk: riskCard,
+      coverage: {
+        tool: coverageResult.toolUsed,
+        available: !coverageResult.errorMessage,
+        percentage: coverageResult.errorMessage ? null : coverageResult.coveragePercentage,
+        target: coverageResult.targetPercentage,
+        error: coverageResult.errorMessage ?? null
+      }
+    });
+    return;
+  }
+
+  console.log(chalk.bold.cyan('\n📊 Calculating Feature Quality Index Score...\n'));
   console.log('\n======================================================');
   console.log(chalk.bold('  Risk & Quality Evaluation (Risk Engine v3)'));
   console.log('======================================================\n');
-  
+
   console.log(chalk.cyan('Risk Factors:'));
   console.log(`- Blast Radius:         ${riskCard.blastRadius}/100`);
   console.log(`- Test Strength:        ${riskCard.testStrength}/100`);
@@ -25,19 +56,17 @@ export async function handleQualityCommand(): Promise<void> {
   console.log(`- Architecture Drift:   ${riskCard.architectureDrift}/100`);
   console.log('');
 
-  const riskColor = riskCard.riskLevel === 'CRITICAL' || riskCard.riskLevel === 'HIGH' ? chalk.red : 
+  const riskColor = riskCard.riskLevel === 'CRITICAL' || riskCard.riskLevel === 'HIGH' ? chalk.red :
                     riskCard.riskLevel === 'MEDIUM' ? chalk.yellow : chalk.green;
 
   console.log(chalk.bold(`Risk Level:           ${riskColor(riskCard.riskLevel)} (Score: ${riskCard.overallRiskScore})`));
-  
+
   if (riskCard.factors.length > 0) {
     console.log(chalk.yellow('\nKey Risk Drivers:'));
     riskCard.factors.forEach(f => console.log(`  - ${f}`));
   }
 
   console.log(chalk.cyan('\n🔍 Running Test Coverage Analysis...'));
-  const coverageResult = runCoverage(process.cwd(), config);
-
   console.log(`- Coverage Tool:        ${coverageResult.toolUsed}`);
   if (coverageResult.errorMessage) {
     console.log(chalk.yellow(`- Coverage Report:      ⚠️ Not available (${coverageResult.errorMessage})`));
@@ -46,15 +75,12 @@ export async function handleQualityCommand(): Promise<void> {
     console.log(`- Coverage Score:       ${covColor(`${coverageResult.coveragePercentage}%`)} (Target: ${coverageResult.targetPercentage}%)`);
   }
 
-  if (riskCard.requiresHumanApproval || (!coverageResult.success && !coverageResult.errorMessage)) {
+  if (!gatePassed) {
     console.log(chalk.red.bold('\n⚠ HUMAN APPROVAL REQUIRED FOR DEPLOYMENT'));
-    if (!coverageResult.success && !coverageResult.errorMessage) {
-      console.log(chalk.red(`  ↳ Code Coverage (${coverageResult.coveragePercentage}%) is below the required target (${coverageResult.targetPercentage}%)`));
-    }
-    process.exitCode = ExitCode.GATE_FAILED;
+    reasons.forEach(r => console.log(chalk.red(`  ↳ ${r}`)));
   } else {
     console.log(chalk.green.bold('\n✅ AUTO-DEPLOYMENT SAFE (Quality Gates Passed)'));
   }
-  
+
   console.log('\n');
 }
