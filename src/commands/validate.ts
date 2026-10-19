@@ -14,6 +14,7 @@ import { Project } from 'ts-morph';
 import { validateOpenAPIAgainstIR, validateOpenAPISpec } from '../core/openapi-validator';
 import { validateAsyncAPIAgainstIR, validateAsyncAPISpec } from '../core/asyncapi-validator';
 import { runAllValidators, ValidatorContext } from '../core/validators/index';
+import { validateDeploymentReadiness } from '../core/validators/deployment-readiness';
 import { buildIR } from '../core/ir-builder';
 
 /** Dependencies and build output are not the project's code. */
@@ -188,6 +189,16 @@ export async function handleValidateCommand(options: { feature?: string; config?
   } else {
     logger.warn(`No generated artifact files found under ${options.target || config.outputDir}. Run "ghk generate" or "ghk add" first.`);
     warningsCount++;
+  }
+
+  // 3b. Deployment readiness of a backend (production image, runtime contract, deployment code).
+  const readiness = validateDeploymentReadiness(config, outputDirResolved);
+  if (readiness.checked) {
+    readiness.errors.forEach(e => logger.error(`Deployment readiness: ${e}`));
+    readiness.warnings.forEach(w => logger.warn(`Deployment readiness: ${w}`));
+    errorsCount += readiness.errors.length;
+    warningsCount += readiness.warnings.length;
+    if (!readiness.errors.length && !readiness.warnings.length) logger.success('Deployment readiness: production image, runtime contract and deployment code are consistent.');
   }
 
   // 4. OpenAPI Specification Validation (Optional)

@@ -19,6 +19,7 @@ import { buildIR } from '../core/ir-builder';
 import { CONTRACTS_DIR, featureContractSlug } from '../core/contracts/merge';
 import { renderIndustryGuidance } from '../core/profiles/industries';
 import { INDUSTRY_CONTEXT_MD, writeIndustryContext } from '../core/profiles/industries/context-files';
+import { DEPLOYMENT_CONTEXT_MD, renderDeploymentGuidance, writeDeploymentContext } from '../generators/deploy/context';
 
 export async function handleImplementCommand(options: { 
   feature?: string; 
@@ -129,6 +130,11 @@ export async function handleImplementCommand(options: {
   if (industry) refFiles.push(`@${INDUSTRY_CONTEXT_MD}`);
   const industrySection = industry ? `\n${renderIndustryGuidance(industry, { compact: isCompact, contextPath: INDUSTRY_CONTEXT_MD })}` : '';
 
+  // Deployment readiness (runtime contract, probes, deploy target): context file plus a prompt section.
+  const deployment = writeDeploymentContext(process.cwd(), config);
+  if (deployment) refFiles.push(`@${DEPLOYMENT_CONTEXT_MD}`);
+  const deploymentSection = deployment ? `\n${renderDeploymentGuidance(deployment, { compact: isCompact, contextPath: DEPLOYMENT_CONTEXT_MD })}` : '';
+
   // Draft prompt content for hash calculation
   const promptBody = `
 ### 📌 Context Files to Read & Follow:
@@ -136,7 +142,7 @@ ${refFiles.map(f => `- ${f}`).join('\n')}
 
 ### 🧭 Feature Scope:
 ${scopeLines.join('\n')}
-${industrySection}
+${industrySection}${deploymentSection}
 ### 🛠️ Technical Guardrails & Stack Specifications:
 - **Language**: ${config.stack.language} (${config.stack.framework})
 - **Persistence**: ${config.stack.orm} + ${config.stack.database}

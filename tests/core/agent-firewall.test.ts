@@ -56,6 +56,14 @@ describe('agent firewall', () => {
     expect(fw.evaluate({ kind: 'write', target: 'gherkin-ai.config.json' }).rule).toBe('policy-file');
   });
 
+  it('requires approval for the generated deployment code and production image', () => {
+    const fw = firewall();
+    for (const target of ['generated-specs/deploy/terraform/aws/service.tf', 'deploy/terraform/gcp/environments/prod.tfvars',
+      'deploy/terraform/azure/environments/dev.azurerm.tfbackend', 'deploy/helm/orders/values-prod.yaml', 'generated-specs/Dockerfile', 'deploy/README.md']) {
+      expect(fw.evaluate({ kind: 'write', target }).verdict, target).toBe('REQUIRE_APPROVAL');
+    }
+  });
+
   it('applies configured allow and deny paths', () => {
     const fw = firewall({ policy: { firewall: { allowPaths: ['src/**'], denyPaths: ['src/identity/**'] } } });
     expect(fw.evaluate({ kind: 'write', target: 'src/identity/user.ts' }).verdict).toBe('DENY');

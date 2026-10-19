@@ -5,6 +5,14 @@
 import { GherkinAIConfig } from '../core/config';
 import { resolveAppRuntimeEnv, resolveToolchain } from './toolchains';
 import { brokerEnvExample, runtimeBroker } from './deploy/broker-env';
+import { frameworkVariables } from './deploy/context';
+
+const FRAMEWORK_EXAMPLES: Record<string, string> = {
+  APP_KEY: '<base64:32-random-bytes, php artisan key:generate --show>',
+  SECRET_KEY_BASE: '<64+ random characters>',
+  DJANGO_SECRET_KEY: '<50+ random characters>',
+  DJANGO_ALLOWED_HOSTS: 'localhost'
+};
 
 export interface StackDockerDetails {
   image: string;
@@ -168,7 +176,10 @@ ${brokerEnvExample(config, amqpUrl('localhost'))}${messaging === 'kafka' ? '\nKA
 JWT_SECRET=<YOUR_SUPER_SECRET_JWT_KEY_MIN_32_CHARS>
 JWT_TTL_SECONDS=${config.rules.jwtTtlSeconds || 3600}
 BCRYPT_COST_FACTOR=${config.rules.bcryptCostFactor || 12}
-
+${frameworkVariables(config).length ? `
+# Framework settings of the production image (from the platform secret manager in a deployment)
+${frameworkVariables(config).map(v => `${v}=${FRAMEWORK_EXAMPLES[v] ?? '<value>'}`).join('\n')}
+` : ''}
 # Serverless & Cloud Configuration
 AWS_REGION=us-east-1
 SERVERLESS_STAGE=dev

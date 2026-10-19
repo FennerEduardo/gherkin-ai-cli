@@ -15,6 +15,7 @@ import { ContextExtractor } from '../core/context-extractor';
 import { loadConstitution } from '../core/constitution';
 import { industryForConfig, renderIndustryGuidance } from '../core/profiles/industries';
 import { INDUSTRY_CONTEXT_MD } from '../core/profiles/industries/context-files';
+import { deploymentContext, DEPLOYMENT_CONTEXT_MD, renderDeploymentGuidance } from './deploy/context';
 
 export function generatePrompts(parsed: ParsedFeature, config: GherkinAIConfig): Record<string, string> {
   const arch = getArchRule(config.architecture);
@@ -75,6 +76,14 @@ export function generatePrompts(parsed: ParsedFeature, config: GherkinAIConfig):
     result['domain-agent.md'] += industryGuardrails;
     result['backend-agent.md'] += industryGuardrails;
     result['qa-agent.md'] += industryGuardrails;
+  }
+
+  // Deployment readiness (runtime contract, probes, cloud target) for the agents that write service code.
+  const deployment = deploymentContext(config);
+  if (deployment) {
+    const deploymentGuardrails = `\n## [MANDATORY] Deployment Readiness\n${renderDeploymentGuidance(deployment, { contextPath: DEPLOYMENT_CONTEXT_MD }).replace(/^### .*\n/, '')}`;
+    result['domain-agent.md'] += deploymentGuardrails;
+    result['backend-agent.md'] += deploymentGuardrails;
   }
 
   // Inject Execution & Architectural "What and How" Rules

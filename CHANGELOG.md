@@ -21,6 +21,11 @@ All notable changes to this project will be documented in this file. See [commit
     - secrets from an existing Secret (External Secrets or the CSI driver).
   - **Separate relay.** Django, Laravel and Rails get their outbox relay as a separate process on each platform.
   - **Goldens.** `terraform-aws`, `terraform-gcp`, `terraform-azure` and `terraform-azure-rabbitmq` run `terraform validate` and `fmt -check`; `helm` runs `helm lint --strict` and `helm template` for every environment. Nothing is applied.
+- **Deployment readiness for AI agents.**
+  - **Context files.** `.ghe/deployment-context.md` and `.json` hold the runtime contract, the target, the rules and a checklist. A Deployment Readiness section goes into the `implement` prompt and the agent prompts.
+  - **Validation.** `ghk validate` checks the Dockerfile (non-root user, no secrets), `.env.example`, and hardcoded secrets in `deploy/`.
+  - **Firewall.** Changes to `deploy/**`, `*.tfvars`, `*.tfbackend` and Dockerfiles in subdirectories require human approval.
+  - **`.env.example`.** It lists the framework secrets (`APP_KEY`, `SECRET_KEY_BASE`, `DJANGO_SECRET_KEY`).
 - **`GHK_DECLARE_TOPOLOGY=false`.** It skips creating the broker topology at start-up in every backend, for least-privilege identities when infrastructure as code owns the topology.
 - **`amqps://` for PHP.** The Laravel runtime connects to RabbitMQ over TLS (Amazon MQ, CloudAMQP) through php-amqplib's connection factory. The other runtimes already took TLS from the URL.
 - **Broker adapters for the Go, Rust, Ruby, Elixir and PHP runtime kernels.**

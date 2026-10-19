@@ -338,6 +338,8 @@ Objective: Write detailed Gherkin feature scenarios for ${title}.
   const { writeIndustryContext, INDUSTRY_CONTEXT_MD } = await import('../core/profiles/industries/context-files');
   const industry = writeIndustryContext(process.cwd(), config);
   if (industry) logger.success(`[Industry] ${industry.label} rules saved to ${INDUSTRY_CONTEXT_MD}`);
+  const { writeDeploymentContext, DEPLOYMENT_CONTEXT_MD } = await import('../generators/deploy/context');
+  if (writeDeploymentContext(process.cwd(), config)) logger.success(`[Deploy] Deployment readiness rules saved to ${DEPLOYMENT_CONTEXT_MD}`);
 
   // Generate Suggested Commit Message
   const suggestedCommit = `feat: Implement ${parsed.featureName} base architecture
