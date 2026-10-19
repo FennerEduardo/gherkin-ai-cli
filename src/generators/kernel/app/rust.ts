@@ -188,7 +188,10 @@ async fn relay_outbox(pool: sqlx::PgPool) {
 async fn relay_until_error(pool: &sqlx::PgPool, worker_id: &str) -> Result<(), Box<dyn std::error::Error>> {
     let broker = Broker::connect().await?;
     let topology = Topology::default();
-    broker.declare(&topology).await?;
+    // GHK_DECLARE_TOPOLOGY=false when infrastructure as code owns the topology (least-privilege credentials).
+    if std::env::var("GHK_DECLARE_TOPOLOGY").as_deref() != Ok("false") {
+        broker.declare(&topology).await?;
+    }
     let publisher = broker.publisher(&topology.exchange).await?;
     let relay = OutboxRelay::new(pool.clone(), publisher, "public")?;
     loop {

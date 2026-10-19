@@ -162,6 +162,18 @@ const infrastructureSchema = z.object({
   awsCdk: z.boolean().optional()
 });
 
+/** Deployment target: Terraform under deploy/terraform/<cloud>/ and, for Kubernetes, a Helm chart under deploy/helm/. */
+const deploySchema = z.object({
+  /** aws: ECS Fargate + RDS + Amazon MQ; gcp: Cloud Run + Cloud SQL + Pub/Sub; azure: Container Apps + PostgreSQL Flexible + Service Bus. */
+  cloud: z.enum(['aws', 'gcp', 'azure']),
+  /** containers (default): the managed container service; kubernetes: a Helm chart (EKS / GKE / AKS); both. */
+  compute: z.enum(['containers', 'kubernetes', 'both']).optional(),
+  /** One tfvars file (and Helm values file) per environment. Default: dev, staging, prod. */
+  environments: z.array(z.string().regex(/^[a-z][a-z0-9-]{0,15}$/)).min(1).optional(),
+  /** Default region of the generated tfvars. */
+  region: z.string().optional()
+});
+
 const firewallSchema = z.object({
   /** Globs agents may write. Default: anything in the workspace that is not denied. */
   allowPaths: z.array(z.string()).optional(),
@@ -234,6 +246,7 @@ export const configShape = {
   policy: policySchema.optional(),
   sandbox: sandboxSchema.optional(),
   infrastructure: infrastructureSchema.optional(),
+  deploy: deploySchema.optional(),
   /** Security of the generated application layer. */
   security: z.object({
     /** JWT claim that carries the tenant (default "tenant_id"). The tenant never comes from a request header. */

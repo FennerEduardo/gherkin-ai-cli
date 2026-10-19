@@ -140,7 +140,8 @@ export class RuntimeWorker implements OnApplicationBootstrap, OnApplicationShutd
       return;
     }
     this.broker = await connectBroker();
-    await this.broker.declare(DEFAULT_TOPOLOGY);
+    // GHK_DECLARE_TOPOLOGY=false when infrastructure as code owns the topology (least-privilege credentials).
+    if (process.env.GHK_DECLARE_TOPOLOGY !== 'false') await this.broker.declare(DEFAULT_TOPOLOGY);
     const relay = new OutboxRelay(this.pool, await this.broker.publisher(DEFAULT_TOPOLOGY.exchange));
     let running = false;
     this.timer = setInterval(() => {
@@ -421,7 +422,8 @@ async function main(): Promise<void> {
   if (brokerConfigured()) {
     // runtime/broker.ts: GHK_BROKER, AMQP_URL, PUBSUB_*, SERVICEBUS_*
     broker = await connectBroker();
-    await broker.declare(DEFAULT_TOPOLOGY);
+    // GHK_DECLARE_TOPOLOGY=false when infrastructure as code owns the topology (least-privilege credentials).
+    if (process.env.GHK_DECLARE_TOPOLOGY !== 'false') await broker.declare(DEFAULT_TOPOLOGY);
     const relay = new OutboxRelay(pool, await broker.publisher(DEFAULT_TOPOLOGY.exchange));
     const workerId = \`${m.kebab}-\${randomUUID()}\`;
     let running = false;

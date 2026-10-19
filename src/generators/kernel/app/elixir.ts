@@ -98,7 +98,8 @@ end
   def handle_info(:connect, state) do
     try do
       broker = ${rt}.Broker.connect()
-      :ok = ${rt}.Broker.declare(broker, %${rt}.Topology{})
+      # GHK_DECLARE_TOPOLOGY=false when infrastructure as code owns the topology (least-privilege credentials).
+      if System.get_env("GHK_DECLARE_TOPOLOGY") != "false", do: :ok = ${rt}.Broker.declare(broker, %${rt}.Topology{})
       send(self(), :tick)
       {:noreply, %{state | publisher: ${rt}.Broker.publisher(broker, %${rt}.Topology{}.exchange)}}
     rescue

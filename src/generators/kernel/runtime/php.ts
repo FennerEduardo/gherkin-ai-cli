@@ -268,7 +268,8 @@ ${all.map(a => `            ${php(a.pascal)} => new ${a.pascal}Command($aggregat
  */
 final class Messaging
 {
-    public const DEFAULT_PREFIX = ${php(m.kebab)};
+    /** The service's shared topology (same names as every other runtime and the generated IaC). */
+    public const DEFAULT_PREFIX = ${php(t.exchange.replace(/\.events$/, ''))};
 
     public function __construct(public readonly string $exchange, public readonly string $queue, public readonly string $dlx, public readonly string $dlq)
     {
@@ -409,23 +410,36 @@ final class Brokers
 `;
 
   const rabbitBroker = `${head}use PhpAmqpLib\\Channel\\AMQPChannel;
-use PhpAmqpLib\\Connection\\AMQPStreamConnection;
+use PhpAmqpLib\\Connection\\AbstractConnection;
+use PhpAmqpLib\\Connection\\AMQPConnectionConfig;
+use PhpAmqpLib\\Connection\\AMQPConnectionFactory;
 use PhpAmqpLib\\Message\\AMQPMessage;
 use PhpAmqpLib\\Wire\\AMQPTable;
 
 /** RabbitMQ 0-9-1: topic exchange, publisher confirms, dead-lettering through the queue's DLX. */
 final class RabbitMqBroker implements Broker
 {
-    public function __construct(private readonly AMQPStreamConnection $connection)
+    public function __construct(private readonly AbstractConnection $connection)
     {
     }
 
-    /** From an AMQP URL: amqp://user:password@host:5672/vhost */
+    /** From an AMQP URL: amqp://user:password@host:5672/vhost, or amqps:// (TLS, port 5671: Amazon MQ, CloudAMQP). */
     public static function connect(string $amqpUrl): self
     {
         $url = parse_url($amqpUrl);
-        $vhost = isset($url['path']) && $url['path'] !== '/' && $url['path'] !== '' ? urldecode(substr($url['path'], 1)) : '/';
-        return new self(new AMQPStreamConnection($url['host'], $url['port'] ?? 5672, urldecode($url['user'] ?? 'guest'), urldecode($url['pass'] ?? 'guest'), $vhost));
+        $secure = ($url['scheme'] ?? 'amqp') === 'amqps';
+        $config = new AMQPConnectionConfig();
+        $config->setHost($url['host']);
+        $config->setPort((int) ($url['port'] ?? ($secure ? 5671 : 5672)));
+        $config->setUser(urldecode($url['user'] ?? 'guest'));
+        $config->setPassword(urldecode($url['pass'] ?? 'guest'));
+        $config->setVhost(isset($url['path']) && $url['path'] !== '/' && $url['path'] !== '' ? urldecode(substr($url['path'], 1)) : '/');
+        if ($secure) {
+            $config->setIsSecure(true);
+            $config->setSslVerify(true);
+            $config->setSslVerifyName(true);
+        }
+        return new self(AMQPConnectionFactory::create($config));
     }
 
     public function system(): string

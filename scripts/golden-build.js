@@ -102,7 +102,8 @@ function buildInDocker(dir, def, name) {
       '-v', `${dockerPath(dir)}:/work`, '-w', `/work${def.workdir ? `/${def.workdir}` : ''}`,
       ...volumes,
       ...Object.entries(env).flatMap(([k, v]) => ['-e', `${k}=${v}`]),
-      def.image, 'sh', '-c', script
+      // Tool images (terraform, helm) set the tool as entrypoint: run the shell instead.
+      ...(def.entrypoint ? ['--entrypoint', def.entrypoint, def.image] : [def.image, 'sh']), '-c', script
     ], { env: { ...process.env, MSYS_NO_PATHCONV: '1' } });
     if (res.code !== 0 || !services || skipImage || !fs.existsSync(path.join(dir, 'Dockerfile'))) return res;
     const image = smokeImage(dir, def, name, services);

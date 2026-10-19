@@ -309,4 +309,33 @@ for (const [name, brokers] of Object.entries(NATIVE_BROKERS)) {
   for (const messaging of brokers) STACKS[`${name}-${messaging}`] = withBroker(name, messaging);
 }
 
+// Deployment targets (config.deploy): the generated Terraform must init, validate and be fmt-clean, and the Helm chart
+// must lint and render for every environment. Nothing is applied. Stacks are chosen to cover the variants: a
+// separate relay process (Rails, Laravel, Django), framework secrets (SECRET_KEY_BASE, APP_KEY) and Service Bus.
+const DEPLOY_TOOL_IMAGES = { terraform: 'hashicorp/terraform:1.16.6', helm: 'alpine/helm:3.22.1' };
+const terraform = (name, cloud, backend, extraStack = {}) => ({
+  stack: { ...STACKS[backend].stack, ...extraStack },
+  config: { deploy: { cloud, compute: 'containers' } },
+  image: DEPLOY_TOOL_IMAGES.terraform,
+  entrypoint: 'sh',
+  workdir: `deploy/terraform/${cloud}`,
+  caches: [['terraform-plugins', '/root/.terraform.d/plugin-cache']],
+  env: { TF_PLUGIN_CACHE_DIR: '/root/.terraform.d/plugin-cache', TF_IN_AUTOMATION: '1', CHECKPOINT_DISABLE: '1' },
+  build: ['terraform init -backend=false -input=false -no-color', 'terraform validate -no-color'],
+  test: ['terraform fmt -check -recursive -diff -no-color']
+});
+STACKS['terraform-aws'] = terraform('terraform-aws', 'aws', 'rails');
+STACKS['terraform-gcp'] = terraform('terraform-gcp', 'gcp', 'laravel');
+STACKS['terraform-azure'] = terraform('terraform-azure', 'azure', 'nestjs', { messaging: 'servicebus' });
+STACKS['terraform-azure-rabbitmq'] = terraform('terraform-azure-rabbitmq', 'azure', 'phoenix');
+STACKS.helm = {
+  stack: STACKS.django.stack,
+  config: { deploy: { cloud: 'gcp', compute: 'kubernetes' } },
+  image: DEPLOY_TOOL_IMAGES.helm,
+  entrypoint: 'sh',
+  workdir: 'deploy/helm/golden-helm',
+  build: ['helm lint . --strict -f values-dev.yaml', 'helm lint . --strict -f values-prod.yaml'],
+  test: ['for env in dev staging prod; do helm template golden-helm . -f values-$env.yaml > /dev/null || exit 1; done', 'helm template golden-helm . -f values-prod.yaml | grep -q "kind: HorizontalPodAutoscaler"', 'helm template golden-helm . -f values-prod.yaml | grep -q "name: golden-helm-relay"']
+};
+
 module.exports = { STACKS, SERVICEBUS_EMULATOR, PUBSUB_EMULATOR };

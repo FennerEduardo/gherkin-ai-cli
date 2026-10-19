@@ -144,7 +144,9 @@ public sealed class OutboxRelayWorker(NpgsqlDataSource db, IConfiguration config
             try
             {
                 await using var broker = await Brokers.ConnectAsync();
-                await broker.DeclareAsync(Topology.Default, stoppingToken);
+                // GHK_DECLARE_TOPOLOGY=false when infrastructure as code owns the topology (least-privilege credentials).
+                if (Environment.GetEnvironmentVariable("GHK_DECLARE_TOPOLOGY") != "false")
+                    await broker.DeclareAsync(Topology.Default, stoppingToken);
                 await using var publisher = await broker.PublisherAsync(Topology.Default.Exchange, stoppingToken);
                 var relay = new OutboxRelay(db, publisher);
                 while (!stoppingToken.IsCancellationRequested)

@@ -8,6 +8,7 @@ import { generateFixtures } from '../generators/fixtures';
 import { generatePrompts } from '../generators/prompts';
 import { generateInfra } from '../generators/infra';
 import { generateAwsCdkApp } from '../generators/infrastructure/aws-cdk-generator';
+import { renderDeploymentTargets } from '../generators/deploy/targets';
 
 export function awsCdkEnabled(config: GherkinAIConfig): boolean {
   return config.infrastructure?.awsCdk ?? ['sqs', 'sns'].includes((config.stack.messaging || '').toLowerCase());
@@ -214,6 +215,9 @@ export class CoreInfraPlugin implements GherkinAIPlugin {
     if (awsCdkEnabled(config)) {
       for (const file of generateAwsCdkApp(config.projectName)) artifacts.push({ filePath: file.filename, content: file.content, type: 'config' });
     }
+
+    // Deployment targets (config.deploy): Terraform for the chosen cloud and/or a Helm chart.
+    for (const file of renderDeploymentTargets(config)) artifacts.push({ filePath: file.filename, content: file.content, type: 'config' });
 
     return artifacts;
   }

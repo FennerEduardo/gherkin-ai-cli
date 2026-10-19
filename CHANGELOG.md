@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file. See [commit
 ## [3.2.0] - Unreleased
 
 ### Added
+- **Deployment targets (`deploy` in the configuration): Terraform for AWS, Google Cloud and Azure, and a Helm chart.** See `docs/DEPLOYMENT.md`.
+  - **`deploy.cloud`.**
+    - `aws`: ECS Fargate behind an ALB, RDS PostgreSQL, Amazon MQ for RabbitMQ, Secrets Manager and CloudWatch Logs.
+    - `gcp`: Cloud Run with Direct VPC egress, Cloud SQL PostgreSQL on a private IP, Pub/Sub, Secret Manager.
+    - `azure`: Container Apps, PostgreSQL Flexible Server, Service Bus with Entra ID (or an external RabbitMQ), Key Vault and Log Analytics.
+  - **Network as input.** The service runs in your existing VPC or virtual network.
+  - **Per environment.** One `.tfvars`, one remote-state backend file and one Helm values file per environment. In `prod`, deletion protection, high availability and longer backups are turned on.
+  - **Secrets.** Terraform generates them and stores them in the cloud's secret manager: the database and broker URLs, `JWT_SECRET`, and the framework secrets.
+  - **Least privilege.** The service identity can only publish to and consume from its own Pub/Sub topics and subscriptions or its Service Bus entities.
+  - **`deploy.compute: kubernetes | both`.** A Helm chart for EKS, GKE or AKS:
+    - probes and a restricted security context;
+    - HPA, PodDisruptionBudget and an optional Ingress;
+    - a ServiceAccount with the workload-identity annotation;
+    - secrets from an existing Secret (External Secrets or the CSI driver).
+  - **Separate relay.** Django, Laravel and Rails get their outbox relay as a separate process on each platform.
+  - **Goldens.** `terraform-aws`, `terraform-gcp`, `terraform-azure` and `terraform-azure-rabbitmq` run `terraform validate` and `fmt -check`; `helm` runs `helm lint --strict` and `helm template` for every environment. Nothing is applied.
+- **`GHK_DECLARE_TOPOLOGY=false`.** It skips creating the broker topology at start-up in every backend, for least-privilege identities when infrastructure as code owns the topology.
+- **`amqps://` for PHP.** The Laravel runtime connects to RabbitMQ over TLS (Amazon MQ, CloudAMQP) through php-amqplib's connection factory. The other runtimes already took TLS from the URL.
 - **Broker adapters for the Go, Rust, Ruby, Elixir and PHP runtime kernels.**
   - **Pub/Sub in all five.** REST with no client library (Go `net/http`, Rust `reqwest`, Ruby `Net::HTTP`, Elixir `:httpc`, PHP `ext-curl`), behind the same ports and run-time selection as the other stacks.
   - **Service Bus in Go only.** `runtime/servicebus_broker.go` uses `azservicebus` and `azidentity`, and is generated only with `stack.messaging: "servicebus"`.
@@ -73,6 +91,7 @@ All notable changes to this project will be documented in this file. See [commit
   - **`ghk validate` and features without events.** It no longer fails (exit 4) on the AsyncAPI document that `generate` writes for a feature with no events. An empty `channels` object is valid AsyncAPI 2.x, so it is now a warning.
   - **Broker configuration.** With `stack.messaging: "pubsub"`, `docker-compose.yml` runs the Pub/Sub emulator and passes its variables to the app. Before, it started RabbitMQ under the name `pubsub`. `.env.example` and the Dockerfile header list the selected broker's variables.
   - **Enterprise constitution.** `ghk init --enterprise` fills `.gherkin-ai/constitution.yaml` from the answers: architecture, stack, broker, JWT auth, and the industry's compliance frameworks. It used to write a fixed NestJS/AWS template. The `.gitignore` now keeps the constitution in version control and ignores the rest of `.gherkin-ai/` (credentials and logs).
+  - **PHP topology names.** The Laravel runtime named its exchange and queues after the feature, not the service, unlike every other runtime. In a multi-feature service its topology therefore differed from the other stacks and from the generated infrastructure.
   - **QA agent prompt.** Existing step definitions are listed by their project-relative path. Before, regenerating wrote the machine's absolute paths (such as `/home/<user>/...`) into the committed `prompts/qa-agent.md`.
 
 ## [3.1.1] - 2026-10-13

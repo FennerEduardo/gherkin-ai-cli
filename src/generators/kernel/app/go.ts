@@ -324,8 +324,11 @@ func relayUntilError(ctx context.Context, pool *pgxpool.Pool, workerID string) e
 		return err
 	}
 	defer broker.Close()
-	if err := broker.Declare(ctx, runtime.DefaultTopology); err != nil {
-		return err
+	// GHK_DECLARE_TOPOLOGY=false when infrastructure as code owns the topology (least-privilege credentials).
+	if os.Getenv("GHK_DECLARE_TOPOLOGY") != "false" {
+		if err := broker.Declare(ctx, runtime.DefaultTopology); err != nil {
+			return err
+		}
 	}
 	publisher, err := broker.Publisher(ctx, runtime.DefaultTopology.Exchange)
 	if err != nil {

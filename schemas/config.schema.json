@@ -581,6 +581,42 @@
           },
           "additionalProperties": false
         },
+        "deploy": {
+          "type": "object",
+          "properties": {
+            "cloud": {
+              "type": "string",
+              "enum": [
+                "aws",
+                "gcp",
+                "azure"
+              ]
+            },
+            "compute": {
+              "type": "string",
+              "enum": [
+                "containers",
+                "kubernetes",
+                "both"
+              ]
+            },
+            "environments": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]{0,15}$"
+              },
+              "minItems": 1
+            },
+            "region": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "cloud"
+          ],
+          "additionalProperties": false
+        },
         "security": {
           "type": "object",
           "properties": {

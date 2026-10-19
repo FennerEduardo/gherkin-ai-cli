@@ -173,7 +173,10 @@ final class OutboxRelayCommand extends Command
     {
         $broker = Brokers::connect();
         $topology = Messaging::forPrefix();
-        $broker->declare($topology);
+        // GHK_DECLARE_TOPOLOGY=false when infrastructure as code owns the topology (least-privilege credentials).
+        if (env('GHK_DECLARE_TOPOLOGY') !== 'false' && env('GHK_DECLARE_TOPOLOGY') !== false) {
+            $broker->declare($topology);
+        }
         $relay = new OutboxRelay((string) env('DATABASE_URL'), $broker->publisher($topology->exchange));
         $workerId = ${php(m.kebab + '-')} . bin2hex(random_bytes(6));
         while (true) {

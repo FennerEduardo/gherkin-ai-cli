@@ -231,7 +231,8 @@ public class OutboxRelayWorker {
         try {
             if (relay == null) {
                 broker = Broker.fromEnv();
-                broker.declare(Topology.DEFAULT);
+                // GHK_DECLARE_TOPOLOGY=false when infrastructure as code owns the topology (least-privilege credentials).
+                if (!"false".equals(System.getenv("GHK_DECLARE_TOPOLOGY"))) broker.declare(Topology.DEFAULT);
                 publisher = broker.publisher(Topology.DEFAULT.exchange());
                 relay = new OutboxRelay(connections, publisher, "public");
             }
