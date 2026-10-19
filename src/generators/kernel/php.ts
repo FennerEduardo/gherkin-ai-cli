@@ -262,7 +262,8 @@ export function renderLaravelSkeleton(m: DomainModel, name: string, siblings: Do
         autoload: { 'psr-4': { 'App\\': 'app/' } },
         'autoload-dev': { 'psr-4': { 'Tests\\': 'tests/' } },
         // php-http/discovery (pulled in by OpenTelemetry) is a Composer plugin; it is not needed to run.
-        config: { 'optimize-autoloader': true, 'sort-packages': true, 'allow-plugins': { 'php-http/discovery': false } },
+        // platform.php: dependencies resolve for the production image's PHP (deploy/container.ts), not the toolchain's.
+        config: { 'optimize-autoloader': true, platform: { php: '8.4.0' }, 'sort-packages': true, 'allow-plugins': { 'php-http/discovery': false } },
         'minimum-stability': 'stable',
         'prefer-stable': true
       }, null, 2) + '\n'

@@ -142,6 +142,7 @@ All notable changes to this project will be documented in this file. See [commit
     - Quarkus always exported to `localhost:4318`, with no `service.name`.
     - The .NET OpenTelemetry setup was never called.
   - **`ghk init` gate workflow.** It used `actions/checkout@v4` and Node.js 20, which reached end of life in April 2026. It now uses the current actions and Node.js 24.
+  - **Rust services with several features.** The runtime command service applied only the last generated feature. The other features' routes answered 422 "unknown aggregate type". The new production image smoke test found it.
   - **QA agent prompt.** Existing step definitions are listed by their project-relative path. Before, regenerating wrote the machine's absolute paths (such as `/home/<user>/...`) into the committed `prompts/qa-agent.md`.
 
 ## [3.1.1] - 2026-10-13

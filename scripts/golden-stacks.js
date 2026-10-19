@@ -261,6 +261,9 @@ const STACKS = {
     stack: { ...base, language: 'rust', framework: 'axum', orm: 'none', validation: 'serde', testing: 'cargo-test' },
     image: 'rust:1.99',
     caches: [['cargo-registry', '/usr/local/cargo/registry'], ['cargo-git', '/usr/local/cargo/git']],
+    // Link inside the container: test binaries written through the Docker Desktop bind mount (/work) came out
+    // corrupted now and then (SIGSEGV, "Inconsistency detected by ld.so").
+    env: { CARGO_TARGET_DIR: '/tmp/cargo-target' },
     build: ['cargo build --all-targets --quiet'],
     test: ['cargo test --quiet'],
     integration: ['cargo test --quiet --features integration --test runtime_integration --test http_integration -- --test-threads=1']

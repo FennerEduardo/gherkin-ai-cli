@@ -377,6 +377,6 @@ fn every_feature_step_is_defined() {
 `
     }
   ];
-  files.push(...renderRsRuntime(m, crate, [], { messaging }));
+  files.push(...renderRsRuntime(m, crate, siblings, { messaging }));
   return files;
 }

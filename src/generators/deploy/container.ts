@@ -243,10 +243,10 @@ CMD ["mix", "phx.server"]
         body: `FROM ${TOOLCHAINS['php/laravel'].image} AS vendor
 WORKDIR /app
 COPY . .
-RUN composer install --no-dev --prefer-dist --no-progress --no-interaction --optimize-autoloader --no-scripts --ignore-platform-reqs
+RUN composer install --no-dev --prefer-dist --no-progress --no-interaction --optimize-autoloader --no-scripts --ignore-platform-req=ext-*
 
 # FrankenPHP: production PHP application server (Caddy) in one process.
-FROM dunglas/frankenphp:1-php8.3-alpine
+FROM dunglas/frankenphp:1-php8.4-alpine
 RUN install-php-extensions pdo_pgsql sockets
 WORKDIR /app
 COPY --from=vendor /app /app
