@@ -247,6 +247,11 @@ export const configShape = {
   sandbox: sandboxSchema.optional(),
   infrastructure: infrastructureSchema.optional(),
   deploy: deploySchema.optional(),
+  /** CI/CD pipeline written at the repository root. Default: none, or GitHub Actions when deploy is set. */
+  ci: z.object({
+    /** github: CI and deployment (OIDC); gitlab and azure-devops: CI (build, tests, integration, image, scan). */
+    provider: z.enum(['github', 'gitlab', 'azure-devops'])
+  }).optional(),
   /** Security of the generated application layer. */
   security: z.object({
     /** JWT claim that carries the tenant (default "tenant_id"). The tenant never comes from a request header. */

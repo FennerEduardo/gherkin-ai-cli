@@ -617,6 +617,23 @@
           ],
           "additionalProperties": false
         },
+        "ci": {
+          "type": "object",
+          "properties": {
+            "provider": {
+              "type": "string",
+              "enum": [
+                "github",
+                "gitlab",
+                "azure-devops"
+              ]
+            }
+          },
+          "required": [
+            "provider"
+          ],
+          "additionalProperties": false
+        },
         "security": {
           "type": "object",
           "properties": {

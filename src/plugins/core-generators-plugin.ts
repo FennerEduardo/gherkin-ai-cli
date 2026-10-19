@@ -9,6 +9,7 @@ import { generatePrompts } from '../generators/prompts';
 import { generateInfra } from '../generators/infra';
 import { generateAwsCdkApp } from '../generators/infrastructure/aws-cdk-generator';
 import { renderDeploymentTargets } from '../generators/deploy/targets';
+import { renderCiPipelines } from '../generators/cicd';
 
 export function awsCdkEnabled(config: GherkinAIConfig): boolean {
   return config.infrastructure?.awsCdk ?? ['sqs', 'sns'].includes((config.stack.messaging || '').toLowerCase());
@@ -218,6 +219,12 @@ export class CoreInfraPlugin implements GherkinAIPlugin {
 
     // Deployment targets (config.deploy): Terraform for the chosen cloud and/or a Helm chart.
     for (const file of renderDeploymentTargets(config)) artifacts.push({ filePath: file.filename, content: file.content, type: 'config' });
+
+    // CI/CD pipeline (config.ci, or GitHub Actions with deploy): at the repository root, whatever outputDir is.
+    const toRoot = path.relative(path.resolve(config.outputDir || '.'), process.cwd()).split(path.sep).join('/');
+    for (const file of renderCiPipelines(config)) {
+      artifacts.push({ filePath: toRoot ? `${toRoot}/${file.filename}` : file.filename, content: file.content, type: 'config' });
+    }
 
     return artifacts;
   }

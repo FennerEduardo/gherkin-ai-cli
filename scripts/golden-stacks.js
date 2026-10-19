@@ -338,4 +338,34 @@ STACKS.helm = {
   test: ['for env in dev staging prod; do helm template golden-helm . -f values-$env.yaml > /dev/null || exit 1; done', 'helm template golden-helm . -f values-prod.yaml | grep -q "kind: HorizontalPodAutoscaler"', 'helm template golden-helm . -f values-prod.yaml | grep -q "name: golden-helm-relay"']
 };
 
+// CI/CD pipelines (config.ci): actionlint (with shellcheck) for GitHub Actions; the official JSON schemas vendored in
+// check-jsonschema for GitLab CI and Azure Pipelines. Nothing runs in the providers.
+const ciSchema = (name, backend, provider, schema, file, extra = {}) => ({
+  stack: STACKS[backend].stack,
+  ...(STACKS[backend].frontendStack ? { frontendStack: STACKS[backend].frontendStack } : {}),
+  config: { ci: { provider }, ...extra },
+  image: 'python:3.12-slim',
+  caches: [['pip', '/root/.cache/pip']],
+  build: ['pip install -q check-jsonschema==0.38.2'],
+  test: [`check-jsonschema --regex-variant nonunicode --builtin-schema ${schema} ${file}`]
+});
+STACKS['ci-github'] = {
+  stack: STACKS.nestjs.stack,
+  config: { ci: { provider: 'github' }, deploy: { cloud: 'aws', compute: 'containers' } },
+  image: 'rhysd/actionlint:1.7.12',
+  entrypoint: 'sh',
+  build: ['actionlint -no-color .github/workflows/*.yml'],
+  test: ['grep -q "deploy-prod:" .github/workflows/golden-ci-github.yml']
+};
+STACKS['ci-github-kubernetes'] = {
+  stack: STACKS.django.stack,
+  config: { ci: { provider: 'github' }, deploy: { cloud: 'gcp', compute: 'kubernetes' } },
+  image: 'rhysd/actionlint:1.7.12',
+  entrypoint: 'sh',
+  build: ['actionlint -no-color .github/workflows/*.yml'],
+  test: ['grep -q "helm upgrade --install" .github/workflows/golden-ci-github-kubernetes.yml']
+};
+STACKS['ci-gitlab'] = ciSchema('ci-gitlab', 'laravel', 'gitlab', 'vendor.gitlab-ci', '.gitlab-ci.yml');
+STACKS['ci-azure-pipelines'] = ciSchema('ci-azure-pipelines', 'dotnet', 'azure-devops', 'vendor.azure-pipelines', 'azure-pipelines.yml', { deploy: { cloud: 'azure' } });
+
 module.exports = { STACKS, SERVICEBUS_EMULATOR, PUBSUB_EMULATOR };

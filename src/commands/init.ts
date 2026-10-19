@@ -54,12 +54,12 @@ jobs:
       # Pinned on purpose: a quality gate must not change behavior when a new version is published.
       GHK_VERSION: '${CLI_VERSION}'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
-          node-version: '20'
+          node-version: '24'
 
       - name: Run Gherkin Specification Linting
         run: npx --yes "gherkin-ai@$GHK_VERSION" lint --threshold 85 --json > ghk-lint.json
@@ -69,7 +69,7 @@ jobs:
 
       - name: Keep reports
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: gherkin-ai-reports
           path: ghk-*.json

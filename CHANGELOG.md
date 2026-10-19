@@ -21,6 +21,10 @@ All notable changes to this project will be documented in this file. See [commit
     - secrets from an existing Secret (External Secrets or the CSI driver).
   - **Separate relay.** Django, Laravel and Rails get their outbox relay as a separate process on each platform.
   - **Goldens.** `terraform-aws`, `terraform-gcp`, `terraform-azure` and `terraform-azure-rabbitmq` run `terraform validate` and `fmt -check`; `helm` runs `helm lint --strict` and `helm template` for every environment. Nothing is applied.
+- **CI/CD pipelines (`ci.provider`: `github`, `gitlab`, `azure-devops`).** Opt-in; GitHub Actions is the default when `deploy` is set.
+  - **Every provider.** Specification gates (gherkin-ai pinned), build and tests in the stack's toolchain image, the runtime integration suite against PostgreSQL and RabbitMQ, the production image, a Trivy scan and a CycloneDX SBOM.
+  - **GitHub Actions also deploys.** One environment after another, with protection rules, OIDC to AWS, GCP or Azure, image push, Terraform or Helm, and a readiness smoke test.
+  - **Verification.** `actionlint` and the official GitLab and Azure Pipelines schemas, in goldens.
 - **Deployment readiness for AI agents.**
   - **Context files.** `.ghe/deployment-context.md` and `.json` hold the runtime contract, the target, the rules and a checklist. A Deployment Readiness section goes into the `implement` prompt and the agent prompts.
   - **Validation.** `ghk validate` checks the Dockerfile (non-root user, no secrets), `.env.example`, and hardcoded secrets in `deploy/`.
@@ -97,6 +101,7 @@ All notable changes to this project will be documented in this file. See [commit
   - **Broker configuration.** With `stack.messaging: "pubsub"`, `docker-compose.yml` runs the Pub/Sub emulator and passes its variables to the app. Before, it started RabbitMQ under the name `pubsub`. `.env.example` and the Dockerfile header list the selected broker's variables.
   - **Enterprise constitution.** `ghk init --enterprise` fills `.gherkin-ai/constitution.yaml` from the answers: architecture, stack, broker, JWT auth, and the industry's compliance frameworks. It used to write a fixed NestJS/AWS template. The `.gitignore` now keeps the constitution in version control and ignores the rest of `.gherkin-ai/` (credentials and logs).
   - **PHP topology names.** The Laravel runtime named its exchange and queues after the feature, not the service, unlike every other runtime. In a multi-feature service its topology therefore differed from the other stacks and from the generated infrastructure.
+  - **`ghk init` gate workflow.** It used `actions/checkout@v4` and Node.js 20, which reached end of life in April 2026. It now uses the current actions and Node.js 24.
   - **QA agent prompt.** Existing step definitions are listed by their project-relative path. Before, regenerating wrote the machine's absolute paths (such as `/home/<user>/...`) into the committed `prompts/qa-agent.md`.
 
 ## [3.1.1] - 2026-10-13
