@@ -467,32 +467,17 @@ describe('IR Builder', () => {
       expect(spanish.apiEndpoints.length * tagged.apiEndpoints.length).toBeGreaterThan(0);
     });
 
-    it('should map verbs to HTTP methods correctly', () => {
-      const parsed = parseGherkinText(CRUD_FEATURE);
-      const ir = buildIR(parsed, 'test.feature');
-
-      const createEp = ir.apiEndpoints.find(ep => ep.method === 'POST');
-      expect(createEp).toBeDefined();
-
-      const updateEp = ir.apiEndpoints.find(ep => ep.method === 'PUT');
-      expect(updateEp).toBeDefined();
-
-      const deleteEp = ir.apiEndpoints.find(ep => ep.method === 'DELETE');
-      expect(deleteEp).toBeDefined();
-    });
-
-    it('should add {id} parameter for update/delete endpoints', () => {
-      const parsed = parseGherkinText(CRUD_FEATURE);
-      const ir = buildIR(parsed, 'test.feature');
-
-      const updateEp = ir.apiEndpoints.find(ep => ep.method === 'PUT');
-      if (updateEp) {
-        expect(updateEp.path).toContain('{id}');
-      }
-
-      const deleteEp = ir.apiEndpoints.find(ep => ep.method === 'DELETE');
-      if (deleteEp) {
-        expect(deleteEp.path).toContain('{id}');
+    it('describes the generated command route, the only HTTP API the backends serve', () => {
+      const ir = buildIR(parseGherkinText(CRUD_FEATURE), 'test.feature');
+      expect(ir.apiEndpoints).toHaveLength(1);
+      const [ep] = ir.apiEndpoints;
+      expect(ep.method).toBe('POST');
+      expect(ep.path).toMatch(/^\/api\/v1\/[a-z0-9-]+\/\{id\}\/\{command\}$/);
+      expect(ep.authRequired).toBe(true);
+      expect(ep.httpCodes.map(c => c.code)).toEqual(['202', '200', '401', '409', '422']);
+      // Every command is served by the route: each one links to it.
+      for (const cmd of ir.commands) {
+        expect(ir.traceability.links.some(l => l.from.id === cmd.id && l.to.id === ep.id && l.relationship === 'implements')).toBe(true);
       }
     });
 

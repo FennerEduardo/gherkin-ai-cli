@@ -15,7 +15,48 @@ import { tagValues } from '../core/profiles/industries/lint-helpers';
 import { dotnetNamespace } from './preset-csharp-dotnet';
 import { renderGoMod } from './kernel/go';
 import { renderGradleKts, renderGradleSettings } from './kernel/kotlin';
-import { toKebab } from './kernel/domain-model';
+import { buildDomainModel, toKebab } from './kernel/domain-model';
+import type { APIEndpointHint } from '../core/semantic-ir';
+
+/**
+ * OpenAPI operation of the generated command route, POST /api/v1/<feature>/{id}/{command}
+ * (kernel/app/shared.ts): what every generated backend serves and its HTTP tests assert.
+ */
+function commandRouteOperation(ep: APIEndpointHint, commands: string[]): Record<string, unknown> {
+  const result = (description: string) => ({ description, content: { 'application/json': { schema: { $ref: '#/components/schemas/CommandResult' } } } });
+  const error = (description: string) => ({ description, content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } });
+  const described = Object.fromEntries(ep.httpCodes.map(c => [c.code, c.description]));
+  return {
+    summary: 'Run a domain command on an aggregate',
+    description: 'Runs the command through the runtime command service: the aggregate, its event and the outbox row are written in one transaction, and the outbox relay publishes the event.',
+    operationId: ep.operationId,
+    security: ep.authRequired ? [{ bearerAuth: [] }] : [],
+    parameters: [
+      { name: 'id', in: 'path', required: true, description: 'Aggregate id (unique per tenant)', schema: { type: 'string' } },
+      { name: 'command', in: 'path', required: true, description: 'Domain command', schema: { type: 'string', ...(commands.length ? { enum: commands } : {}) } },
+      { name: 'Idempotency-Key', in: 'header', required: false, description: 'Replays with the same key return the first result (200) instead of running the command again', schema: { type: 'string' } },
+      { name: 'traceparent', in: 'header', required: false, description: 'W3C trace context, propagated to the outbox and the published event', schema: { type: 'string' } }
+    ],
+    requestBody: {
+      required: false,
+      description: 'Command payload (any JSON object)',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            additionalProperties: true,
+            properties: ep.requestFields.reduce((fAcc, f) => {
+              fAcc[f.name] = { type: f.type === 'number' ? 'number' : f.type === 'boolean' ? 'boolean' : 'string' };
+              return fAcc;
+            }, {} as Record<string, unknown>)
+          }
+        }
+      }
+    },
+    responses: Object.fromEntries(ep.httpCodes.map(({ code }) => [code,
+      ['202', '200', '409'].includes(code) ? result(described[code]) : error(described[code])]))
+  };
+}
 import { TS_RUNTIME_DEV_DEPENDENCIES, tsRuntimeDependencies } from './kernel/runtime/typescript';
 import { NEST_DEPENDENCIES, NodeProfile, PRISMA_VERSION, prismaAdapter, resolveNodeProfile } from './node-profile';
 import { ParsedFeature } from '../core/gherkin-parser';
@@ -287,6 +328,9 @@ ${industry.guidance.rules.map(r => `- MUST: ${r}`).join('\n')}
 Compliance items are engineering guidance, not certification.
 ` : ''}`;
 
+  // The {command} values the generated backends accept (same domain model as the application layer).
+  const domainCommands = buildDomainModel(parsed, { service: config.projectName }).commands.map(c => c.snake);
+
   const openApiJson = JSON.stringify({
     openapi: '3.0.3',
     info: {
@@ -297,40 +341,7 @@ Compliance items are engineering guidance, not certification.
     },
     paths: ir.apiEndpoints.reduce((acc, ep) => {
       if (!acc[ep.path]) acc[ep.path] = {};
-      
-      acc[ep.path][ep.method.toLowerCase()] = {
-        summary: `${ep.method} ${ep.path}`,
-        operationId: ep.operationId,
-        security: ep.authRequired ? [{ bearerAuth: [] }] : [],
-        requestBody: ep.method !== 'GET' ? {
-          required: true,
-          content: {
-            'application/json': {
-              schema: {
-                type: 'object',
-                properties: {
-                  requestId: { type: 'string', format: 'uuid' },
-                  timestamp: { type: 'string', format: 'date-time' },
-                  payload: { 
-                    type: 'object',
-                    properties: ep.requestFields.reduce((fAcc, f) => {
-                      fAcc[f.name] = { type: f.type === 'number' ? 'number' : 'string' };
-                      return fAcc;
-                    }, {} as Record<string, any>),
-                    required: ep.requestFields.filter(f => f.required).map(f => f.name)
-                  }
-                },
-                required: ['requestId', 'timestamp', 'payload']
-              }
-            }
-          }
-        } : undefined,
-        responses: ep.httpCodes.reduce((resAcc, code) => {
-          resAcc[code.code] = { description: code.description };
-          return resAcc;
-        }, {} as Record<string, any>)
-      };
-      
+      acc[ep.path][ep.method.toLowerCase()] = commandRouteOperation(ep, domainCommands);
       return acc;
     }, {} as Record<string, any>),
     components: {
@@ -338,7 +349,25 @@ Compliance items are engineering guidance, not certification.
         bearerAuth: {
           type: 'http',
           scheme: 'bearer',
-          bearerFormat: 'JWT'
+          bearerFormat: 'JWT',
+          description: `HS256 token signed with JWT_SECRET. The tenant comes only from its "${config.security?.tenantClaim || 'tenant_id'}" claim; X-Tenant-Id is never trusted.`
+        }
+      },
+      schemas: {
+        CommandResult: {
+          type: 'object',
+          required: ['status', 'aggregateId'],
+          properties: {
+            status: { type: 'string', enum: ['created', 'replayed', 'in-progress'] },
+            aggregateId: { type: 'string' },
+            eventType: { type: 'string', nullable: true, description: 'Domain event stored in the outbox (null while in progress)' },
+            version: { type: 'integer', nullable: true, description: 'Aggregate version after the command (null while in progress)' }
+          }
+        },
+        Error: {
+          type: 'object',
+          required: ['detail'],
+          properties: { detail: { type: 'string', description: 'Human-readable reason (domain rule, missing tenant, ...)' } }
         }
       }
     }

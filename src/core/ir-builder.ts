@@ -143,7 +143,7 @@ export function buildIR(
 
   const stateMachines = extractStateMachines(parsed, sourceFile);
   const invariants = extractInvariants(parsed, sourceFile, stateMachines);
-  const apiEndpoints = extractAPIEndpoints(parsed, sourceFile, commands, fields);
+  const apiEndpoints = extractAPIEndpoints(parsed, sourceFile, fields);
   const constraints = extractConstraints(parsed, constitution, sourceFile);
   const policies = extractPolicies(parsed, constitution, sourceFile);
   const assumptions = extractAssumptions(parsed, sourceFile);
@@ -749,82 +749,38 @@ function extractInvariants(
 function extractAPIEndpoints(
   parsed: ParsedFeature,
   sourceFile: string,
-  commands: Command[],
   fields: FieldSpec[]
 ): APIEndpointHint[] {
-  const endpoints: APIEndpointHint[] = [];
-  // The same resource name as the generated application layer (/api/v1/<feature>/{id}/{command}): the
-  // @aggregate tag or the feature name, accents removed (a lowercase [^a-z0-9] replace turned "ó" into "-").
+  // Every generated backend serves one command route per feature (generators/kernel/app/shared.ts):
+  //   POST /api/v1/<feature>/{id}/{command}, bearer JWT (tenant from a claim), optional Idempotency-Key.
+  // The contract describes that route, so agents and API consumers are not sent to paths the service does not
+  // serve. <feature> is the @aggregate tag or the feature name, accents removed, like the generated route.
+  // HTTP codes named in the scenarios are not copied: the route answers with the codes below (a domain error,
+  // whatever the scenario calls it, is a 422).
   const featureSlug = toKebab(featurePascalName(parsed));
-
-  // Infer main CRUD endpoints from commands
-  const verbMethodMap: Record<string, 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'> = {
-    create: 'POST',
-    update: 'PUT',
-    delete: 'DELETE',
-    cancel: 'POST',
-    approve: 'POST',
-    reject: 'POST',
-    login: 'POST',
-    logout: 'POST',
-    search: 'GET',
-    calculate: 'POST',
-    send: 'POST',
-    pay: 'POST',
-    verify: 'POST',
-    assign: 'POST',
-    upload: 'POST',
-    download: 'GET',
-  };
-
-  const seenPaths = new Set<string>();
-
-  for (const cmd of commands) {
-    const method = verbMethodMap[cmd.verb] || 'POST';
-    let path = `/api/v1/${featureSlug}`;
-    if (['cancel', 'approve', 'reject', 'verify'].includes(cmd.verb)) {
-      path += `/{id}/${cmd.verb}`;
-    } else if (['update', 'delete'].includes(cmd.verb)) {
-      path += '/{id}';
-    }
-
-    const pathKey = `${method}:${path}`;
-    if (seenPaths.has(pathKey)) continue;
-    seenPaths.add(pathKey);
-
-    const httpCodes: { code: string; description: string }[] = [];
-    for (const code of parsed.domainAnalysis.httpCodes) {
-      const desc = code.startsWith('2') ? 'Success' :
-                   code.startsWith('4') ? (code === '401' ? 'Unauthorized' : code === '403' ? 'Forbidden' : code === '404' ? 'Not Found' : 'Client Error') :
-                   'Server Error';
-      httpCodes.push({ code, description: desc });
-    }
-
-    if (httpCodes.length === 0) {
-      httpCodes.push({ code: method === 'POST' ? '201' : '200', description: 'Success' });
-    }
-
-    const hasAuth = parsed.scenarios.some(sc =>
-      sc.steps.some(s => AUTH_PATTERNS.some(p => p.test(s.text)))
-    );
-
-    endpoints.push({
-      id: generateId('API'),
-      method,
-      path,
-      operationId: `${cmd.verb}${featurePascalName(parsed)}`,
-      requestFields: method !== 'GET' ? fields : [],
-      responseFields: fields,
-      httpCodes,
-      authRequired: hasAuth,
-      source: { file: sourceFile, line: 0 },
-      confidence: 0.75,
-      inferenceSource: 'deterministic',
-    });
-  }
-
-  return endpoints;
+  return [{
+    id: generateId('API'),
+    method: 'POST',
+    path: `/api/v1/${featureSlug}/{id}/{command}`,
+    operationId: `execute${featurePascalName(parsed)}Command`,
+    requestFields: fields,
+    responseFields: [],
+    httpCodes: COMMAND_ROUTE_RESPONSES,
+    authRequired: true,
+    source: { file: sourceFile, line: 0 },
+    confidence: 1,
+    inferenceSource: 'deterministic',
+  }];
 }
+
+/** Responses of the generated command route (docs/RUNTIME-KERNEL.md, kernel/app/shared.ts). */
+export const COMMAND_ROUTE_RESPONSES: { code: string; description: string }[] = [
+  { code: '202', description: 'Command accepted: the event was stored with the aggregate and the outbox' },
+  { code: '200', description: 'Replayed: the same Idempotency-Key was already processed; the first result is returned' },
+  { code: '401', description: 'Missing or invalid bearer token, or no tenant claim' },
+  { code: '409', description: 'A request with the same Idempotency-Key is still in progress' },
+  { code: '422', description: 'Domain validation error (business rule violated or unknown command)' }
+];
 
 // ---------------------------------------------------------------------------
 // Constraint Extraction
@@ -1167,14 +1123,11 @@ function buildTraceabilityMap(
     }
   }
 
-  // Commands → API Endpoints
+  // Commands → API Endpoints: every command is served by the feature's command route ({command} parameter).
   for (const ep of endpoints) {
-    const relatedCmd = commands.find(c =>
-      ep.operationId.toLowerCase().includes(c.verb)
-    );
-    if (relatedCmd) {
+    for (const cmd of commands) {
       links.push({
-        from: { type: 'command', id: relatedCmd.id },
+        from: { type: 'command', id: cmd.id },
         to: { type: 'api-endpoint', id: ep.id },
         relationship: 'implements',
       });

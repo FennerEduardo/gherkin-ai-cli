@@ -58,7 +58,13 @@ All notable changes to this project will be documented in this file. See [commit
 ### Fixed
 - **Java/Kotlin frameworks without a preset** (`ktor` offered by `ghk init`, `micronaut`, ...) no longer generate Spring Boot code silently. They are reported as experimental and get contracts and prompts only. `stack-detector` recognises Quarkus, Micronaut and Ktor builds.
 - **The following were found by regenerating and probing the reference projects (`ghk-test-projects`) with 3.2.0.**
-  - **OpenAPI paths.** Inferred endpoints are named like the generated route `/api/v1/<feature>/...`: the `@aggregate` tag or the feature name, without accents. Before, a Spanish feature got paths such as `/api/v1/ejecuci-n-de-pagos-...-`.
+  - **OpenAPI matches the generated API.** `openapi.json` describes the route every generated backend serves, `POST /api/v1/<feature>/{id}/{command}`:
+    - `command` is an enum of the feature's commands;
+    - the `Idempotency-Key` and `traceparent` headers are documented;
+    - the body is the command payload;
+    - the responses are 202, 200, 401, 409 and 422, with `CommandResult` and `Error` schemas.
+
+    Before, it listed verb-style paths that the service never served (`POST /api/v1/<feature>`, `PUT …/{id}`, …), wrapped the body in `requestId`, `timestamp` and `payload`, and copied HTTP codes from the scenarios. `<feature>` is the `@aggregate` tag or the feature name without accents. Spanish features used to get paths such as `/api/v1/ejecuci-n-de-pagos-...-`.
   - **`ghk validate` and features without events.** It no longer fails (exit 4) on the AsyncAPI document that `generate` writes for a feature with no events. An empty `channels` object is valid AsyncAPI 2.x, so it is now a warning.
   - **Broker configuration.** With `stack.messaging: "pubsub"`, `docker-compose.yml` runs the Pub/Sub emulator and passes its variables to the app. Before, it started RabbitMQ under the name `pubsub`. `.env.example` and the Dockerfile header list the selected broker's variables.
   - **Enterprise constitution.** `ghk init --enterprise` fills `.gherkin-ai/constitution.yaml` from the answers: architecture, stack, broker, JWT auth, and the industry's compliance frameworks. It used to write a fixed NestJS/AWS template. The `.gitignore` now keeps the constitution in version control and ignores the rest of `.gherkin-ai/` (credentials and logs).

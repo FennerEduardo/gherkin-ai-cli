@@ -87,6 +87,13 @@ Every backend exposes the command service over one HTTP contract:
 | `Authorization: Bearer <JWT>` (HS256, `JWT_SECRET`) | `401` without a valid token or without the tenant claim (`security.tenantClaim`, default `tenant_id`) |
 | `Idempotency-Key`, `traceparent` (optional) | passed to the command service |
 
-The tenant comes only from the validated token. `X-Tenant-Id` is never read and there is no default tenant. An outbox relay worker publishes the outbox every second when `AMQP_URL` is set (in-process, or `manage.py outbox_relay` / `artisan outbox:relay` / `rails outbox:relay`).
+The tenant comes only from the validated token. `X-Tenant-Id` is never read and there is no default tenant. An outbox relay worker publishes the outbox every second when a broker is configured (`AMQP_URL`, or the Pub/Sub or Service Bus variables of [DEPLOYMENT.md](DEPLOYMENT.md)). It runs in-process, or as `manage.py outbox_relay` / `artisan outbox:relay` / `rails outbox:relay`.
+
+The generated `openapi.json` (and `contracts/<feature>/openapi.json`) describes exactly this route:
+- `command` is an enum of the feature's commands;
+- `Idempotency-Key` and `traceparent` are header parameters;
+- the responses are `CommandResult` (`status`, `aggregateId`, `eventType`, `version`) and `Error` (`{ "detail": ... }`).
+
+HTTP codes written in the scenarios are not copied into the contract, because the route answers with the codes above.
 
 Each backend has unit tests of this contract with a fake command port, and an HTTP integration test against PostgreSQL. It proves that `X-Tenant-Id` alone gets 401, a command writes one outbox row under the token's tenant, and a replay returns 200. The golden builds generate a two-feature service and run both features' tests.
