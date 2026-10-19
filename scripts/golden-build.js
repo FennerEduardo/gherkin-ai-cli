@@ -121,41 +121,109 @@ const IMAGE_ENV = {
   DJANGO_SECRET_KEY: 'golden-django-secret'
 };
 
+/** OpenTelemetry collector the production image exports to (debug exporter: spans are printed to its log). */
+const COLLECTOR_IMAGE = 'otel/opentelemetry-collector-contrib:0.163.1';
+const COLLECTOR_CONFIG = `receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318
+exporters:
+  debug:
+    verbosity: detailed
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      exporters: [debug]
+`;
+
+const sleep = ms => spawnSync(process.execPath, ['-e', `setTimeout(()=>{},${ms})`]);
+
+/** HS256 JWT with the tenant claim the generated application layer requires (kernel/app/shared.ts). */
+function signJwt(claims, secret) {
+  const b64 = obj => Buffer.from(JSON.stringify(obj)).toString('base64url');
+  const body = `${b64({ alg: 'HS256', typ: 'JWT' })}.${b64({ ...claims, exp: Math.floor(Date.now() / 1000) + 600 })}`;
+  return `${body}.${require('crypto').createHmac('sha256', secret).update(body).digest('base64url')}`;
+}
+
+/** The command route of the golden service's first feature: POST /api/v1/<feature>/{id}/{command}. */
+function commandPath(name) {
+  const { parseGherkinText } = require('../dist/core/gherkin-parser');
+  const { buildDomainModel } = require('../dist/generators/kernel/domain-model');
+  const m = buildDomainModel(parseGherkinText(FEATURE), { service: `golden-${name}` });
+  return `/api/v1/${m.kebab}/smoke-1/${m.commands[0].snake}`;
+}
+
 /**
- * Builds the generated Dockerfile, starts the image on the services network and waits until its liveness
- * and readiness probes answer 200 (toolchains.ts resolveHealth).
+ * Builds the generated Dockerfile, starts the image on the services network next to an OpenTelemetry collector,
+ * waits until its liveness and readiness probes answer 200 (toolchains.ts resolveHealth), then runs one command
+ * with a JWT and requires the collector to receive the service's spans (OTEL_EXPORTER_OTLP_ENDPOINT export).
  */
 function smokeImage(dir, def, name, services) {
   const tag = `ghk-golden-${name}:image`;
-  const container = `ghk-app-${name}-${Date.now()}`;
+  const stamp = Date.now();
+  const container = `ghk-app-${name}-${stamp}`;
+  const collector = `ghk-otel-${name}-${stamp}`;
+  const serviceName = `golden-${name}`;
   const opts = { env: { ...process.env, MSYS_NO_PATHCONV: '1' } };
   const log = [];
   const build = run('docker', ['build', '-q', '-t', tag, dockerPath(dir)], opts);
   log.push(build.out);
   if (build.code !== 0) return { code: build.code, out: `docker build failed\n${log.join('\n')}` };
+  const collectorConfig = path.join(os.tmpdir(), `ghk-otel-${name}-${stamp}.yaml`);
+  fs.writeFileSync(collectorConfig, COLLECTOR_CONFIG);
   try {
+    const otel = run('docker', ['run', '-d', '--name', collector, '--network', services.network,
+      '-v', `${dockerPath(collectorConfig)}:/etc/otelcol/config.yaml:ro`, COLLECTOR_IMAGE, '--config=/etc/otelcol/config.yaml'], opts);
+    if (otel.code !== 0) return { code: otel.code, out: `collector failed to start\n${otel.out}` };
     const { port } = resolveAppRuntimeEnv({ stack: def.stack });
     const health = resolveHealth({ stack: def.stack });
-    const env = { ...IMAGE_ENV, ...services.env };
+    const env = {
+      ...IMAGE_ENV, ...services.env,
+      OTEL_EXPORTER_OTLP_ENDPOINT: `http://${collector}:4318`, OTEL_SERVICE_NAME: serviceName, OTEL_BSP_SCHEDULE_DELAY: '500'
+    };
     const start = run('docker', ['run', '-d', '--name', container, '--network', services.network,
       ...Object.entries(env).flatMap(([k, v]) => ['-e', `${k}=${v}`]), tag], opts);
     if (start.code !== 0) return { code: start.code, out: `docker run failed\n${start.out}` };
-    const probe = p => run('docker', ['run', '--rm', '--network', services.network, 'curlimages/curl:8.11.1',
-      '-s', '-o', '/dev/null', '-w', '%{http_code}', '--max-time', '5', `http://${container}:${port}${p}`], opts).out.trim();
+    const curl = (...args) => run('docker', ['run', '--rm', '--network', services.network, 'curlimages/curl:8.11.1',
+      '-s', '-o', '/dev/null', '-w', '%{http_code}', '--max-time', '10', ...args], opts).out.trim();
     const deadline = Date.now() + 180_000;
     let codes = [];
     while (Date.now() < deadline) {
-      codes = [health.live, health.ready].map(p => `${p}=${probe(p)}`);
-      if (codes.every(c => c.endsWith('=200'))) {
-        return { code: 0, out: `image ${tag} healthy on :${port} (${codes.join(', ')})` };
-      }
-      spawnSync(process.execPath, ['-e', 'setTimeout(()=>{},3000)']);
+      codes = [health.live, health.ready].map(p => `${p}=${curl(`http://${container}:${port}${p}`)}`);
+      if (codes.every(c => c.endsWith('=200'))) break;
+      sleep(3000);
     }
-    const logs = run('docker', ['logs', '--tail', '80', container], opts).out;
-    return { code: 1, out: `image ${tag} did not become healthy on :${port} (${codes.join(', ')})\n--- container logs ---\n${logs}` };
+    if (!codes.every(c => c.endsWith('=200'))) {
+      const logs = run('docker', ['logs', '--tail', '80', container], opts).out;
+      return { code: 1, out: `image ${tag} did not become healthy on :${port} (${codes.join(', ')})\n--- container logs ---\n${logs}` };
+    }
+
+    // One command through the HTTP API: its spans must reach the collector.
+    const route = commandPath(name);
+    const token = signJwt({ sub: 'golden', tenant_id: 'golden-tenant' }, IMAGE_ENV.JWT_SECRET);
+    const response = run('docker', ['run', '--rm', '--network', services.network, 'curlimages/curl:8.11.1', '-s', '--max-time', '20',
+      '-w', '\n%{http_code}', '-X', 'POST', '-H', `Authorization: Bearer ${token}`, '-H', 'Content-Type: application/json',
+      '-H', `Idempotency-Key: smoke-${stamp}`, '-d', '{}', `http://${container}:${port}${route}`], opts).out.trim();
+    const status = response.slice(response.lastIndexOf('\n') + 1);
+    if (status !== '202') {
+      const logs = run('docker', ['logs', '--tail', '80', container], opts).out;
+      return { code: 1, out: `image ${tag}: POST ${route} answered ${status}, expected 202\n--- response ---\n${response}\n--- container logs ---\n${logs}` };
+    }
+    const exportDeadline = Date.now() + 60_000;
+    while (Date.now() < exportDeadline) {
+      if (run('docker', ['logs', collector], opts).out.includes(serviceName)) {
+        return { code: 0, out: `image ${tag} healthy on :${port} (${codes.join(', ')}); POST ${route} 202; spans of ${serviceName} received over OTLP` };
+      }
+      sleep(2000);
+    }
+    const logs = run('docker', ['logs', '--tail', '60', container], opts).out;
+    return { code: 1, out: `image ${tag}: no span of ${serviceName} reached the OTLP collector within 60 s\n--- container logs ---\n${logs}` };
   } finally {
-    run('docker', ['rm', '-f', container], opts);
+    run('docker', ['rm', '-f', container, collector], opts);
     run('docker', ['rmi', '-f', tag], opts);
+    fs.rmSync(collectorConfig, { force: true });
   }
 }
 

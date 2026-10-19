@@ -411,8 +411,11 @@ import { createApp } from './app';
 import { CommandService } from './runtime/command-service';
 import { DEFAULT_TOPOLOGY, brokerConfigured, connectBroker, type Broker } from './runtime/broker';
 import { OutboxRelay } from './runtime/outbox-relay';
+import { startTelemetry, stopTelemetry } from './runtime/otel';
 
 async function main(): Promise<void> {
+  // OTLP export when OTEL_EXPORTER_OTLP_ENDPOINT is set (runtime/otel.ts).
+  startTelemetry();
   const pool = new Pool({ connectionString: process.env.DATABASE_URL });
   const port = Number(process.env.PORT) || 3000;
   const server = createApp(new CommandService(pool)).listen(port, () => console.log(\`listening on :\${port}\`));
@@ -439,7 +442,7 @@ async function main(): Promise<void> {
   const shutdown = () => {
     if (timer) clearInterval(timer);
     server.close(() => {
-      void Promise.allSettled([broker?.close(), pool.end()]).then(() => process.exit(0));
+      void Promise.allSettled([broker?.close(), pool.end(), stopTelemetry()]).then(() => process.exit(0));
     });
   };
   process.on('SIGTERM', shutdown);

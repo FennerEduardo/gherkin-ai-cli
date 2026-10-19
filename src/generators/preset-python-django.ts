@@ -79,7 +79,7 @@ ${[m, ...siblings].map(f => `    path("api/v1/${f.kebab}/<str:aggregate_id>/<str
 ]
 `
     },
-    { filename: 'config/wsgi.py', content: `import os\n\nfrom django.core.wsgi import get_wsgi_application\n\nos.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")\napplication = get_wsgi_application()\n` },
+    { filename: 'config/wsgi.py', content: `import os\n\nfrom django.core.wsgi import get_wsgi_application\n\nfrom app.runtime.otel import start_telemetry\n\nos.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")\n# OTLP export when OTEL_EXPORTER_OTLP_ENDPOINT is set (one tracer provider per gunicorn worker).\nstart_telemetry()\napplication = get_wsgi_application()\n` },
     { filename: 'app/apps.py', content: `from django.apps import AppConfig\n\n\nclass AppConfig_(AppConfig):\n    name = "app"\n    default_auto_field = "django.db.models.BigAutoField"\n` },
     { filename: 'app/infrastructure/event_bus.py', content: PY_EVENT_BUS },
     ...renderPyKernel(m, 'app', siblings),

@@ -275,6 +275,13 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	// OTLP export when OTEL_EXPORTER_OTLP_ENDPOINT is set (internal/runtime/otel.go).
+	stopTelemetry, err := runtime.StartTelemetry(ctx)
+	if err != nil {
+		log.Printf("telemetry export disabled: %v", err)
+	}
+	defer func() { _ = stopTelemetry(context.Background()) }()
+
 	pool, err := pgxpool.New(ctx, os.Getenv("DATABASE_URL"))
 	if err != nil {
 		log.Fatalf("DATABASE_URL: %v", err)

@@ -171,6 +171,7 @@ public sealed class OutboxRelayWorker(NpgsqlDataSource db, IConfiguration config
 
   const program = `using ${ns}.Api;
 using ${ns}.Api.Workers;
+using ${ns}.Infrastructure.Telemetry;
 using ${ns}.Runtime;
 using Npgsql;
 
@@ -182,6 +183,8 @@ builder.Services.AddSingleton(_ => Connections.FromUrl(builder.Configuration["DA
     ?? throw new InvalidOperationException("DATABASE_URL is not set (postgres://user:password@host:5432/db)")));
 builder.Services.AddSingleton(sp => new CommandService(sp.GetRequiredService<NpgsqlDataSource>()));
 builder.Services.AddHostedService<OutboxRelayWorker>();
+// OTLP export of the runtime's activities when OTEL_EXPORTER_OTLP_ENDPOINT is set.
+builder.Services.AddServiceTelemetry(builder.Configuration, Telemetry.Source.Name, ${cs(m.service || m.kebab)});
 
 var app = builder.Build();
 app.MapGet("/health", () => Results.Ok(new { status = "ok" }));

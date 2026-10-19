@@ -145,6 +145,7 @@ from app.auth import tenant_from_authorization
 from app.domain import DomainValidationError
 from app.runtime.command_service import CommandService
 from app.runtime.broker import broker_configured
+from app.runtime.otel import start_telemetry, stop_telemetry
 from app.worker import start_outbox_relay
 
 STATUS = {"created": 202, "replayed": 200, "in-progress": 409}
@@ -157,12 +158,15 @@ def command_service() -> CommandService:
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
+    # OTLP export when OTEL_EXPORTER_OTLP_ENDPOINT is set (app/runtime/otel.py).
+    start_telemetry()
     stop = None
     if broker_configured() and os.environ.get("DATABASE_URL"):
         stop = start_outbox_relay(os.environ["DATABASE_URL"])
     yield
     if stop:
         stop()
+    stop_telemetry()
 
 
 app = FastAPI(title=${py(m.feature)}, lifespan=lifespan)
@@ -387,6 +391,7 @@ import threading
 
 from django.core.management.base import BaseCommand
 
+from app.runtime.otel import start_telemetry
 from app.worker import start_outbox_relay
 
 
@@ -394,6 +399,7 @@ class Command(BaseCommand):
     help = "Publish the transactional outbox to the event broker until interrupted."
 
     def handle(self, *args, **options):
+        start_telemetry()
         stop = start_outbox_relay(os.environ["DATABASE_URL"])
         done = threading.Event()
         signal.signal(signal.SIGTERM, lambda *_: done.set())

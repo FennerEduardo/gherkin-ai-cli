@@ -54,7 +54,7 @@ export function generateJavaSpringPreset(parsed: ParsedFeature, config?: Gherkin
     // Application layer wired to the kernel (kernel/app/shared.ts): REST, JWT tenant, DataSource, relay worker.
     ...renderSpringAppLayer(m, pkg, tenantClaim(config)),
     ...underBasePackage([
-      { filename: 'infrastructure/telemetry/OpenTelemetryConfig.java', content: generateJavaOpenTelemetryInfrastructure(pkg) }
+      { filename: 'infrastructure/telemetry/OpenTelemetryConfig.java', content: generateJavaOpenTelemetryInfrastructure(pkg, m.service || m.kebab) }
     ])
   ];
 

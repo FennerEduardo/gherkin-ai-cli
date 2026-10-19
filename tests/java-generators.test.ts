@@ -12,9 +12,12 @@ const FEATURE = parseGherkinText(`Feature: Payment Process
 
 describe('Java Spring generators & validator', () => {
   it('generateJavaOpenTelemetryInfrastructure creates OTLP configuration', () => {
-    const code = generateJavaOpenTelemetryInfrastructure('com.example.app');
+    const code = generateJavaOpenTelemetryInfrastructure('com.example.app', 'orders');
     expect(code).toContain('class OpenTelemetryConfig');
-    expect(code).toContain('OtlpGrpcSpanExporter');
+    // OTLP/HTTP only when OTEL_EXPORTER_OTLP_ENDPOINT is set; service.name from OTEL_SERVICE_NAME.
+    expect(code).toContain('OtlpHttpSpanExporter');
+    expect(code).toContain('System.getenv("OTEL_EXPORTER_OTLP_ENDPOINT")');
+    expect(code).toContain('getOrDefault("OTEL_SERVICE_NAME", "orders")');
   });
 
   it('wires the application layer to the runtime kernel instead of placeholder patterns', () => {

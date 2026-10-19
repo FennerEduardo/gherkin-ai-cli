@@ -29,7 +29,7 @@ edition = "2021"
 axum = "0.7"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "time", "sync"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "time", "sync", "signal"] }
 ${RS_RUNTIME_DEPS}
 
 [dev-dependencies]

@@ -16,12 +16,25 @@ export const EX_RUNTIME_DEPS = `,
       {:postgrex, "~> 0.19"},
       {:amqp, "~> 4.0"},
       {:opentelemetry_api, "~> 1.4"},
-      {:opentelemetry, "~> 1.5"}`;
+      {:opentelemetry, "~> 1.5"},
+      {:opentelemetry_exporter, "~> 1.8"}`;
 
-/** Spans are exported only when configured (OTEL_* / config); keep the SDK quiet by default. */
-export const EX_RUNTIME_CONFIG = `
-# OpenTelemetry: no exporter unless configured (e.g. opentelemetry_exporter with OTEL_EXPORTER_OTLP_ENDPOINT).
-config :opentelemetry, traces_exporter: :none
+/** Spans are exported only with OTEL_EXPORTER_OTLP_ENDPOINT; keep the SDK quiet by default. */
+export const EX_RUNTIME_CONFIG = (serviceName: string) => `
+# OpenTelemetry: with OTEL_EXPORTER_OTLP_ENDPOINT set, spans go over OTLP/HTTP to that collector (service.name from
+# OTEL_SERVICE_NAME); without it nothing is exported and nothing connects.
+if config_env() != :test and System.get_env("OTEL_EXPORTER_OTLP_ENDPOINT", "") != "" do
+  config :opentelemetry,
+    span_processor: :batch,
+    traces_exporter: :otlp,
+    resource: [service: [name: System.get_env("OTEL_SERVICE_NAME", ${JSON.stringify(serviceName)})]]
+
+  config :opentelemetry_exporter,
+    otlp_protocol: :http_protobuf,
+    otlp_endpoint: System.get_env("OTEL_EXPORTER_OTLP_ENDPOINT")
+else
+  config :opentelemetry, traces_exporter: :none
+end
 
 # Tests export spans synchronously so the runtime integration test can assert trace propagation.
 if config_env() == :test do

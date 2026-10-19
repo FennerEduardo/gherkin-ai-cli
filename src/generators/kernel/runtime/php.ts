@@ -20,7 +20,8 @@ export const PHP_RUNTIME_REQUIRE = {
   'ext-curl': '*',
   'php-amqplib/php-amqplib': '^3.7',
   'open-telemetry/api': '^1.1',
-  'open-telemetry/sdk': '^1.2'
+  'open-telemetry/sdk': '^1.2',
+  'open-telemetry/exporter-otlp': '^1.4'
 };
 
 /** Installs the PHP extensions the runtime needs in the official php / composer Alpine images. */

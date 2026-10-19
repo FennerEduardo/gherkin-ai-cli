@@ -86,7 +86,7 @@ config :logger, level: if(config_env() == :test, do: :warning, else: :info)
 # The outbox relay runs in the application (DATABASE_URL + AMQP_URL); off in tests, where its publish
 # spans would mix with the runtime tests' trace assertions.
 config :${n.otp}, :outbox_relay, config_env() != :test
-${EX_RUNTIME_CONFIG}`
+${EX_RUNTIME_CONFIG(m.service || m.kebab)}`
     },
     {
       filename: `lib/${n.otp}/application.ex`,

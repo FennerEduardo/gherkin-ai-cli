@@ -12,7 +12,7 @@ export interface PyRuntimeFile {
   content: string;
 }
 
-export const PY_RUNTIME_DEPENDENCIES = ['psycopg[binary]>=3.2', 'pika>=1.3', 'opentelemetry-api>=1.27', 'opentelemetry-sdk>=1.27'];
+export const PY_RUNTIME_DEPENDENCIES = ['psycopg[binary]>=3.2', 'pika>=1.3', 'opentelemetry-api>=1.27', 'opentelemetry-sdk>=1.27', 'opentelemetry-exporter-otlp-proto-http>=1.27'];
 
 /** Azure SDK packages, added only for stack.messaging "servicebus". */
 export const PY_SERVICEBUS_DEPENDENCIES = ['azure-servicebus>=7.15', 'azure-identity>=1.26'];
@@ -1092,6 +1092,39 @@ def test_it7_trace_context_propagation(broker, schema, t):
   return [
     { filename: `${pkg}/runtime/__init__.py`, content: init },
     { filename: `${pkg}/runtime/telemetry.py`, content: telemetry },
+    { filename: `${pkg}/runtime/otel.py`, content: `"""OpenTelemetry export of the running service.
+
+With OTEL_EXPORTER_OTLP_ENDPOINT set, spans go over OTLP/HTTP to that collector (service.name from
+OTEL_SERVICE_NAME); without it nothing is exported and nothing connects."""
+from __future__ import annotations
+
+import os
+
+from opentelemetry import trace
+from opentelemetry.sdk.resources import Resource
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
+
+_provider: TracerProvider | None = None
+
+
+def start_telemetry(service_name: str = ${pyStr(m.service || m.kebab)}) -> bool:
+    global _provider
+    if _provider is not None or not os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT"):
+        return False
+    from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+
+    _provider = TracerProvider(resource=Resource.create({"service.name": os.environ.get("OTEL_SERVICE_NAME") or service_name}))
+    _provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter()))
+    trace.set_tracer_provider(_provider)
+    return True
+
+
+def stop_telemetry() -> None:
+    """Flushes the pending spans (call on shutdown)."""
+    if _provider is not None:
+        _provider.shutdown()
+` },
     { filename: `${pkg}/runtime/schema.py`, content: schema },
     { filename: `${pkg}/runtime/command_service.py`, content: commandService },
     { filename: `${pkg}/runtime/broker.py`, content: broker },

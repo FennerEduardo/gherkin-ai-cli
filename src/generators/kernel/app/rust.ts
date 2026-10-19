@@ -157,6 +157,8 @@ use ${crate}::runtime::{broker_configured, Broker, CommandService, OutboxRelay, 
 
 #[tokio::main]
 async fn main() {
+    // OTLP export when OTEL_EXPORTER_OTLP_ENDPOINT is set (runtime/otel.rs).
+    let telemetry = ${crate}::runtime::start_telemetry();
     let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL (postgres://user:password@host:5432/db)");
     let pool = sqlx::PgPool::connect(&database_url).await.expect("database");
     let commands = CommandService::new(pool.clone(), "public").expect("command service");
@@ -170,7 +172,20 @@ async fn main() {
     let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{port}")).await.expect("bind");
     println!("listening on :{port}");
     let app = ${crate}::api::router(Arc::new(commands), std::env::var("JWT_SECRET").unwrap_or_default());
-    axum::serve(listener, app).await.expect("server");
+    axum::serve(listener, app)
+        .with_graceful_shutdown(async {
+            // Container platforms stop with SIGTERM: finish in-flight requests, then flush the spans below.
+            let mut terminate = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()).expect("SIGTERM handler");
+            tokio::select! {
+                _ = terminate.recv() => {}
+                _ = tokio::signal::ctrl_c() => {}
+            }
+        })
+        .await
+        .expect("server");
+    if let Some(provider) = telemetry {
+        let _ = provider.shutdown();
+    }
 }
 
 /// Publishes the outbox every ${RELAY_INTERVAL_MS} ms through the configured broker (runtime/broker.rs),

@@ -16,6 +16,7 @@ export interface RbRuntimeFile {
 export const RB_RUNTIME_GEMS = `gem "pg", "~> 1.5"
 gem "bunny", "~> 2.23"
 gem "opentelemetry-sdk", "~> 1.5"
+gem "opentelemetry-exporter-otlp", "~> 0.37"
 `;
 
 const rb = (s: string) => JSON.stringify(s); // JSON strings are valid Ruby double-quoted literals here (no #{)

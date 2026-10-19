@@ -20,7 +20,8 @@ lapin = "2"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
 opentelemetry = "0.33"
 opentelemetry_sdk = "0.33"
-sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "postgres"] }
+opentelemetry-otlp = { version = "0.33", default-features = false, features = ["trace", "http-proto", "reqwest-blocking-client", "reqwest-rustls"] }
+sqlx ={ version = "0.8", default-features = false, features = ["runtime-tokio", "postgres"] }
 uuid = { version = "1", features = ["v4"] }`;
 
 /** Dev-dependencies and the feature that enables tests/runtime_integration.rs. */
@@ -44,9 +45,11 @@ mod error;
 mod inbox_consumer;
 mod outbox_relay;
 mod saga;
+mod otel;
 mod schema;
 pub mod telemetry;
 
+pub use otel::start_telemetry;
 pub use command_service::{CommandRequest, CommandResult, CommandService, Snapshot};
 pub use error::RuntimeError;
 pub use inbox_consumer::{InboxConsumer, Meta};
@@ -1394,6 +1397,34 @@ async fn it7_trace_context_propagation() {
     { filename: 'src/runtime/error.rs', content: error },
     { filename: 'src/runtime/schema.rs', content: schema },
     { filename: 'src/runtime/telemetry.rs', content: telemetry },
+    { filename: 'src/runtime/otel.rs', content: `//! OpenTelemetry export of the running service. With OTEL_EXPORTER_OTLP_ENDPOINT set, spans go over OTLP/HTTP to
+//! that collector (service.name from OTEL_SERVICE_NAME); without it nothing is exported and nothing connects.
+use opentelemetry_sdk::propagation::TraceContextPropagator;
+use opentelemetry_sdk::trace::SdkTracerProvider;
+use opentelemetry_sdk::Resource;
+
+/// Installs the global tracer provider; keep the returned provider and call \`shutdown()\` on exit to flush.
+pub fn start_telemetry() -> Option<SdkTracerProvider> {
+    if std::env::var("OTEL_EXPORTER_OTLP_ENDPOINT").map(|v| v.is_empty()).unwrap_or(true) {
+        return None;
+    }
+    let exporter = match opentelemetry_otlp::SpanExporter::builder().with_http().build() {
+        Ok(exporter) => exporter,
+        Err(err) => {
+            eprintln!("telemetry export disabled: {err}");
+            return None;
+        }
+    };
+    let name = std::env::var("OTEL_SERVICE_NAME").unwrap_or_else(|_| ${JSON.stringify(m.service || m.kebab)}.to_string());
+    let provider = SdkTracerProvider::builder()
+        .with_batch_exporter(exporter)
+        .with_resource(Resource::builder().with_service_name(name).build())
+        .build();
+    opentelemetry::global::set_tracer_provider(provider.clone());
+    opentelemetry::global::set_text_map_propagator(TraceContextPropagator::new());
+    Some(provider)
+}
+` },
     { filename: 'src/runtime/command_service.rs', content: commandService },
     { filename: 'src/runtime/broker.rs', content: broker },
     { filename: 'src/runtime/outbox_relay.rs', content: relay },
