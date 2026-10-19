@@ -197,7 +197,16 @@ const riskSchema = z.object({
   /** Risk level from which a change requires human approval. Default: HIGH. */
   requireApprovalAt: z.enum(['LOW', 'MEDIUM', 'HIGH', 'CRITICAL']).optional(),
   /** Globs of business-critical code (payments, billing...): touching them raises business criticality. */
-  criticalPaths: z.array(z.string()).optional()
+  criticalPaths: z.array(z.string()).optional(),
+  /** Weight of each dimension (normalized to sum 1); `ghk risk --calibrate` proposes them from the git history. */
+  weights: z.object({
+    security: z.number().min(0).optional(),
+    businessCriticality: z.number().min(0).optional(),
+    changeRadius: z.number().min(0).optional(),
+    testWeakness: z.number().min(0).optional(),
+    contractDrift: z.number().min(0).optional(),
+    architectureDrift: z.number().min(0).optional()
+  }).optional()
 });
 
 const policySchema = z.object({

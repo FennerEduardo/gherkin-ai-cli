@@ -511,6 +511,36 @@
                   "items": {
                     "type": "string"
                   }
+                },
+                "weights": {
+                  "type": "object",
+                  "properties": {
+                    "security": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "businessCriticality": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "changeRadius": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "testWeakness": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "contractDrift": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "architectureDrift": {
+                      "type": "number",
+                      "minimum": 0
+                    }
+                  },
+                  "additionalProperties": false
                 }
               },
               "additionalProperties": false

@@ -44,6 +44,8 @@ export interface ArtifactEntry {
   /** Feature file that last produced it. */
   feature?: string;
   generatedAt?: string;
+  /** Checksum of a generated version the user declined in `ghk generate --review` (not offered again). */
+  declined?: string;
 }
 
 /**

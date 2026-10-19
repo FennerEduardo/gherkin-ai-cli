@@ -12,7 +12,7 @@ import fs from 'fs';
 import path from 'path';
 import { loadConfig } from '../config';
 import { parseGherkinText } from '../gherkin-parser';
-import { buildIR } from '../ir-builder';
+import { buildIRFromFile } from '../ir-builder';
 import { pluginRegistry } from '../plugin-system';
 import { registerCorePlugins } from '../../plugins/core-generators-plugin';
 import { readInventoryFile, writeInventoryFile, mergeArtifacts } from '../inventory';
@@ -51,7 +51,7 @@ export function refreshKernel(projectDir: string, opts: { dryRun?: boolean } = {
     const featureOf = new Map(inventory.artifacts.filter(a => a.feature).map(a => [a.filePath.replace(/\\/g, '/'), a.feature as string]));
     const kernel = new Map<string, { filePath: string; content: string; type: string; feature: string }>();
     for (const feature of features) {
-      const ir = buildIR(parseGherkinText(fs.readFileSync(path.join(projectDir, feature), 'utf8')), feature, { domainProfile: config.domainProfile, industry: config.industry?.id });
+      const ir = buildIRFromFile(path.join(projectDir, feature), feature, { domainProfile: config.domainProfile, industry: config.industry?.id }, path.join(projectDir, '.ghe', 'cache', 'ir'));
       for (const a of pluginRegistry.runGeneration(ir, config)) {
         if (!isKernelFile(a.filePath)) continue;
         const owner = featureOf.get(a.filePath.replace(/\\/g, '/'));

@@ -77,6 +77,20 @@ describe('semantic repository graph', () => {
   });
 });
 
+describe('aggregate and feature markers (4.3)', () => {
+  it('links generated controllers (ghk:implements <Aggregate>), aggregate classes and ghk:trace feature= files to the feature', () => {
+    write('src/api/payment-capture.controller.ts', '// ghk:implements PaymentCapture\nexport class Controller {}\n');
+    write('src/domain/payment-capture.aggregate.ts', 'export class PaymentCaptureAggregate {}\n');
+    write('infra/notes.ts', '// ghk:trace feature=features/payment-capture.feature\nexport const x = 1;\n');
+    const graph = buildRepositoryGraph(dir);
+    const into = (to: string) => graph.edges.filter(e => e.to === to && e.kind === 'implements').map(e => e.from);
+    expect(into('feature:features/payment-capture.feature')).toEqual(expect.arrayContaining([
+      'file:src/api/payment-capture.controller.ts', 'file:src/domain/payment-capture.aggregate.ts', 'file:infra/notes.ts'
+    ]));
+    for (const f of ['src/api/payment-capture.controller.ts', 'src/domain/payment-capture.aggregate.ts', 'infra/notes.ts']) fs.rmSync(path.join(dir, f));
+  });
+});
+
 describe('explicit trace annotations', () => {
   let tmp: string;
   beforeAll(() => {

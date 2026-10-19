@@ -10,6 +10,7 @@ import chalk from 'chalk';
 import { DEFAULT_CONTAINER_LIMITS, executeSandbox, SandboxExecutionOptions } from '../core/execution-sandbox';
 import { resolveToolchain } from '../generators/toolchains';
 import { parseExecutionFailure } from '../core/error-parser';
+import { planDeterministicRepair } from '../core/deterministic-repair';
 import { RealAgentProvider, LLMConfig } from '../core/agent-adapter';
 import { loadConfig } from '../core/config';
 import { MetricsEngine } from '../core/metrics-engine';
@@ -138,6 +139,7 @@ services:
       await new Promise(resolve => setTimeout(resolve, 3000)); // portable (no 'sleep' binary on Windows)
     }
 
+    const triedRepairs = new Set<string>();
     while (iteration <= maxRetries && !success) {
       console.log(chalk.bold.blue(`[Iteration ${iteration}/${maxRetries}] Running Test Harness...`));
       
@@ -223,10 +225,37 @@ services:
       return;
     }
 
+    // Deterministic repair first (4.5): mechanical failures are fixed (or explained) without a model call.
+    const repair = planDeterministicRepair(`${result.stdout}\n${result.stderr}`, { projectDir: process.cwd(), config }, triedRepairs);
+    if (repair) {
+      triedRepairs.add(repair.ruleId);
+      execEvents.push({ type: 'deterministic_repair', iteration, rule: repair.ruleId });
+      console.log(chalk.cyan(`\n🔧 Deterministic repair (${repair.ruleId}): ${repair.explanation}`));
+      if (repair.stop) {
+        metricsEngine.recordHumanIntervention();
+        metricsEngine.recordTestRun(false);
+        metricsEngine.saveExecutionLog(execEvents, execErrors);
+        process.exitCode = result.exitCode;
+        return;
+      }
+      const decision = firewall.evaluate({ kind: 'execute', target: repair.command!, agent: 'verify' });
+      if (decision.verdict === 'ALLOW') {
+        // Restoring dependencies needs the package registries: network on, the rest of the sandbox unchanged.
+        const fixed = executeSandbox({ ...sandboxOpts, command: repair.command, limits: { ...sandboxOpts.limits, network: sandboxOpts.limits?.network === 'none' || !sandboxOpts.limits?.network ? 'bridge' : sandboxOpts.limits.network } });
+        console.log(fixed.success ? chalk.green(`   ✔ ${repair.command}`) : chalk.yellow(`   ✖ ${repair.command} failed (exit ${fixed.exitCode}); falling back to the agent.`));
+        if (fixed.success) {
+          iteration++;
+          continue;
+        }
+      } else {
+        console.log(chalk.yellow(`   Not run: ${decision.verdict} by the agent firewall (${decision.rule}). Run it yourself: ${repair.command}`));
+      }
+    }
+
     console.log(chalk.cyan(`\n🤖 Invoking Agent Repair Loop (Attempt ${iteration})...`));
     const { resolveLLMConfig } = require('../core/agent-adapter');
-    const config: LLMConfig = resolveLLMConfig();
-    const agent = new RealAgentProvider(config);
+    const llmConfig: LLMConfig = resolveLLMConfig();
+    const agent = new RealAgentProvider(llmConfig);
     const repairResult = await agent.executeTask({
       id: `fix-${iteration}`,
       type: 'auto_fix',

@@ -13,6 +13,7 @@ import { loadConstitution } from '../core/constitution';
 import { forEachProjectFeature, formatFeatureTable, projectFeatureFiles } from '../core/workspace-projects';
 import { loadResolvedConfig } from '../core/config';
 import { allIndustryLintRules, industryForConfig, industryLintOptions } from '../core/profiles/industries';
+import { explainIr, renderIrExplanation } from '../core/ir-explain';
 
 /** Industry lint rules of the project in `dir` (none when it declares no industry or its config is unreadable). */
 function projectIndustry(dir: string): { label?: string; options: ReturnType<typeof industryLintOptions> } {
@@ -32,6 +33,8 @@ export interface LintCommandOptions {
   json?: boolean;
   /** Every feature of every project under the working directory. */
   all?: boolean;
+  /** Show the names the generator will use and where each one comes from (tags, steps, defaults). */
+  explainIr?: boolean;
 }
 
 export async function handleLintCommand(options: LintCommandOptions = {}): Promise<void> {
@@ -134,7 +137,7 @@ export async function handleLintCommand(options: LintCommandOptions = {}): Promi
     if (!result.passed) allPassed = false;
 
     if (options.json) {
-      allResults.push(result);
+      allResults.push(options.explainIr ? { ...result, ir: explainIr(parsed, file) } : result);
       continue;
     }
 
@@ -171,6 +174,7 @@ export async function handleLintCommand(options: LintCommandOptions = {}): Promi
     } else {
       console.log(chalk.green('    No issues found.'));
     }
+    if (options.explainIr) console.log(`\n${renderIrExplanation(explainIr(parsed, path.basename(file)))}`);
     console.log('');
   }
 

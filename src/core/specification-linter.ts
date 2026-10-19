@@ -9,7 +9,7 @@
 import { ParsedFeature, ScenarioModel, StepModel } from './gherkin-parser';
 import { Constitution, loadConstitution } from './constitution';
 import { withoutQuotedText } from '../utils/quoted-text';
-import { featurePascalName } from '../utils/naming';
+import { declaredTagValues, featurePascalName, toSnake } from '../utils/naming';
 import { buildIR } from './ir-builder';
 
 // ---------------------------------------------------------------------------
@@ -559,10 +559,34 @@ const LINT_RULES: LintRule[] = [
           ruleId: 'GHK015',
           severity: 'warning',
           message: `Command "${cmd.name}" ${reason}.`,
-          suggestion: 'Name the command explicitly in the When step, e.g. When the student enrolls ("EnrollStudentCommand").',
+          suggestion: 'Declare the command with a tag, e.g. @command:EnrollStudent, or name it in the When step ("EnrollStudentCommand").',
         });
       }
       return diags;
+    },
+  },
+
+  // GHK016: Commands the generator can only name generically (non-English dialect or no recognizable verb)
+  {
+    id: 'GHK016',
+    name: 'Commands are not declared',
+    severity: 'info',
+    check: (parsed) => {
+      if (declaredTagValues(parsed, 'command').length) return [];
+      const named = parsed.scenarios.some(sc => sc.steps.some(st => /["'`][A-Z][A-Za-z0-9]*Command(?:Handler)?["'`]/.test(st.text)));
+      if (named) return [];
+      const english = !parsed.language || parsed.language === 'en';
+      const recognized = buildIR(parsed, 'lint.feature').commands.some(c => c.verb !== 'unknown');
+      if (english && recognized) return [];
+      const aggregate = featurePascalName(parsed);
+      return [{
+        ruleId: 'GHK016',
+        severity: 'info',
+        message: english
+          ? `No command verb is recognized: the generated API exposes the generic command "process_${toSnake(aggregate)}".`
+          : `Commands are not inferred from "${parsed.language}" steps: the generated API exposes the generic command "process_${toSnake(aggregate)}".`,
+        suggestion: 'Declare the commands (and their events) with tags, e.g. @command:ExecutePayment @event:PaymentExecuted.',
+      }];
     },
   },
 ];

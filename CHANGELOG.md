@@ -36,6 +36,36 @@ All notable changes to this project will be documented in this file. See [commit
   - **Validation.** `ghk validate` checks the Dockerfile (non-root user, no secrets), `.env.example`, and hardcoded secrets in `deploy/`.
   - **Firewall.** Changes to `deploy/**`, `*.tfvars`, `*.tfbackend` and Dockerfiles in subdirectories require human approval.
   - **`.env.example`.** It lists the framework secrets (`APP_KEY`, `SECRET_KEY_BASE`, `DJANGO_SECRET_KEY`).
+- **Explicit model tags and `ghk lint --explain-ir` (4.2).**
+  - **Tags.** `@command:Name` and `@event:Name`, on the feature or on a scenario, name the commands and events in the semantic model (`inferenceSource: user`) and in the generated code, in any Gherkin dialect. Before, non-English features always got one generic `process_<aggregate>` command.
+  - **GHK016 (info).** It reports the features whose commands can only be named generically.
+  - **`--explain-ir`.** It prints the aggregate, route, commands and events with the source of each name, and the tags that make them explicit (also in `--json`).
+- **`ghk report`: gherkin-ai results on pull and merge requests (4.7).** It runs lint, converge and risk and publishes the results with no token or extra permission.
+  - **GitHub.** Annotations on the `.feature` lines of the pull request, and a summary of scores and delivery risk in the job summary.
+  - **GitLab.** A Code Quality report for the merge request widget.
+  - **Gate.** It exits 4 below the lint threshold or at `--fail-on`.
+  - **Generated pipelines.** The GitHub Actions and GitLab CI pipelines use it.
+- **Deterministic repair in `ghk verify --auto-fix` (4.5).** Before calling the LLM, rules decide on failures with a mechanical cause. Each rule fires at most once per run.
+  - **Fix.** For a missing dependency or an out-of-sync lockfile, it runs the toolchain's dependency command (`npm install`, `go mod tidy`, ...) when the firewall allows it, then runs the tests again.
+  - **Stop.** When the integration tests have no database or broker, or newer `.ghk-new` versions are waiting next to edited files, it explains what to do (`--services`, `ghk generate --review`) instead of spending model calls.
+- **Calibrated risk weights (4.4).**
+  - **Configuration.** `policy.risk.weights` sets the weight of each of the six risk dimensions, normalized to sum 1.
+  - **`ghk risk --calibrate [--commits N] [--write]`.** It proposes the weights from the git history:
+    - a commit is risky when a fix, hotfix or revert touches its files within the next 10 commits;
+    - each dimension's weight grows with how much higher it scores on risky commits;
+    - the result is blended with the defaults in proportion to the evidence;
+    - the report shows the mean score of each dimension on risky and on other commits.
+- **`ghk generate --review` (4.10).** It resolves the `<file>.ghk-new` versions next to edited files.
+  - **Per file.** It shows the diff, then takes the generated version or keeps yours.
+  - **Keep yours.** The version you keep is recorded in `.ghe/inventory.json`. `generate` does not offer the same content again, only a different one.
+  - **Non-interactive.** `--accept-new` and `--keep-mine` resolve every file at once. Otherwise the command exits 4 while versions are pending. `--json` lists them.
+- **Traceability markers in `ghk graph` (4.3).**
+  - **Aggregate.** The aggregate name and its class (`<Aggregate>Aggregate`) are symbols of their feature. The `ghk:implements <Aggregate>` markers of the generated controllers, and the aggregate classes, now link to the feature. Before, they matched nothing.
+  - **New marker.** `ghk:trace feature=<path>` links any file to a feature explicitly.
+- **IR cache (4.8).** The semantic model is a pure function of the feature, its file name, the options and the CLI version.
+  - **In memory.** A `generate` run builds it once per feature, instead of once per preset, lint rule and domain model.
+  - **On disk.** `graph` and the kernel refresh of `ghk upgrade` cache it across runs in `.ghe/cache/ir`.
+  - **Not cached.** Builds that depend on the constitution, an existing code base or an LLM.
 - **`GHK_DECLARE_TOPOLOGY=false`.** It skips creating the broker topology at start-up in every backend, for least-privilege identities when infrastructure as code owns the topology.
 - **`amqps://` for PHP.** The Laravel runtime connects to RabbitMQ over TLS (Amazon MQ, CloudAMQP) through php-amqplib's connection factory. The other runtimes already took TLS from the URL.
 - **Broker adapters for the Go, Rust, Ruby, Elixir and PHP runtime kernels.**

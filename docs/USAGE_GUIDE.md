@@ -23,6 +23,21 @@ ghk validate -f features/orders.feature
 
 Tag a feature with `@aggregate:Order` to choose the type name, and with `@critical` to raise its business criticality in risk scoring.
 
+Commands and events are inferred from the steps. That works best in English; in other dialects the generated API falls back to one generic command (`process_<aggregate>`), and lint rule GHK016 reports it. Declare them explicitly with tags. Explicit tags win in every dialect, both in the semantic model and in the generated code.
+
+```gherkin
+@aggregate:Order @command:PlaceOrder @event:OrderPlaced
+Feature: Order placement
+
+  @command:CancelOrder
+  Scenario: Cancel a pending order
+```
+
+- **Feature tags.** `@command` and `@event` declare the service's commands and events; the n-th event belongs to the n-th command.
+- **Scenario tags.** A `@command` tag on a scenario links that scenario to the command.
+
+`ghk lint --explain-ir` shows the aggregate, the HTTP route, the commands and the events the generator will use, where each name comes from (tag, step identifier, English verb heuristic or default), and the tags that would make it explicit.
+
 ## 3. Generate and implement
 
 ```bash

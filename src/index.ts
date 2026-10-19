@@ -269,7 +269,15 @@ program
   .option('-c, --config <file>', 'Path to custom gherkin-ai.config.json file')
   .option('--force', 'Overwrite files even if they were edited since generation or are protected')
   .option('--dry-run', 'Show what would be created, updated or kept, without writing')
+  .option('--review', 'Review the <file>.ghk-new versions next to edited files: take the generated version or keep yours')
+  .option('--accept-new', 'With --review: take every generated version')
+  .option('--keep-mine', 'With --review: keep every edited file (those generated versions are not offered again)')
+  .option('--json', 'With --review: output the pending versions as JSON')
   .action(async (options) => {
+    if (options.review) {
+      await (await import('./commands/review')).handleGenerateReview({ ...options, json: options.json || program.opts().json });
+      return;
+    }
     await (await import('./commands/generate')).handleGenerateCommand(options);
   });
 
@@ -336,14 +344,28 @@ program
 
 program
   .command('lint')
-  .description('Lint Gherkin specifications against 15 quality rules plus the rules of the project industry (industry.id)')
+  .description('Lint Gherkin specifications against 16 quality rules plus the rules of the project industry (industry.id)')
   .option('-f, --feature <file>', 'Specific feature file to lint')
   .option('--threshold <score>', 'Minimum passing score 0-100 (default: 70); below it exits with code 4')
   .option('--rules', 'List available lint rules')
   .option('--all', 'Lint every feature of every gherkin-ai project under the current directory')
+  .option('--explain-ir', 'Show the aggregate, route, commands and events the generator will use, and where each name comes from')
   .option('--json', 'Output report as JSON')
   .action(async (options) => {
     await (await import('./commands/lint')).handleLintCommand(options);
+  });
+
+program
+  .command('report')
+  .description('Publish lint, convergence and risk on the pull / merge request: GitHub annotations + step summary, or a GitLab Code Quality report')
+  .option('--provider <name>', 'github | gitlab (default: gitlab inside GitLab CI, else github)')
+  .option('--base <ref>', 'Git ref the delivery risk is assessed against (e.g. origin/main)')
+  .option('--threshold <score>', 'Minimum lint score (default: 70); below it exits with code 4')
+  .option('--fail-on <level>', 'Exit with code 4 when the delivery risk reaches this level')
+  .option('--out <file>', 'gitlab: Code Quality report path (default: gl-code-quality-report.json)')
+  .option('--json', 'Output a summary as JSON')
+  .action(async (options) => {
+    await (await import('./commands/report')).handleReportCommand({ ...options, json: options.json || program.opts().json });
   });
 
 program
@@ -473,6 +495,9 @@ program
   .option('--base <ref>', 'Assess the diff against this git ref (e.g. origin/main); default: the working tree')
   .option('--files <list>', 'Comma-separated change set instead of git')
   .option('--fail-on <level>', 'Exit with code 4 when the risk is at least this level (for CI)')
+  .option('--calibrate', 'Propose policy.risk.weights from the git history (commits later touched by a fix count as risky)')
+  .option('--commits <n>', 'With --calibrate: commits of history to use (default: 300)')
+  .option('--write', 'With --calibrate: save the weights to gherkin-ai.config.json')
   .option('--json', 'Output as JSON')
   .action(async (options) => {
     const { handleRiskCommand } = await import('./commands/risk');

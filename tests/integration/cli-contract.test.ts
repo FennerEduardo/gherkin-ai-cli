@@ -85,7 +85,10 @@ describe.skipIf(!fs.existsSync(DIST))('CLI contract (built binary)', () => {
     ['quality', ['quality', '--json']],
     ['graph', ['graph', '--json']],
     ['speckit export', ['speckit', 'export', '--out', 'speckit-out', '--json']],
-    ['bench init', ['bench', 'init', 'bench-task', '--json']]
+    ['bench init', ['bench', 'init', 'bench-task', '--json']],
+    ['report', ['report', '--provider', 'gitlab', '--out', 'cq.json', '--json']],
+    ['generate --review', ['generate', '--review', '--json']],
+    ['lint --explain-ir', ['lint', '--explain-ir', '--json']]
   ])('%s prints exactly one JSON document on stdout', (_label, args) => {
     const res = run(args);
     expect(() => JSON.parse(res.stdout), `stdout was:\n${res.stdout}\nstderr:\n${res.stderr}`).not.toThrow();

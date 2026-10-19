@@ -32,8 +32,13 @@ import {
 import { loadConstitution, Constitution } from './constitution';
 import { resolveDomainProfile } from './profiles/profile-registry';
 import { resolveIndustry } from './profiles/industries';
-import { featurePascalName, toKebab } from '../utils/naming';
+import { declaredTagValues, featurePascalName, toKebab, toSnake } from '../utils/naming';
 import { withoutQuotedText } from '../utils/quoted-text';
+import crypto from 'crypto';
+import fs from 'fs';
+import path from 'path';
+import { CLI_VERSION } from '../version';
+import { parseGherkinText } from './gherkin-parser';
 
 // ---------------------------------------------------------------------------
 // Deterministic ID Generator
@@ -117,10 +122,83 @@ const ERROR_PATTERNS = [
 // IR Builder
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// IR cache (4.8): the IR is a pure function of the feature, the file name, the options and the CLI version, so a
+// generate run that rebuilds it for every preset, the linter and the domain model reuses one build. Builds that
+// read state outside the key (constitution, existing code base, LLM) are never cached. Callers get a copy.
+// ---------------------------------------------------------------------------
+
+const IR_MEMORY_LIMIT = 64;
+const irMemory = new Map<string, SpecificationIR>();
+
+function cacheable(options: IRBuildOptions): boolean {
+  return !options.constitutionPath && !options.existingCodebase && !options.llmEnrichment && (options.mode ?? 'deterministic') === 'deterministic';
+}
+
+/** Cache key of a build: CLI version, file name, options and the parsed feature (or its text). */
+export function irCacheKey(input: ParsedFeature | string, sourceFile: string, options: IRBuildOptions): string {
+  return crypto.createHash('sha256')
+    .update(`${CLI_VERSION}\0${sourceFile}\0${JSON.stringify(options)}\0${typeof input === 'string' ? input : JSON.stringify(input)}`)
+    .digest('hex');
+}
+
 export function buildIR(
   parsed: ParsedFeature,
   sourceFile: string = 'unknown.feature',
   options: IRBuildOptions = { mode: 'deterministic' }
+): SpecificationIR {
+  if (!cacheable(options)) return buildIRUncached(parsed, sourceFile, options);
+  const key = irCacheKey(parsed, sourceFile, options);
+  let ir = irMemory.get(key);
+  if (ir) {
+    irMemory.delete(key); // least recently used goes first
+  } else {
+    ir = buildIRUncached(parsed, sourceFile, options);
+    if (irMemory.size >= IR_MEMORY_LIMIT) irMemory.delete(irMemory.keys().next().value as string);
+  }
+  irMemory.set(key, ir);
+  // structuredClone drops the non-enumerable source feature: attach the caller's (same content as the key).
+  return withSourceFeature(structuredClone(ir), () => parsed);
+}
+
+/**
+ * IR of a .feature file, cached on disk across runs under <cacheDir>/<sha256>.json (default .ghe/cache/ir), keyed by
+ * the file's text, its name, the options and the CLI version. A corrupt or unwritable cache is ignored.
+ */
+export function buildIRFromFile(file: string, sourceFile: string, options: IRBuildOptions = { mode: 'deterministic' },
+  cacheDir = path.join(process.cwd(), '.ghe', 'cache', 'ir')): SpecificationIR {
+  const text = fs.readFileSync(file, 'utf8');
+  if (!cacheable(options)) return buildIRUncached(parseGherkinText(text), sourceFile, options);
+  const cached = path.join(cacheDir, `${irCacheKey(text, sourceFile, options)}.json`);
+  try {
+    if (fs.existsSync(cached)) {
+      let parsed: ParsedFeature | undefined;
+      return withSourceFeature(JSON.parse(fs.readFileSync(cached, 'utf8')) as SpecificationIR, () => (parsed ??= parseGherkinText(text)));
+    }
+  } catch {
+    // Corrupt entry: rebuild below.
+  }
+  const ir = buildIR(parseGherkinText(text), sourceFile, options);
+  try {
+    fs.mkdirSync(cacheDir, { recursive: true });
+    const tmp = `${cached}.${process.pid}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify(ir));
+    fs.renameSync(tmp, cached);
+  } catch {
+    // Read-only workspace: the cache is an optimization only.
+  }
+  return ir;
+}
+
+/** Drops the in-memory cache (tests). */
+export function clearIRCache(): void {
+  irMemory.clear();
+}
+
+function buildIRUncached(
+  parsed: ParsedFeature,
+  sourceFile: string,
+  options: IRBuildOptions
 ): SpecificationIR {
   resetIdCounter();
 
@@ -317,10 +395,13 @@ export function buildIR(
       contradictions,
     },
   };
-  // Generators need the verbatim steps (the IR classifies them and may drop "And" steps).
-  // Non-enumerable so it never appears in serialized IR.
-  Object.defineProperty(ir, 'sourceFeature', { value: parsed, enumerable: false });
-  return ir;
+  return withSourceFeature(ir, () => parsed);
+}
+
+// Generators need the verbatim steps (the IR classifies them and may drop "And" steps).
+// Non-enumerable so it never appears in serialized IR.
+function withSourceFeature(ir: SpecificationIR, source: () => ParsedFeature): SpecificationIR {
+  return Object.defineProperty(ir, 'sourceFeature', { get: source, enumerable: false });
 }
 
 /** The parsed feature an IR was built from, when available. */
@@ -431,6 +512,30 @@ function extractCommands(
 ): Command[] {
   const commands: Command[] = [];
   const defaultActorId = actors[0]?.id || 'ACT-0001';
+
+  // Explicit @command:Name tags replace the inference (any dialect): verb = first word of the name.
+  const declared = declaredTagValues(parsed, 'command');
+  if (declared.length) {
+    return declared.map(name => {
+      const words = toSnake(name).split('_').filter(Boolean);
+      const verb = words[0] ?? 'process';
+      const subject = words.slice(1).join('_') || toSnake(featurePascalName(parsed));
+      return {
+        id: generateId('CMD'),
+        name: `${verb}_${subject}`,
+        verb,
+        subject,
+        inputFields: [],
+        preconditions: [],
+        postconditions: [],
+        triggeredBy: defaultActorId,
+        emittedEvents: [],
+        source: { file: sourceFile, line: 0 },
+        confidence: 1,
+        inferenceSource: 'user',
+      };
+    });
+  }
 
   for (const sc of parsed.scenarios) {
     for (const step of sc.steps) {
@@ -546,6 +651,21 @@ function extractEvents(
   commands: Command[]
 ): DomainEvent[] {
   const events: DomainEvent[] = [];
+
+  // Explicit @event:Name tags replace the inference; the n-th event is emitted by the n-th command.
+  const declared = declaredTagValues(parsed, 'event');
+  if (declared.length) {
+    return declared.map((name, i) => ({
+      id: generateId('EVT'),
+      name,
+      eventType: name,
+      payload: [],
+      triggeredBy: commands[i] ? [commands[i].id] : commands[0] ? [commands[0].id] : [],
+      source: { file: sourceFile, line: 0 },
+      confidence: 1,
+      inferenceSource: 'user',
+    }));
+  }
 
   for (const sc of parsed.scenarios) {
     for (const step of sc.steps) {
@@ -921,8 +1041,14 @@ function enrichScenarios(
       .filter(a => sc.steps.some(s => s.text.toLowerCase().includes(a.name)))
       .map(a => a.id);
 
+    // Declared commands (@command tags): the scenario's own tag, or every scenario with an action when they are
+    // declared on the feature. Inferred commands: the subject appears in a When step.
+    const scenarioDeclared = new Set(declaredTagValues({ tags: sc.tags }, 'command').map(n => toSnake(n)));
+    const anyScenarioDeclares = scenarios.some(s => declaredTagValues({ tags: s.tags }, 'command').length > 0);
     const cmdIds = commands
-      .filter(c => sc.steps.some(s => s.keyword === 'When' && s.text.toLowerCase().includes(c.subject)))
+      .filter(c => c.inferenceSource === 'user'
+        ? scenarioDeclared.has(`${c.verb}_${c.subject}`) || (!anyScenarioDeclares && sc.steps.some(s => s.keyword === 'When'))
+        : sc.steps.some(s => s.keyword === 'When' && s.text.toLowerCase().includes(c.subject)))
       .map(c => c.id);
 
     const qryIds = queries

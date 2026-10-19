@@ -322,15 +322,22 @@ Objective: Write detailed Gherkin feature scenarios for ${title}.
 
   // Traceability inventory: checksums of what this run generated, merged with earlier features' entries.
   const generatedAt = new Date().toISOString();
+  const declinedBefore = new Map(previous.artifacts.filter(a => a.declined).map(a => [a.filePath.replace(/\\/g, '/'), a.declined]));
   writeInventoryFile(inventoryPath, {
     ...previous,
-    artifacts: mergeArtifacts(previous.artifacts, filteredArtifacts.map(a => ({
-      filePath: a.filePath,
-      type: a.type,
-      checksum: sha256(a.content),
-      feature: options.feature ? path.relative(process.cwd(), path.resolve(process.cwd(), options.feature)).replace(/\\/g, '/') : undefined,
-      generatedAt
-    })))
+    artifacts: mergeArtifacts(previous.artifacts, filteredArtifacts.map(a => {
+      const checksum = sha256(a.content);
+      // A version declined in `ghk generate --review` stays declined while the generator produces the same content.
+      const declined = declinedBefore.get(a.filePath.replace(/\\/g, '/')) === checksum ? checksum : undefined;
+      return {
+        filePath: a.filePath,
+        type: a.type,
+        checksum,
+        feature: options.feature ? path.relative(process.cwd(), path.resolve(process.cwd(), options.feature)).replace(/\\/g, '/') : undefined,
+        generatedAt,
+        ...(declined ? { declined } : {})
+      };
+    }))
   });
   logger.success(`[Audit] Traceability inventory saved to .ghe/inventory.json`);
 

@@ -255,6 +255,7 @@ export function assessDeliveryRisk(cwd: string = process.cwd(), options: RiskOpt
   if (dependencies.length > 0) architecture.evidence.push(`Dependency manifests changed: ${dependencies.join(', ')}`);
 
   const dimensions = [security, business, radius, testWeakness, contractDrift, architecture];
+  applyWeights(dimensions, options.config?.policy?.risk?.weights);
   const overallRiskScore = clamp(dimensions.reduce((sum, d) => sum + d.score * d.weight, 0));
   let riskLevel = levelFor(overallRiskScore);
   // Hard floors: secrets are never below HIGH; security-sensitive + business-critical + untested is CRITICAL.
@@ -276,6 +277,20 @@ export function assessDeliveryRisk(cwd: string = process.cwd(), options: RiskOpt
     requiresHumanApproval: atLeast(riskLevel, approvalThreshold),
     factors: dimensions.filter(d => d.score >= 50).flatMap(d => d.evidence)
   };
+}
+
+
+/** Default weights (sum 1). policy.risk.weights overrides any of them; the result is normalized. */
+export const DEFAULT_RISK_WEIGHTS: Record<RiskDimensionId, number> = {
+  security: 0.25, businessCriticality: 0.15, changeRadius: 0.25, testWeakness: 0.2, contractDrift: 0.1, architectureDrift: 0.05
+};
+
+/** Sets each dimension's weight from the policy (defaults for the missing ones), normalized to sum 1. */
+export function applyWeights(dimensions: RiskDimension[], configured?: Partial<Record<RiskDimensionId, number>>): void {
+  if (!configured) return;
+  for (const d of dimensions) d.weight = configured[d.id as RiskDimensionId] ?? DEFAULT_RISK_WEIGHTS[d.id as RiskDimensionId] ?? d.weight;
+  const total = dimensions.reduce((s, d) => s + d.weight, 0);
+  if (total > 0) for (const d of dimensions) d.weight = Math.round((d.weight / total) * 1000) / 1000;
 }
 
 /** Backward-compatible entry point (whole project / working tree). */

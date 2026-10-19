@@ -50,7 +50,7 @@ export interface DomainModel {
   service?: string;
 }
 
-import { featurePascalName, safeIdent, toCamel, toFlat, toKebab, toPascal, toSnake } from '../../utils/naming';
+import { declaredTagValues, featurePascalName, safeIdent, toCamel, toFlat, toKebab, toPascal, toSnake } from '../../utils/naming';
 
 export { toPascal, toCamel, toSnake, toKebab, toFlat };
 
@@ -75,6 +75,8 @@ export function buildDomainModel(input: ParsedFeature, opts: { service?: string 
   const ir = buildIR(parsed, 'feature.feature');
   const pascal = featurePascalName(parsed);
 
+  // Explicit @command / @event tags win over every inference (and work in any Gherkin dialect).
+  const declaredCommands = declaredTagValues(parsed, 'command');
   const events = [...new Set((ir.events || []).map(e => toPascal(String(e.name).replace(/Event$/, ''))))].filter(Boolean);
   const defaultEvent = `${pascal}Processed`;
 
@@ -91,7 +93,7 @@ export function buildDomainModel(input: ParsedFeature, opts: { service?: string 
   // 2) Verb heuristics only understand English; for other dialects they produce noise like "SendElComando".
   const english = !parsed.language || parsed.language === 'en';
   const inferred = english ? (ir.commands || []).filter(c => c.verb !== 'unknown').map(c => String(c.name)) : [];
-  const commandNames = [...new Set([...explicit, ...inferred].map(toPascal))].filter(Boolean);
+  const commandNames = [...new Set((declaredCommands.length ? declaredCommands : [...explicit, ...inferred]).map(toPascal))].filter(Boolean);
   if (commandNames.length === 0) commandNames.push(`Process${pascal}`);
   const commands: KernelCommand[] = commandNames.map((name, i) => {
     const n = safeIdent(name, 'Do');

@@ -32,6 +32,16 @@ export function safeIdent(raw: string, fallback: string): string {
 const AGGREGATE_TAG = /^@?aggregate[:=(]([^)\s]+)\)?$/i;
 
 /** The `@aggregate` tag value of a feature, if any. */
+/**
+ * Values of explicit model tags, in order and without duplicates: `@command:PayInvoice`, `@event:InvoicePaid`
+ * (feature tags first, then scenario tags). They override what the IR would infer from the step text.
+ */
+export function declaredTagValues(feature: { tags?: readonly string[]; scenarios?: readonly { tags?: readonly string[] }[] }, key: 'command' | 'event'): string[] {
+  const pattern = new RegExp(`^@?${key}[:=(]([A-Za-z][A-Za-z0-9_]*)\\)?$`, 'i');
+  const all = [...(feature.tags ?? []), ...(feature.scenarios ?? []).flatMap(sc => sc.tags ?? [])];
+  return [...new Set(all.map(t => pattern.exec(t.trim())?.[1]).filter((v): v is string => Boolean(v)))];
+}
+
 export function aggregateTagName(tags: readonly string[] | undefined): string | undefined {
   for (const tag of tags ?? []) {
     const m = AGGREGATE_TAG.exec(tag.trim());

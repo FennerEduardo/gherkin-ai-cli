@@ -15,8 +15,8 @@
 import fs from 'fs';
 import path from 'path';
 import { parseGherkinText } from '../gherkin-parser';
-import { buildIR } from '../ir-builder';
-import { toCamel, toKebab, toPascal, toSnake } from '../../utils/naming';
+import { buildIRFromFile } from '../ir-builder';
+import { featurePascalName, toCamel, toKebab, toPascal, toSnake } from '../../utils/naming';
 import { resolveSpecDir } from '../../utils/spec-dir-resolver';
 
 export type GraphNodeKind = 'feature' | 'scenario' | 'command' | 'event' | 'endpoint' | 'file' | 'test';
@@ -62,6 +62,8 @@ const SOURCE_EXTENSIONS = new Set([
 const MAX_FILE_BYTES = 512 * 1024;
 /** `ghk:implements <Symbol>` in a comment of any language. */
 const IMPLEMENTS_ANNOTATION = /ghk:implements\s+([A-Za-z_][A-Za-z0-9_.:-]*)/g;
+/** `ghk:trace feature=<path of the .feature from the project root>` in a comment of any language. */
+const TRACE_ANNOTATION = /ghk:trace\s+feature=([^\s*]+\.feature)/g;
 const TEST_PATH = /(^|\/)(tests?|spec|specs|__tests__|integration_test)\/|\.(test|spec)\.[a-z]+$|_test\.(go|exs|py|dart)$|_spec\.rb$|(^|\/)test_[^/]+\.py$|Tests?\.(java|kt|cs)$/i;
 
 export function isTestPath(relPath: string): boolean {
@@ -137,11 +139,16 @@ export function buildRepositoryGraph(projectDir: string, options: GraphOptions =
     featurePaths.add(rel);
     let ir;
     try {
-      ir = buildIR(parseGherkinText(fs.readFileSync(file, 'utf8')), rel);
+      ir = buildIRFromFile(file, rel, { mode: 'deterministic' }, path.join(projectDir, '.ghe', 'cache', 'ir'));
     } catch {
       continue; // unparsable specs are reported by `ghk lint`
     }
     const featureId = addNode({ id: `feature:${rel}`, kind: 'feature', label: ir.featureName || rel, path: rel });
+    // The aggregate (and its class, <Aggregate>Aggregate in every stack) belongs to the feature: generated
+    // controllers say `ghk:implements <Aggregate>`.
+    const aggregate = featurePascalName(ir);
+    registerSymbol(featureId, aggregate);
+    registerSymbol(featureId, `${aggregate}Aggregate`);
     const commandIds = new Map<string, string>();
     for (const command of ir.commands) {
       const id = addNode({ id: `command:${toSnake(command.name)}`, kind: 'command', label: toPascal(command.name) });
@@ -201,6 +208,11 @@ export function buildRepositoryGraph(projectDir: string, options: GraphOptions =
       // Explicit annotations: `// ghk:implements PlaceOrder` or `# ghk:implements PlaceOrder`.
       for (const match of content.matchAll(IMPLEMENTS_ANNOTATION)) {
         for (const variant of symbolVariants(match[1])) for (const id of symbols.get(variant) ?? []) matched.add(id);
+      }
+      // `ghk:trace feature=features/orders.feature`: links the file to the feature whatever the names inside are.
+      for (const match of content.matchAll(TRACE_ANNOTATION)) {
+        const feature = `feature:${match[1].replace(/\\/g, '/').replace(/^\.\//, '')}`;
+        if (nodes.has(feature)) matched.add(feature);
       }
       if (matched.size === 0) continue;
       const test = isTestPath(rel);

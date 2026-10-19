@@ -100,7 +100,7 @@ With `--json`, stdout carries exactly one JSON document and diagnostics go to st
 
 ## Known limitations
 
-- **Semantic model.** It is extracted from Gherkin with deterministic rules. Unusual phrasing can produce generic command names. `ghk lint` reports specifications that are too vague to model, and the `@aggregate:Name` tag sets the type name explicitly.
+- **Semantic model.** It is extracted from Gherkin with deterministic rules. Unusual phrasing can produce generic command names. `ghk lint` reports specifications that are too vague to model. The `@aggregate:Name`, `@command:Name` and `@event:Name` tags set the names explicitly in any Gherkin dialect, and `ghk lint --explain-ir` shows where every generated name comes from.
 - **Generated runtime.** It is a verified starting point, not a framework. The runtime kernel covers one aggregate per feature with PostgreSQL and RabbitMQ. Other databases and brokers generate contracts and configuration only.
 - **Traceability graph.** It links code by symbol names. Code that does not use the domain names from the specification is not linked.
 - **Risk scores.** They are heuristics with documented weights and evidence. Calibrate the approval threshold (`policy.risk`) to your organization.
