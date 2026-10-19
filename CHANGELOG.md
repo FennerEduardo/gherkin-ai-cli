@@ -50,6 +50,11 @@ All notable changes to this project will be documented in this file. See [commit
   - **Opt-in only.** A legacy `domainProfile` such as `payments` does not turn on an industry; `ghk upgrade` suggests `ghk industry apply banking`.
 
 ### Changed
+- **Spring Boot 4.1 (Java and Kotlin).** Spring Boot 3.x lost open-source support on 2026-06-30.
+  - **Versions.** Generated Spring projects use Spring Boot 4.1.1 (Spring Framework 7, Jakarta EE 11, JUnit 6), the `spring-boot-starter-webmvc` starter, Kotlin 2.3.21 and Gradle 8.14.
+  - **Jackson.** The runtime kernel, shared with Quarkus, keeps Jackson 2 (`jackson-databind` and `jackson-datatype-jsr310`, now declared explicitly). Spring itself uses Jackson 3.
+  - **HTTP test.** It reads `local.server.port`, because `@LocalServerPort` moved.
+  - **Existing services.** Code you added on Spring Boot 3 may need the Spring Boot 4 migration steps: starters, test autoconfiguration packages, and Jackson 3.
 - **Promoted to stable.** No stack and no command is in beta any more.
   - **Stacks.** Java + Quarkus and every Pub/Sub and Service Bus broker adapter. Each is built, tested and run against the official emulators by its golden build on every CI run.
   - **Commands.** `risk`, `quality`, `graph`, `speckit`, `bench` and `web`. Their exit codes and `--json` output are covered by the CLI contract tests and kept across 3.x.

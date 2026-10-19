@@ -206,7 +206,7 @@ const STACKS = {
   },
   kotlin: {
     stack: { ...base, language: 'kotlin', framework: 'spring-boot', orm: 'hibernate', validation: 'jakarta-validation', testing: 'junit' },
-    image: 'gradle:8.10-jdk17',
+    image: 'gradle:8.14-jdk17',
     caches: [['gradle', '/cache/gradle']],
     env: { GRADLE_USER_HOME: '/cache/gradle' },
     build: ['gradle -q --no-daemon assemble'],

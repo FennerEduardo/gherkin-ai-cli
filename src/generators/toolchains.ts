@@ -61,7 +61,7 @@ export const TOOLCHAINS: Record<string, Toolchain> = {
     start: 'mvn -B -ntp quarkus:dev -Dquarkus.http.host=0.0.0.0'
   },
   'kotlin/spring': {
-    image: 'gradle:8.10-jdk17',
+    image: 'gradle:8.14-jdk17',
     build: ['gradle -q --no-daemon assemble'],
     test: ['gradle --no-daemon test'],
     integration: ['gradle --no-daemon integrationTest'],

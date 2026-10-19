@@ -48,7 +48,7 @@ export function getStackSpec(stackConfig: Record<string, any>): StackSpec {
     testPackages = testing === 'pytest' ? ['pytest^8.0.0', 'pytest-asyncio'] : ['unittest (standard library)'];
   } else if (lang === 'java') {
     const quarkus = framework === 'quarkus';
-    frameworkVersion = quarkus ? `Java ${JVM_VERSIONS.quarkusJava} (Quarkus ${JVM_VERSIONS.quarkus} LTS)` : 'Java 17/21/25 (Spring Boot 3.2+)';
+    frameworkVersion = quarkus ? `Java ${JVM_VERSIONS.quarkusJava} (Quarkus ${JVM_VERSIONS.quarkus} LTS)` : 'Java 17/21/25 (Spring Boot 4.1)';
     ormPackage = quarkus ? 'JDBC (runtime kernel) on io.quarkus:quarkus-agroal' : 'org.hibernate.orm:hibernate-core:6.4.4.Final';
     validationPackage = 'jakarta.validation:jakarta.validation-api:3.0.2';
     testPackages = testing === 'junit' ? ['org.junit.jupiter:junit-jupiter:5.10.2'] : ['org.testng:testng:7.9.0'];

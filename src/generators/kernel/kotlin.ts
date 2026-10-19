@@ -1,5 +1,5 @@
 /* ==========================================================================
-   gherkin-ai-cli - Kotlin domain kernel (Spring Boot 3, Gradle KTS, JUnit 5, Cucumber-JVM)
+   gherkin-ai-cli - Kotlin domain kernel (Spring Boot 4, Gradle KTS, JUnit, Cucumber-JVM)
    ========================================================================== */
 
 import { DomainModel, cucumberExpression } from './domain-model';
@@ -233,10 +233,13 @@ dependencyManagement {
 }
 
 dependencies {
-    implementation("org.springframework.boot:spring-boot-starter-web")
+    implementation("org.springframework.boot:spring-boot-starter-webmvc")
     implementation("org.springframework.boot:spring-boot-starter-validation")
     implementation("org.springframework.boot:spring-boot-starter-data-jpa")
-    implementation("com.fasterxml.jackson.module:jackson-module-kotlin")
+    implementation("tools.jackson.module:jackson-module-kotlin")
+    // Jackson 2 for the runtime kernel (shared with Quarkus); Spring Boot 4 itself uses Jackson 3.
+    implementation("com.fasterxml.jackson.core:jackson-databind")
+    implementation("com.fasterxml.jackson.datatype:jackson-datatype-jsr310")
     implementation("org.jetbrains.kotlin:kotlin-reflect")
     implementation("io.opentelemetry:opentelemetry-api")
     implementation("io.opentelemetry:opentelemetry-sdk")

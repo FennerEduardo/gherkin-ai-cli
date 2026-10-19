@@ -8,12 +8,12 @@
 
 export const JVM_VERSIONS = {
   /** Spring Boot starter parent / Gradle plugin. */
-  springBoot: '3.3.5',
+  springBoot: '4.1.1',
   /** io.spring.dependency-management Gradle plugin. */
-  springDependencyManagement: '1.1.6',
+  springDependencyManagement: '1.1.7',
   /** Java release compiled against. */
   java: '17',
-  kotlin: '1.9.25',
+  kotlin: '2.3.21',
   cucumber: '7.20.1',
   openTelemetry: '1.67.0',
   /** Quarkus platform BOM (current LTS: supported for 12 months from its release). */

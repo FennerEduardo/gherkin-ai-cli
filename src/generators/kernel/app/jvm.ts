@@ -329,8 +329,8 @@ import java.util.UUID;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.web.server.LocalServerPort;
 
 /** HTTP contract of the application layer against PostgreSQL (needs DATABASE_URL). */
 @Tag("integration")
@@ -341,7 +341,8 @@ class ${m.pascal}HttpIntegrationTest {
     static final String SECRET = "integration-test-secret-with-32-chars!";
     private static final HttpClient HTTP = HttpClient.newHttpClient();
 
-    @LocalServerPort
+    // local.server.port: the same value as @LocalServerPort, whose package moved in Spring Boot 4.
+    @Value("\${local.server.port}")
     int port;
 
     @BeforeAll

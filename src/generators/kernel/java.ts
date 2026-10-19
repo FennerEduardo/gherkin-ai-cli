@@ -1,5 +1,5 @@
 /* ==========================================================================
-   gherkin-ai-cli - Java domain kernel (Spring Boot 3, JUnit 5, Cucumber-JVM)
+   gherkin-ai-cli - Java domain kernel (Spring Boot 4, JUnit, Cucumber-JVM)
    ========================================================================== */
 
 import { DomainModel, cucumberExpression } from './domain-model';
@@ -474,11 +474,20 @@ export function renderPom(artifactId: string, groupId = 'com.example', { service
   <dependencies>
     <dependency>
       <groupId>org.springframework.boot</groupId>
-      <artifactId>spring-boot-starter-web</artifactId>
+      <artifactId>spring-boot-starter-webmvc</artifactId>
     </dependency>
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-validation</artifactId>
+    </dependency>
+    <!-- Jackson 2 for the runtime kernel (shared with Quarkus); Spring Boot 4 itself uses Jackson 3. -->
+    <dependency>
+      <groupId>com.fasterxml.jackson.core</groupId>
+      <artifactId>jackson-databind</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>com.fasterxml.jackson.datatype</groupId>
+      <artifactId>jackson-datatype-jsr310</artifactId>
     </dependency>
     <dependency>
       <groupId>org.springframework.boot</groupId>
