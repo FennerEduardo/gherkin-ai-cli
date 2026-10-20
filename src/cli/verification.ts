@@ -99,6 +99,8 @@ export function registerVerificationCommands(program: Command): void {
     .option('--trace <symbol>', 'Traceability for one command, event, endpoint, scenario, feature or file')
     .option('--depth <hops>', 'Hops to follow for --trace (default: 3)')
     .option('--scope <feature>', 'Files and directories a change to this feature may touch (used by the agent firewall)')
+    .option('--serve', 'Serve the live graph in the browser (127.0.0.1, token-protected) until Ctrl+C')
+    .option('--port <port>', 'With --serve: port (default: 4300; 0 picks a free one)')
     .option('--json', 'Output as JSON')
     .action(async (options) => {
       const { handleGraphCommand } = await import('../commands/graph');

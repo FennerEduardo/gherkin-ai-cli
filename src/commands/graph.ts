@@ -4,7 +4,8 @@
 
 import fs from 'fs';
 import path from 'path';
-import { UsageError } from '../core/errors';
+import { PolicyError, UsageError } from '../core/errors';
+import { startGraphServer } from '../core/graph/graph-server';
 import { buildRepositoryGraph, graphToDot, graphToMermaid, scopeForFeature, traceGraph } from '../core/graph/repository-graph';
 import { emitData, emitJson } from '../utils/output';
 import { logger } from '../utils/logger';
@@ -16,6 +17,8 @@ export interface GraphCommandOptions {
   scope?: string;
   depth?: string;
   json?: boolean;
+  serve?: boolean;
+  port?: string;
 }
 
 const FORMATS = ['summary', 'json', 'mermaid', 'dot'];
@@ -25,6 +28,7 @@ export async function handleGraphCommand(options: GraphCommandOptions = {}): Pro
   if (!FORMATS.includes(format)) throw new UsageError(`Unknown graph format "${format}".`, { hint: `Use one of: ${FORMATS.join(', ')}.` });
 
   const cwd = process.cwd();
+  if (options.serve) return serveGraph(cwd, options.port);
   const graph = buildRepositoryGraph(cwd, { specDir: process.env.GHK_SPEC_DIR });
   if (graph.stats.feature === 0) logger.warn('No .feature files found: the graph only contains code nodes. Use --spec-dir to point at your specifications.');
   if (graph.stats.truncated) logger.warn(`Scan stopped after ${graph.stats.scannedFiles} files; the graph is partial.`);
@@ -69,6 +73,17 @@ export async function handleGraphCommand(options: GraphCommandOptions = {}): Pro
     return;
   }
   emitData(rendered);
+}
+
+/** `--serve`: the live graph in the browser until Ctrl+C (src/core/graph/graph-server.ts). */
+async function serveGraph(cwd: string, port = '4300'): Promise<void> {
+  if (process.env.CI === 'true') throw new PolicyError('graph --serve is disabled in CI environments.', { hint: 'Use --format json|mermaid|dot -o <file> instead.' });
+  const portNum = Number(port);
+  if (!Number.isInteger(portNum) || portNum < 0 || portNum > 65535) throw new UsageError(`Invalid port number: ${port}`);
+  const server = await startGraphServer(cwd, portNum, { specDir: process.env.GHK_SPEC_DIR });
+  logger.success(`Traceability graph at ${server.url}`);
+  logger.info('Bound to 127.0.0.1; the token in the URL authorizes this browser session. The graph is rebuilt on every reload. Press Ctrl+C to stop.');
+  await new Promise<void>(resolve => process.once('SIGINT', () => void server.close().then(resolve)));
 }
 
 function renderSummary(graph: ReturnType<typeof buildRepositoryGraph>, view?: ReturnType<typeof traceGraph>): string {

@@ -62,6 +62,7 @@ All notable changes to this project will be documented in this file. See [commit
 - **Traceability markers in `ghk graph` (4.3).**
   - **Aggregate.** The aggregate name and its class (`<Aggregate>Aggregate`) are symbols of their feature. The `ghk:implements <Aggregate>` markers of the generated controllers, and the aggregate classes, now link to the feature. Before, they matched nothing.
   - **New marker.** `ghk:trace feature=<path>` links any file to a feature explicitly.
+- **`ghk graph --serve [--port N]` (4.9).** The traceability graph in the browser: features, scenarios, commands, events, endpoints, files and tests in columns, with search; clicking a node traces it. The graph is rebuilt on every reload. Like the Web Studio, it is bound to 127.0.0.1, protected by a session token and an exact Host check, and disabled in CI. The page loads nothing external.
 - **IR cache (4.8).** The semantic model is a pure function of the feature, its file name, the options and the CLI version.
   - **In memory.** A `generate` run builds it once per feature, instead of once per preset, lint rule and domain model.
   - **On disk.** `graph` and the kernel refresh of `ghk upgrade` cache it across runs in `.ghe/cache/ir`.
