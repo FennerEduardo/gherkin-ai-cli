@@ -819,6 +819,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/twmb/franz-go/pkg/kadm"
@@ -924,6 +925,7 @@ type kafkaSubscription struct {
 	buffered    []*kgo.Record
 	pending     *Delivery
 	deadLetters *kgo.Client
+	assigned    atomic.Bool
 }
 
 func (b *KafkaBroker) Subscribe(_ context.Context, group string, t Topology) (EventSubscription, error) {
@@ -931,12 +933,15 @@ func (b *KafkaBroker) Subscribe(_ context.Context, group string, t Topology) (Ev
 	if group == t.DLQ {
 		topic = t.DLX
 	}
+	s := &kafkaSubscription{broker: b, group: group, topology: t}
 	cl, err := b.client(kgo.ConsumerGroup(group), kgo.ConsumeTopics(topic), kgo.DisableAutoCommit(),
-		kgo.ConsumeResetOffset(kgo.NewOffset().AtStart()), kgo.FetchMaxWait(200*time.Millisecond))
+		kgo.ConsumeResetOffset(kgo.NewOffset().AtStart()), kgo.FetchMaxWait(200*time.Millisecond),
+		kgo.OnPartitionsAssigned(func(context.Context, *kgo.Client, map[string][]int32) { s.assigned.Store(true) }))
 	if err != nil {
 		return nil, err
 	}
-	return &kafkaSubscription{broker: b, cl: cl, group: group, topology: t}, nil
+	s.cl = cl
+	return s, nil
 }
 
 func (s *kafkaSubscription) System() string { return "kafka" }
@@ -964,7 +969,9 @@ func (s *kafkaSubscription) Poll(ctx context.Context) (*Delivery, error) {
 	if s.pending != nil {
 		return s.pending, nil
 	}
-	if len(s.buffered) == 0 {
+	// A new member gets its partitions only after the group rebalance: keep polling until it has them (30 s at
+	// most) so the first Poll does not report an empty source that merely has not been assigned yet.
+	for joined := time.Now(); len(s.buffered) == 0; {
 		pctx, cancel := context.WithTimeout(ctx, 200*time.Millisecond)
 		fetches := s.cl.PollRecords(pctx, 10)
 		cancel()
@@ -974,6 +981,9 @@ func (s *kafkaSubscription) Poll(ctx context.Context) (*Delivery, error) {
 			}
 		}
 		s.buffered = fetches.Records()
+		if s.assigned.Load() || time.Since(joined) > 30*time.Second || ctx.Err() != nil {
+			break
+		}
 	}
 	if len(s.buffered) == 0 {
 		return nil, nil

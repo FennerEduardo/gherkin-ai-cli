@@ -633,6 +633,7 @@ offset; a message that is neither acked nor dead-lettered is read again by the n
 from __future__ import annotations
 
 import os
+import time
 from typing import Optional
 
 from confluent_kafka import Consumer, KafkaError, KafkaException, Producer, TopicPartition
@@ -735,6 +736,11 @@ class _Subscription(EventSubscription):
             p = self.pending
             self.consumer.seek(TopicPartition(p.topic(), p.partition(), p.offset()))
         msg = self.consumer.poll(0.2)
+        # A new member gets its partitions only after the group rebalance: wait for it (30 s at most) so the
+        # first poll does not report an empty source that merely has not been assigned yet.
+        joined = time.monotonic()
+        while msg is None and not self.consumer.assignment() and time.monotonic() - joined < 30:
+            msg = self.consumer.poll(0.2)
         if msg is None:
             return None
         if msg.error():

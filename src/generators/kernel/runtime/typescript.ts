@@ -753,6 +753,11 @@ export class KafkaBroker implements Broker {
       source: group,
       poll: async () => {
         if (ready.length === 0) await new Promise(r => setTimeout(r, 100));
+        // A new member gets its partitions only after the group rebalance: wait for it (30 s at most) so the
+        // first poll does not report an empty source that merely has not been assigned yet.
+        for (const joined = Date.now(); ready.length === 0 && consumer.assignment().length === 0 && Date.now() - joined < 30_000;) {
+          await new Promise(r => setTimeout(r, 100));
+        }
         return ready.shift();
       },
       close: this.track(async () => {

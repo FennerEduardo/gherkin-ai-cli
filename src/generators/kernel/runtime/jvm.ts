@@ -872,6 +872,11 @@ public final class KafkaBroker implements Broker {
                     pending = null;
                 }
                 if (buffered.isEmpty()) consumer.poll(Duration.ofMillis(200)).forEach(buffered::add);
+                // A new member gets its partitions only after the group rebalance: wait for it (30 s at most) so the
+                // first poll does not report an empty source that merely has not been assigned yet.
+                for (long joined = System.currentTimeMillis(); buffered.isEmpty() && consumer.assignment().isEmpty() && System.currentTimeMillis() - joined < 30_000;) {
+                    consumer.poll(Duration.ofMillis(200)).forEach(buffered::add);
+                }
                 Iterator<ConsumerRecord<String, byte[]>> it = buffered.iterator();
                 if (!it.hasNext()) return null;
                 ConsumerRecord<String, byte[]> r = it.next();
