@@ -143,7 +143,7 @@ public class DatabaseUrlConfigSource implements ConfigSource {
         String url = System.getenv("DATABASE_URL");
         if (url == null || url.isBlank()) return;
         URI uri = URI.create(url.replaceFirst("^postgres(ql)?://", "postgresql://"));
-        values.put("quarkus.datasource.jdbc.url", "jdbc:postgresql://" + uri.getHost() + ":" + (uri.getPort() > 0 ? uri.getPort() : 5432) + uri.getPath());
+        values.put("quarkus.datasource.jdbc.url", ConnectionFactory.jdbcUrl(uri));
         String[] userInfo = uri.getRawUserInfo() == null ? new String[0] : uri.getRawUserInfo().split(":", 2);
         if (userInfo.length > 0) values.put("quarkus.datasource.username", URLDecoder.decode(userInfo[0], StandardCharsets.UTF_8));
         if (userInfo.length > 1) values.put("quarkus.datasource.password", URLDecoder.decode(userInfo[1], StandardCharsets.UTF_8));

@@ -4,7 +4,7 @@
    built CLI, then compile it AND run its generated test suite inside the
    stack's official Docker image.
 
-   Usage:  npm run build && node scripts/golden-build.js [stack ...] [--keep] [--list] [--no-integration] [--no-image]
+   Usage:  npm run build && node scripts/golden-build.js [stack ...] [--keep] [--list] [--no-integration] [--no-image] [--db-tls]
 
    Backends also run their runtime integration tests (docs/RUNTIME-KERNEL.md)
    against PostgreSQL and RabbitMQ containers on a private network. Backends
@@ -34,6 +34,8 @@ const args = process.argv.slice(2);
 const keep = args.includes('--keep');
 const skipIntegration = args.includes('--no-integration');
 const skipImage = args.includes('--no-image');
+// --db-tls: PostgreSQL accepts TLS only and DATABASE_URL carries sslmode=require (managed databases enforce it).
+const dbTls = args.includes('--db-tls');
 const selected = args.filter(a => !a.startsWith('--'));
 
 if (args.includes('--list')) {
@@ -90,7 +92,7 @@ function dockerPath(p) {
 function buildInDocker(dir, def, name) {
   const volumes = (def.caches || []).flatMap(([vol, target]) => ['-v', `ghk-cache-${vol}:${target}`]);
   const integration = def.integration && !skipIntegration ? def.integration : [];
-  const services = integration.length ? startServices(name, def.services || []) : undefined;
+  const services = integration.length ? startServices(name, def.services || [], { postgresTls: dbTls }) : undefined;
   // Only the integration step sees DATABASE_URL / AMQP_URL: unit tests stay hermetic.
   const exports = services ? Object.entries(services.env).map(([k, v]) => `export ${k}='${v}'`) : [];
   const script = [...(def.build || []), ...(def.test || []), ...exports, ...integration].join(' && ');

@@ -139,7 +139,7 @@ public class RuntimeConfiguration {
         URI uri = URI.create(url.replaceFirst("^postgres(ql)?://", "postgresql://"));
         String[] userInfo = uri.getRawUserInfo() == null ? new String[0] : uri.getRawUserInfo().split(":", 2);
         return DataSourceBuilder.create()
-            .url("jdbc:postgresql://" + uri.getHost() + ":" + (uri.getPort() > 0 ? uri.getPort() : 5432) + uri.getPath())
+            .url(ConnectionFactory.jdbcUrl(uri))
             .username(userInfo.length > 0 ? URLDecoder.decode(userInfo[0], StandardCharsets.UTF_8) : null)
             .password(userInfo.length > 1 ? URLDecoder.decode(userInfo[1], StandardCharsets.UTF_8) : null)
             .build();

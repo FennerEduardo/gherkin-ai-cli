@@ -60,8 +60,23 @@ function waitFor(docker: Docker, description: string, check: () => boolean, cont
   throw new Error(`Timed out waiting for ${description} after ${timeoutMs / 1000}s${logs ? `\n--- ${description} log (last 60 lines) ---\n${logs}` : ''}`);
 }
 
-/** Starts PostgreSQL, RabbitMQ and the extra services on a fresh network. Always call stop(). */
-export function startServices(label: string, extra: ExtraService[] = [], opts: { docker?: Docker; timeoutMs?: number } = {}): RunningServices {
+/**
+ * PostgreSQL that only accepts TLS connections (hostssl), like managed databases that enforce it: a self-signed
+ * certificate made at start-up, so clients must connect with sslmode=require (encrypted, not verified).
+ */
+const POSTGRES_TLS_COMMAND = ['sh', '-c', [
+  'apk add -q --no-cache openssl > /dev/null',
+  'openssl req -x509 -newkey rsa:2048 -nodes -days 2 -subj /CN=postgres -keyout /tmp/server.key -out /tmp/server.crt 2> /dev/null',
+  "printf 'local all all trust\\nhostssl all all all scram-sha-256\\n' > /tmp/pg_hba.conf",
+  'chown postgres /tmp/server.key /tmp/server.crt /tmp/pg_hba.conf && chmod 600 /tmp/server.key',
+  'exec docker-entrypoint.sh postgres -c ssl=on -c ssl_cert_file=/tmp/server.crt -c ssl_key_file=/tmp/server.key -c hba_file=/tmp/pg_hba.conf'
+].join(' && ')];
+
+/**
+ * Starts PostgreSQL, RabbitMQ and the extra services on a fresh network. Always call stop().
+ * `postgresTls`: PostgreSQL refuses plaintext connections and DATABASE_URL carries sslmode=require.
+ */
+export function startServices(label: string, extra: ExtraService[] = [], opts: { docker?: Docker; timeoutMs?: number; postgresTls?: boolean } = {}): RunningServices {
   const docker = opts.docker ?? defaultDocker;
   const timeoutMs = opts.timeoutMs ?? 180000;
   const id = `${label.replace(/[^a-z0-9-]/gi, '').toLowerCase()}-${Date.now().toString(36)}`;
@@ -74,12 +89,13 @@ export function startServices(label: string, extra: ExtraService[] = [], opts: {
     docker(['network', 'rm', network]);
   };
   const env: Record<string, string> = {
-    DATABASE_URL: 'postgres://postgres:ghk@postgres:5432/postgres',
+    DATABASE_URL: `postgres://postgres:ghk@postgres:5432/postgres${opts.postgresTls ? '?sslmode=require' : ''}`,
     AMQP_URL: 'amqp://ghk:ghk@rabbitmq:5672'
   };
   try {
     if (docker(['network', 'create', network]).code !== 0) throw new Error(`cannot create network ${network}`);
-    const pgRun = docker(['run', '-d', '--name', pg, '--network', network, '--network-alias', 'postgres', '-e', 'POSTGRES_PASSWORD=ghk', POSTGRES_IMAGE]);
+    const pgRun = docker(['run', '-d', '--name', pg, '--network', network, '--network-alias', 'postgres', '-e', 'POSTGRES_PASSWORD=ghk', POSTGRES_IMAGE,
+      ...(opts.postgresTls ? POSTGRES_TLS_COMMAND : [])]);
     if (pgRun.code !== 0) throw new Error(`cannot start PostgreSQL: ${pgRun.out}`);
     const mqRun = docker(['run', '-d', '--name', mq, '--network', network, '--network-alias', 'rabbitmq', '-e', 'RABBITMQ_DEFAULT_USER=ghk', '-e', 'RABBITMQ_DEFAULT_PASS=ghk', RABBITMQ_IMAGE]);
     if (mqRun.code !== 0) throw new Error(`cannot start RabbitMQ: ${mqRun.out}`);

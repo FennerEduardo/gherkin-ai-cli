@@ -15,7 +15,7 @@ import { COLLECTOR_IMAGES, PROVIDERS, TERRAFORM_REQUIRED } from './terraform-ver
 
 const secretExpression = (s: ServiceSecret): string => {
   switch (s.source) {
-    case 'database-url': return '"postgres://${azurerm_postgresql_flexible_server.this.administrator_login}:${random_password.db.result}@${azurerm_postgresql_flexible_server.this.fqdn}:5432/${azurerm_postgresql_flexible_server_database.app.name}"';
+    case 'database-url': return '"postgres://${azurerm_postgresql_flexible_server.this.administrator_login}:${random_password.db.result}@${azurerm_postgresql_flexible_server.this.fqdn}:5432/${azurerm_postgresql_flexible_server_database.app.name}?sslmode=require"';
     case 'laravel-key': return '"base64:${random_bytes.app_key.base64}"';
     case 'input': return `var.${s.variable}`;
     default: return `random_password.${s.name.toLowerCase()}.result`;
@@ -154,7 +154,7 @@ variable "postgres_storage_mb" {
 variable "db_require_tls" {
   description = "Reject unencrypted database connections (require_secure_transport). The connections stay in the virtual network either way."
   type        = bool
-  default     = false
+  default     = true
 }
 ${serviceBus ? `
 variable "servicebus_sku" {

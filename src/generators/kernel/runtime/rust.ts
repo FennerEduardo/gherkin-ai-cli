@@ -21,7 +21,7 @@ reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"
 opentelemetry = "0.33"
 opentelemetry_sdk = "0.33"
 opentelemetry-otlp = { version = "0.33", default-features = false, features = ["trace", "http-proto", "reqwest-blocking-client", "reqwest-rustls"] }
-sqlx ={ version = "0.8", default-features = false, features = ["runtime-tokio", "postgres"] }
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres"] }
 uuid = { version = "1", features = ["v4"] }`;
 
 /** Dev-dependencies and the feature that enables tests/runtime_integration.rs. */

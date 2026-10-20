@@ -68,6 +68,10 @@ All notable changes to this project will be documented in this file. See [commit
   - **On disk.** `graph` and the kernel refresh of `ghk upgrade` cache it across runs in `.ghe/cache/ir`.
   - **Not cached.** Builds that depend on the constitution, an existing code base or an LLM.
 - **`GHK_DECLARE_TOPOLOGY=false`.** It skips creating the broker topology at start-up in every backend, for least-privilege identities when infrastructure as code owns the topology.
+- **Database TLS from `DATABASE_URL`.** Every runtime honours libpq's `sslmode` (`require`, `verify-ca`, `verify-full`) and `sslrootcert` in the URL.
+  - **Fixed in the runtimes.** The JVM (runtime, Spring and Quarkus) and .NET used to drop the query string, Elixir and PHP ignored it, Rust's `sqlx` was built without TLS, and node-postgres treated `require` as `verify-full`, which rejects the managed databases' private CAs.
+  - **Terraform.** The generated `DATABASE_URL` ends in `?sslmode=require`, and `db_require_tls` is now on by default, so the database refuses unencrypted connections.
+  - **Golden check.** `golden-build.js --db-tls` runs the integration suites and the image smoke test against a PostgreSQL that only accepts TLS.
 - **`amqps://` for PHP.** The Laravel runtime connects to RabbitMQ over TLS (Amazon MQ, CloudAMQP) through php-amqplib's connection factory. The other runtimes already took TLS from the URL.
 - **Apache Kafka broker adapter (4.1; `stack.messaging: "kafka"`).** The JVM (Spring Java and Kotlin, Quarkus), TypeScript, .NET, Python and Go runtime kernels get a Kafka adapter behind the same ports as the other brokers. MySQL and MongoDB persistence are planned for 3.3.
   - **Clients.** The official ones: `kafka-clients` (version from the Spring Boot or Quarkus BOM), Confluent's `@confluentinc/kafka-javascript`, `Confluent.Kafka` and `confluent-kafka`; Go uses franz-go, which needs no cgo, so the production image stays static.

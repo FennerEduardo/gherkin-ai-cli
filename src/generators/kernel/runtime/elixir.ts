@@ -68,7 +68,7 @@ ${RLS_NOTE.split('\n').map(l => `  ${l.replace(/^-- ?/, '# ')}`).join('\n')}
     if Regex.match?(~r/^[a-z_][a-z0-9_]*$/, schema), do: schema, else: raise(ArgumentError, "Invalid schema name: #{schema}")
   end
 
-  @doc "Postgrex options from a libpq-style URL: postgres://user:password@host:5432/database"
+  @doc "Postgrex options from a libpq-style URL: postgres://user:password@host:5432/database[?sslmode=require]"
   def connection_opts(database_url) do
     uri = URI.parse(database_url)
     {user, password} =
@@ -77,8 +77,23 @@ ${RLS_NOTE.split('\n').map(l => `  ${l.replace(/^-- ?/, '# ')}`).join('\n')}
         [u] -> {URI.decode(u), nil}
       end
 
-    [hostname: uri.host, port: uri.port || 5432, database: String.trim_leading(uri.path || "", "/"), username: user, password: password]
+    [hostname: uri.host, port: uri.port || 5432, database: String.trim_leading(uri.path || "", "/"), username: user, password: password] ++
+      tls_opts(uri.host, URI.decode_query(uri.query || ""))
   end
+
+  # libpq TLS parameters: sslmode=require encrypts without verifying (as in libpq); verify-ca checks the chain and
+  # verify-full also the host name, against sslrootcert or the system CAs.
+  defp tls_opts(host, %{"sslmode" => mode} = query) when mode in ["require", "verify-ca", "verify-full"] do
+    cas = if query["sslrootcert"], do: [cacertfile: query["sslrootcert"]], else: [cacerts: :public_key.cacerts_get()]
+
+    case mode do
+      "require" -> [ssl: [verify: :verify_none]]
+      "verify-ca" -> [ssl: [verify: :verify_peer, server_name_indication: :disable] ++ cas]
+      "verify-full" -> [ssl: [verify: :verify_peer, server_name_indication: String.to_charlist(host), customize_hostname_check: [match_fun: :public_key.pkix_verify_hostname_match_fun(:https)]] ++ cas]
+    end
+  end
+
+  defp tls_opts(_host, _query), do: []
 
   @doc "Creates the runtime tables (idempotent)."
   def migrate(conn, schema \\\\ "public") do

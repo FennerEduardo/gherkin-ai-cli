@@ -112,6 +112,7 @@ import { randomUUID } from 'crypto';
 import { Pool } from 'pg';
 import { DEFAULT_TOPOLOGY, brokerConfigured, connectBroker, type Broker } from './broker';
 import { OutboxRelay } from './outbox-relay';
+import { pgConnectionString } from './schema';
 import { InboxConsumer, type MessageHandler } from './inbox-consumer';
 
 export const PG_POOL = Symbol('PG_POOL');
@@ -194,7 +195,7 @@ export class HealthController {
 @Module({
   controllers: [HealthController],
   providers: [
-    { provide: PG_POOL, useFactory: () => new Pool({ connectionString: process.env.DATABASE_URL }) },
+    { provide: PG_POOL, useFactory: () => new Pool({ connectionString: pgConnectionString() }) },
     { provide: EVENT_HANDLERS, useValue: {} satisfies EventHandlers },
     RuntimeWorker
   ],
@@ -282,7 +283,7 @@ import { NestFactory } from '@nestjs/core';
 import type { INestApplication } from '@nestjs/common';
 import { Pool } from 'pg';
 import { AppModule } from '../../src/app.module';
-import { migrate } from '../../src/runtime/schema';
+import { migrate, pgConnectionString } from '../../src/runtime/schema';
 import { signJwt, TENANT_CLAIM } from '../../src/auth/jwt';
 
 const SECRET = 'integration-test-secret-with-32-chars!';
@@ -298,7 +299,7 @@ describe('${m.pascal} HTTP application layer', () => {
     fetch(\`\${base}\${path}\`, { method: 'POST', headers: { 'content-type': 'application/json', ...headers }, body: JSON.stringify(body) });
 
   beforeAll(async () => {
-    pool = new Pool({ connectionString: process.env.DATABASE_URL });
+    pool = new Pool({ connectionString: pgConnectionString() });
     await migrate(pool);
     app = await NestFactory.create(AppModule, { logger: false });
     await app.listen(0);
@@ -411,12 +412,13 @@ import { createApp } from './app';
 import { CommandService } from './runtime/command-service';
 import { DEFAULT_TOPOLOGY, brokerConfigured, connectBroker, type Broker } from './runtime/broker';
 import { OutboxRelay } from './runtime/outbox-relay';
+import { pgConnectionString } from './runtime/schema';
 import { startTelemetry, stopTelemetry } from './runtime/otel';
 
 async function main(): Promise<void> {
   // OTLP export when OTEL_EXPORTER_OTLP_ENDPOINT is set (runtime/otel.ts).
   startTelemetry();
-  const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+  const pool = new Pool({ connectionString: pgConnectionString() });
   const port = Number(process.env.PORT) || 3000;
   const server = createApp(new CommandService(pool)).listen(port, () => console.log(\`listening on :\${port}\`));
 
@@ -519,14 +521,14 @@ import request from 'supertest';
 import { Pool } from 'pg';
 import { createApp } from '../../src/app';
 import { CommandService } from '../../src/runtime/command-service';
-import { migrate } from '../../src/runtime/schema';
+import { migrate, pgConnectionString } from '../../src/runtime/schema';
 import { signJwt, TENANT_CLAIM } from '../../src/auth/jwt';
 
 const SECRET = 'integration-test-secret-with-32-chars!';
 process.env.JWT_SECRET = SECRET;
 
 describe('${m.pascal} HTTP application layer', () => {
-  const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+  const pool = new Pool({ connectionString: pgConnectionString() });
   const app = createApp(new CommandService(pool));
   const tenant = \`tenant-\${randomUUID()}\`;
 

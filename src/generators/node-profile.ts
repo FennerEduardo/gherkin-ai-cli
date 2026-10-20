@@ -104,7 +104,12 @@ export const PRISMA_VERSION: Record<PrismaMajor, string> = { '6': '^6.19.0', '7'
 export function prismaAdapter(database: PrismaDatabase): PrismaAdapter {
   switch (database) {
     case 'postgresql':
-      return { pkg: '@prisma/adapter-pg', className: 'PrismaPg', create: 'new PrismaPg({ connectionString: process.env.DATABASE_URL })' };
+      // node-postgres treats sslmode=require as verify-full unless uselibpqcompat=true (see runtime/schema.ts pgConnectionString).
+      return {
+        pkg: '@prisma/adapter-pg',
+        className: 'PrismaPg',
+        create: "new PrismaPg({ connectionString: /[?&]sslmode=/.test(process.env.DATABASE_URL ?? '') && !/[?&]uselibpqcompat=/.test(process.env.DATABASE_URL ?? '') ? `${process.env.DATABASE_URL}&uselibpqcompat=true` : process.env.DATABASE_URL })"
+      };
     case 'mysql':
       // Accepts mysql:// URLs as well as mariadb://.
       return { pkg: '@prisma/adapter-mariadb', className: 'PrismaMariaDb', create: "new PrismaMariaDb(process.env.DATABASE_URL ?? '')" };

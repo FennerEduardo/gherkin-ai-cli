@@ -15,7 +15,7 @@ import { COLLECTOR_IMAGES, PROVIDERS, TERRAFORM_REQUIRED } from './terraform-ver
 
 const secretExpression = (s: ServiceSecret): string => {
   switch (s.source) {
-    case 'database-url': return '"postgres://${google_sql_user.app.name}:${random_password.db.result}@${google_sql_database_instance.this.private_ip_address}:5432/${google_sql_database.app.name}"';
+    case 'database-url': return '"postgres://${google_sql_user.app.name}:${random_password.db.result}@${google_sql_database_instance.this.private_ip_address}:5432/${google_sql_database.app.name}?sslmode=require"';
     case 'laravel-key': return '"base64:${random_bytes.app_key.base64}"';
     case 'input': return `var.${s.variable}`;
     default: return `random_password.${s.name.toLowerCase()}.result`;
@@ -143,7 +143,7 @@ variable "db_version" {
 variable "db_require_tls" {
   description = "Reject unencrypted database connections (ENCRYPTED_ONLY). The connections stay on the private network either way."
   type        = bool
-  default     = false
+  default     = true
 }
 ${inputVariables(spec)}
 variable "enable_tracing" {

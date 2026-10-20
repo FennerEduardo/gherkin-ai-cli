@@ -23,6 +23,18 @@ describe('integration services', () => {
     expect(calls.some(c => c[0] === 'network' && c[1] === 'rm' && c[2] === s.network)).toBe(true);
   });
 
+  it('runs a TLS-only PostgreSQL and passes sslmode=require with postgresTls', () => {
+    const calls: string[][] = [];
+    const docker = (args: string[]) => { calls.push(args); return { code: 0, out: '' }; };
+    const s = startServices('Shop', [], { docker, postgresTls: true });
+    expect(s.env.DATABASE_URL).toBe('postgres://postgres:ghk@postgres:5432/postgres?sslmode=require');
+    const pg = calls.find(c => c[0] === 'run' && c.includes('postgres:17-alpine'))!;
+    const command = pg.slice(pg.indexOf('postgres:17-alpine') + 1).join(' ');
+    expect(command).toContain('hostssl all all all scram-sha-256');
+    expect(command).toContain('-c ssl=on');
+    s.stop();
+  });
+
   it('cleans up when a service cannot start', () => {
     const calls: string[][] = [];
     const docker = (args: string[]) => { calls.push(args); return { code: args[0] === 'run' && args.includes('rabbitmq:4-alpine') ? 1 : 0, out: 'boom' }; };

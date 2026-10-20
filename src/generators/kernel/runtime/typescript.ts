@@ -93,6 +93,15 @@ const STATEMENTS: string[] = ${sql};
 
 ${RLS_NOTE.split('\n').map(l => l.replace(/^-- ?/, '// ')).join('\n')}
 
+/**
+ * DATABASE_URL for node-postgres with libpq TLS semantics: pg treats sslmode=require as verify-full unless
+ * uselibpqcompat=true, which would reject the private CAs of managed databases (RDS, Cloud SQL, Azure).
+ */
+export function pgConnectionString(url = process.env.DATABASE_URL): string | undefined {
+  if (!url || !/[?&]sslmode=/.test(url) || /[?&]uselibpqcompat=/.test(url)) return url;
+  return \`\${url}&uselibpqcompat=true\`;
+}
+
 /** Validated schema identifier (the tests use one schema per test). */
 export function schemaName(schema = 'public'): string {
   if (!/^[a-z_][a-z0-9_]*$/.test(schema)) throw new Error(\`Invalid schema name: \${schema}\`);
@@ -1003,7 +1012,7 @@ import { randomUUID } from 'crypto';
 import { SpanKind, trace } from '@opentelemetry/api';
 import { BasicTracerProvider, InMemorySpanExporter, SimpleSpanProcessor } from '@opentelemetry/sdk-trace-base';
 import { Pool } from 'pg';
-import { CommandService, InboxConsumer, OutboxRelay, SagaOrchestrator, brokerConfigured, connectBroker, migrate, topology, type Broker, type BrokerMessage, type Topology } from '../../src/runtime/index';
+import { CommandService, InboxConsumer, OutboxRelay, SagaOrchestrator, brokerConfigured, connectBroker, migrate, pgConnectionString, topology, type Broker, type BrokerMessage, type Topology } from '../../src/runtime/index';
 
 const { DATABASE_URL } = process.env;
 if (!DATABASE_URL || !brokerConfigured()) throw new Error('Integration tests need DATABASE_URL and the broker variables (see docs/RUNTIME-KERNEL.md).');
@@ -1044,7 +1053,7 @@ const receive = async (source: string, expected: number): Promise<BrokerMessage[
 };
 
 beforeAll(async () => {
-  pool = new Pool({ connectionString: DATABASE_URL, max: 20 });
+  pool = new Pool({ connectionString: pgConnectionString(DATABASE_URL), max: 20 });
   broker = await connectBroker();
 });
 

@@ -18,7 +18,7 @@ export interface TerraformFile {
 
 const secretExpression = (s: ServiceSecret): string => {
   switch (s.source) {
-    case 'database-url': return '"postgres://${aws_db_instance.this.username}:${random_password.db.result}@${aws_db_instance.this.address}:${aws_db_instance.this.port}/${aws_db_instance.this.db_name}"';
+    case 'database-url': return '"postgres://${aws_db_instance.this.username}:${random_password.db.result}@${aws_db_instance.this.address}:${aws_db_instance.this.port}/${aws_db_instance.this.db_name}?sslmode=require"';
     case 'amqp-url': return '"amqps://app:${random_password.mq.result}@${trimprefix(aws_mq_broker.this.instances[0].endpoints[0], "amqps://")}"';
     case 'laravel-key': return '"base64:${random_bytes.app_key.base64}"';
     case 'input': return `var.${s.variable}`;
@@ -166,7 +166,7 @@ variable "db_multi_az" {
 variable "db_require_tls" {
   description = "Reject unencrypted database connections (rds.force_ssl). The connections stay inside the VPC either way."
   type        = bool
-  default     = false
+  default     = true
 }
 
 ${mq ? `
