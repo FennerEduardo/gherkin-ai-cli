@@ -6,6 +6,7 @@ import { ParsedFeature } from '../core/gherkin-parser';
 import { GherkinAIConfig } from '../core/config';
 import { generateJavaSpringPreset } from './preset-java-spring';
 import { generateKotlinSpringPreset } from './preset-kotlin-spring';
+import { generateKotlinQuarkusPreset } from './preset-kotlin-quarkus';
 import { generateJavaQuarkusPreset } from './preset-java-quarkus';
 import { generatePythonFastApiPreset } from './preset-python-fastapi';
 import { generatePythonDjangoPreset } from './preset-python-django';
@@ -55,6 +56,7 @@ const BACKEND_PRESETS: Record<string, BackendPreset> = {
   'java/spring': (p, c) => generateJavaSpringPreset(p, c),
   'java/quarkus': (p, c) => generateJavaQuarkusPreset(p, c),
   'kotlin/spring': (p, c) => generateKotlinSpringPreset(p, c),
+  'kotlin/quarkus': (p, c) => generateKotlinQuarkusPreset(p, c),
   'python/fastapi': generatePythonFastApiPreset,
   'python/django': generatePythonDjangoPreset,
   'go/chi': (p, c) => generateGoPreset(p, c),

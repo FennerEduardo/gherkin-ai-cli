@@ -98,6 +98,27 @@ EXPOSE ${port}
 ENTRYPOINT ["java", "-XX:MaxRAMPercentage=75", "-jar", "/app/app.jar"]
 `, ignore: ['build', '.gradle']
       };
+    case 'kotlin/quarkus':
+      return {
+        body: `FROM ${TOOLCHAINS['kotlin/quarkus'].image} AS build
+WORKDIR /app
+COPY . .
+RUN gradle -q --no-daemon build -x test
+
+FROM eclipse-temurin:21-jre
+${NON_ROOT_DEBIAN}
+WORKDIR /app
+# Quarkus fast-jar layout: dependencies change less often than the application.
+COPY --from=build --chown=10001 /app/build/quarkus-app/lib/ /app/lib/
+COPY --from=build --chown=10001 /app/build/quarkus-app/*.jar /app/
+COPY --from=build --chown=10001 /app/build/quarkus-app/app/ /app/app/
+COPY --from=build --chown=10001 /app/build/quarkus-app/quarkus/ /app/quarkus/
+USER 10001
+ENV SERVER_PORT=${port}
+EXPOSE ${port}
+ENTRYPOINT ["java", "-XX:MaxRAMPercentage=75", "-Dquarkus.http.host=0.0.0.0", "-jar", "/app/quarkus-run.jar"]
+`, ignore: ['build', '.gradle']
+      };
     case 'java/quarkus':
       return {
         body: `FROM ${TOOLCHAINS['java/quarkus'].image} AS build

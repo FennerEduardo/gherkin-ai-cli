@@ -290,6 +290,110 @@ val integrationTest by tasks.registering(Test::class) {
 `;
 }
 
+/**
+ * Kotlin + Quarkus (Gradle, Quarkus plugin): Kotlin domain kernel, Java runtime kernel and the Java Quarkus
+ * application layer of kernel/app/jvm-quarkus.ts in one module, with the dependencies of renderQuarkusPom.
+ * Plain platforms (not enforced): Gradle takes the highest OpenTelemetry version, so the runtime's pinned one
+ * wins over the Quarkus BOM's, as the import order does in the Maven build.
+ */
+export function renderQuarkusGradleKts(groupId = 'com.example', { serviceBus = false } = {}): string {
+  return `plugins {
+    kotlin("jvm") version "${JVM_VERSIONS.kotlin}"
+    kotlin("plugin.allopen") version "${JVM_VERSIONS.kotlin}"
+    id("io.quarkus") version "${JVM_VERSIONS.quarkus}"
+}
+
+group = "${groupId}"
+version = "0.0.1-SNAPSHOT"
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(${JVM_VERSIONS.quarkusJava})
+    }
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    implementation(platform("io.opentelemetry:opentelemetry-bom:${JVM_VERSIONS.openTelemetry}"))
+    // Incubator artifacts (pulled by quarkus-scheduler) must match the API version too.
+    implementation(platform("io.opentelemetry:opentelemetry-bom-alpha:${JVM_VERSIONS.openTelemetry}-alpha"))
+    implementation(platform("io.quarkus.platform:quarkus-bom:${JVM_VERSIONS.quarkus}"))
+    testImplementation(platform("io.cucumber:cucumber-bom:${JVM_VERSIONS.cucumber}"))${serviceBus ? `
+    implementation(platform("com.azure:azure-sdk-bom:${JVM_VERSIONS.azureSdkBom}"))` : ''}
+
+    implementation("io.quarkus:quarkus-arc")
+    implementation("io.quarkus:quarkus-kotlin")
+    implementation("io.quarkus:quarkus-rest")
+    implementation("io.quarkus:quarkus-rest-jackson")
+    implementation("io.quarkus:quarkus-agroal")
+    implementation("io.quarkus:quarkus-jdbc-postgresql")
+    implementation("io.quarkus:quarkus-scheduler")
+    implementation("io.quarkus:quarkus-smallrye-health")
+    implementation("org.jetbrains.kotlin:kotlin-stdlib")
+    implementation("io.opentelemetry:opentelemetry-api")
+    implementation("io.opentelemetry:opentelemetry-sdk")
+    implementation("io.opentelemetry:opentelemetry-exporter-otlp") { exclude(group = "io.opentelemetry", module = "opentelemetry-exporter-sender-okhttp") }
+    implementation("io.opentelemetry:opentelemetry-exporter-sender-jdk")
+    implementation("com.rabbitmq:amqp-client:${JVM_VERSIONS.amqpClient}")${serviceBus ? `
+    implementation("com.azure:azure-messaging-servicebus") { exclude(group = "com.azure", module = "azure-core-http-netty") }
+    implementation("com.azure:azure-identity") { exclude(group = "com.azure", module = "azure-core-http-netty") }
+    implementation("com.azure:azure-core-http-jdk-httpclient")` : ''}
+
+    testImplementation("io.quarkus:quarkus-junit5")
+    testImplementation("org.jetbrains.kotlin:kotlin-test-junit5")
+    testImplementation("io.opentelemetry:opentelemetry-sdk-testing")
+    testImplementation("io.cucumber:cucumber-java")
+    testImplementation("io.cucumber:cucumber-junit-platform-engine")
+    testImplementation("org.junit.platform:junit-platform-suite")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+}
+
+// CDI beans written in Kotlin must be open for Quarkus proxies.
+allOpen {
+    annotation("jakarta.enterprise.context.ApplicationScoped")
+    annotation("jakarta.ws.rs.Path")
+    annotation("io.quarkus.test.junit.QuarkusTest")
+}
+
+kotlin {
+    compilerOptions {
+        javaParameters = true
+    }
+}
+
+tasks.withType<JavaCompile> {
+    options.compilerArgs.add("-parameters")
+}
+
+// The Gherkin specification is the single source of truth: run it from ./features.
+tasks.processTestResources {
+    from("features") { into("features") }
+}
+
+tasks.withType<Test> {
+    useJUnitPlatform()
+    systemProperty("java.util.logging.manager", "org.jboss.logmanager.LogManager")
+    testLogging { events("passed", "skipped", "failed") }
+}
+
+// Runtime integration tests (tag "integration") need DATABASE_URL / AMQP_URL: gradle integrationTest
+tasks.test {
+    useJUnitPlatform { excludeTags("integration") }
+}
+
+val integrationTest by tasks.registering(Test::class) {
+    description = "Runs the runtime and HTTP integration tests against PostgreSQL and RabbitMQ."
+    group = "verification"
+    testClassesDirs = sourceSets.test.get().output.classesDirs
+    classpath = sourceSets.test.get().runtimeClasspath
+    useJUnitPlatform { includeTags("integration") }
+}
+`;
+}
+
 export function renderGradleSettings(projectName: string): string {
   return `rootProject.name = "${projectName}"\n`;
 }

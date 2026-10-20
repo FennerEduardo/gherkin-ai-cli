@@ -119,6 +119,7 @@ const FRAMEWORKS_BY_LANG: Record<string, { name: string; value: string }[]> = {
   ],
   kotlin: [
     { name: 'Spring Boot (Kotlin)', value: 'spring-boot' },
+    { name: 'Quarkus (Kotlin)', value: 'quarkus' },
     { name: 'Ktor', value: 'ktor' }
   ]
 };

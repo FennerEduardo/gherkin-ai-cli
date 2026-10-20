@@ -78,7 +78,7 @@ Every stack below is built and tested in CI. A sample project is generated, buil
 
 | Kind | Stacks |
 |---|---|
-| Backends | TypeScript (NestJS 11 or 12, Express 5; Prisma 6 or 7), C# (ASP.NET Core 8), Java and Kotlin (Spring Boot 4), Java (Quarkus 3.40 LTS), Python (FastAPI, Django), Go (chi), PHP (Laravel 13), Ruby (Rails 8), Elixir (Phoenix), Rust (Axum) |
+| Backends | TypeScript (NestJS 11 or 12, Express 5; Prisma 6 or 7), C# (ASP.NET Core 8), Java and Kotlin (Spring Boot 4, Quarkus 3.40 LTS), Python (FastAPI, Django), Go (chi), PHP (Laravel 13), Ruby (Rails 8), Elixir (Phoenix), Rust (Axum) |
 | Frontends and apps | React 19, Vue 3, Angular 22, Next.js 16, React Native (Expo 57), Flutter, Phoenix LiveView |
 | Contracts and infrastructure | gRPC (Protobuf, buf-linted), GraphQL SDL, AWS CDK (opt-in, synthesized in CI) |
 

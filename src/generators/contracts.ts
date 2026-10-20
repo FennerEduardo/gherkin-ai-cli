@@ -14,7 +14,7 @@ import { industryForConfig } from '../core/profiles/industries';
 import { tagValues } from '../core/profiles/industries/lint-helpers';
 import { dotnetNamespace } from './preset-csharp-dotnet';
 import { renderGoMod } from './kernel/go';
-import { renderGradleKts, renderGradleSettings } from './kernel/kotlin';
+import { renderGradleKts, renderGradleSettings, renderQuarkusGradleKts } from './kernel/kotlin';
 import { buildDomainModel, toKebab } from './kernel/domain-model';
 import type { APIEndpointHint } from '../core/semantic-ir';
 
@@ -538,6 +538,11 @@ docker run --rm -v "$(pwd)":/app -w /app -e DOTNET_CLI_TELEMETRY_OPTOUT=1 -e DOT
       filename: `pom.xml`,
       content: renderPom(toKebab(config.projectName || 'demo'), jvmGroupId(config), { serviceBus: usesServiceBus(config.stack.messaging) })
     };
+  } else if (config.stack.language === 'kotlin' && (config.stack.framework || '').toLowerCase() === 'quarkus') {
+    projectRootFile = [
+      { filename: `build.gradle.kts`, content: renderQuarkusGradleKts(jvmGroupId(config), { serviceBus: usesServiceBus(config.stack.messaging) }) },
+      { filename: `settings.gradle.kts`, content: renderGradleSettings(toKebab(config.projectName || 'demo')) }
+    ];
   } else if (config.stack.language === 'kotlin' && isSpringFramework(config.stack.framework)) {
     projectRootFile = [
       { filename: `build.gradle.kts`, content: renderGradleKts(jvmGroupId(config), { serviceBus: usesServiceBus(config.stack.messaging) }) },

@@ -38,6 +38,7 @@ export const STACK_SUPPORT: StackSupport[] = [
   { id: 'csharp/dotnet', label: 'C# · ASP.NET Core 8 + EF Core', kind: 'backend', tier: 'stable', golden: 'dotnet' },
   { id: 'java/spring', label: 'Java 17 · Spring Boot 4 (Maven)', kind: 'backend', tier: 'stable', golden: 'java' },
   { id: 'java/quarkus', label: 'Java 21 · Quarkus 3.40 LTS (Maven)', kind: 'backend', tier: 'stable', golden: 'quarkus', notes: 'Agroal + Quarkus REST over the JVM runtime kernel.' },
+  { id: 'kotlin/quarkus', label: 'Kotlin · Quarkus 3.40 LTS (Gradle)', kind: 'backend', tier: 'stable', golden: 'kotlin-quarkus', notes: 'Kotlin domain kernel; Java runtime kernel and Quarkus application layer compiled alongside.' },
   { id: 'kotlin/spring', label: 'Kotlin · Spring Boot 4 (Gradle)', kind: 'backend', tier: 'stable', golden: 'kotlin', notes: 'Pattern infrastructure is shared Java code compiled alongside Kotlin.' },
   { id: 'python/fastapi', label: 'Python · FastAPI + SQLAlchemy', kind: 'backend', tier: 'stable', golden: 'fastapi' },
   { id: 'python/django', label: 'Python · Django + DRF', kind: 'backend', tier: 'stable', golden: 'django' },
@@ -109,6 +110,7 @@ export function getStackSupport(config: Pick<GherkinAIConfig, 'stack'>): StackSu
   if (lang === 'kotlin' && isSpringFramework(framework)) return find('kotlin/spring');
   if (lang === 'java' && isSpringFramework(framework)) return find('java/spring');
   if (lang === 'java' && framework === 'quarkus') return find('java/quarkus');
+  if (lang === 'kotlin' && framework === 'quarkus') return find('kotlin/quarkus');
   if (lang === 'csharp' || lang === 'dotnet' || lang === '.net') return find('csharp/dotnet');
   if (lang === 'python') return framework === 'django' ? find('python/django') : find('python/fastapi');
   if (lang === 'go') return find('go/chi');

@@ -60,6 +60,13 @@ export const TOOLCHAINS: Record<string, Toolchain> = {
     integration: ['mvn -B -ntp test -Pintegration'],
     start: 'mvn -B -ntp quarkus:dev -Dquarkus.http.host=0.0.0.0'
   },
+  'kotlin/quarkus': {
+    image: 'gradle:8.14-jdk21',
+    build: ['gradle -q --no-daemon assemble'],
+    test: ['gradle --no-daemon test'],
+    integration: ['gradle --no-daemon integrationTest'],
+    start: 'gradle --no-daemon quarkusDev -Dquarkus.http.host=0.0.0.0'
+  },
   'kotlin/spring': {
     image: 'gradle:8.14-jdk17',
     build: ['gradle -q --no-daemon assemble'],
@@ -153,6 +160,7 @@ export const APP_RUNTIME_ENV: Record<string, AppRuntimeEnv> = {
   'csharp/dotnet': { port: 8080, vars: { ASPNETCORE_ENVIRONMENT: 'Development', ASPNETCORE_URLS: 'http://0.0.0.0:8080' } },
   'java/spring': { port: 8080, vars: { SPRING_PROFILES_ACTIVE: 'dev', SERVER_PORT: '8080' }, health: { live: '/health', ready: '/health/ready' } },
   'java/quarkus': { port: 8080, vars: { QUARKUS_PROFILE: 'dev', SERVER_PORT: '8080' }, health: { live: '/q/health/live', ready: '/q/health/ready' } },
+  'kotlin/quarkus': { port: 8080, vars: { QUARKUS_PROFILE: 'dev', SERVER_PORT: '8080' }, health: { live: '/q/health/live', ready: '/q/health/ready' } },
   'kotlin/spring': { port: 8080, vars: { SPRING_PROFILES_ACTIVE: 'dev', SERVER_PORT: '8080' }, health: { live: '/health', ready: '/health/ready' } },
   'python/fastapi': { port: 8000, vars: { APP_ENV: 'development' } },
   'python/django': { port: 8000, vars: { APP_ENV: 'development', DJANGO_DEBUG: 'true' } },

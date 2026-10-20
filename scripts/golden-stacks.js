@@ -213,6 +213,16 @@ const STACKS = {
     test: ['gradle --no-daemon test'],
     integration: ['gradle --no-daemon integrationTest']
   },
+  // Kotlin domain kernel + Java runtime kernel + Quarkus application layer, built with the Quarkus Gradle plugin.
+  'kotlin-quarkus': {
+    stack: { ...base, language: 'kotlin', framework: 'quarkus', orm: 'jdbc', validation: 'jakarta-validation', testing: 'junit' },
+    image: 'gradle:8.14-jdk21',
+    caches: [['gradle', '/cache/gradle']],
+    env: { GRADLE_USER_HOME: '/cache/gradle' },
+    build: ['gradle -q --no-daemon assemble'],
+    test: ['gradle --no-daemon test'],
+    integration: ['gradle --no-daemon integrationTest']
+  },
   fastapi: {
     stack: { ...base, language: 'python', framework: 'fastapi', orm: 'sqlalchemy', validation: 'pydantic', testing: 'pytest' },
     image: 'python:3.12-slim',
