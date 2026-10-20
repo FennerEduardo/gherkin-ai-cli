@@ -7,9 +7,9 @@ import { CLI_VERSION } from '../version';
 import { renderPom, renderQuarkusPom } from './kernel/java';
 import { jvmGroupId } from './preset-java-spring';
 import { isSpringFramework } from './stack-support';
-import { usesServiceBus } from './kernel/runtime/jvm';
-import { CS_SERVICEBUS_PACKAGES } from './kernel/runtime/csharp';
-import { GO_SERVICEBUS_REQUIRES } from './kernel/runtime/go';
+import { usesKafka, usesServiceBus } from './kernel/runtime/jvm';
+import { CS_KAFKA_PACKAGES, CS_SERVICEBUS_PACKAGES } from './kernel/runtime/csharp';
+import { GO_KAFKA_REQUIRES, GO_SERVICEBUS_REQUIRES } from './kernel/runtime/go';
 import { industryForConfig } from '../core/profiles/industries';
 import { tagValues } from '../core/profiles/industries/lint-helpers';
 import { dotnetNamespace } from './preset-csharp-dotnet';
@@ -494,7 +494,7 @@ Compliance items are engineering guidance, not certification.
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Npgsql" Version="8.0.5" />
-    <PackageReference Include="RabbitMQ.Client" Version="6.8.1" />${usesServiceBus(config.stack.messaging) ? CS_SERVICEBUS_PACKAGES.map(p => `\n    ${p}`).join('') : ''}
+    <PackageReference Include="RabbitMQ.Client" Version="6.8.1" />${usesServiceBus(config.stack.messaging) ? CS_SERVICEBUS_PACKAGES.map(p => `\n    ${p}`).join('') : ''}${usesKafka(config.stack.messaging) ? CS_KAFKA_PACKAGES.map(p => `\n    ${p}`).join('') : ''}
     <PackageReference Include="Polly.Core" Version="8.3.1" />
     <PackageReference Include="Microsoft.Extensions.Http.Resilience" Version="8.3.0" />
     <PackageReference Include="OpenTelemetry.Extensions.Hosting" Version="1.19.1" />
@@ -531,26 +531,26 @@ docker run --rm -v "$(pwd)":/app -w /app -e DOTNET_CLI_TELEMETRY_OPTOUT=1 -e DOT
   } else if (config.stack.language === 'java' && (config.stack.framework || '').toLowerCase() === 'quarkus') {
     projectRootFile = {
       filename: `pom.xml`,
-      content: renderQuarkusPom(toKebab(config.projectName || 'demo'), jvmGroupId(config), { serviceBus: usesServiceBus(config.stack.messaging) })
+      content: renderQuarkusPom(toKebab(config.projectName || 'demo'), jvmGroupId(config), { serviceBus: usesServiceBus(config.stack.messaging), kafka: usesKafka(config.stack.messaging) })
     };
   } else if (config.stack.language === 'java' && isSpringFramework(config.stack.framework)) {
     projectRootFile = {
       filename: `pom.xml`,
-      content: renderPom(toKebab(config.projectName || 'demo'), jvmGroupId(config), { serviceBus: usesServiceBus(config.stack.messaging) })
+      content: renderPom(toKebab(config.projectName || 'demo'), jvmGroupId(config), { serviceBus: usesServiceBus(config.stack.messaging), kafka: usesKafka(config.stack.messaging) })
     };
   } else if (config.stack.language === 'kotlin' && (config.stack.framework || '').toLowerCase() === 'quarkus') {
     projectRootFile = [
-      { filename: `build.gradle.kts`, content: renderQuarkusGradleKts(jvmGroupId(config), { serviceBus: usesServiceBus(config.stack.messaging) }) },
+      { filename: `build.gradle.kts`, content: renderQuarkusGradleKts(jvmGroupId(config), { serviceBus: usesServiceBus(config.stack.messaging), kafka: usesKafka(config.stack.messaging) }) },
       { filename: `settings.gradle.kts`, content: renderGradleSettings(toKebab(config.projectName || 'demo')) }
     ];
   } else if (config.stack.language === 'kotlin' && isSpringFramework(config.stack.framework)) {
     projectRootFile = [
-      { filename: `build.gradle.kts`, content: renderGradleKts(jvmGroupId(config), { serviceBus: usesServiceBus(config.stack.messaging) }) },
+      { filename: `build.gradle.kts`, content: renderGradleKts(jvmGroupId(config), { serviceBus: usesServiceBus(config.stack.messaging), kafka: usesKafka(config.stack.messaging) }) },
       { filename: `settings.gradle.kts`, content: renderGradleSettings(toKebab(config.projectName || 'demo')) }
     ];
   } else if (config.stack.language === 'go') {
     projectRootFile = [
-      { filename: 'go.mod', content: renderGoMod(toKebab(config.projectName || 'app'), { extraRequires: usesServiceBus(config.stack.messaging) ? GO_SERVICEBUS_REQUIRES : [] }) },
+      { filename: 'go.mod', content: renderGoMod(toKebab(config.projectName || 'app'), { extraRequires: [...(usesServiceBus(config.stack.messaging) ? GO_SERVICEBUS_REQUIRES : []), ...(usesKafka(config.stack.messaging) ? GO_KAFKA_REQUIRES : [])] }) },
       { filename: 'internal/contracts/ports.go', content: GO_CONTRACT_PORTS }
     ];
   } else if (['typescript', 'javascript', 'node'].includes(config.stack.language || '')) {

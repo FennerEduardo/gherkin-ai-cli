@@ -68,6 +68,7 @@ Keep secrets in the platform's secret manager (AWS Secrets Manager, GCP Secret M
 | Azure | Service Bus (Standard or Premium; topics need Standard+) | `servicebus` (JVM, TypeScript, .NET, Python and Go backends, opt-in) | Generated only with `stack.messaging: "servicebus"`, because it adds the Azure SDK. Uses Entra ID through `SERVICEBUS_NAMESPACE` |
 | Azure | Self-managed RabbitMQ or CloudAMQP | RabbitMQ | **Rust, Ruby (Rails), Elixir (Phoenix) and PHP (Laravel)**: there is no official Service Bus SDK for them. Run RabbitMQ on AKS (operator) or use CloudAMQP on Azure, and set `AMQP_URL` |
 | Any | Self-managed RabbitMQ (or CloudAMQP) | RabbitMQ | Kubernetes operator or a hosted service |
+| Any | An existing Kafka cluster: Amazon MSK, Managed Service for Apache Kafka, the Event Hubs Kafka endpoint, Confluent Cloud | `kafka` (JVM, TypeScript, .NET, Python and Go backends, opt-in) | Generated only with `stack.messaging: "kafka"`. `KAFKA_BOOTSTRAP_SERVERS`, plus `KAFKA_SECURITY_PROTOCOL=SASL_SSL`, `KAFKA_SASL_MECHANISM` (PLAIN, or SCRAM-SHA-512 for MSK) and the SASL user and password. Event Hubs: user `$ConnectionString`, password the connection string. The service creates its topics |
 
 The adapter is chosen when the service starts: `GHK_BROKER` if set, otherwise the broker whose variables are present, otherwise `stack.messaging`. For every broker, the outbox relay marks a row as published only after the broker has accepted the message. A message that fails in the consumer goes to the dead-letter destination (`<service>.dlx` → `<service>.dlq`) and is not redelivered.
 
@@ -98,6 +99,7 @@ The adapter is chosen when the service starts: `GHK_BROKER` if set, otherwise th
 | Containers | ECS Fargate behind an ALB (HTTPS with an ACM certificate), CPU autoscaling, deployment circuit breaker | Cloud Run v2 with Direct VPC egress, startup and liveness probes | Container Apps with a user-assigned identity, liveness and readiness probes |
 | Database | RDS for PostgreSQL (encrypted; Multi-AZ, deletion protection and 14-day backups in `prod`) | Cloud SQL for PostgreSQL, private IP (regional and point-in-time recovery in `prod`) | PostgreSQL Flexible Server in a delegated subnet (zone-redundant HA in `prod`) |
 | Broker | Amazon MQ for RabbitMQ (AMQPS) | Pub/Sub topics and subscriptions; the service account only publishes and consumes | Service Bus namespace without shared keys (Entra ID data roles), or an external RabbitMQ (`amqp_url` input) |
+| Broker with `stack.messaging: "kafka"` | An existing cluster: `kafka_bootstrap_servers`, `kafka_sasl_username` and `kafka_sasl_password` inputs, stored in the secret manager. No Amazon MQ, Pub/Sub or Service Bus | same | same |
 | Secrets | Secrets Manager → task secrets | Secret Manager → Cloud Run secret env | Key Vault (RBAC) → Container App secrets |
 | Logs | CloudWatch Logs | Cloud Logging | Log Analytics |
 | Network (input) | VPC, public and private subnets | VPC network and subnetwork; optional private services access | Container Apps subnet, PostgreSQL delegated subnet and private DNS zone |

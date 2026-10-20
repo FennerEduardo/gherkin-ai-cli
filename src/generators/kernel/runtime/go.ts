@@ -4,12 +4,18 @@
    ========================================================================== */
 
 import { DomainModel } from '../domain-model';
-import { defaultJvmBroker as defaultBrokerFor, usesServiceBus } from './jvm';
+import { defaultJvmBroker as defaultBrokerFor, usesKafka, usesServiceBus } from './jvm';
 
 /** go.mod requires for the Service Bus adapter (stack.messaging "servicebus"). */
 export const GO_SERVICEBUS_REQUIRES = [
   'github.com/Azure/azure-sdk-for-go/sdk/azidentity v1.15.0',
   'github.com/Azure/azure-sdk-for-go/sdk/messaging/azservicebus v1.11.0'
+];
+
+/** go.mod requires for the Kafka adapter (stack.messaging "kafka"): franz-go, pure Go (no cgo). */
+export const GO_KAFKA_REQUIRES = [
+  'github.com/twmb/franz-go v1.22.2',
+  'github.com/twmb/franz-go/pkg/kadm v1.19.0'
 ];
 import { LEASE_SECONDS, MAX_PUBLISH_ATTEMPTS, RLS_NOTE, RUNTIME_SCHEMA_SQL, SCHEMA_TOKEN, TEST_PARENT_SPAN_ID, TEST_TRACEPARENT, TEST_TRACE_ID, topology } from './shared';
 
@@ -22,6 +28,7 @@ const goStr = (s: string) => JSON.stringify(s);
 
 export function renderGoRuntime(m: DomainModel, module: string, siblings: DomainModel[] = [], { messaging = undefined as string | undefined } = {}): GoRuntimeFile[] {
   const serviceBus = usesServiceBus(messaging);
+  const kafka = usesKafka(messaging);
   const defaultBroker = defaultBrokerFor(messaging);
   const all = [m, ...siblings];
   const t = topology(m);
@@ -320,7 +327,7 @@ func (svc *CommandService) LoadType(ctx context.Context, aggregateType, tenantID
   const broker = `package runtime
 
 // The event broker behind the outbox relay and the inbox consumer, chosen at run time so one image runs on any
-// cloud: GHK_BROKER=rabbitmq (AMQP_URL), pubsub (PUBSUB_PROJECT_ID or GOOGLE_CLOUD_PROJECT; PUBSUB_EMULATOR_HOST)${serviceBus ? '\n// or servicebus (SERVICEBUS_NAMESPACE or SERVICEBUS_CONNECTION_STRING)' : ''}. Without GHK_BROKER the configured
+// cloud: GHK_BROKER=rabbitmq (AMQP_URL), pubsub (PUBSUB_PROJECT_ID or GOOGLE_CLOUD_PROJECT; PUBSUB_EMULATOR_HOST)${serviceBus ? '\n// or servicebus (SERVICEBUS_NAMESPACE or SERVICEBUS_CONNECTION_STRING)' : ''}${kafka ? '\n// or kafka (KAFKA_BOOTSTRAP_SERVERS)' : ''}. Without GHK_BROKER the configured
 // variables decide, then stack.messaging.
 
 import (
@@ -407,6 +414,8 @@ func BrokerKind() string {
 		return "pubsub"
 	case os.Getenv("SERVICEBUS_CONNECTION_STRING") != "" || os.Getenv("SERVICEBUS_NAMESPACE") != "":
 		return "servicebus"
+	case os.Getenv("KAFKA_BOOTSTRAP_SERVERS") != "":
+		return "kafka"
 	}
 	return DefaultBrokerKind
 }
@@ -418,6 +427,8 @@ func BrokerConfigured() bool {
 		return os.Getenv("PUBSUB_PROJECT_ID") != "" || os.Getenv("GOOGLE_CLOUD_PROJECT") != ""
 	case "servicebus":
 		return os.Getenv("SERVICEBUS_CONNECTION_STRING") != "" || os.Getenv("SERVICEBUS_NAMESPACE") != ""
+	case "kafka":
+		return os.Getenv("KAFKA_BOOTSTRAP_SERVERS") != ""
 	default:
 		return os.Getenv("AMQP_URL") != ""
 	}
@@ -436,8 +447,10 @@ func ConnectBroker(ctx context.Context) (Broker, error) {
 		return NewPubSubBrokerFromEnv()
 	case "servicebus":
 		${serviceBus ? 'return NewServiceBusBrokerFromEnv()' : 'return nil, errors.New("the Azure Service Bus adapter is not generated: set stack.messaging to \\"servicebus\\" and regenerate")'}
+	case "kafka":
+		${kafka ? 'return NewKafkaBrokerFromEnv()' : 'return nil, errors.New("the Kafka adapter is not generated: set stack.messaging to \\"kafka\\" and regenerate")'}
 	default:
-		return nil, fmt.Errorf("unsupported GHK_BROKER: %s (rabbitmq, pubsub, servicebus)", kind)
+		return nil, fmt.Errorf("unsupported GHK_BROKER: %s (rabbitmq, pubsub, servicebus, kafka)", kind)
 	}
 }
 
@@ -788,6 +801,211 @@ func (s *pubsubSubscription) Poll(ctx context.Context) (*Delivery, error) {
 		}
 		return ack(ctx)
 	}}, nil
+}
+`;
+
+  const kafkaGo = `package runtime
+
+// Apache Kafka (franz-go, pure Go): topics for the exchange and the DLX; the queue and the DLQ are consumer groups
+// on them. KAFKA_BOOTSTRAP_SERVERS, and for managed clusters (Confluent Cloud, Event Hubs, MSK with SASL/SCRAM)
+// KAFKA_SECURITY_PROTOCOL, KAFKA_SASL_MECHANISM, KAFKA_SASL_USERNAME and KAFKA_SASL_PASSWORD. Publish returns once
+// every in-sync replica has the message (acks=all, idempotent producer). Ack commits the offset; a message that is
+// neither acked nor dead-lettered is handed out again by the next Poll.
+
+import (
+	"context"
+	"crypto/tls"
+	"errors"
+	"fmt"
+	"os"
+	"strings"
+	"time"
+
+	"github.com/twmb/franz-go/pkg/kadm"
+	"github.com/twmb/franz-go/pkg/kerr"
+	"github.com/twmb/franz-go/pkg/kgo"
+	"github.com/twmb/franz-go/pkg/sasl/plain"
+	"github.com/twmb/franz-go/pkg/sasl/scram"
+)
+
+type KafkaBroker struct{ opts []kgo.Opt }
+
+func NewKafkaBrokerFromEnv() (*KafkaBroker, error) {
+	servers := os.Getenv("KAFKA_BOOTSTRAP_SERVERS")
+	if servers == "" {
+		return nil, errors.New("KAFKA_BOOTSTRAP_SERVERS is not set (host:9092)")
+	}
+	opts := []kgo.Opt{kgo.SeedBrokers(strings.Split(servers, ",")...)}
+	if strings.HasSuffix(strings.ToUpper(os.Getenv("KAFKA_SECURITY_PROTOCOL")), "SSL") {
+		opts = append(opts, kgo.DialTLSConfig(&tls.Config{MinVersion: tls.VersionTLS12}))
+	}
+	if user := os.Getenv("KAFKA_SASL_USERNAME"); user != "" {
+		pass := os.Getenv("KAFKA_SASL_PASSWORD")
+		switch strings.ToUpper(os.Getenv("KAFKA_SASL_MECHANISM")) {
+		case "SCRAM-SHA-256":
+			opts = append(opts, kgo.SASL(scram.Auth{User: user, Pass: pass}.AsSha256Mechanism()))
+		case "SCRAM-SHA-512":
+			opts = append(opts, kgo.SASL(scram.Auth{User: user, Pass: pass}.AsSha512Mechanism()))
+		default:
+			opts = append(opts, kgo.SASL(plain.Auth{User: user, Pass: pass}.AsMechanism()))
+		}
+	}
+	return &KafkaBroker{opts: opts}, nil
+}
+
+func (b *KafkaBroker) System() string        { return "kafka" }
+func (b *KafkaBroker) DynamicTopology() bool { return true }
+func (b *KafkaBroker) Close() error          { return nil }
+
+func (b *KafkaBroker) client(extra ...kgo.Opt) (*kgo.Client, error) {
+	return kgo.NewClient(append(append([]kgo.Opt{}, b.opts...), extra...)...)
+}
+
+func (b *KafkaBroker) Declare(ctx context.Context, t Topology) error {
+	cl, err := b.client()
+	if err != nil {
+		return err
+	}
+	defer cl.Close()
+	resp, err := kadm.NewClient(cl).CreateTopics(ctx, -1, -1, nil, t.Exchange, t.DLX)
+	if err != nil {
+		return err
+	}
+	for _, r := range resp {
+		if r.Err != nil && !errors.Is(r.Err, kerr.TopicAlreadyExists) {
+			return fmt.Errorf("create topic %s: %w", r.Topic, r.Err)
+		}
+	}
+	return nil
+}
+
+func kafkaRecord(topic string, m BrokerMessage) *kgo.Record {
+	r := &kgo.Record{Topic: topic, Value: m.Body, Headers: []kgo.RecordHeader{{Key: "message_id", Value: []byte(m.MessageID)}}}
+	if m.TenantID != "" {
+		r.Key = []byte(m.TenantID)
+	}
+	for _, h := range [][2]string{{"event_type", m.EventType}, {"tenant_id", m.TenantID}, {"traceparent", m.Traceparent}} {
+		if h[1] != "" {
+			r.Headers = append(r.Headers, kgo.RecordHeader{Key: h[0], Value: []byte(h[1])})
+		}
+	}
+	return r
+}
+
+func (b *KafkaBroker) producer() (*kgo.Client, error) {
+	return b.client(kgo.RequiredAcks(kgo.AllISRAcks()), kgo.ProduceRequestTimeout(30*time.Second))
+}
+
+type kafkaPublisher struct {
+	cl    *kgo.Client
+	topic string
+}
+
+func (b *KafkaBroker) Publisher(_ context.Context, topic string) (EventPublisher, error) {
+	cl, err := b.producer()
+	if err != nil {
+		return nil, err
+	}
+	return &kafkaPublisher{cl, topic}, nil
+}
+
+func (p *kafkaPublisher) System() string      { return "kafka" }
+func (p *kafkaPublisher) Destination() string { return p.topic }
+func (p *kafkaPublisher) Close() error        { p.cl.Close(); return nil }
+func (p *kafkaPublisher) Publish(ctx context.Context, m BrokerMessage) error {
+	return p.cl.ProduceSync(ctx, kafkaRecord(p.topic, m)).FirstErr()
+}
+
+type kafkaSubscription struct {
+	broker      *KafkaBroker
+	cl          *kgo.Client
+	group       string
+	topology    Topology
+	buffered    []*kgo.Record
+	pending     *Delivery
+	deadLetters *kgo.Client
+}
+
+func (b *KafkaBroker) Subscribe(_ context.Context, group string, t Topology) (EventSubscription, error) {
+	topic := t.Exchange
+	if group == t.DLQ {
+		topic = t.DLX
+	}
+	cl, err := b.client(kgo.ConsumerGroup(group), kgo.ConsumeTopics(topic), kgo.DisableAutoCommit(),
+		kgo.ConsumeResetOffset(kgo.NewOffset().AtStart()), kgo.FetchMaxWait(200*time.Millisecond))
+	if err != nil {
+		return nil, err
+	}
+	return &kafkaSubscription{broker: b, cl: cl, group: group, topology: t}, nil
+}
+
+func (s *kafkaSubscription) System() string { return "kafka" }
+func (s *kafkaSubscription) Source() string { return s.group }
+
+func (s *kafkaSubscription) Close() error {
+	if s.deadLetters != nil {
+		s.deadLetters.Close()
+	}
+	s.cl.Close()
+	return nil
+}
+
+func kafkaHeader(r *kgo.Record, key string) string {
+	for i := len(r.Headers) - 1; i >= 0; i-- {
+		if r.Headers[i].Key == key {
+			return string(r.Headers[i].Value)
+		}
+	}
+	return ""
+}
+
+func (s *kafkaSubscription) Poll(ctx context.Context) (*Delivery, error) {
+	// Neither acked nor dead-lettered: hand it out again, as RabbitMQ redelivers an unacknowledged message.
+	if s.pending != nil {
+		return s.pending, nil
+	}
+	if len(s.buffered) == 0 {
+		pctx, cancel := context.WithTimeout(ctx, 200*time.Millisecond)
+		fetches := s.cl.PollRecords(pctx, 10)
+		cancel()
+		for _, fe := range fetches.Errors() {
+			if !errors.Is(fe.Err, context.DeadlineExceeded) && !errors.Is(fe.Err, context.Canceled) {
+				return nil, fe.Err
+			}
+		}
+		s.buffered = fetches.Records()
+	}
+	if len(s.buffered) == 0 {
+		return nil, nil
+	}
+	r := s.buffered[0]
+	s.buffered = s.buffered[1:]
+	id := kafkaHeader(r, "message_id")
+	if id == "" {
+		id = fmt.Sprintf("%s-%d-%d", r.Topic, r.Partition, r.Offset)
+	}
+	m := BrokerMessage{MessageID: id, EventType: kafkaHeader(r, "event_type"), TenantID: kafkaHeader(r, "tenant_id"), Traceparent: kafkaHeader(r, "traceparent"), Body: r.Value}
+	commit := func(ctx context.Context) error {
+		if err := s.cl.CommitRecords(ctx, r); err != nil {
+			return err
+		}
+		s.pending = nil
+		return nil
+	}
+	s.pending = &Delivery{Message: m, Ack: commit, DeadLetter: func(ctx context.Context) error {
+		if s.deadLetters == nil {
+			cl, err := s.broker.producer()
+			if err != nil {
+				return err
+			}
+			s.deadLetters = cl
+		}
+		if err := s.deadLetters.ProduceSync(ctx, kafkaRecord(s.topology.DLX, m)).FirstErr(); err != nil {
+			return err
+		}
+		return commit(ctx)
+	}}
+	return s.pending, nil
 }
 `;
 
@@ -1731,6 +1949,7 @@ func StartTelemetry(ctx context.Context) (func(context.Context) error, error) {
     { filename: 'internal/runtime/command_service.go', content: commandService },
     { filename: 'internal/runtime/broker.go', content: broker },
     ...(serviceBus ? [{ filename: 'internal/runtime/servicebus_broker.go', content: serviceBusGo }] : []),
+    ...(kafka ? [{ filename: 'internal/runtime/kafka_broker.go', content: kafkaGo }] : []),
     { filename: 'internal/runtime/outbox_relay.go', content: relay },
     { filename: 'internal/runtime/inbox_consumer.go', content: inbox },
     { filename: 'internal/runtime/saga.go', content: saga },

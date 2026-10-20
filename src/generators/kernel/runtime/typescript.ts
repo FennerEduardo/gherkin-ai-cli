@@ -4,7 +4,7 @@
    ========================================================================== */
 
 import { DomainModel } from '../domain-model';
-import { defaultJvmBroker as defaultBrokerFor, usesServiceBus } from './jvm';
+import { defaultJvmBroker as defaultBrokerFor, usesKafka, usesServiceBus } from './jvm';
 import { LEASE_SECONDS, MAX_PUBLISH_ATTEMPTS, RLS_NOTE, RUNTIME_SCHEMA_SQL, SCHEMA_TOKEN, TEST_PARENT_SPAN_ID, TEST_TRACEPARENT, TEST_TRACE_ID, topology } from './shared';
 
 export interface TsRuntimeFile {
@@ -29,9 +29,16 @@ export const TS_RUNTIME_DEV_DEPENDENCIES = { '@types/pg': '^8.15.0' };
 /** Azure SDK packages, added only when the Service Bus adapter is generated (stack.messaging "servicebus"). */
 export const TS_SERVICEBUS_DEPENDENCIES = { '@azure/service-bus': '^7.10.0', '@azure/identity': '^4.14.0' };
 
+/** Confluent's official Kafka client, added only when the Kafka adapter is generated (stack.messaging "kafka"). */
+export const TS_KAFKA_DEPENDENCIES = { '@confluentinc/kafka-javascript': '^1.11.0' };
+
 /** Runtime dependencies for a stack.messaging value. */
 export function tsRuntimeDependencies(messaging?: string): Record<string, string> {
-  return usesServiceBus(messaging) ? { ...TS_RUNTIME_DEPENDENCIES, ...TS_SERVICEBUS_DEPENDENCIES } : TS_RUNTIME_DEPENDENCIES;
+  return {
+    ...TS_RUNTIME_DEPENDENCIES,
+    ...(usesServiceBus(messaging) ? TS_SERVICEBUS_DEPENDENCIES : {}),
+    ...(usesKafka(messaging) ? TS_KAFKA_DEPENDENCIES : {})
+  };
 }
 
 /** Another aggregate of the same service and its module specifier relative to src/runtime/. */
@@ -47,6 +54,7 @@ export interface TsSiblingAggregate {
 export function renderTsRuntime(m: DomainModel, aggregateImport: string, siblings: TsSiblingAggregate[] = [], { messaging = undefined as string | undefined } = {}): TsRuntimeFile[] {
   const t = topology(m);
   const serviceBus = usesServiceBus(messaging);
+  const kafka = usesKafka(messaging);
   const defaultBroker = defaultBrokerFor(messaging);
   const A = `${m.pascal}Aggregate`;
   const sql = JSON.stringify(RUNTIME_SCHEMA_SQL, null, 2);
@@ -231,10 +239,10 @@ export class CommandService {
 
   const broker = `// The event broker behind the outbox relay and the inbox consumer, chosen at run time so one image runs on
 // any cloud: GHK_BROKER=rabbitmq (AMQP_URL), pubsub (PUBSUB_PROJECT_ID or GOOGLE_CLOUD_PROJECT;
-// PUBSUB_EMULATOR_HOST for the emulator)${serviceBus ? ' or servicebus (SERVICEBUS_NAMESPACE or SERVICEBUS_CONNECTION_STRING)' : ''}.
+// PUBSUB_EMULATOR_HOST for the emulator)${serviceBus ? ', servicebus (SERVICEBUS_NAMESPACE or SERVICEBUS_CONNECTION_STRING)' : ''}${kafka ? ', kafka (KAFKA_BOOTSTRAP_SERVERS)' : ''}.
 // Without GHK_BROKER the configured variables decide, then stack.messaging.
 import * as amqp from 'amqplib';
-${serviceBus ? "import { ServiceBusBroker } from './servicebus-broker';\n" : ''}
+${serviceBus ? "import { ServiceBusBroker } from './servicebus-broker';\n" : ''}${kafka ? "import { KafkaBroker } from './kafka-broker';\n" : ''}
 /** Event bus destinations: publish to exchange (topic), consume from queue (subscription); dead letters go to dlx, read from dlq. */
 export interface Topology {
   exchange: string;
@@ -302,6 +310,7 @@ export function brokerKind(env: NodeJS.ProcessEnv = process.env): string {
   if (env.AMQP_URL) return 'rabbitmq';
   if (env.PUBSUB_PROJECT_ID || env.PUBSUB_EMULATOR_HOST) return 'pubsub';
   if (env.SERVICEBUS_CONNECTION_STRING || env.SERVICEBUS_NAMESPACE) return 'servicebus';
+  if (env.KAFKA_BOOTSTRAP_SERVERS) return 'kafka';
   return DEFAULT_BROKER;
 }
 
@@ -310,6 +319,7 @@ export function brokerConfigured(env: NodeJS.ProcessEnv = process.env): boolean 
   switch (brokerKind(env)) {
     case 'pubsub': return Boolean(env.PUBSUB_PROJECT_ID || env.GOOGLE_CLOUD_PROJECT);
     case 'servicebus': return Boolean(env.SERVICEBUS_CONNECTION_STRING || env.SERVICEBUS_NAMESPACE);
+    case 'kafka': return Boolean(env.KAFKA_BOOTSTRAP_SERVERS);
     default: return Boolean(env.AMQP_URL);
   }
 }
@@ -324,8 +334,10 @@ export async function connectBroker(env: NodeJS.ProcessEnv = process.env): Promi
       return PubSubBroker.fromEnv(env);
     case 'servicebus':
       ${serviceBus ? 'return ServiceBusBroker.fromEnv(env);' : "throw new Error('The Azure Service Bus adapter is not generated: set stack.messaging to \"servicebus\" and regenerate');"}
+    case 'kafka':
+      ${kafka ? 'return KafkaBroker.fromEnv(env);' : "throw new Error('The Kafka adapter is not generated: set stack.messaging to \"kafka\" and regenerate');"}
     default:
-      throw new Error(\`Unsupported GHK_BROKER: \${kind} (rabbitmq, pubsub, servicebus)\`);
+      throw new Error(\`Unsupported GHK_BROKER: \${kind} (rabbitmq, pubsub, servicebus, kafka)\`);
   }
 }
 
@@ -596,6 +608,154 @@ export class ServiceBusBroker implements Broker {
 
   async close(): Promise<void> {
     await this.client.close();
+  }
+}
+`;
+
+  const kafkaTs = `// Apache Kafka (Confluent's official client, librdkafka): topics for the exchange and the DLX; the queue and the
+// DLQ are consumer groups on them. KAFKA_BOOTSTRAP_SERVERS, and for managed clusters (Confluent Cloud, Event
+// Hubs, MSK with SASL/SCRAM) KAFKA_SECURITY_PROTOCOL, KAFKA_SASL_MECHANISM, KAFKA_SASL_USERNAME and
+// KAFKA_SASL_PASSWORD. publish resolves once every in-sync replica has the message (acks=all, idempotent
+// producer). The consumer hands over one message at a time and commits its offset on ack() or deadLetter().
+import { KafkaJS } from '@confluentinc/kafka-javascript';
+import type { Broker, BrokerMessage, Delivery, EventPublisher, EventSubscription, Topology } from './broker';
+
+type Producer = ReturnType<KafkaJS.Kafka['producer']>;
+type Headers = Record<string, Buffer | string | (Buffer | string)[] | undefined>;
+
+const header = (headers: Headers | undefined, name: string): string | undefined => {
+  const value = headers?.[name];
+  const first = Array.isArray(value) ? value[0] : value;
+  return first === undefined ? undefined : first.toString();
+};
+
+const toKafkaMessage = (m: BrokerMessage) => ({
+  key: m.tenantId ?? null,
+  value: m.body,
+  headers: {
+    message_id: m.messageId,
+    ...(m.eventType ? { event_type: m.eventType } : {}),
+    ...(m.tenantId ? { tenant_id: m.tenantId } : {}),
+    ...(m.traceparent ? { traceparent: m.traceparent } : {})
+  }
+});
+
+export class KafkaBroker implements Broker {
+  readonly system = 'kafka';
+  readonly dynamicTopology = true;
+  // Publishers and subscriptions still open: close() closes them, as closing a RabbitMQ connection closes its
+  // channels. librdkafka clients keep the process alive until they disconnect.
+  private readonly open = new Set<() => Promise<void>>();
+
+  constructor(private readonly kafka: KafkaJS.Kafka) {}
+
+  private track(close: () => Promise<void>): () => Promise<void> {
+    const once = async () => {
+      if (!this.open.delete(once)) return;
+      await close();
+    };
+    this.open.add(once);
+    return once;
+  }
+
+  static fromEnv(env: NodeJS.ProcessEnv = process.env): KafkaBroker {
+    if (!env.KAFKA_BOOTSTRAP_SERVERS) throw new Error('KAFKA_BOOTSTRAP_SERVERS is not set (host:9092)');
+    const protocol = (env.KAFKA_SECURITY_PROTOCOL ?? '').toUpperCase();
+    const mechanism = (env.KAFKA_SASL_MECHANISM ?? 'PLAIN').toLowerCase();
+    const sasl = env.KAFKA_SASL_USERNAME
+      ? { mechanism: mechanism as 'plain' | 'scram-sha-256' | 'scram-sha-512', username: env.KAFKA_SASL_USERNAME, password: env.KAFKA_SASL_PASSWORD ?? '' }
+      : undefined;
+    return new KafkaBroker(new KafkaJS.Kafka({
+      kafkaJS: { brokers: env.KAFKA_BOOTSTRAP_SERVERS.split(','), ssl: protocol.endsWith('SSL'), ...(sasl ? { sasl } : {}), logLevel: KafkaJS.logLevel.WARN }
+    }));
+  }
+
+  async declare(t: Topology): Promise<void> {
+    const admin = this.kafka.admin();
+    await admin.connect();
+    try {
+      const existing = new Set(await admin.listTopics());
+      const missing = [t.exchange, t.dlx].filter(topic => !existing.has(topic));
+      if (missing.length) await admin.createTopics({ topics: missing.map(topic => ({ topic })) });
+    } finally {
+      await admin.disconnect();
+    }
+  }
+
+  private async producer(): Promise<Producer> {
+    const producer = this.kafka.producer({ kafkaJS: { acks: -1, idempotent: true } });
+    await producer.connect();
+    return producer;
+  }
+
+  async publisher(topic: string): Promise<EventPublisher> {
+    const producer = await this.producer();
+    return {
+      system: this.system,
+      destination: topic,
+      publish: async m => { await producer.send({ topic, messages: [toKafkaMessage(m)] }); },
+      close: this.track(() => producer.disconnect())
+    };
+  }
+
+  async subscribe(group: string, t: Topology): Promise<EventSubscription> {
+    const topic = group === t.dlq ? t.dlx : t.exchange;
+    const consumer = this.kafka.consumer({ kafkaJS: { groupId: group, fromBeginning: true, autoCommit: false } });
+    await consumer.connect();
+    await consumer.subscribe({ topics: [topic] });
+    // eachMessage waits until the delivery is resolved, so messages are handed over one at a time, in order.
+    const ready: Delivery[] = [];
+    const unresolved = new Set<() => void>();
+    let deadLetters: Producer | undefined;
+    await consumer.run({
+      eachMessage: async ({ topic: from, partition, message }) => {
+        const headers = message.headers as Headers | undefined;
+        const msg: BrokerMessage = {
+          messageId: header(headers, 'message_id') ?? \`\${from}-\${partition}-\${message.offset}\`,
+          eventType: header(headers, 'event_type'),
+          tenantId: header(headers, 'tenant_id'),
+          traceparent: header(headers, 'traceparent'),
+          body: message.value ?? Buffer.alloc(0)
+        };
+        let abandon!: () => void;
+        await new Promise<void>((resolve, reject) => {
+          const commit = async () => {
+            await consumer.commitOffsets([{ topic: from, partition, offset: (BigInt(message.offset) + 1n).toString() }]);
+            unresolved.delete(abandon);
+            resolve();
+          };
+          // Closed before ack: not committed, so the group reads the message again.
+          abandon = () => reject(new Error('subscription closed'));
+          unresolved.add(abandon);
+          ready.push({
+            message: msg,
+            ack: commit,
+            deadLetter: async () => {
+              deadLetters ??= await this.producer();
+              await deadLetters.send({ topic: t.dlx, messages: [toKafkaMessage(msg)] });
+              await commit();
+            }
+          });
+        });
+      }
+    });
+    return {
+      system: this.system,
+      source: group,
+      poll: async () => {
+        if (ready.length === 0) await new Promise(r => setTimeout(r, 100));
+        return ready.shift();
+      },
+      close: this.track(async () => {
+        for (const abandon of [...unresolved]) abandon();
+        await deadLetters?.disconnect();
+        await consumer.disconnect();
+      })
+    };
+  }
+
+  async close(): Promise<void> {
+    await Promise.allSettled([...this.open].map(close => close()));
   }
 }
 `;
@@ -1058,6 +1218,7 @@ export async function stopTelemetry(): Promise<void> {
     { filename: 'src/runtime/command-service.ts', content: commandService },
     { filename: 'src/runtime/broker.ts', content: broker },
     ...(serviceBus ? [{ filename: 'src/runtime/servicebus-broker.ts', content: serviceBusTs }] : []),
+    ...(kafka ? [{ filename: 'src/runtime/kafka-broker.ts', content: kafkaTs }] : []),
     { filename: 'src/runtime/outbox-relay.ts', content: relay },
     { filename: 'src/runtime/inbox-consumer.ts', content: inbox },
     { filename: 'src/runtime/saga.ts', content: saga },

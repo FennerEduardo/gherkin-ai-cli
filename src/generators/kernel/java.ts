@@ -257,6 +257,13 @@ const AZURE_BOM = `
  * Service Bus client and Entra ID credentials. The Netty HTTP transport is swapped for the JDK one so the SDK
  * does not depend on the Netty / Reactor Netty versions the framework BOM pins.
  */
+/** Kafka client of the Kafka adapter (stack.messaging "kafka"); its version comes from the framework BOM. */
+const KAFKA_DEPS = `
+    <dependency>
+      <groupId>org.apache.kafka</groupId>
+      <artifactId>kafka-clients</artifactId>
+    </dependency>`;
+
 const AZURE_DEPS = ['azure-messaging-servicebus', 'azure-identity'].map(a => `
     <dependency>
       <groupId>com.azure</groupId>
@@ -278,7 +285,7 @@ const AZURE_DEPS = ['azure-messaging-servicebus', 'azure-identity'].map(a => `
  * Agroal, Quarkus REST and the scheduler. OpenTelemetry is imported before the Quarkus BOM so the kernel
  * gets the API version it is written against; the quarkus-opentelemetry extension is not used (one SDK).
  */
-export function renderQuarkusPom(artifactId: string, groupId = 'com.example', { serviceBus = false } = {}): string {
+export function renderQuarkusPom(artifactId: string, groupId = 'com.example', { serviceBus = false, kafka = false } = {}): string {
   const dep = (g: string, a: string, extra = '') => `    <dependency>\n      <groupId>${g}</groupId>\n      <artifactId>${a}</artifactId>${extra}\n    </dependency>`;
   const test = '\n      <scope>test</scope>';
   return `<?xml version="1.0" encoding="UTF-8"?>
@@ -353,7 +360,7 @@ ${dep('io.opentelemetry', 'opentelemetry-exporter-otlp', `
         </exclusion>
       </exclusions>`)}
 ${dep('io.opentelemetry', 'opentelemetry-exporter-sender-jdk')}
-${dep('com.rabbitmq', 'amqp-client', `\n      <version>${JVM_VERSIONS.amqpClient}</version>`)}${serviceBus ? AZURE_DEPS : ''}
+${dep('com.rabbitmq', 'amqp-client', `\n      <version>${JVM_VERSIONS.amqpClient}</version>`)}${serviceBus ? AZURE_DEPS : ''}${kafka ? KAFKA_DEPS : ''}
 
 ${dep('io.quarkus', 'quarkus-junit5', test)}
 ${dep('io.opentelemetry', 'opentelemetry-sdk-testing', test)}
@@ -426,7 +433,7 @@ ${dep('org.junit.platform', 'junit-platform-suite', test)}
 `;
 }
 
-export function renderPom(artifactId: string, groupId = 'com.example', { serviceBus = false } = {}): string {
+export function renderPom(artifactId: string, groupId = 'com.example', { serviceBus = false, kafka = false } = {}): string {
   return `<?xml version="1.0" encoding="UTF-8"?>
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
   xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
@@ -513,7 +520,7 @@ export function renderPom(artifactId: string, groupId = 'com.example', { service
     <dependency>
       <groupId>com.rabbitmq</groupId>
       <artifactId>amqp-client</artifactId>
-    </dependency>${serviceBus ? AZURE_DEPS : ''}
+    </dependency>${serviceBus ? AZURE_DEPS : ''}${kafka ? KAFKA_DEPS : ''}
 
     <dependency>
       <groupId>org.springframework.boot</groupId>

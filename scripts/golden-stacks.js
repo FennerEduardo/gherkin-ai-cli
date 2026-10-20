@@ -66,6 +66,27 @@ const PUBSUB_EMULATOR = {
   env: { GHK_BROKER: 'pubsub', PUBSUB_EMULATOR_HOST: 'pubsub:8085', PUBSUB_PROJECT_ID: 'ghk-golden' }
 };
 
+// Single-node Kafka (KRaft); the image is KAFKA_IMAGE of src/generators/deploy/broker-env.ts.
+const KAFKA = {
+  name: 'kafka',
+  image: 'apache/kafka:4.1.0',
+  environment: {
+    KAFKA_NODE_ID: '1',
+    KAFKA_PROCESS_ROLES: 'broker,controller',
+    KAFKA_LISTENERS: 'PLAINTEXT://:9092,CONTROLLER://:9093',
+    KAFKA_ADVERTISED_LISTENERS: 'PLAINTEXT://kafka:9092',
+    KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: 'PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT',
+    KAFKA_CONTROLLER_LISTENER_NAMES: 'CONTROLLER',
+    KAFKA_CONTROLLER_QUORUM_VOTERS: '1@localhost:9093',
+    KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: '1',
+    KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: '1',
+    KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: '1',
+    KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: '0'
+  },
+  ready: ['/opt/kafka/bin/kafka-broker-api-versions.sh', '--bootstrap-server', 'localhost:9092'],
+  env: { GHK_BROKER: 'kafka', KAFKA_BOOTSTRAP_SERVERS: 'kafka:9092' }
+};
+
 function nestGolden(stack = {}) {
   return {
     stack: { ...base, language: 'typescript', framework: 'nestjs', orm: 'prisma', validation: 'zod', messaging: 'rabbitmq', testing: 'jest', ...stack },
@@ -312,12 +333,13 @@ function withBroker(name, messaging) {
   return {
     ...def,
     stack: { ...def.stack, messaging },
-    services: messaging === 'servicebus' ? SERVICEBUS_EMULATOR(project) : [PUBSUB_EMULATOR]
+    services: messaging === 'servicebus' ? SERVICEBUS_EMULATOR(project) : messaging === 'kafka' ? [KAFKA] : [PUBSUB_EMULATOR]
   };
 }
 
 // Service Bus only where an official SDK exists (no Rust, Ruby, Elixir or PHP SDK: RabbitMQ / CloudAMQP on Azure).
-const NATIVE_BROKERS = { dotnet: ['pubsub', 'servicebus'], fastapi: ['pubsub', 'servicebus'], go: ['pubsub', 'servicebus'], rust: ['pubsub'], rails: ['pubsub'], phoenix: ['pubsub'], laravel: ['pubsub'] };
+// Kafka where the runtime has an adapter (KAFKA_LANGUAGES of src/generators/deploy/broker-env.ts).
+const NATIVE_BROKERS = { java: ['kafka'], quarkus: ['kafka'], nestjs: ['kafka'], dotnet: ['pubsub', 'servicebus', 'kafka'], fastapi: ['pubsub', 'servicebus', 'kafka'], go: ['pubsub', 'servicebus', 'kafka'], rust: ['pubsub'], rails: ['pubsub'], phoenix: ['pubsub'], laravel: ['pubsub'] };
 for (const [name, brokers] of Object.entries(NATIVE_BROKERS)) {
   for (const messaging of brokers) STACKS[`${name}-${messaging}`] = withBroker(name, messaging);
 }
@@ -341,6 +363,10 @@ STACKS['terraform-aws'] = terraform('terraform-aws', 'aws', 'rails');
 STACKS['terraform-gcp'] = terraform('terraform-gcp', 'gcp', 'laravel');
 STACKS['terraform-azure'] = terraform('terraform-azure', 'azure', 'nestjs', { messaging: 'servicebus' });
 STACKS['terraform-azure-rabbitmq'] = terraform('terraform-azure-rabbitmq', 'azure', 'phoenix');
+// Kafka on every cloud: an existing cluster given as inputs, no native broker resources.
+STACKS['terraform-aws-kafka'] = terraform('terraform-aws-kafka', 'aws', 'nestjs', { messaging: 'kafka' });
+STACKS['terraform-gcp-kafka'] = terraform('terraform-gcp-kafka', 'gcp', 'go', { messaging: 'kafka' });
+STACKS['terraform-azure-kafka'] = terraform('terraform-azure-kafka', 'azure', 'dotnet', { messaging: 'kafka' });
 STACKS.helm = {
   stack: STACKS.django.stack,
   config: { deploy: { cloud: 'gcp', compute: 'kubernetes' } },

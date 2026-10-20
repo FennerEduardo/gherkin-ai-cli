@@ -5,13 +5,16 @@
    ========================================================================== */
 
 import { DomainModel } from '../domain-model';
-import { defaultJvmBroker as defaultBrokerFor, usesServiceBus } from './jvm';
+import { defaultJvmBroker as defaultBrokerFor, usesKafka, usesServiceBus } from './jvm';
 
 /** Azure SDK packages, added to the application project only for stack.messaging "servicebus". */
 export const CS_SERVICEBUS_PACKAGES = [
   '<PackageReference Include="Azure.Messaging.ServiceBus" Version="7.21.0" />',
   '<PackageReference Include="Azure.Identity" Version="1.21.0" />'
 ];
+
+/** Confluent's official Kafka client, added only when the Kafka adapter is generated (stack.messaging "kafka"). */
+export const CS_KAFKA_PACKAGES = ['<PackageReference Include="Confluent.Kafka" Version="2.16.0" />'];
 import { LEASE_SECONDS, MAX_PUBLISH_ATTEMPTS, RLS_NOTE, RUNTIME_SCHEMA_SQL, SCHEMA_TOKEN, TEST_PARENT_SPAN_ID, TEST_TRACEPARENT, TEST_TRACE_ID, topology } from './shared';
 
 export interface CsRuntimeFile {
@@ -30,6 +33,7 @@ const cs = (s: string) => JSON.stringify(s); // JSON strings are valid C# regula
 
 export function renderCsRuntime(m: DomainModel, ns: string, testsDir: string, siblings: DomainModel[] = [], { messaging = undefined as string | undefined } = {}): CsRuntimeFile[] {
   const serviceBus = usesServiceBus(messaging);
+  const kafka = usesKafka(messaging);
   const defaultBroker = defaultBrokerFor(messaging);
   const all = [m, ...siblings];
   const t = topology(m);
@@ -312,8 +316,8 @@ public interface IBroker : IAsyncDisposable
 /// <summary>
 /// The event broker behind the outbox relay and the inbox consumer, chosen at run time so one image runs on any
 /// cloud: GHK_BROKER=rabbitmq (AMQP_URL), pubsub (PUBSUB_PROJECT_ID or GOOGLE_CLOUD_PROJECT; PUBSUB_EMULATOR_HOST)
-/// or servicebus (SERVICEBUS_NAMESPACE or SERVICEBUS_CONNECTION_STRING). Without GHK_BROKER the configured
-/// variables decide, then stack.messaging.
+/// servicebus (SERVICEBUS_NAMESPACE or SERVICEBUS_CONNECTION_STRING) or kafka (KAFKA_BOOTSTRAP_SERVERS), when
+/// generated. Without GHK_BROKER the configured variables decide, then stack.messaging.
 /// </summary>
 public static class Brokers
 {
@@ -328,6 +332,7 @@ public static class Brokers
         if (Env("AMQP_URL") is not null) return "rabbitmq";
         if (Env("PUBSUB_PROJECT_ID") is not null || Env("PUBSUB_EMULATOR_HOST") is not null) return "pubsub";
         if (Env("SERVICEBUS_CONNECTION_STRING") is not null || Env("SERVICEBUS_NAMESPACE") is not null) return "servicebus";
+        if (Env("KAFKA_BOOTSTRAP_SERVERS") is not null) return "kafka";
         return DefaultKind;
     }
 
@@ -336,6 +341,7 @@ public static class Brokers
     {
         "pubsub" => Env("PUBSUB_PROJECT_ID") is not null || Env("GOOGLE_CLOUD_PROJECT") is not null,
         "servicebus" => Env("SERVICEBUS_CONNECTION_STRING") is not null || Env("SERVICEBUS_NAMESPACE") is not null,
+        "kafka" => Env("KAFKA_BOOTSTRAP_SERVERS") is not null,
         _ => Env("AMQP_URL") is not null
     };
 
@@ -344,7 +350,8 @@ public static class Brokers
         "rabbitmq" => (IBroker)await RabbitMqBroker.ConnectAsync(Env("AMQP_URL") ?? throw new InvalidOperationException("AMQP_URL is not set (amqp://user:password@host:5672)")),
         "pubsub" => (IBroker)PubSubBroker.FromEnv(),
         "servicebus" => ${serviceBus ? '(IBroker)ServiceBusBroker.FromEnv()' : 'throw new InvalidOperationException("The Azure Service Bus adapter is not generated: set stack.messaging to \\"servicebus\\" and regenerate")'},
-        var kind => throw new InvalidOperationException($"Unsupported GHK_BROKER: {kind} (rabbitmq, pubsub, servicebus)")
+        "kafka" => ${kafka ? '(IBroker)KafkaBroker.FromEnv()' : 'throw new InvalidOperationException("The Kafka adapter is not generated: set stack.messaging to \\"kafka\\" and regenerate")'},
+        var kind => throw new InvalidOperationException($"Unsupported GHK_BROKER: {kind} (rabbitmq, pubsub, servicebus, kafka)")
     };
 }
 
@@ -683,6 +690,148 @@ public sealed class ServiceBusBroker : IBroker
         {
             if (_deadLetters is not null) await _deadLetters.DisposeAsync();
             await receiver.DisposeAsync();
+        }
+    }
+}
+`;
+
+  const kafkaCs = `using System.Text;
+using Confluent.Kafka;
+using Confluent.Kafka.Admin;
+
+${n}
+/// <summary>
+/// Apache Kafka (Confluent's official client, librdkafka): topics for the exchange and the DLX; the queue and the
+/// DLQ are consumer groups on them. KAFKA_BOOTSTRAP_SERVERS, and for managed clusters (Confluent Cloud, Event Hubs,
+/// MSK with SASL/SCRAM) KAFKA_SECURITY_PROTOCOL, KAFKA_SASL_MECHANISM, KAFKA_SASL_USERNAME and KAFKA_SASL_PASSWORD.
+/// PublishAsync completes once every in-sync replica has the message (acks=all, idempotent producer). Ack commits
+/// the offset; a message that is neither acked nor dead-lettered is read again by the next poll.
+/// </summary>
+public sealed class KafkaBroker(ClientConfig config) : IBroker
+{
+    private static string? Env(string key) => Environment.GetEnvironmentVariable(key) is { Length: > 0 } value ? value : null;
+
+    // ProducerConfig(config) and ConsumerConfig(config) wrap the same dictionary: each client gets its own copy.
+    private Dictionary<string, string> Settings() => config.ToDictionary(kv => kv.Key, kv => kv.Value);
+
+    public static KafkaBroker FromEnv()
+    {
+        var config = new ClientConfig { BootstrapServers = Env("KAFKA_BOOTSTRAP_SERVERS") ?? throw new InvalidOperationException("KAFKA_BOOTSTRAP_SERVERS is not set (host:9092)") };
+        if (Env("KAFKA_SECURITY_PROTOCOL") is { } protocol) config.SecurityProtocol = Enum.Parse<SecurityProtocol>(protocol.Replace("_", ""), ignoreCase: true);
+        if (Env("KAFKA_SASL_USERNAME") is { } user)
+        {
+            config.SaslMechanism = Enum.Parse<SaslMechanism>((Env("KAFKA_SASL_MECHANISM") ?? "PLAIN").Replace("-", ""), ignoreCase: true);
+            config.SaslUsername = user;
+            config.SaslPassword = Env("KAFKA_SASL_PASSWORD");
+        }
+        return new KafkaBroker(config);
+    }
+
+    public string MessagingSystem => "kafka";
+
+    public async Task DeclareAsync(Topology t, CancellationToken ct = default)
+    {
+        using var admin = new AdminClientBuilder(new AdminClientConfig(Settings())).Build();
+        foreach (var topic in new[] { t.Exchange, t.Dlx })
+        {
+            try
+            {
+                await admin.CreateTopicsAsync([new TopicSpecification { Name = topic, NumPartitions = -1, ReplicationFactor = -1 }]);
+            }
+            catch (CreateTopicsException e) when (e.Results.All(r => r.Error.Code == ErrorCode.TopicAlreadyExists))
+            {
+            }
+        }
+    }
+
+    private static Message<string?, byte[]> ToMessage(BrokerMessage m)
+    {
+        var headers = new Headers { { "message_id", Encoding.UTF8.GetBytes(m.MessageId) } };
+        if (m.EventType is not null) headers.Add("event_type", Encoding.UTF8.GetBytes(m.EventType));
+        if (m.TenantId is not null) headers.Add("tenant_id", Encoding.UTF8.GetBytes(m.TenantId));
+        if (m.Traceparent is not null) headers.Add("traceparent", Encoding.UTF8.GetBytes(m.Traceparent));
+        return new Message<string?, byte[]> { Key = m.TenantId, Value = m.Body, Headers = headers };
+    }
+
+    private IProducer<string?, byte[]> Producer() =>
+        new ProducerBuilder<string?, byte[]>(new ProducerConfig(Settings()) { Acks = Acks.All, EnableIdempotence = true, MessageTimeoutMs = 30000 }).Build();
+
+    public Task<IEventPublisher> PublisherAsync(string topic, CancellationToken ct = default) =>
+        Task.FromResult<IEventPublisher>(new Publisher(Producer(), topic));
+
+    public Task<IEventSubscription> SubscribeAsync(string group, Topology topology, CancellationToken ct = default)
+    {
+        var topic = group == topology.Dlq ? topology.Dlx : topology.Exchange;
+        var consumer = new ConsumerBuilder<string?, byte[]>(new ConsumerConfig(Settings())
+        {
+            GroupId = group,
+            EnableAutoCommit = false,
+            AutoOffsetReset = AutoOffsetReset.Earliest
+        }).Build();
+        consumer.Subscribe(topic);
+        return Task.FromResult<IEventSubscription>(new Subscription(this, consumer, group, topology));
+    }
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
+    private sealed class Publisher(IProducer<string?, byte[]> producer, string topic) : IEventPublisher
+    {
+        public string MessagingSystem => "kafka";
+        public string Destination => topic;
+        public Task PublishAsync(BrokerMessage m, CancellationToken ct = default) => producer.ProduceAsync(topic, ToMessage(m), ct);
+
+        public ValueTask DisposeAsync()
+        {
+            producer.Flush(TimeSpan.FromSeconds(5));
+            producer.Dispose();
+            return ValueTask.CompletedTask;
+        }
+    }
+
+    private sealed class Subscription(KafkaBroker broker, IConsumer<string?, byte[]> consumer, string group, Topology topology) : IEventSubscription
+    {
+        private ConsumeResult<string?, byte[]>? _pending;
+        private IProducer<string?, byte[]>? _deadLetters;
+        public string MessagingSystem => "kafka";
+        public string Source => group;
+
+        private void Commit(ConsumeResult<string?, byte[]> r)
+        {
+            consumer.Commit([new TopicPartitionOffset(r.TopicPartition, r.Offset + 1)]);
+            _pending = null;
+        }
+
+        public Task<Delivery?> PollAsync(CancellationToken ct = default)
+        {
+            // Neither acked nor dead-lettered: read it again, as RabbitMQ redelivers an unacknowledged message.
+            if (_pending is not null) consumer.Seek(_pending.TopicPartitionOffset);
+            var r = consumer.Consume(TimeSpan.FromMilliseconds(200));
+            // A new member gets its partitions only after the group rebalance: wait for it (30 s at most) so the
+            // first poll does not report an empty source that merely has not been assigned yet.
+            for (var joined = DateTime.UtcNow; r is null && consumer.Assignment.Count == 0 && DateTime.UtcNow - joined < TimeSpan.FromSeconds(30);)
+                r = consumer.Consume(TimeSpan.FromMilliseconds(200));
+            if (r is null || r.IsPartitionEOF) return Task.FromResult<Delivery?>(null);
+            _pending = r;
+            string? Header(string name) => r.Message.Headers.TryGetLastBytes(name, out var bytes) ? Encoding.UTF8.GetString(bytes) : null;
+            var message = new BrokerMessage(Header("message_id") ?? $"{r.TopicPartitionOffset}", Header("event_type"), Header("tenant_id"), Header("traceparent"), r.Message.Value);
+            return Task.FromResult<Delivery?>(new Delivery(message, () =>
+            {
+                Commit(r);
+                return Task.CompletedTask;
+            }, async () =>
+            {
+                _deadLetters ??= broker.Producer();
+                await _deadLetters.ProduceAsync(topology.Dlx, ToMessage(message));
+                Commit(r);
+            }));
+        }
+
+        public ValueTask DisposeAsync()
+        {
+            _deadLetters?.Dispose();
+            consumer.Close();
+            consumer.Dispose();
+            return ValueTask.CompletedTask;
         }
     }
 }
@@ -1125,6 +1274,7 @@ public sealed class RuntimeIntegrationTests : IAsyncLifetime
     { filename: 'src/Runtime/Topology.cs', content: topologyCs },
     { filename: 'src/Runtime/Brokers.cs', content: brokersCs },
     ...(serviceBus ? [{ filename: 'src/Runtime/ServiceBusBroker.cs', content: serviceBusCs }] : []),
+    ...(kafka ? [{ filename: 'src/Runtime/KafkaBroker.cs', content: kafkaCs }] : []),
     { filename: 'src/Runtime/OutboxRelay.cs', content: relay },
     { filename: 'src/Runtime/InboxConsumer.cs', content: inbox },
     { filename: 'src/Runtime/SagaOrchestrator.cs', content: saga },

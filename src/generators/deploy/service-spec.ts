@@ -32,6 +32,26 @@ export interface ServiceSecret {
   source: 'database-url' | 'amqp-url' | 'random' | 'laravel-key' | 'input';
   /** Length of a random secret. */
   length?: number;
+  /** source "input": the (sensitive) Terraform variable that supplies it, and its description. */
+  variable?: string;
+  description?: string;
+}
+
+/** Terraform variable blocks for the secrets supplied as inputs (source "input"). */
+export function inputVariables(spec: Pick<ServiceSpec, 'secrets'>): string {
+  return spec.secrets.filter(s => s.source === 'input' && s.variable).map(s => `
+variable "${s.variable}" {
+  description = ${JSON.stringify(s.description ?? s.name)}
+  type        = string
+  sensitive   = true
+}
+`).join('');
+}
+
+/** tfvars comment for the input secrets: they come from a secret store, never from a committed file. */
+export function inputTfvarsNote(spec: Pick<ServiceSpec, 'secrets'>): string {
+  const vars = spec.secrets.filter(s => s.source === 'input' && s.variable).map(s => s.variable!);
+  return vars.length ? `# ${vars.join(', ')}: pass ${vars.length > 1 ? 'them' : 'it'} from a secret store, e.g. TF_VAR_${vars[0]} (never commit ${vars.length > 1 ? 'them' : 'it'}).\n` : '';
 }
 
 export interface ServiceSpec {
@@ -65,9 +85,12 @@ export function deployConfig(config: GherkinAIConfig): DeployConfig | undefined 
 /**
  * The managed broker each cloud uses: AWS Amazon MQ for RabbitMQ (no code change), GCP Pub/Sub (adapter in every
  * runtime), Azure Service Bus when the code has its adapter (stack.messaging "servicebus" on a language with an
- * official SDK); otherwise RabbitMQ from an input AMQP_URL (self-managed or CloudAMQP).
+ * official SDK); otherwise RabbitMQ from an input AMQP_URL (self-managed or CloudAMQP). With stack.messaging
+ * "kafka" (and a runtime with the adapter), an existing Kafka cluster on every cloud: MSK, Confluent Cloud,
+ * Event Hubs or Managed Service for Apache Kafka, given as inputs.
  */
 export function cloudBroker(config: Pick<GherkinAIConfig, 'stack'>, cloud: DeployCloud): RuntimeBroker {
+  if (runtimeBroker(config) === 'kafka') return 'kafka';
   if (cloud === 'gcp') return 'pubsub';
   if (cloud === 'azure') return runtimeBroker(config) === 'servicebus' ? 'servicebus' : 'rabbitmq';
   return 'rabbitmq';
@@ -89,7 +112,14 @@ export function serviceSpec(config: GherkinAIConfig, cloud: DeployCloud): Servic
   const secrets: ServiceSecret[] = [
     { name: 'DATABASE_URL', source: 'database-url' },
     { name: 'JWT_SECRET', source: 'random', length: 48 },
-    ...(broker === 'rabbitmq' ? [{ name: 'AMQP_URL', source: cloud === 'aws' ? 'amqp-url' : 'input' } as ServiceSecret] : []),
+    ...(broker === 'rabbitmq' ? [cloud === 'aws'
+      ? { name: 'AMQP_URL', source: 'amqp-url' } as ServiceSecret
+      : { name: 'AMQP_URL', source: 'input', variable: 'amqp_url', description: 'AMQP URL of the RabbitMQ broker (self-managed or CloudAMQP).' } as ServiceSecret] : []),
+    ...(broker === 'kafka' ? [
+      { name: 'KAFKA_BOOTSTRAP_SERVERS', source: 'input', variable: 'kafka_bootstrap_servers', description: 'Bootstrap servers of the Kafka cluster (MSK, Confluent Cloud, Event Hubs, Managed Kafka), host:port[,host:port].' },
+      { name: 'KAFKA_SASL_USERNAME', source: 'input', variable: 'kafka_sasl_username', description: 'SASL user of the service (Event Hubs: "$ConnectionString"; Confluent Cloud: the API key).' },
+      { name: 'KAFKA_SASL_PASSWORD', source: 'input', variable: 'kafka_sasl_password', description: 'SASL password (Event Hubs: the connection string; Confluent Cloud: the API secret).' }
+    ] as ServiceSecret[] : []),
     ...(id === 'php/laravel' ? [{ name: 'APP_KEY', source: 'laravel-key' } as ServiceSecret] : []),
     ...(id === 'ruby/rails' || id.startsWith('elixir/phoenix') ? [{ name: 'SECRET_KEY_BASE', source: 'random', length: 64 } as ServiceSecret] : []),
     ...(id === 'python/django' ? [{ name: 'DJANGO_SECRET_KEY', source: 'random', length: 50 } as ServiceSecret] : [])
@@ -104,8 +134,10 @@ export function serviceSpec(config: GherkinAIConfig, cloud: DeployCloud): Servic
     env: {
       GHK_BROKER: broker,
       // Pub/Sub and Service Bus topologies are created by the IaC and the service identity can only publish and
-      // consume; on RabbitMQ the application user declares its (idempotent) exchanges and queues itself.
-      ...(broker === 'rabbitmq' ? {} : { GHK_DECLARE_TOPOLOGY: 'false' }),
+      // consume; on RabbitMQ and Kafka the service declares its (idempotent) exchanges, queues or topics itself.
+      ...(broker === 'pubsub' || broker === 'servicebus' ? { GHK_DECLARE_TOPOLOGY: 'false' } : {}),
+      // SASL over TLS, as managed clusters require; MSK with SCRAM sets KAFKA_SASL_MECHANISM=SCRAM-SHA-512 in extra_environment.
+      ...(broker === 'kafka' ? { KAFKA_SECURITY_PROTOCOL: 'SASL_SSL', KAFKA_SASL_MECHANISM: 'PLAIN' } : {}),
       OTEL_SERVICE_NAME: name
     },
     secrets,

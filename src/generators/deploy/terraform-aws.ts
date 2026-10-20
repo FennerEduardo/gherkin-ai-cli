@@ -8,7 +8,7 @@
    ========================================================================== */
 
 import { hattrs, hlist, hmap, hstr, dbIdentifier } from './hcl';
-import type { DeployConfig, ServiceSecret, ServiceSpec } from './service-spec';
+import { inputTfvarsNote, inputVariables, type DeployConfig, type ServiceSecret, type ServiceSpec } from './service-spec';
 import { COLLECTOR_IMAGES, PROVIDERS, TERRAFORM_REQUIRED } from './terraform-versions';
 
 export interface TerraformFile {
@@ -21,7 +21,7 @@ const secretExpression = (s: ServiceSecret): string => {
     case 'database-url': return '"postgres://${aws_db_instance.this.username}:${random_password.db.result}@${aws_db_instance.this.address}:${aws_db_instance.this.port}/${aws_db_instance.this.db_name}"';
     case 'amqp-url': return '"amqps://app:${random_password.mq.result}@${trimprefix(aws_mq_broker.this.instances[0].endpoints[0], "amqps://")}"';
     case 'laravel-key': return '"base64:${random_bytes.app_key.base64}"';
-    case 'input': return 'var.amqp_url';
+    case 'input': return `var.${s.variable}`;
     default: return `random_password.${s.name.toLowerCase()}.result`;
   }
 };
@@ -30,6 +30,8 @@ export function renderTerraformAws(spec: ServiceSpec, deploy: DeployConfig): Ter
   const dir = 'deploy/terraform/aws';
   const randoms = spec.secrets.filter(s => s.source === 'random');
   const relay = spec.relayCommand;
+  // Amazon MQ for RabbitMQ unless the service runs on an existing Kafka cluster (stack.messaging "kafka").
+  const mq = spec.broker === 'rabbitmq';
 
   const versions = `terraform {
   required_version = ${hstr(TERRAFORM_REQUIRED)}
@@ -167,6 +169,7 @@ variable "db_require_tls" {
   default     = false
 }
 
+${mq ? `
 variable "mq_instance_type" {
   description = "Amazon MQ broker instance type (mq.t3.micro supports SINGLE_INSTANCE only)."
   type        = string
@@ -189,7 +192,7 @@ variable "mq_deployment_mode" {
     error_message = "mq_deployment_mode must be SINGLE_INSTANCE or CLUSTER_MULTI_AZ."
   }
 }
-
+` : ''}${inputVariables(spec)}
 variable "log_retention_days" {
   description = "CloudWatch Logs retention."
   type        = number
@@ -315,7 +318,7 @@ resource "aws_security_group" "database" {
     security_groups = [aws_security_group.service.id]
   }
 }
-
+${mq ? `
 resource "aws_security_group" "broker" {
   name        = "\${local.name}-broker"
   description = "Amazon MQ of \${local.name}"
@@ -329,7 +332,7 @@ resource "aws_security_group" "broker" {
     security_groups = [aws_security_group.service.id]
   }
 }
-`;
+` : ''}`;
 
   const database = `resource "random_password" "db" {
   length  = 32
@@ -699,10 +702,10 @@ output "database_endpoint" {
   value = aws_db_instance.this.endpoint
 }
 
-output "broker_endpoint" {
+${mq ? `output "broker_endpoint" {
   value = aws_mq_broker.this.instances[0].endpoints[0]
 }
-
+` : ''}
 output "log_group" {
   value = aws_cloudwatch_log_group.this.name
 }
@@ -729,9 +732,11 @@ output "secret_arns" {
           ['max_count', prod ? '6' : '2'],
           ['db_instance_class', hstr(prod ? 'db.m7g.large' : 'db.t4g.small')],
           ['db_multi_az', prod ? 'true' : 'false'],
-          ['mq_instance_type', hstr(prod ? 'mq.m7g.medium' : 'mq.t3.micro')],
-          ['mq_deployment_mode', hstr(prod ? 'CLUSTER_MULTI_AZ' : 'SINGLE_INSTANCE')]
-        ], 0)}\n${prod ? '# certificate_arn = "arn:aws:acm:<region>:<account>:certificate/<id>"\n' : ''}`
+          ...(mq ? [
+            ['mq_instance_type', hstr(prod ? 'mq.m7g.medium' : 'mq.t3.micro')],
+            ['mq_deployment_mode', hstr(prod ? 'CLUSTER_MULTI_AZ' : 'SINGLE_INSTANCE')]
+          ] as [string, string][] : [])
+        ], 0)}\n${inputTfvarsNote(spec)}${prod ? '# certificate_arn = "arn:aws:acm:<region>:<account>:certificate/<id>"\n' : ''}`
       },
       {
         filename: `${dir}/environments/${env}.s3.tfbackend`,
@@ -746,7 +751,7 @@ output "secret_arns" {
     { filename: `${dir}/main.tf`, content: main },
     { filename: `${dir}/network.tf`, content: network },
     { filename: `${dir}/database.tf`, content: database },
-    { filename: `${dir}/broker.tf`, content: broker },
+    ...(mq ? [{ filename: `${dir}/broker.tf`, content: broker }] : []),
     { filename: `${dir}/secrets.tf`, content: secrets },
     { filename: `${dir}/iam.tf`, content: iam },
     { filename: `${dir}/service.tf`, content: service },

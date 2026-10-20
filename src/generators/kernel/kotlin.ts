@@ -202,7 +202,7 @@ fun main(args: Array<String>) {
   };
 }
 
-export function renderGradleKts(groupId = 'com.example', { serviceBus = false } = {}): string {
+export function renderGradleKts(groupId = 'com.example', { serviceBus = false, kafka = false } = {}): string {
   return `plugins {
     id("org.springframework.boot") version "${JVM_VERSIONS.springBoot}"
     id("io.spring.dependency-management") version "${JVM_VERSIONS.springDependencyManagement}"
@@ -244,7 +244,8 @@ dependencies {
     implementation("io.opentelemetry:opentelemetry-api")
     implementation("io.opentelemetry:opentelemetry-sdk")
     implementation("io.opentelemetry:opentelemetry-exporter-otlp")
-    implementation("com.rabbitmq:amqp-client")${serviceBus ? `
+    implementation("com.rabbitmq:amqp-client")${kafka ? `
+    implementation("org.apache.kafka:kafka-clients")` : ''}${serviceBus ? `
     implementation("com.azure:azure-messaging-servicebus") { exclude(group = "com.azure", module = "azure-core-http-netty") }
     implementation("com.azure:azure-identity") { exclude(group = "com.azure", module = "azure-core-http-netty") }
     implementation("com.azure:azure-core-http-jdk-httpclient")` : ''}
@@ -296,7 +297,7 @@ val integrationTest by tasks.registering(Test::class) {
  * Plain platforms (not enforced): Gradle takes the highest OpenTelemetry version, so the runtime's pinned one
  * wins over the Quarkus BOM's, as the import order does in the Maven build.
  */
-export function renderQuarkusGradleKts(groupId = 'com.example', { serviceBus = false } = {}): string {
+export function renderQuarkusGradleKts(groupId = 'com.example', { serviceBus = false, kafka = false } = {}): string {
   return `plugins {
     kotlin("jvm") version "${JVM_VERSIONS.kotlin}"
     kotlin("plugin.allopen") version "${JVM_VERSIONS.kotlin}"
@@ -337,7 +338,8 @@ dependencies {
     implementation("io.opentelemetry:opentelemetry-sdk")
     implementation("io.opentelemetry:opentelemetry-exporter-otlp") { exclude(group = "io.opentelemetry", module = "opentelemetry-exporter-sender-okhttp") }
     implementation("io.opentelemetry:opentelemetry-exporter-sender-jdk")
-    implementation("com.rabbitmq:amqp-client:${JVM_VERSIONS.amqpClient}")${serviceBus ? `
+    implementation("com.rabbitmq:amqp-client:${JVM_VERSIONS.amqpClient}")${kafka ? `
+    implementation("org.apache.kafka:kafka-clients")` : ''}${serviceBus ? `
     implementation("com.azure:azure-messaging-servicebus") { exclude(group = "com.azure", module = "azure-core-http-netty") }
     implementation("com.azure:azure-identity") { exclude(group = "com.azure", module = "azure-core-http-netty") }
     implementation("com.azure:azure-core-http-jdk-httpclient")` : ''}

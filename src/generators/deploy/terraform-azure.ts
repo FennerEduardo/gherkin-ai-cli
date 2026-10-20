@@ -9,7 +9,7 @@
    ========================================================================== */
 
 import { dbIdentifier, hattrs, hlist, hmap, hstr } from './hcl';
-import type { DeployConfig, ServiceSecret, ServiceSpec } from './service-spec';
+import { inputTfvarsNote, inputVariables, type DeployConfig, type ServiceSecret, type ServiceSpec } from './service-spec';
 import type { TerraformFile } from './terraform-aws';
 import { COLLECTOR_IMAGES, PROVIDERS, TERRAFORM_REQUIRED } from './terraform-versions';
 
@@ -17,8 +17,7 @@ const secretExpression = (s: ServiceSecret): string => {
   switch (s.source) {
     case 'database-url': return '"postgres://${azurerm_postgresql_flexible_server.this.administrator_login}:${random_password.db.result}@${azurerm_postgresql_flexible_server.this.fqdn}:5432/${azurerm_postgresql_flexible_server_database.app.name}"';
     case 'laravel-key': return '"base64:${random_bytes.app_key.base64}"';
-    case 'input':
-    case 'amqp-url': return 'var.amqp_url';
+    case 'input': return `var.${s.variable}`;
     default: return `random_password.${s.name.toLowerCase()}.result`;
   }
 };
@@ -163,13 +162,7 @@ variable "servicebus_sku" {
   type        = string
   default     = "Standard"
 }
-` : `
-variable "amqp_url" {
-  description = "AMQP URL of the RabbitMQ broker (self-managed or CloudAMQP): this stack has no Azure Service Bus adapter."
-  type        = string
-  sensitive   = true
-}
-`}
+` : ''}${inputVariables(spec)}
 variable "enable_tracing" {
   description = "Run an OpenTelemetry collector sidecar that sends the traces to Application Insights (Azure Monitor)."
   type        = bool
@@ -598,7 +591,7 @@ output "servicebus_namespace" {
           ['min_replicas', prod ? '2' : '1'],
           ['max_replicas', prod ? '20' : '3'],
           ['postgres_sku', hstr(prod ? 'GP_Standard_D2ds_v5' : 'B_Standard_B1ms')]
-        ], 0)}\n${serviceBus ? '' : '# amqp_url: pass it from a secret store, e.g. TF_VAR_amqp_url (never commit it).\n'}`
+        ], 0)}\n${inputTfvarsNote(spec)}`
       },
       {
         filename: `${dir}/environments/${env}.azurerm.tfbackend`,

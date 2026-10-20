@@ -4,7 +4,7 @@
    ========================================================================== */
 
 import { DomainModel } from '../domain-model';
-import { defaultJvmBroker as defaultBrokerFor, usesServiceBus } from './jvm';
+import { defaultJvmBroker as defaultBrokerFor, usesKafka, usesServiceBus } from './jvm';
 import { LEASE_SECONDS, MAX_PUBLISH_ATTEMPTS, RLS_NOTE, RUNTIME_SCHEMA_SQL, SCHEMA_TOKEN, TEST_PARENT_SPAN_ID, TEST_TRACEPARENT, TEST_TRACE_ID, topology } from './shared';
 
 export interface PyRuntimeFile {
@@ -17,9 +17,16 @@ export const PY_RUNTIME_DEPENDENCIES = ['psycopg[binary]>=3.2', 'pika>=1.3', 'op
 /** Azure SDK packages, added only for stack.messaging "servicebus". */
 export const PY_SERVICEBUS_DEPENDENCIES = ['azure-servicebus>=7.15', 'azure-identity>=1.26'];
 
+/** Confluent's official Kafka client, added only for stack.messaging "kafka". */
+export const PY_KAFKA_DEPENDENCIES = ['confluent-kafka>=2.12'];
+
 /** Runtime dependencies for a stack.messaging value. */
 export function pyRuntimeDependencies(messaging?: string): string[] {
-  return usesServiceBus(messaging) ? [...PY_RUNTIME_DEPENDENCIES, ...PY_SERVICEBUS_DEPENDENCIES] : PY_RUNTIME_DEPENDENCIES;
+  return [
+    ...PY_RUNTIME_DEPENDENCIES,
+    ...(usesServiceBus(messaging) ? PY_SERVICEBUS_DEPENDENCIES : []),
+    ...(usesKafka(messaging) ? PY_KAFKA_DEPENDENCIES : [])
+  ];
 }
 
 /** pytest ini lines registering the marker the integration suite uses. */
@@ -29,6 +36,7 @@ const pyStr = (s: string) => JSON.stringify(s);
 
 export function renderPyRuntime(m: DomainModel, pkg = 'app', siblings: DomainModel[] = [], { messaging = undefined as string | undefined } = {}): PyRuntimeFile[] {
   const serviceBus = usesServiceBus(messaging);
+  const kafka = usesKafka(messaging);
   const defaultBroker = defaultBrokerFor(messaging);
   const all = [m, ...siblings];
   const t = topology(m);
@@ -371,6 +379,8 @@ def broker_kind(env=os.environ) -> str:
         return "pubsub"
     if env.get("SERVICEBUS_CONNECTION_STRING") or env.get("SERVICEBUS_NAMESPACE"):
         return "servicebus"
+    if env.get("KAFKA_BOOTSTRAP_SERVERS"):
+        return "kafka"
     return DEFAULT_BROKER
 
 
@@ -381,6 +391,8 @@ def broker_configured(env=os.environ) -> bool:
         return bool(env.get("PUBSUB_PROJECT_ID") or env.get("GOOGLE_CLOUD_PROJECT"))
     if kind == "servicebus":
         return bool(env.get("SERVICEBUS_CONNECTION_STRING") or env.get("SERVICEBUS_NAMESPACE"))
+    if kind == "kafka":
+        return bool(env.get("KAFKA_BOOTSTRAP_SERVERS"))
     return bool(env.get("AMQP_URL"))
 
 
@@ -396,7 +408,11 @@ def connect_broker(env=os.environ) -> Broker:
 ${serviceBus
   ? '        from .servicebus_broker import ServiceBusBroker\n        return ServiceBusBroker.from_env(env)'
   : '        raise RuntimeError(\'The Azure Service Bus adapter is not generated: set stack.messaging to "servicebus" and regenerate\')'}
-    raise RuntimeError(f"Unsupported GHK_BROKER: {kind} (rabbitmq, pubsub, servicebus)")
+    if kind == "kafka":
+${kafka
+  ? '        from .kafka_broker import KafkaBroker\n        return KafkaBroker.from_env(env)'
+  : '        raise RuntimeError(\'The Kafka adapter is not generated: set stack.messaging to "kafka" and regenerate\')'}
+    raise RuntimeError(f"Unsupported GHK_BROKER: {kind} (rabbitmq, pubsub, servicebus, kafka)")
 
 
 class RabbitMqBroker(Broker):
@@ -607,6 +623,141 @@ class _PubSubSubscription(EventSubscription):
             ack()
 
         return Delivery(message, ack, dead_letter)
+`;
+
+  const kafkaPy = `"""Apache Kafka (Confluent's official client, librdkafka): topics for the exchange and the DLX; the queue and the
+DLQ are consumer groups on them. KAFKA_BOOTSTRAP_SERVERS, and for managed clusters (Confluent Cloud, Event Hubs,
+MSK with SASL/SCRAM) KAFKA_SECURITY_PROTOCOL, KAFKA_SASL_MECHANISM, KAFKA_SASL_USERNAME and KAFKA_SASL_PASSWORD.
+publish returns once every in-sync replica has the message (acks=all, idempotent producer). ack() commits the
+offset; a message that is neither acked nor dead-lettered is read again by the next poll."""
+from __future__ import annotations
+
+import os
+from typing import Optional
+
+from confluent_kafka import Consumer, KafkaError, KafkaException, Producer, TopicPartition
+from confluent_kafka.admin import AdminClient, NewTopic
+
+from .broker import Broker, BrokerMessage, Delivery, EventPublisher, EventSubscription, Topology
+
+
+def _config(env) -> dict:
+    servers = env.get("KAFKA_BOOTSTRAP_SERVERS")
+    if not servers:
+        raise RuntimeError("KAFKA_BOOTSTRAP_SERVERS is not set (host:9092)")
+    config = {"bootstrap.servers": servers}
+    if env.get("KAFKA_SECURITY_PROTOCOL"):
+        config["security.protocol"] = env["KAFKA_SECURITY_PROTOCOL"]
+    if env.get("KAFKA_SASL_USERNAME"):
+        config.update({
+            "sasl.mechanism": env.get("KAFKA_SASL_MECHANISM", "PLAIN"),
+            "sasl.username": env["KAFKA_SASL_USERNAME"],
+            "sasl.password": env.get("KAFKA_SASL_PASSWORD", ""),
+        })
+    return config
+
+
+def _send(producer: Producer, topic: str, m: BrokerMessage) -> None:
+    """Produces and waits for the delivery report (acks=all)."""
+    errors = []
+    headers = [("message_id", m.message_id.encode())]
+    for name, value in (("event_type", m.event_type), ("tenant_id", m.tenant_id), ("traceparent", m.traceparent)):
+        if value is not None:
+            headers.append((name, value.encode()))
+    producer.produce(topic, key=m.tenant_id, value=m.body, headers=headers,
+                     on_delivery=lambda err, _msg: errors.append(err) if err else None)
+    if producer.flush(30) or errors:
+        raise KafkaException(errors[0] if errors else KafkaError(KafkaError._MSG_TIMED_OUT))
+
+
+class KafkaBroker(Broker):
+    system = "kafka"
+
+    def __init__(self, config: dict) -> None:
+        self.config = config
+
+    @classmethod
+    def from_env(cls, env=os.environ) -> "KafkaBroker":
+        return cls(_config(env))
+
+    def declare(self, t: Topology) -> None:
+        admin = AdminClient(self.config)
+        for future in admin.create_topics([NewTopic(t.exchange), NewTopic(t.dlx)]).values():
+            try:
+                future.result(30)
+            except KafkaException as e:
+                if e.args[0].code() != KafkaError.TOPIC_ALREADY_EXISTS:
+                    raise
+
+    def producer(self) -> Producer:
+        return Producer({**self.config, "acks": "all", "enable.idempotence": True})
+
+    def publisher(self, destination: str) -> EventPublisher:
+        return _Publisher(self.producer(), destination)
+
+    def subscribe(self, source: str, t: Topology) -> EventSubscription:
+        return _Subscription(self, source, t)
+
+
+class _Publisher(EventPublisher):
+    system = "kafka"
+
+    def __init__(self, producer: Producer, topic: str) -> None:
+        self.producer = producer
+        self.destination = topic
+
+    def publish(self, message: BrokerMessage) -> None:
+        _send(self.producer, self.destination, message)
+
+    def close(self) -> None:
+        self.producer.flush(5)
+
+
+class _Subscription(EventSubscription):
+    system = "kafka"
+
+    def __init__(self, broker: KafkaBroker, group: str, t: Topology) -> None:
+        self.broker = broker
+        self.source = group
+        self.topology = t
+        self.consumer = Consumer({**broker.config, "group.id": group, "enable.auto.commit": False, "auto.offset.reset": "earliest"})
+        self.consumer.subscribe([t.dlx if group == t.dlq else t.exchange])
+        self.pending = None
+        self.dead_letters: Optional[Producer] = None
+
+    def _commit(self, msg) -> None:
+        self.consumer.commit(offsets=[TopicPartition(msg.topic(), msg.partition(), msg.offset() + 1)], asynchronous=False)
+        self.pending = None
+
+    def poll(self) -> Optional[Delivery]:
+        if self.pending is not None:
+            # Neither acked nor dead-lettered: read it again, as RabbitMQ redelivers an unacknowledged message.
+            p = self.pending
+            self.consumer.seek(TopicPartition(p.topic(), p.partition(), p.offset()))
+        msg = self.consumer.poll(0.2)
+        if msg is None:
+            return None
+        if msg.error():
+            if msg.error().code() == KafkaError._PARTITION_EOF:
+                return None
+            raise KafkaException(msg.error())
+        self.pending = msg
+        headers = {k: v.decode() for k, v in (msg.headers() or []) if v is not None}
+        message = BrokerMessage(headers.get("message_id") or f"{msg.topic()}-{msg.partition()}-{msg.offset()}",
+                                headers.get("event_type"), headers.get("tenant_id"), headers.get("traceparent"), msg.value() or b"")
+
+        def dead_letter() -> None:
+            if self.dead_letters is None:
+                self.dead_letters = self.broker.producer()
+            _send(self.dead_letters, self.topology.dlx, message)
+            self._commit(msg)
+
+        return Delivery(message, lambda: self._commit(msg), dead_letter)
+
+    def close(self) -> None:
+        if self.dead_letters is not None:
+            self.dead_letters.flush(5)
+        self.consumer.close()
 `;
 
   const serviceBusPy = `"""Azure Service Bus (official SDK, AMQP): topics for the exchange and the DLX, subscriptions for the queue and
@@ -1129,6 +1280,7 @@ def stop_telemetry() -> None:
     { filename: `${pkg}/runtime/command_service.py`, content: commandService },
     { filename: `${pkg}/runtime/broker.py`, content: broker },
     ...(serviceBus ? [{ filename: `${pkg}/runtime/servicebus_broker.py`, content: serviceBusPy }] : []),
+    ...(kafka ? [{ filename: `${pkg}/runtime/kafka_broker.py`, content: kafkaPy }] : []),
     { filename: `${pkg}/runtime/outbox_relay.py`, content: relay },
     { filename: `${pkg}/runtime/inbox_consumer.py`, content: inbox },
     { filename: `${pkg}/runtime/saga.py`, content: saga },

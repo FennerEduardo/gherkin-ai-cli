@@ -17,9 +17,10 @@ export interface JvmRuntimeFile {
 const j = (s: string) => JSON.stringify(s); // JSON strings are valid Java string literals here
 
 /** Broker the generated runtime defaults to for a stack.messaging value (GHK_BROKER overrides it at run time). */
-export function defaultJvmBroker(messaging?: string): 'rabbitmq' | 'pubsub' | 'servicebus' {
+export function defaultJvmBroker(messaging?: string): 'rabbitmq' | 'pubsub' | 'servicebus' | 'kafka' {
   if (/pubsub|pub-sub/i.test(messaging || '')) return 'pubsub';
   if (usesServiceBus(messaging)) return 'servicebus';
+  if (usesKafka(messaging)) return 'kafka';
   return 'rabbitmq';
 }
 
@@ -28,10 +29,16 @@ export function usesServiceBus(messaging?: string): boolean {
   return /service-?bus|azure-servicebus/i.test(messaging || '');
 }
 
+/** The Kafka adapter brings the Kafka client, so it is generated only for stack.messaging "kafka". */
+export function usesKafka(messaging?: string): boolean {
+  return /kafka/i.test(messaging || '');
+}
+
 /** @param kotlin the domain kernel is Kotlin (data-class getters instead of record accessors) */
 export function renderJvmRuntime(m: DomainModel, pkg: string, { kotlin = false, siblings = [] as DomainModel[], messaging = undefined as string | undefined } = {}): JvmRuntimeFile[] {
   const defaultBroker = defaultJvmBroker(messaging);
   const serviceBus = usesServiceBus(messaging);
+  const kafka = usesKafka(messaging);
   const all = [m, ...siblings];
   const t = topology(m);
   const dir = `src/main/java/${javaPackagePath(pkg)}/runtime`;
@@ -360,8 +367,9 @@ public interface EventSubscription extends AutoCloseable {
 
   const broker = `${p}/**
  * The event broker behind the outbox relay and the inbox consumer, chosen at run time so one image runs on
- * any cloud: GHK_BROKER=rabbitmq (AMQP_URL) or GHK_BROKER=pubsub (PUBSUB_PROJECT_ID or GOOGLE_CLOUD_PROJECT;
- * PUBSUB_EMULATOR_HOST for the emulator). Without GHK_BROKER the configured variables decide.
+ * any cloud: GHK_BROKER=rabbitmq (AMQP_URL), GHK_BROKER=pubsub (PUBSUB_PROJECT_ID or GOOGLE_CLOUD_PROJECT;
+ * PUBSUB_EMULATOR_HOST for the emulator), servicebus or kafka (KAFKA_BOOTSTRAP_SERVERS), when generated.
+ * Without GHK_BROKER the configured variables decide.
  */
 public interface Broker extends AutoCloseable {
     /** Broker of the generated configuration (stack.messaging). */
@@ -388,6 +396,7 @@ public interface Broker extends AutoCloseable {
         if (System.getenv("AMQP_URL") != null) return "rabbitmq";
         if (System.getenv("PUBSUB_PROJECT_ID") != null || System.getenv("PUBSUB_EMULATOR_HOST") != null) return "pubsub";
         if (System.getenv("SERVICEBUS_CONNECTION_STRING") != null || System.getenv("SERVICEBUS_NAMESPACE") != null) return "servicebus";
+        if (System.getenv("KAFKA_BOOTSTRAP_SERVERS") != null) return "kafka";
         return DEFAULT_KIND;
     }
 
@@ -396,6 +405,7 @@ public interface Broker extends AutoCloseable {
         return switch (kind()) {
             case "pubsub" -> System.getenv("PUBSUB_PROJECT_ID") != null || System.getenv("GOOGLE_CLOUD_PROJECT") != null;
             case "servicebus" -> System.getenv("SERVICEBUS_CONNECTION_STRING") != null || System.getenv("SERVICEBUS_NAMESPACE") != null;
+            case "kafka" -> System.getenv("KAFKA_BOOTSTRAP_SERVERS") != null && !System.getenv("KAFKA_BOOTSTRAP_SERVERS").isBlank();
             default -> System.getenv("AMQP_URL") != null && !System.getenv("AMQP_URL").isBlank();
         };
     }
@@ -404,12 +414,13 @@ public interface Broker extends AutoCloseable {
         return switch (kind()) {
             case "pubsub" -> PubSubBroker.fromEnv();
             case "servicebus" -> ${serviceBus ? 'ServiceBusBroker.fromEnv()' : 'throw new IllegalStateException("The Azure Service Bus adapter is not generated: set stack.messaging to \\"servicebus\\" and regenerate")'};
+            case "kafka" -> ${kafka ? 'KafkaBroker.fromEnv()' : 'throw new IllegalStateException("The Kafka adapter is not generated: set stack.messaging to \\"kafka\\" and regenerate")'};
             case "rabbitmq" -> {
                 String url = System.getenv("AMQP_URL");
                 if (url == null || url.isBlank()) throw new IllegalStateException("AMQP_URL is not set (amqp://user:password@host:5672)");
                 yield RabbitMqBroker.connect(url);
             }
-            default -> throw new IllegalStateException("Unsupported GHK_BROKER: " + kind() + " (rabbitmq, pubsub, servicebus)");
+            default -> throw new IllegalStateException("Unsupported GHK_BROKER: " + kind() + " (rabbitmq, pubsub, servicebus, kafka)");
         };
     }
 }
@@ -688,6 +699,197 @@ public final class ServiceBusBroker implements Broker {
                 receiver.close();
             }
         };
+    }
+
+    @Override
+    public void close() {
+    }
+}
+`;
+
+  const kafkaJava = `${p}import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Properties;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import org.apache.kafka.clients.admin.Admin;
+import org.apache.kafka.clients.admin.NewTopic;
+import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.apache.kafka.clients.consumer.KafkaConsumer;
+import org.apache.kafka.clients.consumer.OffsetAndMetadata;
+import org.apache.kafka.clients.producer.KafkaProducer;
+import org.apache.kafka.clients.producer.ProducerRecord;
+import org.apache.kafka.common.TopicPartition;
+import org.apache.kafka.common.errors.TopicExistsException;
+import org.apache.kafka.common.header.Header;
+import org.apache.kafka.common.header.Headers;
+import org.apache.kafka.common.serialization.ByteArrayDeserializer;
+import org.apache.kafka.common.serialization.ByteArraySerializer;
+import org.apache.kafka.common.serialization.StringDeserializer;
+import org.apache.kafka.common.serialization.StringSerializer;
+
+/**
+ * Apache Kafka (official client): topics for the exchange and the DLX; the queue and the DLQ are consumer
+ * groups on them. KAFKA_BOOTSTRAP_SERVERS, and for managed clusters (Confluent Cloud, Event Hubs, MSK with
+ * SASL/SCRAM) KAFKA_SECURITY_PROTOCOL, KAFKA_SASL_MECHANISM, KAFKA_SASL_USERNAME and KAFKA_SASL_PASSWORD.
+ * publish returns once every in-sync replica has the message (acks=all, idempotent producer). ack() commits
+ * the offset; a message that is neither acked nor dead-lettered is read again by the next poll.
+ */
+public final class KafkaBroker implements Broker {
+    private final Properties base;
+
+    public KafkaBroker(Properties base) {
+        this.base = base;
+    }
+
+    public static KafkaBroker fromEnv() {
+        String servers = System.getenv("KAFKA_BOOTSTRAP_SERVERS");
+        if (servers == null || servers.isBlank()) throw new IllegalStateException("KAFKA_BOOTSTRAP_SERVERS is not set (host:9092)");
+        Properties p = new Properties();
+        p.put("bootstrap.servers", servers);
+        String protocol = System.getenv("KAFKA_SECURITY_PROTOCOL");
+        if (protocol != null && !protocol.isBlank()) p.put("security.protocol", protocol);
+        String mechanism = System.getenv("KAFKA_SASL_MECHANISM");
+        String user = System.getenv("KAFKA_SASL_USERNAME");
+        if (user != null && !user.isBlank()) {
+            String m = mechanism == null || mechanism.isBlank() ? "PLAIN" : mechanism;
+            String module = m.startsWith("SCRAM") ? "org.apache.kafka.common.security.scram.ScramLoginModule" : "org.apache.kafka.common.security.plain.PlainLoginModule";
+            p.put("sasl.mechanism", m);
+            p.put("sasl.jaas.config", module + " required username=\\"" + user + "\\" password=\\"" + System.getenv("KAFKA_SASL_PASSWORD") + "\\";");
+        }
+        return new KafkaBroker(p);
+    }
+
+    private Properties props(Map<String, Object> extra) {
+        Properties p = new Properties();
+        p.putAll(base);
+        p.putAll(extra);
+        return p;
+    }
+
+    @Override
+    public String system() {
+        return "kafka";
+    }
+
+    @Override
+    public void declare(Topology t) throws Exception {
+        try (Admin admin = Admin.create(props(Map.of()))) {
+            for (String topic : List.of(t.exchange(), t.dlx())) {
+                try {
+                    admin.createTopics(List.of(new NewTopic(topic, Optional.empty(), Optional.empty()))).all().get(30, TimeUnit.SECONDS);
+                } catch (ExecutionException e) {
+                    if (!(e.getCause() instanceof TopicExistsException)) throw e;
+                }
+            }
+        }
+    }
+
+    private static ProducerRecord<String, byte[]> toRecord(String topic, BrokerMessage m) {
+        ProducerRecord<String, byte[]> record = new ProducerRecord<>(topic, m.tenantId(), m.body());
+        Headers h = record.headers();
+        if (m.messageId() != null) h.add("message_id", m.messageId().getBytes(StandardCharsets.UTF_8));
+        if (m.eventType() != null) h.add("event_type", m.eventType().getBytes(StandardCharsets.UTF_8));
+        if (m.tenantId() != null) h.add("tenant_id", m.tenantId().getBytes(StandardCharsets.UTF_8));
+        if (m.traceparent() != null) h.add("traceparent", m.traceparent().getBytes(StandardCharsets.UTF_8));
+        return record;
+    }
+
+    private KafkaProducer<String, byte[]> producer() {
+        return new KafkaProducer<>(props(Map.of("acks", "all", "enable.idempotence", "true", "delivery.timeout.ms", "60000")),
+            new StringSerializer(), new ByteArraySerializer());
+    }
+
+    @Override
+    public EventPublisher publisher(String topic) {
+        KafkaProducer<String, byte[]> producer = producer();
+        return new EventPublisher() {
+            @Override
+            public String system() {
+                return "kafka";
+            }
+
+            @Override
+            public String destination() {
+                return topic;
+            }
+
+            @Override
+            public void publish(BrokerMessage m) throws Exception {
+                producer.send(toRecord(topic, m)).get(30, TimeUnit.SECONDS);
+            }
+
+            @Override
+            public void close() {
+                producer.close(Duration.ofSeconds(5));
+            }
+        };
+    }
+
+    @Override
+    public EventSubscription subscribe(String group, Topology topology) {
+        String topic = group.equals(topology.dlq()) ? topology.dlx() : topology.exchange();
+        KafkaConsumer<String, byte[]> consumer = new KafkaConsumer<>(props(Map.of("group.id", group, "enable.auto.commit", "false",
+            "auto.offset.reset", "earliest", "max.poll.records", "1")), new StringDeserializer(), new ByteArrayDeserializer());
+        consumer.subscribe(List.of(topic));
+        return new EventSubscription() {
+            private final List<ConsumerRecord<String, byte[]>> buffered = new ArrayList<>();
+            private ConsumerRecord<String, byte[]> pending;
+            private KafkaProducer<String, byte[]> deadLetters;
+
+            @Override
+            public String system() {
+                return "kafka";
+            }
+
+            @Override
+            public String source() {
+                return group;
+            }
+
+            private void commit(ConsumerRecord<String, byte[]> r) {
+                consumer.commitSync(Map.of(new TopicPartition(r.topic(), r.partition()), new OffsetAndMetadata(r.offset() + 1)));
+                pending = null;
+            }
+
+            @Override
+            public Delivery poll() {
+                if (pending != null) {
+                    // Neither acked nor dead-lettered: read it again, as RabbitMQ redelivers an unacknowledged message.
+                    consumer.seek(new TopicPartition(pending.topic(), pending.partition()), pending.offset());
+                    buffered.clear();
+                    pending = null;
+                }
+                if (buffered.isEmpty()) consumer.poll(Duration.ofMillis(200)).forEach(buffered::add);
+                Iterator<ConsumerRecord<String, byte[]>> it = buffered.iterator();
+                if (!it.hasNext()) return null;
+                ConsumerRecord<String, byte[]> r = it.next();
+                it.remove();
+                pending = r;
+                BrokerMessage m = new BrokerMessage(header(r, "message_id"), header(r, "event_type"), header(r, "tenant_id"), header(r, "traceparent"), r.value());
+                return new Delivery(m, () -> commit(r), () -> {
+                    if (deadLetters == null) deadLetters = producer();
+                    deadLetters.send(toRecord(topology.dlx(), m)).get(30, TimeUnit.SECONDS);
+                    commit(r);
+                });
+            }
+
+            @Override
+            public void close() {
+                if (deadLetters != null) deadLetters.close(Duration.ofSeconds(5));
+                consumer.close(Duration.ofSeconds(5));
+            }
+        };
+    }
+
+    private static String header(ConsumerRecord<String, byte[]> r, String name) {
+        Header h = r.headers().lastHeader(name);
+        return h == null ? null : new String(h.value(), StandardCharsets.UTF_8);
     }
 
     @Override
@@ -1367,6 +1569,7 @@ class RuntimeIntegrationTest {
     { filename: `${dir}/RabbitMqBroker.java`, content: rabbit },
     { filename: `${dir}/PubSubBroker.java`, content: pubsub },
     ...(serviceBus ? [{ filename: `${dir}/ServiceBusBroker.java`, content: serviceBusJava }] : []),
+    ...(kafka ? [{ filename: `${dir}/KafkaBroker.java`, content: kafkaJava }] : []),
     { filename: `${dir}/OutboxRelay.java`, content: relay },
     { filename: `${dir}/InboxConsumer.java`, content: inbox },
     { filename: `${dir}/SagaOrchestrator.java`, content: saga },

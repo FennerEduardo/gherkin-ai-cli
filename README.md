@@ -51,7 +51,7 @@ ghk firewall check --exec "npm test && git push"  # what an agent may write, run
 |---|---|---|
 | Specification lint, semantic model, validation | `lint`, `validate`, `create`, `export` | Stable |
 | Code generation for the supported stacks | `init`, `generate`, `add`, `upgrade` | Stable |
-| Runtime kernel: PostgreSQL, outbox/inbox over RabbitMQ, Pub/Sub or Service Bus, sagas, OpenTelemetry | generated with each backend | Stable |
+| Runtime kernel: PostgreSQL, outbox/inbox over RabbitMQ, Pub/Sub, Service Bus or Kafka, sagas, OpenTelemetry | generated with each backend | Stable |
 | Production image and deployment: Dockerfile, Terraform (AWS, GCP, Azure), Helm | generated with each backend; `deploy` in the configuration | Stable |
 | Spec-to-code convergence and drift | `converge`, `diff`, `impact` | Stable |
 | Agent prompts and context packages | `implement`, `context`, `skill` | Stable |

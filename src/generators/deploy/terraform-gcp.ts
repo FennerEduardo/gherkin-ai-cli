@@ -9,7 +9,7 @@
    ========================================================================== */
 
 import { dbIdentifier, hattrs, hlist, hmap, hstr } from './hcl';
-import type { DeployConfig, ServiceSecret, ServiceSpec } from './service-spec';
+import { inputTfvarsNote, inputVariables, type DeployConfig, type ServiceSecret, type ServiceSpec } from './service-spec';
 import type { TerraformFile } from './terraform-aws';
 import { COLLECTOR_IMAGES, PROVIDERS, TERRAFORM_REQUIRED } from './terraform-versions';
 
@@ -17,8 +17,7 @@ const secretExpression = (s: ServiceSecret): string => {
   switch (s.source) {
     case 'database-url': return '"postgres://${google_sql_user.app.name}:${random_password.db.result}@${google_sql_database_instance.this.private_ip_address}:5432/${google_sql_database.app.name}"';
     case 'laravel-key': return '"base64:${random_bytes.app_key.base64}"';
-    case 'input':
-    case 'amqp-url': return 'var.amqp_url';
+    case 'input': return `var.${s.variable}`;
     default: return `random_password.${s.name.toLowerCase()}.result`;
   }
 };
@@ -28,6 +27,8 @@ export function renderTerraformGcp(spec: ServiceSpec, deploy: DeployConfig): Ter
   const randoms = spec.secrets.filter(s => s.source === 'random');
   const relay = spec.relayCommand;
   const t = spec.topology;
+  // Pub/Sub unless the service runs on an existing Kafka cluster (stack.messaging "kafka").
+  const pubsub = spec.broker === 'pubsub';
 
   const versions = `terraform {
   required_version = ${hstr(TERRAFORM_REQUIRED)}
@@ -144,13 +145,7 @@ variable "db_require_tls" {
   type        = bool
   default     = false
 }
-${spec.secrets.some(s => s.source === 'input') ? `
-variable "amqp_url" {
-  description = "AMQP URL of the RabbitMQ broker."
-  type        = string
-  sensitive   = true
-}
-` : ''}
+${inputVariables(spec)}
 variable "enable_tracing" {
   description = "Run an OpenTelemetry collector sidecar that sends the traces to Cloud Trace."
   type        = bool
@@ -188,7 +183,7 @@ variable "labels" {
 
   # Plain configuration of the container (the secrets are in secrets.tf). Traces go over OTLP to the collector
   # sidecar (containers of a Cloud Run instance share localhost).
-  environment = merge(${hmap(Object.fromEntries(Object.entries({ ...spec.env, PUBSUB_PROJECT_ID: '${var.project_id}' }).map(([k, v]) => [k, `"${v}"`])), 2)}, var.enable_tracing ? { OTEL_EXPORTER_OTLP_ENDPOINT = "http://localhost:4318" } : {}, var.extra_environment)
+  environment = merge(${hmap(Object.fromEntries(Object.entries({ ...spec.env, ...(pubsub ? { PUBSUB_PROJECT_ID: '${var.project_id}' } : {}) }).map(([k, v]) => [k, `"${v}"`])), 2)}, var.enable_tracing ? { OTEL_EXPORTER_OTLP_ENDPOINT = "http://localhost:4318" } : {}, var.extra_environment)
 
   # Collector sidecar configuration (passed with --config=env:OTELCOL_CONFIG): OTLP in, Cloud Trace out.
   otel_config = <<-YAML
@@ -224,8 +219,8 @@ resource "google_project_service" "this" {
   for_each = toset([
     "run.googleapis.com",
     "sqladmin.googleapis.com",
-    "secretmanager.googleapis.com",
-    "pubsub.googleapis.com",
+    "secretmanager.googleapis.com",${pubsub ? `
+    "pubsub.googleapis.com",` : ''}
     "servicenetworking.googleapis.com",
     "compute.googleapis.com",
   ])
@@ -548,10 +543,11 @@ output "database_connection_name" {
   value = google_sql_database_instance.this.connection_name
 }
 
+${pubsub ? `
 output "topics" {
   value = [google_pubsub_topic.events.name, google_pubsub_topic.dlx.name]
 }
-`;
+` : ''}`;
 
   const envFiles = deploy.environments.flatMap(env => {
     const prod = env === 'prod';
@@ -568,7 +564,7 @@ output "topics" {
           ['min_instances', prod ? '2' : '1'],
           ['max_instances', prod ? '20' : '3'],
           ['db_tier', hstr(prod ? 'db-custom-2-7680' : 'db-custom-1-3840')]
-        ], 0)}\n`
+        ], 0)}\n${inputTfvarsNote(spec)}`
       },
       {
         filename: `${dir}/environments/${env}.gcs.tfbackend`,
@@ -582,7 +578,7 @@ output "topics" {
     { filename: `${dir}/variables.tf`, content: variables },
     { filename: `${dir}/main.tf`, content: main },
     { filename: `${dir}/database.tf`, content: database },
-    { filename: `${dir}/pubsub.tf`, content: broker },
+    ...(pubsub ? [{ filename: `${dir}/pubsub.tf`, content: broker }] : []),
     { filename: `${dir}/secrets.tf`, content: secrets },
     { filename: `${dir}/service.tf`, content: service },
     { filename: `${dir}/outputs.tf`, content: outputs },

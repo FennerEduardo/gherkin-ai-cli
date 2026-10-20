@@ -4,7 +4,7 @@
 
 import { GherkinAIConfig } from '../core/config';
 import { resolveAppRuntimeEnv, resolveToolchain } from './toolchains';
-import { brokerEnvExample, runtimeBroker } from './deploy/broker-env';
+import { brokerEnvExample, KAFKA_IMAGE, runtimeBroker } from './deploy/broker-env';
 import { frameworkVariables } from './deploy/context';
 
 const FRAMEWORK_EXAMPLES: Record<string, string> = {
@@ -52,17 +52,34 @@ export function generateInfra(config: GherkinAIConfig): { dockerComposeYaml: str
   // the Pub/Sub emulator, RabbitMQ where the stack has no Service Bus adapter, and nothing for Service Bus (its
   // emulator needs SQL Edge and a fixed entity file: point SERVICEBUS_CONNECTION_STRING at a namespace or emulator).
   const broker = runtimeBroker(config);
-  const cloudBroker = /pub-?sub|service-?bus/i.test(messaging);
+  const cloudBroker = /pub-?sub|service-?bus|kafka/i.test(messaging);
   const brokerService = cloudBroker ? (broker === 'servicebus' ? undefined : broker) : messaging;
   const hasBroker = !['none', 'native-events'].includes(messaging) && brokerService !== undefined;
   const appBrokerEnv = broker === 'pubsub' && cloudBroker
     ? ['GHK_BROKER=pubsub', 'PUBSUB_PROJECT_ID=${PUBSUB_PROJECT_ID:-local-project}', 'PUBSUB_EMULATOR_HOST=${PUBSUB_EMULATOR_HOST:-pubsub:8085}']
     : broker === 'servicebus'
       ? ['GHK_BROKER=servicebus', 'SERVICEBUS_CONNECTION_STRING=${SERVICEBUS_CONNECTION_STRING:-}']
-      : messaging === 'rabbitmq' || cloudBroker ? [`AMQP_URL=\${AMQP_URL:-${amqpUrl('rabbitmq')}}`] : [];
+      : broker === 'kafka'
+        ? ['GHK_BROKER=kafka', 'KAFKA_BOOTSTRAP_SERVERS=${KAFKA_BOOTSTRAP_SERVERS:-kafka:29092}']
+        : messaging === 'rabbitmq' || cloudBroker ? [`AMQP_URL=\${AMQP_URL:-${amqpUrl('rabbitmq')}}`] : [];
   const brokerImage = brokerService === 'pubsub' ? 'gcr.io/google.com/cloudsdktool/google-cloud-cli:emulators'
-    : messaging === 'sqs' ? 'localstack/localstack' : messaging === 'kafka' ? 'confluentinc/cp-kafka' : 'rabbitmq:4-management-alpine';
+    : brokerService === 'kafka' ? KAFKA_IMAGE : messaging === 'sqs' ? 'localstack/localstack' : 'rabbitmq:4-management-alpine';
   const isRabbit = brokerService === 'rabbitmq';
+  // Single-node KRaft: the app container reaches it as kafka:29092, a service on the host as localhost:9092.
+  const kafkaEnv = `
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: INTERNAL://:29092,EXTERNAL://:9092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:29092,EXTERNAL://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@localhost:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0`;
 
   if (db.includes('mysql') || db.includes('mariadb')) {
     dbImage = 'mysql:8.0';
@@ -119,7 +136,7 @@ ${Object.entries(runtime.vars).map(([k, v]) => `      - ${k}=${v}`).join('\n')}
     restart: always${isRabbit ? `
     environment:
       RABBITMQ_DEFAULT_USER: \${RABBITMQ_DEFAULT_USER:-dev_user}
-      RABBITMQ_DEFAULT_PASS: \${RABBITMQ_DEFAULT_PASS:-dev_password}` : ''}${brokerService === 'pubsub' ? `
+      RABBITMQ_DEFAULT_PASS: \${RABBITMQ_DEFAULT_PASS:-dev_password}` : ''}${brokerService === 'kafka' ? kafkaEnv : ''}${brokerService === 'pubsub' ? `
     command: ["gcloud", "beta", "emulators", "pubsub", "start", "--host-port=0.0.0.0:8085", "--project=local-project"]` : ''}
     ports:
       - "${brokerService === 'pubsub' ? '8085:8085' : messaging === 'sqs' ? '4566:4566' : (messaging === 'kafka' ? '9092:9092' : '5672:5672')}"
