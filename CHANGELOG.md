@@ -122,6 +122,7 @@ All notable changes to this project will be documented in this file. See [commit
   - **Stacks.** Java + Quarkus and every Pub/Sub and Service Bus broker adapter. Each is built, tested and run against the official emulators by its golden build on every CI run.
   - **Commands.** `risk`, `quality`, `graph`, `speckit`, `bench` and `web`. Their exit codes and `--json` output are covered by the CLI contract tests and kept across 3.x.
   - **`ghk quality --json`.** New. It reports `gatePassed`, the `reasons` a human must approve, the risk card and the coverage result, and exits 4 when the gate fails. Before, `--json` gave only `{"ok": false}`.
+- **Source layout (4.11).** The command definitions moved from `src/index.ts` to `src/cli/`, one module per group of `docs/COMMANDS.md`, and `ghk --help` lists the commands in those groups. The IR extractors moved from `src/core/ir-builder.ts` to `src/core/ir/`. The IR is unchanged: it was compared with the previous build for 35 features.
 
 ### Fixed
 - **Java/Kotlin frameworks without a preset** (`ktor` offered by `ghk init`, `micronaut`, ...) no longer generate Spring Boot code silently. They are reported as experimental and get contracts and prompts only. `stack-detector` recognises Quarkus, Micronaut and Ktor builds.
