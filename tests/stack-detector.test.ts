@@ -70,4 +70,36 @@ describe('Stack and Architecture Detector', () => {
     
     expect(config.architecture).toBe('hexagonal');
   });
+
+  it('generates into a dedicated directory, never into the existing application', () => {
+    clearWorkspace();
+    fs.writeFileSync(path.join(testWorkspace, 'composer.json'), '{}');
+    expect(detectExistingStack(testWorkspace).outputDir).toBe('./generated-specs');
+  });
+
+  it('detects a .NET project one directory down and its PostgreSQL provider', () => {
+    clearWorkspace();
+    fs.mkdirSync(path.join(testWorkspace, 'src', 'Api'), { recursive: true });
+    fs.writeFileSync(path.join(testWorkspace, 'src', 'Api', 'Api.csproj'), '<Project><ItemGroup><PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" /></ItemGroup></Project>');
+    const config = detectExistingStack(testWorkspace);
+    expect(config.stack.language).toBe('csharp');
+    expect(config.stack.database).toBe('postgresql');
+  });
+
+  it('detects Phoenix with LiveView as the Phoenix backend and its LiveView frontend', () => {
+    clearWorkspace();
+    fs.writeFileSync(path.join(testWorkspace, 'mix.exs'), 'defp deps do [{:phoenix, "~> 1.8"}, {:phoenix_live_view, "~> 1.1"}] end');
+    const config = detectExistingStack(testWorkspace);
+    expect(config.stack).toMatchObject({ language: 'elixir', framework: 'phoenix' });
+    expect(config.frontendStack?.framework).toBe('phoenix-liveview');
+  });
+
+  it('detects Kotlin Gradle builds and defaults Go to chi', () => {
+    clearWorkspace();
+    fs.writeFileSync(path.join(testWorkspace, 'build.gradle.kts'), 'plugins { id("org.jetbrains.kotlin.jvm"); id("io.quarkus") }');
+    expect(detectExistingStack(testWorkspace).stack).toMatchObject({ language: 'kotlin', framework: 'quarkus' });
+    clearWorkspace();
+    fs.writeFileSync(path.join(testWorkspace, 'go.mod'), 'module example.com/billing\nrequire github.com/go-chi/chi/v5 v5.2.0');
+    expect(detectExistingStack(testWorkspace).stack.framework).toBe('chi');
+  });
 });

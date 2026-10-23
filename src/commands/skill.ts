@@ -9,6 +9,7 @@ import fs from 'fs';
 import path from 'path';
 import chalk from 'chalk';
 import inquirer from 'inquirer';
+import { CLI_VERSION } from '../version';
 
 // ---------------------------------------------------------------------------
 // Skill Content (every command it names must exist; keep the start marker: updates replace from it)
@@ -70,19 +71,23 @@ Never guess the architecture or the domain names: take them from the specificati
 interface McpConfigTemplate {
   name: string;
   filename: string;
-  generateConfig: (binPath: string) => any;
+  generateConfig: () => any;
 }
 
-function getMcpConfigTemplates(binPath: string): Record<string, McpConfigTemplate> {
+// The same entry as `ghk mcp install`: pinned, so the server does not change with whatever is latest on npm,
+// and portable, unlike a path to this machine's installation.
+const PINNED_MCP_ARGS = ['-y', `gherkin-ai@${CLI_VERSION}`, 'mcp'];
+
+function getMcpConfigTemplates(): Record<string, McpConfigTemplate> {
   return {
     'cursor': {
       name: 'Cursor',
       filename: '.cursor/mcp.json',
-      generateConfig: (bp) => ({
+      generateConfig: () => ({
         mcpServers: {
           'gherkin-ai': {
-            command: 'node',
-            args: [bp, 'mcp'],
+            command: 'npx',
+            args: PINNED_MCP_ARGS,
             env: {}
           }
         }
@@ -91,12 +96,12 @@ function getMcpConfigTemplates(binPath: string): Record<string, McpConfigTemplat
     'vscode': {
       name: 'VS Code (Copilot)',
       filename: '.vscode/mcp.json',
-      generateConfig: (bp) => ({
+      generateConfig: () => ({
         servers: {
           'gherkin-ai': {
             type: 'stdio',
-            command: 'node',
-            args: [bp, 'mcp'],
+            command: 'npx',
+            args: PINNED_MCP_ARGS,
           }
         }
       }),
@@ -104,11 +109,11 @@ function getMcpConfigTemplates(binPath: string): Record<string, McpConfigTemplat
     'windsurf': {
       name: 'Windsurf (Codeium)',
       filename: '.windsurf/mcp.json',
-      generateConfig: (bp) => ({
+      generateConfig: () => ({
         mcpServers: {
           'gherkin-ai': {
-            command: 'node',
-            args: [bp, 'mcp'],
+            command: 'npx',
+            args: PINNED_MCP_ARGS,
           }
         }
       }),
@@ -116,11 +121,11 @@ function getMcpConfigTemplates(binPath: string): Record<string, McpConfigTemplat
     'claude-desktop': {
       name: 'Claude Desktop',
       filename: '',
-      generateConfig: (bp) => ({
+      generateConfig: () => ({
         mcpServers: {
           'gherkin-ai': {
-            command: 'node',
-            args: [bp, 'mcp'],
+            command: 'npx',
+            args: PINNED_MCP_ARGS,
           }
         }
       }),
@@ -128,11 +133,11 @@ function getMcpConfigTemplates(binPath: string): Record<string, McpConfigTemplat
     'antigravity': {
       name: 'Antigravity',
       filename: '.gemini/settings.json',
-      generateConfig: (bp) => ({
+      generateConfig: () => ({
         mcpServers: {
           'gherkin-ai': {
-            command: 'node',
-            args: [bp, 'mcp'],
+            command: 'npx',
+            args: PINNED_MCP_ARGS,
           }
         }
       }),
@@ -198,9 +203,7 @@ async function installMcp(): Promise<void> {
     ],
   }]);
 
-  // Resolve binary path
-  const binPath = resolveBinPath();
-  const templates = getMcpConfigTemplates(binPath);
+  const templates = getMcpConfigTemplates();
   const template = templates[targetIde];
 
   if (!template) {
@@ -208,7 +211,7 @@ async function installMcp(): Promise<void> {
     return;
   }
 
-  const mcpConfig = template.generateConfig(binPath);
+  const mcpConfig = template.generateConfig();
 
   if (targetIde === 'claude-desktop') {
     // Claude Desktop uses a global config file
@@ -246,8 +249,8 @@ async function installMcp(): Promise<void> {
 
   fs.writeFileSync(configPath, JSON.stringify(finalConfig, null, 2) + '\n', 'utf8');
   console.log(chalk.green(`\n  ✅ MCP server configured in ${template.filename}`));
-  console.log(chalk.cyan(`  📡 Available tools: 13 (parse, build_ir, lint, converge, contracts, quality, security...)`));
-  console.log(chalk.gray(`  🔧 Binary path: ${binPath}\n`));
+  console.log(chalk.cyan('  📡 Read-only tools by default; write tools need "mcp": { "allowWrite": true } (docs/MCP_GUIDE.md).'));
+  console.log(chalk.gray(`  🔧 Server: npx ${PINNED_MCP_ARGS.join(' ')}\n`));
 }
 
 // ---------------------------------------------------------------------------
@@ -297,21 +300,4 @@ async function installSkill(): Promise<void> {
   fs.writeFileSync(targetPath, finalContent.trim() + '\n', 'utf8');
   console.log(chalk.green(`  ✅ Successfully injected Gherkin AI Skill into ${targetIde}!`));
   console.log(chalk.cyan(`  🤖 Your IDE Agent is now trained to use 'ghk' commands natively.\n`));
-}
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function resolveBinPath(): string {
-  // Try to find the installed binary path
-  const localBin = path.resolve(__dirname, '../../bin/gherkin-ai.js');
-  if (fs.existsSync(localBin)) return localBin;
-
-  // Fallback to npx-resolved path
-  const nodeModulesBin = path.resolve(process.cwd(), 'node_modules/.bin/gherkin-ai');
-  if (fs.existsSync(nodeModulesBin)) return nodeModulesBin;
-
-  // Final fallback: use the global command name
-  return 'gherkin-ai';
 }

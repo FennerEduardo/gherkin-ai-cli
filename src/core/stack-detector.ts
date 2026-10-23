@@ -4,9 +4,25 @@
              Go, Node/Nest/Express, Angular, Ionic, React, Vue, Svelte, Flutter.
    ========================================================================== */
 
+import fs from 'fs';
 import path from 'path';
 import { fileExistsSync, readFileSync } from '../utils/file-system';
 import { GherkinAIConfig, defaultConfig } from './config';
+
+/** .csproj files at the root or one directory down (src/Api/Api.csproj); bin/obj and dot-directories are skipped. */
+function findCsproj(rootDir: string): string[] {
+  const found: string[] = [];
+  const scan = (dir: string, depth: number) => {
+    let entries: fs.Dirent[];
+    try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+    for (const e of entries) {
+      if (e.isFile() && e.name.endsWith('.csproj')) found.push(path.join(dir, e.name));
+      else if (e.isDirectory() && depth < 2 && !e.name.startsWith('.') && !['bin', 'obj', 'node_modules'].includes(e.name)) scan(path.join(dir, e.name), depth + 1);
+    }
+  };
+  scan(rootDir, 0);
+  return found;
+}
 
 export function detectExistingStack(rootDir: string = process.cwd()): GherkinAIConfig {
   const detected: GherkinAIConfig = {
@@ -15,7 +31,8 @@ export function detectExistingStack(rootDir: string = process.cwd()): GherkinAIC
     architecture: 'hexagonal',
     stack: { ...defaultConfig.stack },
     rules: { ...defaultConfig.rules },
-    outputDir: './src'
+    // A dedicated directory: generating into the existing src/ or app/ would mix generated and hand-written code.
+    outputDir: './generated-specs'
   };
 
   const gemfilePath = path.join(rootDir, 'Gemfile');
@@ -26,7 +43,9 @@ export function detectExistingStack(rootDir: string = process.cwd()): GherkinAIC
   const reqTxtPath = path.join(rootDir, 'requirements.txt');
   const managePyPath = path.join(rootDir, 'manage.py');
   const pomXmlPath = path.join(rootDir, 'pom.xml');
-  const buildGradlePath = path.join(rootDir, 'build.gradle');
+  const buildGradlePath = fileExistsSync(path.join(rootDir, 'build.gradle.kts')) ? path.join(rootDir, 'build.gradle.kts') : path.join(rootDir, 'build.gradle');
+  const mixExsPath = path.join(rootDir, 'mix.exs');
+  const csprojFiles = findCsproj(rootDir);
   const angularJsonPath = path.join(rootDir, 'angular.json');
   const pubspecPath = path.join(rootDir, 'pubspec.yaml');
   const packageJsonPath = path.join(rootDir, 'package.json');
@@ -43,7 +62,6 @@ export function detectExistingStack(rootDir: string = process.cwd()): GherkinAIC
     detected.stack.validation = 'active-model-validations';
     detected.stack.testing = 'rspec';
     detected.architecture = 'monolith';
-    detected.outputDir = './app';
 
     try {
       const gemContent = readFileSync(gemfilePath);
@@ -53,14 +71,32 @@ export function detectExistingStack(rootDir: string = process.cwd()): GherkinAIC
       // Ignore
     }
   }
-  // 2. C# / .NET / ASP.NET Core Stack Detection
-  else if (fileExistsSync(path.join(rootDir, 'Program.cs')) || fileExistsSync(path.join(rootDir, 'appsettings.json'))) {
+  // 2. C# / .NET / ASP.NET Core Stack Detection (project files at the root or one directory down, e.g. src/Api)
+  else if (fileExistsSync(path.join(rootDir, 'Program.cs')) || fileExistsSync(path.join(rootDir, 'appsettings.json')) || csprojFiles.length > 0) {
     detected.stack.language = 'csharp';
     detected.stack.framework = 'dotnet-aspnetcore';
     detected.stack.orm = 'entity-framework-core';
-    detected.stack.database = 'sql-server';
     detected.stack.validation = 'fluent-validation';
     detected.stack.testing = 'xunit';
+    // The database provider the project references; the generated runtime kernel uses PostgreSQL.
+    const projects = csprojFiles.map(f => { try { return readFileSync(f); } catch { return ''; } }).join('\n');
+    detected.stack.database = /SqlServer|Microsoft\.Data\.SqlClient/.test(projects) && !/Npgsql/.test(projects) ? 'sql-server' : 'postgresql';
+  }
+  // 2.5. Elixir / Phoenix Stack Detection
+  else if (fileExistsSync(mixExsPath)) {
+    detected.stack.language = 'elixir';
+    detected.stack.framework = 'phoenix';
+    detected.stack.orm = 'ecto';
+    detected.stack.database = 'postgresql';
+    detected.stack.testing = 'exunit';
+    try {
+      const mix = readFileSync(mixExsPath);
+      if (!/:phoenix\b/.test(mix)) detected.stack.framework = 'elixir';
+      // LiveView is the frontend of the Phoenix backend.
+      if (/:phoenix_live_view\b/.test(mix)) detected.frontendStack = { framework: 'phoenix-liveview', language: 'javascript' } as GherkinAIConfig['frontendStack'];
+    } catch {
+      // Ignore
+    }
   }
   // 3. PHP / Laravel Stack Detection
   else if (fileExistsSync(artisanPath) || fileExistsSync(composerJsonPath)) {
@@ -72,7 +108,6 @@ export function detectExistingStack(rootDir: string = process.cwd()): GherkinAIC
     detected.stack.auth = 'laravel-sanctum';
     detected.stack.testing = 'phpunit';
     detected.architecture = 'monolith';
-    detected.outputDir = './app';
 
     if (fileExistsSync(composerJsonPath)) {
       try {
@@ -99,7 +134,6 @@ export function detectExistingStack(rootDir: string = process.cwd()): GherkinAIC
     detected.stack.database = 'sqlite';
     detected.stack.validation = 'form-validation';
     detected.stack.testing = 'flutter_test';
-    detected.outputDir = './lib';
   }
   // 5. Python Stack Detection (Django / FastAPI / Flask)
   else if (fileExistsSync(managePyPath) || fileExistsSync(pyProjectPath) || fileExistsSync(reqTxtPath)) {
@@ -136,9 +170,10 @@ export function detectExistingStack(rootDir: string = process.cwd()): GherkinAIC
       const modContent = readFileSync(goModPath);
       if (modContent.includes('github.com/gofiber/fiber')) detected.stack.framework = 'fiber';
       else if (modContent.includes('github.com/labstack/echo')) detected.stack.framework = 'echo';
-      else detected.stack.framework = 'gin';
+      else if (modContent.includes('github.com/gin-gonic/gin')) detected.stack.framework = 'gin';
+      else detected.stack.framework = 'chi';
     } catch {
-      detected.stack.framework = 'gin';
+      detected.stack.framework = 'chi';
     }
   }
   // 6.5. Rust Stack Detection
