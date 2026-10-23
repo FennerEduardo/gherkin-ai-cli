@@ -23,6 +23,35 @@ export interface Toolchain {
   /** Command that starts the application. */
   start: string;
   env?: Record<string, string>;
+  /**
+   * Dependency caches as [volume, container path]: mounted as the named volume `ghk-cache-<volume>`, which
+   * stays writable under the sandbox's read-only root and is shared with the golden builds.
+   */
+  caches?: [string, string][];
+}
+
+/**
+ * Where each toolchain keeps its downloads, and the variables that point it there (the strict sandbox sets
+ * HOME=/tmp, so caches that default to $HOME are named explicitly).
+ */
+const CACHES: [RegExp, Pick<Toolchain, 'caches' | 'env'>][] = [
+  [/^(typescript|javascript|frontend)\//, { caches: [['npm', '/root/.npm']], env: { npm_config_cache: '/root/.npm' } }],
+  [/^csharp\//, { caches: [['nuget', '/root/.nuget/packages']], env: { NUGET_PACKAGES: '/root/.nuget/packages' } }],
+  [/^java\//, { caches: [['m2', '/root/.m2']], env: { MAVEN_OPTS: '-Dmaven.repo.local=/root/.m2/repository' } }],
+  [/^kotlin\//, { caches: [['gradle', '/cache/gradle']], env: { GRADLE_USER_HOME: '/cache/gradle' } }],
+  [/^python\//, { caches: [['pip', '/root/.cache/pip']], env: { PIP_CACHE_DIR: '/root/.cache/pip', PIP_DISABLE_PIP_VERSION_CHECK: '1' } }],
+  [/^go\//, { caches: [['gomod', '/go/pkg/mod'], ['gobuild', '/root/.cache/go-build']], env: { GOCACHE: '/root/.cache/go-build', GOFLAGS: '-modcacherw' } }],
+  [/^ruby\//, { caches: [['gems', '/usr/local/bundle']] }],
+  [/^elixir\//, { caches: [['mix', '/root/.mix'], ['hex', '/root/.hex']], env: { MIX_HOME: '/root/.mix', HEX_HOME: '/root/.hex' } }],
+  [/^rust\//, { caches: [['cargo-registry', '/usr/local/cargo/registry'], ['cargo-git', '/usr/local/cargo/git']] }],
+  [/^php\//, { caches: [['composer', '/tmp/composer-cache']], env: { COMPOSER_CACHE_DIR: '/tmp/composer-cache', COMPOSER_NO_INTERACTION: '1' } }],
+  [/^dart\//, { caches: [['pub', '/root/.pub-cache']], env: { PUB_CACHE: '/root/.pub-cache' } }]
+];
+
+function withCaches(id: string, toolchain: Toolchain | undefined): Toolchain | undefined {
+  if (!toolchain) return undefined;
+  const cache = CACHES.find(([pattern]) => pattern.test(id))?.[1];
+  return cache ? { ...toolchain, caches: cache.caches, env: { ...cache.env, ...toolchain.env } } : toolchain;
 }
 
 const NODE_IMAGE = 'node:24-bookworm';
@@ -180,8 +209,8 @@ export function resolveAppRuntimeEnv(config: Pick<GherkinAIConfig, 'stack'>): Ap
 /** Toolchain for a project config (NestJS / Express variants share the Node toolchain). */
 export function resolveToolchain(config: Pick<GherkinAIConfig, 'stack'>): Toolchain | undefined {
   const id = getStackSupport(config).id;
-  if (id.startsWith('typescript/nestjs')) return TOOLCHAINS['typescript/nestjs'];
-  if (id.startsWith('typescript/express')) return TOOLCHAINS['typescript/express'];
-  if (id.startsWith('frontend/')) return node('npm run dev');
-  return TOOLCHAINS[id];
+  if (id.startsWith('typescript/nestjs')) return withCaches(id, TOOLCHAINS['typescript/nestjs']);
+  if (id.startsWith('typescript/express')) return withCaches(id, TOOLCHAINS['typescript/express']);
+  if (id.startsWith('frontend/')) return withCaches(id, node('npm run dev'));
+  return withCaches(id, TOOLCHAINS[id]);
 }

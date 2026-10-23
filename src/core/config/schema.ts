@@ -146,14 +146,24 @@ const sandboxSchema = z.object({
   /** Overrides the toolchain image for the stack. */
   image: z.string().optional(),
   /**
-   * Extra containers for `verify --services`, next to PostgreSQL and RabbitMQ (e.g. MinIO, Mailpit).
-   * Each is reachable from the tests by its `name`; `env` adds variables to the test container.
+   * Extra containers for `verify --services`, next to PostgreSQL, RabbitMQ and the broker of `stack.messaging`
+   * (e.g. MinIO, Mailpit). Each is reachable from the tests by its `name`; `env` adds variables to the test container.
    */
   services: z.array(z.object({
     name: z.string().regex(/^[a-z][a-z0-9-]*$/),
     image: z.string(),
+    /** Variables for the service container. */
     environment: z.record(z.string()).optional(),
-    env: z.record(z.string()).optional()
+    /** Variables for the test container. */
+    env: z.record(z.string()).optional(),
+    /** Command (and arguments) that replaces the image default, e.g. an emulator start command. */
+    command: z.array(z.string()).optional(),
+    /** Readiness probe run inside the container (exit 0 = ready). */
+    ready: z.array(z.string()).optional(),
+    /** Ready once the container log contains this text. */
+    readyLog: z.string().optional(),
+    /** Files mounted read-only into the container: container path -> content. */
+    files: z.record(z.string()).optional()
   })).optional()
 });
 

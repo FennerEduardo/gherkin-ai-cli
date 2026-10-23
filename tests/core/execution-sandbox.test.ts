@@ -181,4 +181,30 @@ describe('dockerRunArgs', () => {
     expect(args.join(' ')).toContain('--memory 4g');
     expect(args).not.toContain('undefined');
   });
+
+  it('mounts the dependency caches as named volumes, writable under the read-only root', async () => {
+    const { dockerRunArgs } = await import('../../src/core/execution-sandbox');
+    const args = dockerRunArgs('/p', 'golang:1.26', 'go test ./...', {}, {}, { caches: [['gomod', '/go/pkg/mod']] }).join(' ');
+    expect(args).toContain('--read-only');
+    expect(args).toContain('--cap-drop ALL');
+    expect(args).toContain('-v ghk-cache-gomod:/go/pkg/mod');
+  });
+
+  it('keeps the image root and capabilities in the toolchain profile, with the limits', async () => {
+    const { dockerRunArgs } = await import('../../src/core/execution-sandbox');
+    const args = dockerRunArgs('/p', 'python:3.12-slim', 'pip install -e .', { network: 'ghk-net-1' }, {}, { profile: 'toolchain' }).join(' ');
+    expect(args).not.toContain('--read-only');
+    expect(args).not.toContain('--cap-drop');
+    expect(args).not.toContain('HOME=/tmp');
+    expect(args).toContain('--security-opt no-new-privileges');
+    expect(args).toContain('--memory 2g');
+  });
+
+  it('gives every backend toolchain its dependency caches', async () => {
+    const { resolveToolchain } = await import('../../src/generators/toolchains');
+    for (const stack of [{ language: 'go', framework: 'chi' }, { language: 'java', framework: 'quarkus' }, { language: 'kotlin', framework: 'spring-boot' }, { language: 'typescript', framework: 'nestjs' }]) {
+      expect(resolveToolchain({ stack } as any)?.caches?.length, stack.language).toBeGreaterThan(0);
+    }
+    expect(resolveToolchain({ stack: { language: 'kotlin', framework: 'spring-boot' } } as any)?.env).toMatchObject({ GRADLE_USER_HOME: '/cache/gradle' });
+  });
 });

@@ -11,81 +11,8 @@
 
 const base = { database: 'postgresql', auth: 'jwt', messaging: 'none' };
 
-/**
- * Azure Service Bus emulator config: its entities are fixed at startup, so it declares the runtime tests'
- * topology ("it") and the service's own (Topology.DEFAULT, named after the project).
- */
-function serviceBusConfig(prefixes) {
-  const subscription = name => ({
-    Name: name,
-    Properties: { DeadLetteringOnMessageExpiration: false, DefaultMessageTimeToLive: 'PT1H', LockDuration: 'PT1M', MaxDeliveryCount: 10, ForwardDeadLetteredMessagesTo: '', ForwardTo: '', RequiresSession: false },
-    Rules: []
-  });
-  const topic = (name, sub) => ({
-    Name: name,
-    Properties: { DefaultMessageTimeToLive: 'PT1H', DuplicateDetectionHistoryTimeWindow: 'PT20S', RequiresDuplicateDetection: false },
-    Subscriptions: [subscription(sub)]
-  });
-  return JSON.stringify({
-    UserConfig: {
-      Namespaces: [{ Name: 'sbemulatorns', Queues: [], Topics: prefixes.flatMap(p => [topic(`${p}.events`, `${p}.consumer`), topic(`${p}.dlx`, `${p}.dlq`)]) }],
-      Logging: { Type: 'File' }
-    }
-  }, null, 2);
-}
-
-const SQL_EDGE_PASSWORD = 'Ghk-Golden-2026!';
-
-/** Azure Service Bus emulator and the SQL Edge database it needs, selected with GHK_BROKER=servicebus. */
-const SERVICEBUS_EMULATOR = project => [
-  {
-    name: 'sqledge',
-    image: 'mcr.microsoft.com/azure-sql-edge:latest',
-    environment: { ACCEPT_EULA: 'Y', MSSQL_SA_PASSWORD: SQL_EDGE_PASSWORD },
-    readyLog: 'SQL Server is now ready for client connections'
-  },
-  {
-    name: 'servicebus',
-    image: 'mcr.microsoft.com/azure-messaging/servicebus-emulator:latest',
-    environment: { SQL_SERVER: 'sqledge', MSSQL_SA_PASSWORD: SQL_EDGE_PASSWORD, ACCEPT_EULA: 'Y' },
-    files: { '/ServiceBus_Emulator/ConfigFiles/Config.json': serviceBusConfig(['it', project]) },
-    readyLog: 'Emulator Service is Successfully Up!',
-    env: {
-      GHK_BROKER: 'servicebus',
-      SERVICEBUS_CONNECTION_STRING: 'Endpoint=sb://servicebus;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=SAS_KEY_VALUE;UseDevelopmentEmulator=true;'
-    }
-  }
-];
-
-/** Google Cloud Pub/Sub emulator (src/core/services.ts extra service), selected with GHK_BROKER=pubsub. */
-const PUBSUB_EMULATOR = {
-  name: 'pubsub',
-  image: 'gcr.io/google.com/cloudsdktool/google-cloud-cli:emulators',
-  command: ['gcloud', 'beta', 'emulators', 'pubsub', 'start', '--host-port=0.0.0.0:8085', '--project=ghk-golden'],
-  ready: ['curl', '-sf', 'http://localhost:8085'],
-  env: { GHK_BROKER: 'pubsub', PUBSUB_EMULATOR_HOST: 'pubsub:8085', PUBSUB_PROJECT_ID: 'ghk-golden' }
-};
-
-// Single-node Kafka (KRaft); the image is KAFKA_IMAGE of src/generators/deploy/broker-env.ts.
-const KAFKA = {
-  name: 'kafka',
-  image: 'apache/kafka:4.1.0',
-  environment: {
-    KAFKA_NODE_ID: '1',
-    KAFKA_PROCESS_ROLES: 'broker,controller',
-    KAFKA_LISTENERS: 'PLAINTEXT://:9092,CONTROLLER://:9093',
-    KAFKA_ADVERTISED_LISTENERS: 'PLAINTEXT://kafka:9092',
-    KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: 'PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT',
-    KAFKA_CONTROLLER_LISTENER_NAMES: 'CONTROLLER',
-    KAFKA_CONTROLLER_QUORUM_VOTERS: '1@localhost:9093',
-    KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: '1',
-    KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: '1',
-    KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: '1',
-    KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: '0'
-  },
-  ready: ['/opt/kafka/bin/kafka-broker-api-versions.sh', '--bootstrap-server', 'localhost:9092'],
-  env: { GHK_BROKER: 'kafka', KAFKA_BOOTSTRAP_SERVERS: 'kafka:9092' }
-};
+// Broker recipes shared with `ghk verify --services` (src/core/services.ts; run `npm run build` first).
+const { PUBSUB_EMULATOR, KAFKA_BROKER: KAFKA, serviceBusEmulator: SERVICEBUS_EMULATOR } = require('../dist/core/services');
 
 function nestGolden(stack = {}) {
   return {

@@ -5,8 +5,11 @@
 import { assertAgentWritesAllowed, reportAgentWrite, writeAgentFile } from '../core/governance/write-guard';
 import { AgentFirewall } from '../core/governance/agent-firewall';
 import { ExitCode, GhkError } from '../core/errors';
-import { RunningServices, startServices } from '../core/services';
+import { brokerServices, RunningServices, startServices } from '../core/services';
+import { runtimeBroker } from '../generators/deploy/broker-env';
+import { toKebab } from '../utils/naming';
 import chalk from 'chalk';
+import { resolve as resolvePath } from 'path';
 import { DEFAULT_CONTAINER_LIMITS, executeSandbox, SandboxExecutionOptions } from '../core/execution-sandbox';
 import { resolveToolchain } from '../generators/toolchains';
 import { parseExecutionFailure } from '../core/error-parser';
@@ -38,7 +41,12 @@ export async function handleVerifyCommand(options: VerifyCommandOptions = {}): P
     assertAgentWritesAllowed(config, { command: 'verify', allowUnattendedWrites: options.allowUnattendedWrites, forceBranch: options.forceBranch });
   }
   const firewall = AgentFirewall.forWorkspace(process.cwd(), config);
-  // --services runs the runtime integration suite in the toolchain container against real PostgreSQL / RabbitMQ.
+  // --isolated used to write its own docker-compose.test.yml with older images; it is now --services.
+  if (options.isolated) {
+    console.log(chalk.yellow('   --isolated is deprecated: it runs as --services (the same containers as the golden builds).'));
+    options.services = true;
+  }
+  // --services runs the runtime integration suite in the toolchain container against real PostgreSQL and the broker.
   if (options.services) options.docker = true;
   // In a container, default to the stack's verified toolchain image and test commands.
   const toolchain = options.docker ? resolveToolchain(config) : undefined;
@@ -47,7 +55,11 @@ export async function handleVerifyCommand(options: VerifyCommandOptions = {}): P
       hint: 'verify --services runs the integration tests of the generated runtime kernel (backends only).'
     });
   }
+  // The toolchain's commands build and test the generated project, which lives in outputDir; a command of
+  // your own (-c, testCommand) runs where you call verify.
+  const fromToolchain = Boolean(toolchain) && (options.services || (!options.command && !config.testCommand));
   const sandboxOpts: SandboxExecutionOptions = {
+    cwd: fromToolchain ? resolvePath(process.cwd(), config.outputDir || './') : process.cwd(),
     command: options.command,
     configCommand: options.services
       ? [...(toolchain?.build ?? []), ...(toolchain?.integration ?? [])].join(' && ')
@@ -60,12 +72,18 @@ export async function handleVerifyCommand(options: VerifyCommandOptions = {}): P
       cpus: config.sandbox?.cpus,
       pidsLimit: config.sandbox?.pidsLimit
     },
-    env: toolchain?.env
+    env: toolchain?.env,
+    caches: toolchain?.caches,
+    // The integration suite installs the stack's dependencies like the golden builds do (pip, Bundler and
+    // PHP extensions write into system directories), so it runs in the image's own disposable root.
+    profile: options.services ? 'toolchain' : 'strict'
   };
   let services: RunningServices | undefined;
   if (options.services) {
-    console.log(chalk.cyan(`   Starting PostgreSQL and RabbitMQ${config.sandbox?.services?.length ? ` (+ ${config.sandbox.services.map(s => s.name).join(', ')})` : ''}...`));
-    services = startServices(config.projectName, config.sandbox?.services);
+    // The broker the runtime kernel uses (stack.messaging), with the same containers as the golden builds.
+    const extra = [...brokerServices(runtimeBroker(config), toKebab(config.projectName)), ...(config.sandbox?.services ?? [])];
+    console.log(chalk.cyan(`   Starting PostgreSQL and RabbitMQ${extra.length ? ` (+ ${extra.map(s => s.name).join(', ')})` : ''}...`));
+    services = startServices(config.projectName, extra);
     sandboxOpts.env = { ...(sandboxOpts.env ?? {}), ...services.env };
     // The services network also gives the build access to package registries.
     sandboxOpts.limits = { ...sandboxOpts.limits, network: services.network };
@@ -73,7 +91,7 @@ export async function handleVerifyCommand(options: VerifyCommandOptions = {}): P
   }
   if (options.docker) {
     const limits = { ...DEFAULT_CONTAINER_LIMITS, ...Object.fromEntries(Object.entries(sandboxOpts.limits ?? {}).filter(([, v]) => v !== undefined)) };
-    console.log(chalk.gray(`   Container: ${sandboxOpts.dockerImage} (network=${limits.network}, memory=${limits.memory}, cpus=${limits.cpus}, read-only root)\n`));
+    console.log(chalk.gray(`   Container: ${sandboxOpts.dockerImage} (network=${limits.network}, memory=${limits.memory}, cpus=${limits.cpus}, ${sandboxOpts.profile === 'strict' ? 'read-only root' : 'toolchain root, disposable'})\n`));
   }
 
   let iteration = 1;
@@ -87,58 +105,7 @@ export async function handleVerifyCommand(options: VerifyCommandOptions = {}): P
 
   const fs = require('fs');
   const path = require('path');
-  const { execSync } = require('child_process');
-  let isIsolatedActive = false;
-
   try {
-    if (options.isolated) {
-      console.log(chalk.bold.cyan(`\n🐳 [Isolated Mode] Generating dynamic Testcontainers compose stack...`));
-      
-      const dbPort = config.stack.database === 'postgres' ? '5432' : '3306';
-      const dbImage = config.stack.database === 'postgres' ? 'postgres:15-alpine' : 'mysql:8.0';
-      const brokerImage = config.stack.messaging === 'rabbitmq' ? 'rabbitmq:3-management-alpine' : 'redis:7-alpine';
-      const brokerPort = config.stack.messaging === 'rabbitmq' ? '5672:5672' : '6379:6379';
-
-      const composeContent = `version: '3.8'
-services:
-  db:
-    image: ${dbImage}
-    environment:
-      POSTGRES_USER: testuser
-      POSTGRES_PASSWORD: testpassword
-      POSTGRES_DB: testdb
-      MYSQL_ROOT_PASSWORD: testpassword
-      MYSQL_DATABASE: testdb
-    ports:
-      - "\${DB_PORT:-${dbPort}}:${dbPort}"
-  
-  broker:
-    image: ${brokerImage}
-    ports:
-      - "${brokerPort}"
-
-  jaeger:
-    image: jaegertracing/all-in-one:latest
-    environment:
-      - COLLECTOR_OTLP_ENABLED=true
-    ports:
-      - "4317:4317" # OTLP gRPC
-      - "4318:4318" # OTLP HTTP
-      - "16686:16686" # UI
-`;
-      const composePath = path.join(process.cwd(), 'docker-compose.test.yml');
-      fs.writeFileSync(composePath, composeContent);
-      console.log(chalk.gray(`   Created ${composePath} (Includes DB, Broker, and Jaeger OpenTelemetry Collector)`));
-      
-      console.log(chalk.cyan(`   Spinning up dependencies...`));
-      execSync('docker compose -f docker-compose.test.yml up -d', { stdio: 'inherit', cwd: process.cwd() });
-      isIsolatedActive = true;
-      
-      // Wait for DB to be ready
-      console.log(chalk.gray(`   Waiting 3s for services to initialize...`));
-      await new Promise(resolve => setTimeout(resolve, 3000)); // portable (no 'sleep' binary on Windows)
-    }
-
     const triedRepairs = new Set<string>();
     while (iteration <= maxRetries && !success) {
       console.log(chalk.bold.blue(`[Iteration ${iteration}/${maxRetries}] Running Test Harness...`));
@@ -176,6 +143,9 @@ services:
     const diagnosis = parseExecutionFailure(result);
 
     console.log(chalk.yellow(`   Diagnosis: ${diagnosis.summary}`));
+    // The end of the output is usually the cause (a missing module, a failed assertion, a read-only path).
+    const tail = `${result.stdout}\n${result.stderr}`.trim().split('\n').slice(-25).join('\n');
+    if (tail) console.log(chalk.gray(`   --- last lines of the output ---\n${tail.replace(/^/gm, '   ')}`));
     if (guardrailViolationPrompt) {
       diagnosis.suggestedFixContext = guardrailViolationPrompt;
       guardrailViolationPrompt = null;
@@ -387,17 +357,7 @@ services:
   } finally {
     if (services) {
       services.stop();
-      console.log(chalk.gray('   PostgreSQL / RabbitMQ stopped.'));
-    }
-    if (isIsolatedActive) {
-      console.log(chalk.cyan(`\n🧹 Cleaning up Isolated Testcontainers stack...`));
-      try {
-        const { execSync } = require('child_process');
-        execSync('docker compose -f docker-compose.test.yml down -v', { stdio: 'inherit', cwd: process.cwd() });
-        console.log(chalk.gray(`   Isolated environment destroyed successfully.`));
-      } catch (e: any) {
-        console.log(chalk.red(`   ✖ Failed to tear down isolated environment: ${e.message}`));
-      }
+      console.log(chalk.gray('   Integration services stopped.'));
     }
   }
 }

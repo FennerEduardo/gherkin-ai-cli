@@ -1,9 +1,11 @@
 /* ==========================================================================
    gherkin-ai-cli - Services for the runtime integration tests
 
-   A private Docker network with PostgreSQL and RabbitMQ (plus any
-   `sandbox.services`), reachable from the test container as `postgres` and
-   `rabbitmq`. Used by `ghk verify --services` and by the golden builds.
+   A private Docker network with PostgreSQL and RabbitMQ, the project's broker
+   (Pub/Sub or Service Bus emulator, Kafka) and any `sandbox.services`,
+   reachable from the test container by name (`postgres`, `rabbitmq`, ...).
+   Used by `ghk verify --services` and by the golden builds, with the same
+   broker recipes.
    ========================================================================== */
 
 import { spawnSync } from 'child_process';
@@ -29,6 +31,97 @@ export interface ExtraService {
   readyLog?: string;
   /** Files mounted read-only into the container: container path -> content (e.g. an emulator config). */
   files?: Record<string, string>;
+}
+
+/** Google Cloud Pub/Sub emulator, selected in the tests with GHK_BROKER=pubsub. */
+export const PUBSUB_EMULATOR: ExtraService = {
+  name: 'pubsub',
+  image: 'gcr.io/google.com/cloudsdktool/google-cloud-cli:emulators',
+  command: ['gcloud', 'beta', 'emulators', 'pubsub', 'start', '--host-port=0.0.0.0:8085', '--project=ghk-local'],
+  ready: ['curl', '-sf', 'http://localhost:8085'],
+  env: { GHK_BROKER: 'pubsub', PUBSUB_EMULATOR_HOST: 'pubsub:8085', PUBSUB_PROJECT_ID: 'ghk-local' }
+};
+
+/** Single-node Kafka (KRaft); the image is KAFKA_IMAGE of src/generators/deploy/broker-env.ts. */
+export const KAFKA_BROKER: ExtraService = {
+  name: 'kafka',
+  image: 'apache/kafka:4.1.0',
+  environment: {
+    KAFKA_NODE_ID: '1',
+    KAFKA_PROCESS_ROLES: 'broker,controller',
+    KAFKA_LISTENERS: 'PLAINTEXT://:9092,CONTROLLER://:9093',
+    KAFKA_ADVERTISED_LISTENERS: 'PLAINTEXT://kafka:9092',
+    KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: 'PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT',
+    KAFKA_CONTROLLER_LISTENER_NAMES: 'CONTROLLER',
+    KAFKA_CONTROLLER_QUORUM_VOTERS: '1@localhost:9093',
+    KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: '1',
+    KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: '1',
+    KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: '1',
+    KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: '0'
+  },
+  ready: ['/opt/kafka/bin/kafka-broker-api-versions.sh', '--bootstrap-server', 'localhost:9092'],
+  env: { GHK_BROKER: 'kafka', KAFKA_BOOTSTRAP_SERVERS: 'kafka:9092' }
+};
+
+const SQL_EDGE_PASSWORD = 'Ghk-Local-2026!';
+
+/**
+ * Azure Service Bus emulator config. Its entities are fixed at start-up, so it declares the topology of the
+ * runtime tests ("it") and the service's own (named after the project, like the runtime's default topology).
+ */
+function serviceBusConfig(prefixes: string[]): string {
+  const subscription = (name: string) => ({
+    Name: name,
+    Properties: { DeadLetteringOnMessageExpiration: false, DefaultMessageTimeToLive: 'PT1H', LockDuration: 'PT1M', MaxDeliveryCount: 10, ForwardDeadLetteredMessagesTo: '', ForwardTo: '', RequiresSession: false },
+    Rules: []
+  });
+  const topic = (name: string, sub: string) => ({
+    Name: name,
+    Properties: { DefaultMessageTimeToLive: 'PT1H', DuplicateDetectionHistoryTimeWindow: 'PT20S', RequiresDuplicateDetection: false },
+    Subscriptions: [subscription(sub)]
+  });
+  return JSON.stringify({
+    UserConfig: {
+      Namespaces: [{ Name: 'sbemulatorns', Queues: [], Topics: prefixes.flatMap(p => [topic(`${p}.events`, `${p}.consumer`), topic(`${p}.dlx`, `${p}.dlq`)]) }],
+      Logging: { Type: 'File' }
+    }
+  }, null, 2);
+}
+
+/** Azure Service Bus emulator and the SQL Edge database it needs, selected in the tests with GHK_BROKER=servicebus. */
+export function serviceBusEmulator(service: string): ExtraService[] {
+  return [
+    {
+      name: 'sqledge',
+      image: 'mcr.microsoft.com/azure-sql-edge:latest',
+      environment: { ACCEPT_EULA: 'Y', MSSQL_SA_PASSWORD: SQL_EDGE_PASSWORD },
+      readyLog: 'SQL Server is now ready for client connections'
+    },
+    {
+      name: 'servicebus',
+      image: 'mcr.microsoft.com/azure-messaging/servicebus-emulator:latest',
+      environment: { SQL_SERVER: 'sqledge', MSSQL_SA_PASSWORD: SQL_EDGE_PASSWORD, ACCEPT_EULA: 'Y' },
+      files: { '/ServiceBus_Emulator/ConfigFiles/Config.json': serviceBusConfig(['it', service]) },
+      readyLog: 'Emulator Service is Successfully Up!',
+      env: {
+        GHK_BROKER: 'servicebus',
+        SERVICEBUS_CONNECTION_STRING: 'Endpoint=sb://servicebus;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=SAS_KEY_VALUE;UseDevelopmentEmulator=true;'
+      }
+    }
+  ];
+}
+
+/**
+ * The containers a runtime broker needs next to PostgreSQL and RabbitMQ (RabbitMQ itself needs none).
+ * `service` is the topology prefix: the project name in kebab case.
+ */
+export function brokerServices(broker: 'rabbitmq' | 'pubsub' | 'servicebus' | 'kafka', service: string): ExtraService[] {
+  switch (broker) {
+    case 'pubsub': return [PUBSUB_EMULATOR];
+    case 'kafka': return [KAFKA_BROKER];
+    case 'servicebus': return serviceBusEmulator(service);
+    default: return [];
+  }
 }
 
 export interface RunningServices {
