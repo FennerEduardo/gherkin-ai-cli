@@ -70,6 +70,7 @@ export function registerGenerationCommands(program: Command): void {
     .option('--frontendUnitTesting <testing>', 'Frontend Unit Testing Framework')
     .option('--frontendE2eTesting <testing>', 'Frontend E2E Testing Framework')
     .option('--outputDir <dir>', 'Output directory for generated contracts')
+    .option('--force', 'Replace an existing gherkin-ai.config.json and .ghkgovernance.yaml')
     .action(async (options) => {
       await (await import('../commands/init')).handleInitCommand(options);
     });

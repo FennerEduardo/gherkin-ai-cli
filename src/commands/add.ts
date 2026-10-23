@@ -13,14 +13,17 @@ import { generateContracts } from '../generators/contracts';
 import { generatePrompts } from '../generators/prompts';
 import { buildSpecificationIR } from '../core/ir-builder';
 import { handleCreateCommand } from './create';
-import { fileExistsSync, readFileSync, writeFileSync, ensureDirSync } from '../utils/file-system';
+import { fileExistsSync, readFileSync, writeFileSync } from '../utils/file-system';
 import { logger } from '../utils/logger';
 import { featurePascalName } from '../utils/naming';
+import { mergeArtifacts, readInventoryFile, writeInventoryFile } from '../core/inventory';
+import { applyWrites, NEW_SUFFIX, planWrites, sha256 } from '../core/write-protection';
+import { CLI_VERSION } from '../version';
+import { promptOrFallback, t } from '../utils/i18n-cli';
 
 export async function handleAddCommand(options: { feature?: string; target?: string; config?: string; yes?: boolean; nonInteractive?: boolean }): Promise<void> {
   logger.banner();
 
-  const { promptOrFallback, t } = require('../utils/i18n-cli');
 
   if (!options.feature) {
     logger.info('No --feature file specified. Launching interactive spec wizard...');
@@ -62,60 +65,76 @@ export async function handleAddCommand(options: { feature?: string; target?: str
   const parsed = parseGherkinText(gherkinText);
 
   const featurePascal = featurePascalName(parsed) || 'Feature';
-  let targetDir = options.target 
-    ? path.resolve(process.cwd(), options.target) 
-    : path.resolve(process.cwd(), 'src', 'modules', featurePascal.toLowerCase());
+  const language = (config.stack?.language || '').toLowerCase();
+  const typescript = language === 'typescript' || language === 'javascript';
+  // src/modules/<feature> is a NestJS convention; other layouts must say where the module is.
+  if (!options.target && config.stack?.framework !== 'nestjs') {
+    throw new UsageError('ghk add needs the module directory: --target <dir>.', { hint: `For example: ghk add -f ${options.feature} -t src/${featurePascal.toLowerCase()}` });
+  }
+  const cwd = process.cwd();
+  const targetDir = options.target
+    ? path.resolve(cwd, options.target)
+    : path.resolve(cwd, 'src', 'modules', featurePascal.toLowerCase());
 
-  if (!isPathInside(process.cwd(), targetDir)) {
+  if (!isPathInside(cwd, targetDir)) {
     throw new PolicyError(`Security Violation: Target path escapes the current workspace: ${targetDir}`);
   }
-
-  ensureDirSync(targetDir);
   logger.info(`Injecting contracts & AI prompts into: ${targetDir}`);
 
-  // 1. Generate Contracts, OpenAPI, AsyncAPI & Native Language Contract
+  // Contracts, ADR and the language-native contract; the TypeScript contract and test stubs only for TypeScript.
   const ir = buildSpecificationIR(parsed, featurePath, { domainProfile: config.domainProfile, industry: config.industry?.id });
   const { contractsTs, adrMd, openApiJson, asyncApiJson, nativeContract } = generateContracts(parsed, ir, config);
-  const contractFileName = `${featurePascal.toLowerCase()}.contract.ts`;
-  
-  writeFileSync(path.join(targetDir, contractFileName), contractsTs);
-  writeFileSync(path.join(targetDir, `${featurePascal.toLowerCase()}.openapi.json`), openApiJson);
-  writeFileSync(path.join(targetDir, `${featurePascal.toLowerCase()}.asyncapi.json`), asyncApiJson);
-  writeFileSync(path.join(targetDir, `ADR-${featurePascal}.md`), adrMd);
-  logger.success(`Created contract file: ${path.join(targetDir, contractFileName)}`);
-
-  if (nativeContract) {
-    writeFileSync(path.join(targetDir, nativeContract.filename), nativeContract.content);
-    logger.success(`Created language-native contract file: ${path.join(targetDir, nativeContract.filename)}`);
+  const slug = featurePascal.toLowerCase();
+  const files: [string, string][] = [
+    [`${slug}.openapi.json`, openApiJson],
+    [`${slug}.asyncapi.json`, asyncApiJson],
+    [`ADR-${featurePascal}.md`, adrMd]
+  ];
+  if (typescript) {
+    files.push([`${slug}.contract.ts`, contractsTs], [`__tests__/${slug}.stub.spec.ts`, pendingTests(parsed)]);
   }
-
-  // 2. Generate Test Stubs
-  const testsDir = path.join(targetDir, '__tests__');
-  ensureDirSync(testsDir);
-  let stubContent = `// Auto-generated Test Stub for ${featurePascal}\n\n`;
-  stubContent += `describe('${parsed.featureName}', () => {\n`;
-  parsed.scenarios.forEach(sc => {
-    stubContent += `  describe('Scenario: ${sc.name}', () => {\n`;
-    sc.steps.forEach(st => {
-      stubContent += `    it('${st.keyword} ${st.text.replace(/'/g, "\\'")}', async () => {\n      // TODO: Implement step\n    });\n`;
-    });
-    stubContent += `  });\n`;
-  });
-  stubContent += `});\n`;
-  writeFileSync(path.join(testsDir, `${featurePascal.toLowerCase()}.stub.spec.ts`), stubContent);
-  logger.success(`Created test stubs inside: ${testsDir}`);
-
-  // 3. Generate Agent Prompts inside target module
-  const promptsDir = path.join(targetDir, 'prompts');
-  ensureDirSync(promptsDir);
-
+  if (nativeContract) files.push([nativeContract.filename, nativeContract.content]);
   const prompts = generatePrompts(parsed, config);
-  Object.keys(prompts).forEach(filename => {
-    writeFileSync(path.join(promptsDir, filename), prompts[filename]);
+  for (const name of Object.keys(prompts)) files.push([`prompts/${name}`, prompts[name]]);
+
+  // Same protection as `ghk generate`: an edited file is kept and gets <file>.ghk-new. Paths are recorded
+  // relative to outputDir, like every inventory entry, and typed 'add' so `ghk upgrade` never prunes them.
+  const outputDir = config.outputDir || './';
+  const outputAbs = path.resolve(cwd, outputDir);
+  const artifacts = files.map(([file, content]) => ({
+    filePath: path.relative(outputAbs, path.join(targetDir, file)).split(path.sep).join('/'),
+    content
+  }));
+  const inventoryPath = path.join(cwd, '.ghe', 'inventory.json');
+  const previous = readInventoryFile(inventoryPath);
+  const plans = planWrites(artifacts, { cwd, outputDir, inventory: previous.artifacts, protect: config.generation?.protect });
+  applyWrites(plans, new Map(artifacts.map(a => [a.filePath, a.content])), (file, content) => writeFileSync(file, content));
+  for (const p of plans) {
+    const shown = path.relative(cwd, p.fullPath);
+    if (p.action === 'side-by-side') logger.warn(`[Protected] ${shown} kept (${p.reason}); new version: ${shown}${NEW_SUFFIX}`);
+    else if (p.action !== 'unchanged') logger.success(`${p.action === 'create' ? 'Created' : 'Updated'}: ${shown}`);
+  }
+  const generatedAt = new Date().toISOString();
+  const feature = path.relative(cwd, featurePath).split(path.sep).join('/');
+  writeInventoryFile(inventoryPath, {
+    ...previous,
+    artifacts: mergeArtifacts(previous.artifacts, artifacts.map(a => ({ filePath: a.filePath, type: 'add', checksum: sha256(a.content), feature, generatedAt })))
   });
-  logger.success(`Created specialized AI prompts inside: ${promptsDir}`);
+  if (!typescript) logger.info('The executable BDD steps for this stack come with `ghk generate`; `ghk add` writes contracts and prompts only.');
 
   logger.banner();
   logger.success(`Contracts & AI prompts injected into existing project at ${targetDir}!`);
-  logger.info(`Now your AI Coding Agent can consume ${nativeContract ? nativeContract.filename : contractFileName} directly inside your module.`);
+  logger.info(`Now your AI Coding Agent can consume ${nativeContract ? nativeContract.filename : typescript ? `${slug}.contract.ts` : `${slug}.openapi.json`} directly inside your module.`);
+}
+
+/** One pending test per step (`it.todo`: reported as todo by Jest and Vitest, never as passing). */
+function pendingTests(parsed: ReturnType<typeof parseGherkinText>): string {
+  let text = `// Generated by gherkin-ai v${CLI_VERSION}: one pending test per step of the feature.\n\n`;
+  text += `describe(${JSON.stringify(parsed.featureName)}, () => {\n`;
+  for (const sc of parsed.scenarios) {
+    text += `  describe(${JSON.stringify(`Scenario: ${sc.name}`)}, () => {\n`;
+    for (const st of sc.steps) text += `    it.todo(${JSON.stringify(`${st.keyword} ${st.text}`)});\n`;
+    text += `  });\n`;
+  }
+  return `${text}});\n`;
 }
