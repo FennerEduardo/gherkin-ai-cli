@@ -288,7 +288,8 @@ const LINT_RULES: LintRule[] = [
         { pattern: /\b(database|tabla|table|column)\b/i, term: 'database terminology' },
         { pattern: /\b(sql|nosql|mongodb|redis|kafka)\b/i, term: 'database technology' },
         { pattern: /\b(click|tap|swipe|scroll|hover|div|button|span|css|html)\b/i, term: 'UI implementation detail' },
-        { pattern: /\b(repository|controller|service|middleware|handler)\b/i, term: 'code pattern' },
+        // Not "service": it is business vocabulary (TM Forum SID Service, IATA ONE Order services, a service offering).
+        { pattern: /\b(repository|controller|middleware|handler)\b/i, term: 'code pattern' },
         { pattern: /\b(docker|kubernetes|aws|azure|gcp|lambda)\b/i, term: 'infrastructure' },
         { pattern: /\b(json|xml|protobuf|avro)\b/i, term: 'serialization format' },
         { pattern: /\b(SELECT|INSERT|UPDATE|DELETE|CREATE TABLE)\b/, term: 'SQL statement' },
@@ -361,8 +362,8 @@ const LINT_RULES: LintRule[] = [
     check: (parsed) => {
       const diags: LintDiagnostic[] = [];
       const errorPatterns = [
-        /\b(error|fail|invalid|denied|forbidden|not found|unauthorized)\b/i,
-        /\b(error|fallo|inválido|denegado|prohibido|no encontrado|no autorizado)\b/i,
+        /\b(errors?|fail(s|ed|ure)?|invalid|den(y|ies|ied)|forbidden|not found|unauthori[sz]ed|reject(s|ed|ion)?|declin(e|es|ed)|refus(e|es|ed)|expired?)\b/i,
+        /\b(error|fall(a|an|[oó]|ido)|inv[aá]lid[oa]|deneg(ad[oa]|ar)|prohibid[oa]|no encontrad[oa]|no autorizad[oa]|rechaz(ad[oa]|a|o|ar)|vencid[oa]|caducad[oa]|expirad[oa])/i,
         /\b(HTTP\s*(4|5)\d{2})\b/i,
         /\b(should not|must not|cannot|no debe|no puede)\b/i,
       ];

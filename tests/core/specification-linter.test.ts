@@ -188,6 +188,46 @@ describe('Specification Linter', () => {
       expect(diag).toBeDefined();
     });
 
+    it('recognizes rejected, failed and expired outcomes as error paths (GHK009)', () => {
+      const feature = (then: string, lang = '') => `${lang}Feature: Orders
+  Scenario: Place an order
+    Given a customer with a cart
+    When the customer places the order
+    Then the order is placed
+
+  Scenario: Place an order for an expired offer
+    Given an offer for the cart
+    When the customer places the order
+    Then ${then}
+`;
+      for (const then of ['the order is rejected with reason "offer expired"', 'the payment fails', 'the offer has expired', 'the request is declined']) {
+        expect(lintSpecification(parseGherkinText(feature(then))).diagnostics.find(d => d.ruleId === 'GHK009'), then).toBeUndefined();
+      }
+      const es = `# language: es
+Característica: Pedidos
+  Escenario: Pedido aceptado
+    Dado un cliente con un carrito
+    Cuando el cliente confirma el pedido
+    Entonces el pedido queda aceptado
+
+  Escenario: Oferta vencida
+    Dado una oferta vencida
+    Cuando el cliente confirma el pedido
+    Entonces el pedido es rechazado
+`;
+      expect(lintSpecification(parseGherkinText(es)).diagnostics.find(d => d.ruleId === 'GHK009')).toBeUndefined();
+    });
+
+    it('does not treat "service" as implementation leakage (GHK007)', () => {
+      const parsed = parseGherkinText(`Feature: Product ordering
+  Scenario: Order a product offering
+    Given a product offering with one service
+    When the customer orders the offering
+    Then the service is activated for the customer
+`);
+      expect(lintSpecification(parsed).diagnostics.filter(d => d.ruleId === 'GHK007')).toEqual([]);
+    });
+
     it('should allow disabling rules', () => {
       const parsed = parseGherkinText(AMBIGUOUS_FEATURE);
       const result = lintSpecification(parsed, 'test.feature', { disabledRules: ['GHK001'] });
