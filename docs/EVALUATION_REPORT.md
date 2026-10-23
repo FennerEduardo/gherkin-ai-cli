@@ -151,7 +151,7 @@ A second `ghk generate` over each regenerated project changes no file. `ghk vali
 
 | Check | Result |
 |---|---|
-| Unit and integration tests (`vitest`) | 772 tests, all passing |
+| Unit and integration tests (`vitest`) | 774 tests, all passing |
 | Type check (`tsc --noEmit`) | clean |
 | CI matrix | Linux, macOS and Windows × Node.js 22 and 24 |
 | CLI contract tests | the built binary is run with `--json` for each command; exit codes and the JSON envelope are asserted |
