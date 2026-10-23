@@ -71,11 +71,10 @@
     "test:coverage": "vitest run --coverage",
     "test:e2e": "playwright test",
     "prepublishOnly": "npm run build",
-    "publish:beta": "npm run build && npm publish --tag beta",
+    "release:preflight": "node scripts/release-preflight.js",
     "release": "commit-and-tag-version",
     "release:minor": "commit-and-tag-version --release-as minor",
-    "release:major": "commit-and-tag-version --release-as major",
-    "publish:prod": "npm run build && npm publish"
+    "release:major": "commit-and-tag-version --release-as major"
   },
   "engines": {
     "node": ">=22.12.0"

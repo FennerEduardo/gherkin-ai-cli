@@ -2,8 +2,10 @@ name: CI
 
 on:
   push:
-    branches: [main, master]
+    # release/**: a release candidate is verified here before main moves (CONTRIBUTING.md, "Releasing").
+    branches: [main, master, 'release/**']
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -81,8 +83,21 @@ jobs:
       stacks: ${{ steps.list.outputs.stacks }}
     steps:
       - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+      # The registry loads the broker recipes from dist/core/services (shared with `ghk verify --services`).
+      - run: npm ci
+      - run: npm run build
       - id: list
-        run: echo "stacks=$(node -p "JSON.stringify(Object.keys(require('./scripts/golden-stacks').STACKS))")" >> "$GITHUB_OUTPUT"
+        # A failure here must fail the job with its own error, never pass an empty matrix to golden-builds.
+        shell: bash
+        run: |
+          set -euo pipefail
+          stacks=$(node -p "JSON.stringify(Object.keys(require('./scripts/golden-stacks').STACKS))")
+          node -e "const s = JSON.parse(process.argv[1]); if (!Array.isArray(s) || s.length === 0) { console.error('empty golden matrix'); process.exit(1); } console.log(s.length + ' golden stacks')" "$stacks"
+          echo "stacks=$stacks" >> "$GITHUB_OUTPUT"
 
   golden-builds:
     # Every STABLE stack is generated, built and its generated test suite run inside the
