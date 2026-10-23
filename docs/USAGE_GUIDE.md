@@ -1,6 +1,6 @@
 # Usage guide
 
-A typical delivery flow with gherkin-ai and a coding agent. Every command is described in [COMMANDS.md](COMMANDS.md).
+A typical delivery flow with gherkin-ai and a coding agent. Every command is described in [COMMANDS.md](COMMANDS.md). For an existing code base, follow [ADOPTION.md](ADOPTION.md) first; to upgrade a generated project, [MIGRATION-3.2.md](MIGRATION-3.2.md).
 
 ## 1. Set up the project
 
@@ -11,6 +11,8 @@ ghk mcp install                       # optional: expose read-only tools to your
 ```
 
 Commit `gherkin-ai.config.json`. Organization-wide settings belong in the organization layer ([ENTERPRISE.md §1](ENTERPRISE.md#1-configuration-layers-and-organization-policy)).
+
+If the service belongs to one of the supported industries (banking, telecom, manufacturing, health, supply chain, insurance, aviation, automotive), opt in to its reference standards with `ghk init --industry <id>` or `ghk industry apply <id>`. Lint then checks the industry rules, and the agents get the standards in every prompt ([INDUSTRIES.md](INDUSTRIES.md)).
 
 ## 2. Specify
 

@@ -159,6 +159,14 @@ All notable changes to this project will be documented in this file. See [commit
   - **`ghk init` gate workflow.** It used `actions/checkout@v4` and Node.js 20, which reached end of life in April 2026. It now uses the current actions and Node.js 24.
   - **Rust services with several features.** The runtime command service applied only the last generated feature. The other features' routes answered 422 "unknown aggregate type". The new production image smoke test found it.
   - **QA agent prompt.** Existing step definitions are listed by their project-relative path. Before, regenerating wrote the machine's absolute paths (such as `/home/<user>/...`) into the committed `prompts/qa-agent.md`.
+  - **Step definitions dictionary.** The QA and AI engineer prompts no longer list the BDD step skeletons gherkin-ai wrote on the previous run (their checksum still matches `.ghe/inventory.json`); edited step files are listed again. Before, a second `ghk generate` wrote different prompts than a clean one. Java and Kotlin steps were also listed twice.
+- **`ghk create` with the Spanish CLI language.** The guided, quick and headless modes wrote Spanish keywords (`Característica:`, `Escenario:`) without the `# language: es` header, so the feature did not parse and `ghk lint` scored it 0. They now write the header. Headless mode no longer depends on the machine's CLI language: it writes English unless the JSON sets `"language": "es"`.
+- **`ghk skill` rules.** The rules written to `.cursorrules`, `.windsurfrules` and `.github/copilot-instructions.md` told agents to run `ghk constitution`, which does not exist, and to read `generated-specs/contracts.ts`, which is not generated. They now name only existing commands and paths: the firewall scope, `lint --explain-ir`, `implement`, `.ghk-new` handling, `converge`, `risk` and the industry context.
+
+### Documentation
+- **New guides.** `docs/ADOPTION.md` (adding gherkin-ai to an existing code base: adoption levels, configuration, gates to tighten, agents, generation next to existing code, roles and a rollout checklist) and `docs/MIGRATION-3.2.md` (from 3.1, and the path from 3.0 and 2.x).
+- **`docs/INDUSTRIES.md`.** Each profile now lists its standards with their scope, the lint rules with their severity, the vocabulary, the recommended architecture and patterns, the compliance reminders, the human-approval paths, the rules given to agents, and a sample feature that passes its rules.
+- **Brought up to date with 3.2.** README (industry standards, brokers, deployment), ARCHITECTURE (module layout, golden steps), COMMANDS (`industry`, `lint --explain-ir`, `init --industry`), ENTERPRISE (Spring Boot 4.1 and Quarkus in the stack table, brokers, OTLP), RUNTIME-KERNEL (broker adapters), DEPLOYMENT (Kafka variables), MCP_GUIDE (`get_industry_profile`), and the step indexer, IDE skills and headless mode pages.
 
 ## [3.1.1] - 2026-10-13
 

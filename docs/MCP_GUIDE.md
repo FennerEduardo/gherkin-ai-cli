@@ -26,7 +26,7 @@ Pin the version. An unpinned `npx gherkin-ai` silently changes behavior when a n
 
 | Level | Enabled when | Tools |
 |---|---|---|
-| safe (read-only) | always | `parse_gherkin`, `build_ir`, `generate_contracts`, `detect_stack`, `validate_architecture`, `lint_specification`, `get_constraints`, `get_business_rules`, `check_convergence`, `calculate_quality`, `scan_security`, `get_constitution`, `ghk_governance_check`, `ghk_impact_analysis`, `run_cli_audit`, `run_cli_agent_log_list`, `run_cli_lint`, `run_cli_converge`, `run_cli_diff` |
+| safe (read-only) | always | `parse_gherkin`, `build_ir`, `generate_contracts`, `detect_stack`, `validate_architecture`, `lint_specification`, `get_constraints`, `get_business_rules`, `check_convergence`, `calculate_quality`, `scan_security`, `get_constitution`, `get_industry_profile`, `ghk_governance_check`, `ghk_impact_analysis`, `run_cli_audit`, `run_cli_agent_log_list`, `run_cli_lint`, `run_cli_converge`, `run_cli_diff` |
 | requires_review (writes project files) | `"mcp": { "allowWrite": true }` | `run_cli_init`, `run_cli_generate`, `run_cli_add`, `run_cli_create`, `run_cli_implement`, `run_cli_agent_log`, `init_enterprise` |
 | destructive (runs tests, LLM changes code) | `allowWrite` **and** `GHK_ALLOW_DESTRUCTIVE=true` in the server environment | `run_cli_verify`, `run_cli_autopilot` |
 

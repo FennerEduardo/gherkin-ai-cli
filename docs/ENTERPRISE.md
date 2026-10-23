@@ -2,6 +2,8 @@
 
 This guide is for platform, security and developer-experience teams rolling `gherkin-ai` out to many developers and CI pipelines. It covers configuration, LLM providers, networking, credentials, the CLI contract for automation, the MCP server, audit, and what is supported.
 
+Related guides: [ADOPTION.md](ADOPTION.md) for adding gherkin-ai to an existing code base, team by team; [INDUSTRIES.md](INDUSTRIES.md) for the industry reference standards; [MIGRATION-3.2.md](MIGRATION-3.2.md) for upgrading generated projects; [DEPLOYMENT.md](DEPLOYMENT.md) for the production image, Terraform, Helm and CI/CD.
+
 - [1. Configuration layers and organization policy](#1-configuration-layers-and-organization-policy)
 - [2. LLM providers](#2-llm-providers)
 - [3. Credentials](#3-credentials)
@@ -232,8 +234,10 @@ Every target below is **stable**: on every change CI generates a sample project,
 | backend | TypeScript · NestJS 11 + Prisma 7 (CommonJS, MariaDB adapter) | npm, Jest, cucumber-js (`node:24`) |
 | backend | TypeScript · Express 5 (+ Prisma 6 or 7) | npm, Jest, cucumber-js (`node:24`) |
 | backend | C# · ASP.NET Core 8 + EF Core | dotnet, xUnit, Reqnroll (`dotnet/sdk:8.0`) |
-| backend | Java 17 · Spring Boot 3 (Maven) | Maven, JUnit 5, Cucumber-JVM (`maven:3.9-eclipse-temurin-17`) |
-| backend | Kotlin · Spring Boot 3 (Gradle) | Gradle, JUnit 5, Cucumber-JVM (`gradle:8.10-jdk17`) |
+| backend | Java 17 · Spring Boot 4.1 (Maven) | Maven, JUnit 6, Cucumber-JVM (`maven:3.9-eclipse-temurin-17`) |
+| backend | Kotlin · Spring Boot 4.1 (Gradle) | Gradle 8.14, JUnit 6, Cucumber-JVM (`gradle:8.14-jdk17`) |
+| backend | Java 21 · Quarkus 3.40 LTS (Maven) | Maven, JUnit, Cucumber-JVM, `@QuarkusTest` (`maven:3.9-eclipse-temurin-21`) |
+| backend | Kotlin · Quarkus 3.40 LTS (Gradle) | Gradle 8.14 with the Quarkus plugin, JUnit, Cucumber-JVM (`gradle:8.14-jdk21`) |
 | backend | Python · FastAPI + SQLAlchemy | pip, pytest, pytest-bdd (`python:3.12-slim`) |
 | backend | Python · Django + DRF | pip, pytest, pytest-bdd (`python:3.12-slim`) |
 | backend | Go · chi | go vet, go test, godog (`golang:1.26`) |
@@ -252,7 +256,7 @@ Every target below is **stable**: on every change CI generates a sample project,
 | contracts | gRPC (`contracts.grpc: true`) | `buf build` + `buf lint` |
 | contracts | GraphQL SDL (`contracts.graphql: true`) | graphql-js schema validation |
 
-Backends also include the **runtime kernel** (PostgreSQL, RabbitMQ, OpenTelemetry). Its integration suite (IT1–IT7) runs against real PostgreSQL 17 and RabbitMQ 4 containers in every backend golden build. See [section 17](#17-test-sandbox-runtime-kernel-and-observability). Frontend API clients send a W3C `traceparent` header, and their generated tests assert it.
+Backends also include the **runtime kernel** (PostgreSQL; RabbitMQ, Pub/Sub, Service Bus or Kafka; OpenTelemetry). Its integration suite (IT1–IT7) runs against real PostgreSQL 17 and the stack's broker in every backend golden build: RabbitMQ 4, the official Pub/Sub and Service Bus emulators, or a single-node Kafka. Each backend golden also builds the production image and requires its probes and its OTLP spans. See [section 17](#17-test-sandbox-runtime-kernel-and-observability). Frontend API clients send a W3C `traceparent` header, and their generated tests assert it.
 
 The opt-in AWS CDK app (`infrastructure.awsCdk`) has its own golden build: `npm test` with CDK assertions, then `cdk synth`.
 
@@ -454,14 +458,14 @@ Override the limits in `sandbox.*`.
 **Runtime kernel.** Every generated backend includes the same runtime, specified in [RUNTIME-KERNEL.md](RUNTIME-KERNEL.md):
 
 - PostgreSQL persistence, with idempotent commands and an outbox;
-- a RabbitMQ relay with publisher confirms and `SKIP LOCKED` leases;
-- an inbox consumer with a dead-letter queue;
+- an outbox relay with `SKIP LOCKED` leases that marks a row published only after the broker accepted it (RabbitMQ publisher confirms, Pub/Sub, Service Bus or Kafka with `acks=all`);
+- an inbox consumer with a dead-letter destination;
 - a saga orchestrator;
 - W3C trace context across the command, publish and consume spans.
 
 Its integration suite (IT1–IT7) is excluded from the default test run and runs with the stack's integration command.
 
-**OpenTelemetry.** Spans use each language's official OpenTelemetry SDK and the global tracer provider. Configure the exporter with the standard `OTEL_*` variables. Generated frontends send a `traceparent` header with every API call. If the frontend and the API are served from different origins, add `traceparent` to the API's CORS allowed headers, next to `Content-Type` and `Authorization`.
+**OpenTelemetry.** Spans use each language's official OpenTelemetry SDK and the global tracer provider. With `OTEL_EXPORTER_OTLP_ENDPOINT` set, every backend exports them over OTLP/HTTP (`service.name` from `OTEL_SERVICE_NAME`); without it nothing is exported. Generated frontends send a `traceparent` header with every API call. If the frontend and the API are served from different origins, add `traceparent` to the API's CORS allowed headers, next to `Content-Type` and `Authorization`.
 
 ## 18. Measuring value: A/B benchmark
 

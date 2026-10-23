@@ -43,12 +43,15 @@ Where readiness equals liveness, the stack does not yet check its dependencies i
 |---|---|---|
 | `DATABASE_URL` | yes | `postgres://user:password@host:5432/db`, optionally with `?sslmode=require` (or `verify-ca` / `verify-full` with `sslrootcert`); every runtime honours it. Quarkus maps it to its Agroal pool |
 | `AMQP_URL` | for publishing (RabbitMQ) | `amqp://user:password@host:5672`, or `amqps://…:5671` for TLS (Amazon MQ, CloudAMQP). Without a configured broker, events stay in the outbox |
-| `GHK_BROKER` | no | `rabbitmq`, `pubsub` or `servicebus` (see the broker table below for which backends support each). Default: the variables that are set, then `stack.messaging` |
+| `GHK_BROKER` | no | `rabbitmq`, `pubsub`, `servicebus` or `kafka` (see the broker table below for which backends support each). Default: the variables that are set, then `stack.messaging` |
 | `GHK_DECLARE_TOPOLOGY` | no | `false` skips creating the exchanges, topics and subscriptions at start-up, for when infrastructure as code owns them and the service identity can only publish and consume (the generated Terraform sets it for Pub/Sub and Service Bus) |
 | `PUBSUB_PROJECT_ID` (or `GOOGLE_CLOUD_PROJECT`) | Pub/Sub | GCP project of the topics and subscriptions. The token comes from the workload identity (metadata server) or `GOOGLE_OAUTH_ACCESS_TOKEN` |
 | `PUBSUB_EMULATOR_HOST` | no | `host:8085` of the Pub/Sub emulator (local development and tests) |
 | `SERVICEBUS_NAMESPACE` | Service Bus | `<name>.servicebus.windows.net`, authenticated with Microsoft Entra ID (managed identity; `AZURE_CLIENT_ID` selects a user-assigned identity) |
 | `SERVICEBUS_CONNECTION_STRING` | Service Bus (alternative) | Shared-access-key connection string. Also used for the emulator (`UseDevelopmentEmulator=true`) |
+| `KAFKA_BOOTSTRAP_SERVERS` | Kafka | `host:9092[,host:9092…]` of the cluster |
+| `KAFKA_SECURITY_PROTOCOL` | no | `SASL_SSL` for managed clusters (MSK, Confluent Cloud, Event Hubs); plaintext when unset |
+| `KAFKA_SASL_MECHANISM`, `KAFKA_SASL_USERNAME`, `KAFKA_SASL_PASSWORD` | with SASL | `PLAIN`, `SCRAM-SHA-256` or `SCRAM-SHA-512`, and the credentials |
 | `JWT_SECRET` | yes | HS256 secret of bearer tokens. The tenant comes from the token claim only |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | no | OpenTelemetry collector (OTLP/HTTP, e.g. `http://localhost:4318`). Set: every backend exports its traces there. Unset: nothing is exported and nothing connects |
 | `OTEL_SERVICE_NAME` | no | `service.name` of the exported traces (default: the project name) |

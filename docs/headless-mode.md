@@ -1,74 +1,55 @@
-# Headless CI/CD Mode
+# Headless mode
 
-`gherkin-ai` is designed to be an enterprise automation framework. While the interactive CLI wizard (`ghk create`) is excellent for local development, CI/CD pipelines (like GitHub Actions, GitLab CI, Azure DevOps) operate in non-interactive (TTY-less) environments where standard input prompts cause execution to hang.
+In CI (GitHub Actions, GitLab CI, Azure Pipelines) there is no terminal to answer prompts. Every command accepts `--yes` / `--non-interactive`, and never prompts with them; `GHK_NON_INTERACTIVE=true` does the same for a whole job. `--json` prints exactly one JSON document on stdout, and the exit codes are stable ([ENTERPRISE.md §5](ENTERPRISE.md#5-automation-contract-exit-codes-and---json)).
 
-To solve this, `gherkin-ai` provides a robust **Headless Mode**.
+## Writing a feature without prompts
 
-## Usage
-
-You can completely bypass the interactive `inquirer` prompts by combining the `--headless` flag with the `--config` flag.
+`ghk create` is interactive by default. `--headless --config <file>` builds the feature from a JSON description instead:
 
 ```bash
-ghk create --headless --config my-spec.json
+ghk create --headless --config specs/two-factor.json --output features/two_factor.feature
 ```
-
-### Configuration File (`my-spec.json`)
-
-The `--config` file must contain the structured JSON representation of your feature.
 
 ```json
 {
-  "featureName": "Two Factor Authentication 2FA",
-  "actor": "authenticated system user",
-  "action": "enable and verify a two-factor OTP code",
-  "outcome": "protect my account against unauthorized access",
-  "scenarioName": "Enable and verify 2FA code successfully",
-  "injectTarget": "./src/application/dtos",
+  "featureName": "Two-factor authentication",
+  "actor": "registered user",
+  "action": "enable and verify a one-time code",
+  "outcome": "my account is protected against unauthorized access",
+  "scenarioName": "Enable and verify a one-time code",
   "steps": [
-    {
-      "keyword": "Given",
-      "text": "the user has logged in successfully"
-    },
-    {
-      "keyword": "When",
-      "text": "they enter a valid 6-digit OTP code"
-    },
-    {
-      "keyword": "Then",
-      "text": "the system authenticates the session"
-    }
+    { "keyword": "Given", "text": "the user has signed in" },
+    { "keyword": "When", "text": "the user enters a valid 6-digit one-time code" },
+    { "keyword": "Then", "text": "the session is verified" }
   ]
 }
 ```
 
-## Integration with GitHub Actions
+The feature is written in English Gherkin, whatever the CLI language (`ghk lang`) of the machine. For a Spanish feature, add `"language": "es"` and give the steps Spanish keywords (`Dado`, `Cuando`, `Entonces`); the file then starts with `# language: es`. Without `--output`, the file is written to `features/<feature_name>.feature`. With `"injectTarget": "<dir>"` (or `--target`), `ghk add` then writes the contracts and prompts into that directory.
 
-Here is an example of running `gherkin-ai` completely headlessly inside a GitHub Actions workflow:
+## In a pipeline
+
+Pin the version, so the generated output and the lint scores only change with a commit:
 
 ```yaml
-name: Generate Contracts
-
+name: Generate contracts
 on:
   push:
-    branches: [ "main" ]
-
+    branches: [main]
 jobs:
   generate:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
-          node-version: '20'
-
-      - name: Install gherkin-ai
-        run: npm install -g gherkin-ai
-
-      - name: Generate Feature Headlessly
-        run: ghk create --headless --config specs/login-spec.json --output specs/login.feature
-        
-      - name: Generate Typings & Prompts
-        run: ghk generate -f specs/login.feature
+          node-version: 24
+      - name: Feature from its JSON description
+        run: npx --yes gherkin-ai@3.2.0 create --headless --config specs/two-factor.json --output features/two_factor.feature
+      - name: Lint gate
+        run: npx --yes gherkin-ai@3.2.0 lint -f features/two_factor.feature --threshold 80
+      - name: Contracts, kernel, tests and prompts
+        run: npx --yes gherkin-ai@3.2.0 generate -f features/two_factor.feature --yes
 ```
+
+For the pull-request gates (lint, convergence and risk on the change), see [ADOPTION.md §4](ADOPTION.md#4-gate-pull-requests-then-tighten).

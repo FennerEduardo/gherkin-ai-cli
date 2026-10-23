@@ -1,47 +1,32 @@
-# AST Step Definitions Indexer
+# Step definitions dictionary
 
-A common challenge when integrating AI into Behavior-Driven Development (BDD) is **AI Hallucination**: Large Language Models (LLMs) tend to invent generic Gherkin steps (e.g., `Given that the user enters data`) rather than reusing the exact Step Definitions already implemented in your test automation framework (e.g., `Given I navigate to login`).
+LLMs tend to invent new Gherkin steps (`Given that the user enters data`) instead of reusing the step definitions a test suite already has (`Given I navigate to the login page`). The result is duplicated step code, or steps nobody implements.
 
-This lack of alignment forces QA engineers to manually rewrite generated steps or duplicate test executor code.
+gherkin-ai indexes the existing step definitions before it writes the agent prompts, and requires the agents to reuse them.
 
-## How `gherkin-ai` Solves This
+## What is indexed
 
-`gherkin-ai` incorporates an advanced **AST (Abstract Syntax Tree) Step Indexer** powered by `ts-morph`.
+| Language | How | Where |
+|---|---|---|
+| TypeScript, JavaScript (cucumber-js, Cypress, Playwright) | AST, with `ts-morph`: string, template and regular-expression arguments of `Given`, `When`, `Then` (also `Dado`, `Cuando`, `Entonces`) | `cypress/support/**`, `e2e/steps/**`, `tests/steps/**`, `features/step_definitions/**`, `src/**/*.step(s).ts` |
+| Java, Kotlin | annotations: `@Given("…")`, `@When`, `@Then`, `@And`, `@But` | every `.java` and `.kt` file |
+| Python (behave, pytest-bdd) | decorators: `@given("…")`, `@when`, `@then`, `@step` | every `.py` file |
+| C# (Reqnroll, SpecFlow) | attributes: `[Given("…")]`, `[When]`, `[Then]` and their `Async` variants | every `.cs` file |
+| Ruby (Cucumber) | `Given(/…/) do` | every `.rb` file |
 
-Instead of relying on the LLM's raw creativity, the CLI performs static code analysis on your project workspace before generating any AI prompts.
+`node_modules`, `target`, `build`, `.git`, `venv` and `__pycache__` are skipped.
 
-### 1. Static Analysis
-The indexer scans common E2E directories in your project:
-- `cypress/support/**/*.ts`
-- `e2e/steps/**/*.ts`
-- `features/step_definitions/**/*.ts`
+**Generated skeletons are left out.** `ghk generate` writes pending BDD steps for each feature. A step file whose checksum still matches what gherkin-ai wrote (`.ghe/inventory.json`) is not existing work, so it is not listed. Once someone edits it, it is listed again. Regenerating therefore writes the same prompts as a clean generation.
 
-It extracts the string literals and regular expressions defined inside `Given`, `When`, and `Then` function calls.
+## What the agent sees
 
-### 2. Prompt Injection (The Dictionary)
-All extracted steps are compiled into a mandatory "Step Definitions Dictionary" and injected into the System Prompt for the `qa-agent` and `ai-engineer` agents.
+The steps go into `prompts/qa-agent.md` (and the AI engineer prompt, when there is one), with their project-relative path:
 
-The prompt explicitly enforces:
-> *You MUST reuse the following existing Step Definitions whenever possible instead of inventing new ones.*
-
-### Example
-
-**Existing Cypress Step:**
-```typescript
-Given('I navigate to the {string} page', (pageName: string) => {
-    cy.visit(`/${pageName}`);
-});
-```
-
-**What the AI Agent sees:**
 ```markdown
 ## [MANDATORY] Step Definitions Dictionary
 You MUST reuse the following existing Step Definitions whenever possible instead of inventing new ones:
+
 - `Given I navigate to the {string} page` (found in cypress/support/steps.ts)
 ```
 
-## Phased Language Support
-
-Currently, the AST Indexer natively supports TypeScript and JavaScript ecosystems (Cypress, Playwright, Cucumber-JS) via `ts-morph`. 
-
-A secondary `RegexStepParser` acts as a fallback foundation designed to support Python (Behave), Java (Cucumber-JVM), and other languages in future phases.
+Each annotation is listed once.

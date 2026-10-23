@@ -1,42 +1,45 @@
-# AI Skills & Context Extraction
+# IDE skills and context extraction
 
-`gherkin-ai` is built to seamlessly integrate with modern AI IDEs and standalone agents. It provides native skills and context anchors to ensure the LLM understands your architecture.
+gherkin-ai gives IDE agents three things: the project's real context in the generated prompts, a rules file that tells the agent how to use the CLI, and an MCP server.
 
-## 1. Context Anchoring (DOM & Data Models)
+## 1. Context in the generated prompts
 
-Generating Gherkin specs in a vacuum produces abstract scenarios that require human intervention to execute. To generate truly executable automation, the AI must understand your application's technical reality.
+Before it writes the agent prompts, `ghk generate` reads the workspace for context the agent would otherwise guess:
 
-`gherkin-ai` introduces **Context Extractor**.
+- **Data models.** Up to five models from `prisma/schema.prisma`.
+- **DOM selectors.** `data-test` and `data-testid` attributes in the files under `e2e/`, for page objects.
+- **Step definitions.** The Cucumber step definitions written or edited by people (see [ast-step-indexer.md](ast-step-indexer.md)).
 
-Before generating prompts or agent contexts, the CLI scans your workspace for:
-- **Data Models:** It parses `prisma/schema.prisma` to extract your entity schemas (up to 5 models).
-- **DOM Selectors (Page Object Model):** It scans your `e2e/` folder for `data-test` and `data-testid` attributes.
+They are added to the prompts as `[MANDATORY]` sections, so the agent writes tests against the actual models, selectors and steps.
 
-These assets are injected into the agent's markdown instructions as `[MANDATORY]` directives, forcing the LLM to write tests that match the actual database models and frontend HTML structure.
-
-## 2. Cursor & Windsurf Skills (`ghk skill`)
-
-Modern AI IDEs like [Cursor](https://cursor.sh/) and [Windsurf](https://codeium.com/windsurf) support custom `.cursorrules` and project instructions to steer the built-in AI's behavior.
-
-The `ghk skill` command configures `gherkin-ai` as a native skill inside your IDE.
+## 2. Rules file for the IDE (`ghk skill`)
 
 ```bash
 ghk skill
 ```
 
-This command automatically generates a `.cursorrules` file (or appends to an existing one) instructing the IDE's AI to:
-1. Always parse `.feature` files to understand business logic.
-2. Use `ghk verify --auto-fix` whenever running tests.
-3. Automatically run `ghk diff` to ensure DTOs match specs.
+It asks for the target and writes the gherkin-ai rules there:
 
-By configuring this skill, your AI assistant goes from being a generic coding bot to an enterprise-grade QA engineer constrained by BDD specifications.
+| Target | File |
+|---|---|
+| Cursor | `.cursorrules` |
+| Windsurf | `.windsurfrules` |
+| GitHub Copilot | `.github/copilot-instructions.md` |
 
-## 3. Model Context Protocol (MCP)
+An existing file keeps its content: the rules are appended, and running `ghk skill` again replaces only the gherkin-ai block. The rules tell the agent to:
 
-For desktop agents like Claude Desktop, `gherkin-ai` operates as a native JSON-RPC Model Context Protocol (MCP) server.
+- read `gherkin-ai.config.json`, the constitution and the industry context before coding;
+- check its scope with `ghk firewall policy` and leave approval paths to people;
+- lint the feature, use `ghk lint --explain-ir` and tags for generic names;
+- generate, read `ghk implement`, implement the pending steps, and leave `.ghk-new` files for the developer;
+- verify with `ghk verify`, `ghk converge` and `ghk risk`.
+
+`ghk skill` can also register the MCP server in the IDE instead of writing rules.
+
+## 3. MCP server
 
 ```bash
 ghk mcp install
 ```
 
-This command auto-configures your `claude_desktop_config.json`, exposing tools that the AI can call natively to validate syntax, generate contracts, or read the Step Definitions dictionary in real-time.
+It registers a version-pinned, read-only MCP server in `.cursor/mcp.json` and in the Claude Desktop configuration. The tools, their safety levels and the setup for other clients are in [MCP_GUIDE.md](MCP_GUIDE.md).

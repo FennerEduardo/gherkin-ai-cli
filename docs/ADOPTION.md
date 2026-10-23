@@ -1,0 +1,228 @@
+# Adopting gherkin-ai in an existing project
+
+This guide is for teams that already have a code base, a CI pipeline and a release process, and want to add gherkin-ai without stopping delivery. It covers the order of adoption, what each step changes in the repository, and the gates to turn on along the way.
+
+Upgrading a project that was generated with an earlier gherkin-ai version is a different task; see [MIGRATION-3.2.md](MIGRATION-3.2.md).
+
+## Choose how deep to go
+
+gherkin-ai does not have to generate code to be useful. Pick the level that fits each service; different services in the same repository can sit at different levels.
+
+| Level | You get | You do not get | Fits |
+|---|---|---|---|
+| **1. Specifications and gates** | Linted `.feature` files, the semantic model, industry rules, delivery risk, the traceability graph, PR reports, MCP and the agent firewall | Generated code | Any stack, including stacks gherkin-ai does not generate |
+| **2. Contracts and agent prompts** | Level 1, plus OpenAPI / AsyncAPI, an ADR and agent prompts per feature, next to your code | A runnable service | A module you keep writing by hand, or with an agent |
+| **3. A generated service next to your code** | Level 2, plus a verified service: domain kernel, runtime kernel (PostgreSQL, outbox, inbox, sagas, tracing), HTTP layer, tests, Dockerfile, optional Terraform, Helm and CI | — | A new bounded context, or one you are extracting from a monolith |
+
+Most teams start with level 1 on one service, move the services they build next to level 3, and leave the rest at level 1.
+
+## 1. Install and pin
+
+```bash
+npm install --save-dev --save-exact gherkin-ai@3.2.0   # or a pinned global install on the build agents
+npx ghk --version
+```
+
+- **Pin an exact version** in the repository, in CI (`npx --yes gherkin-ai@3.2.0`) and in MCP clients (`ghk mcp install` pins it). An unpinned install changes generated output and lint scores without a commit.
+- **Requirements:** Node.js 22.12 or later. Docker for `ghk verify --docker`, `--services` and the golden recipes.
+- **Organization settings:** providers, proxies, locked keys and allow-lists belong in the organization configuration layer, not in each repository ([ENTERPRISE.md §1](ENTERPRISE.md#1-configuration-layers-and-organization-policy)). Set it up once, before the first team starts.
+
+## 2. Create the configuration
+
+Commit what you have first: the commands below write files at the repository root.
+
+```bash
+ghk detect                   # detects the stack and writes gherkin-ai.config.json from it
+ghk config show --sources    # check the result: which layer set each value
+```
+
+`ghk detect` reads the build files at the directory root: `package.json`, `pom.xml` / `build.gradle` (including Quarkus, Micronaut and Ktor builds), `go.mod`, `Cargo.toml`, `pyproject.toml` / `requirements.txt` / `manage.py`, `composer.json`, `Gemfile`, `pubspec.yaml`, and `Program.cs` / `appsettings.json` for .NET. It does not detect Elixir, or a .NET solution whose project lives in a subdirectory: run it in the project directory, or write the configuration by hand. Check `stack.database` afterwards: the runtime kernel needs PostgreSQL, and .NET detection defaults to SQL Server. Edit the file for what cannot be detected:
+
+```json
+{
+  "$schema": "https://unpkg.com/gherkin-ai/schemas/config.schema.json",
+  "projectName": "billing",
+  "specDir": "./features",
+  "outputDir": "./generated-specs",
+  "architecture": "hexagonal",
+  "stack": { "language": "java", "framework": "quarkus", "database": "postgres", "messaging": "rabbitmq" },
+  "industry": { "id": "banking" }
+}
+```
+
+- **`specDir`** is where the `.feature` files live. Keep them in the repository, reviewed like code.
+- **`outputDir`** is where `ghk generate` writes. In an existing repository, keep it a dedicated directory (`./generated-specs` or `./services/<name>`), never the root of a hand-written application.
+- **`ghk init` is for new projects.** It writes a complete default configuration and replaces an existing `gherkin-ai.config.json` and `.ghkgovernance.yaml` without asking (it merges `.gitignore`). In an existing repository use `ghk detect` once, then edit the file; to start over with `init`, commit first and compare with `git diff`.
+- **Monorepos:** one `gherkin-ai.config.json` per service directory. `ghk lint --all` and `ghk converge --all` cover every project in the repository; `--project <dir>` targets one.
+
+## 3. Specify the behavior you already have
+
+Start with one bounded context that changes often. Write features for what it does today (characterization), then for the change you are about to make.
+
+```bash
+ghk create                                  # guided, or write the .feature file by hand
+ghk speckit import                          # if you already use GitHub Spec Kit (specs/NNN-*/spec.md)
+ghk lint -f features/invoicing.feature
+ghk lint --explain-ir -f features/invoicing.feature
+```
+
+- **Name the model explicitly.** `@aggregate:Invoice @command:IssueInvoice @event:InvoiceIssued` fixes the names the generator, the graph and the agents use, in any Gherkin dialect. Without them, commands are inferred from English verbs; non-English features fall back to a generic `process_<aggregate>` command (lint rule GHK016). `--explain-ir` shows where every name comes from.
+- **One feature per aggregate.** The runtime kernel covers one aggregate per feature; a service can hold several features.
+- **Cover the failure paths.** Lint expects negative scenarios (GHK009) and, for money and claims, the duplicated-request and denial paths. Tag a negative scenario `@negative` when its wording is not recognized.
+- **Link existing code to the specification** so `ghk graph`, `ghk risk` and `ghk impact` see it:
+  - a `ghk:implements <Symbol>` comment on the class or function that implements a command or event;
+  - a `ghk:trace feature=features/invoicing.feature` comment for any other file;
+  - `@trace:<Symbol>` tags on a scenario.
+
+  Code that does not use the domain names of the specification is not linked automatically.
+
+## 4. Gate pull requests, then tighten
+
+Add the gates in report-only form, read the results for a sprint, then make them blocking. The exit codes are stable across 3.x ([ENTERPRISE.md §5](ENTERPRISE.md#5-automation-contract-exit-codes-and---json)).
+
+```yaml
+# .github/workflows/specifications.yml
+name: Specifications
+on: [pull_request]
+jobs:
+  gherkin-ai:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0                  # ghk risk compares with the base branch
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - name: Specification quality, convergence and delivery risk on the pull request
+        run: npx --yes gherkin-ai@3.2.0 report --provider github --base origin/${{ github.base_ref }} --threshold 70 --fail-on CRITICAL
+      - name: Upgrade check
+        run: npx --yes gherkin-ai@3.2.0 upgrade --check
+```
+
+`ghk report` writes annotations on the changed `.feature` lines and a job summary, with no token and no extra permission (`--provider gitlab` writes a Code Quality report for merge requests).
+
+| Gate | Start | Target | Exit code when it fails |
+|---|---|---|---|
+| `lint --threshold` | the current average score, rounded down | 80 | 4 |
+| `converge --threshold` (level 3 services) | report only | 80 | 7 |
+| `risk --fail-on` | `CRITICAL` | `HIGH`, after calibrating the weights with `ghk risk --calibrate --write` on your history | 4 |
+| `upgrade --check` | from the start | — | 4 while required changes are pending |
+
+`ghk init --enterprise` writes a complete gate workflow (`.github/workflows/gherkin-ai-gate.yml`) if the repository has none. `deploy` with `ci.provider` generates full CI/CD pipelines for generated services ([DEPLOYMENT.md](DEPLOYMENT.md)).
+
+## 5. Turn on the industry profile
+
+If the service belongs to a regulated or standardized industry, opt in to its profile ([INDUSTRIES.md](INDUSTRIES.md)):
+
+```bash
+ghk industry show banking          # standards, vocabulary, rules and agent guidance
+ghk industry apply banking         # sets industry.id, writes .ghe/industry-context.*
+ghk lint --all
+```
+
+On an existing specification set, expect the new rules to fire. Fix the errors first: they mark features that cannot be built safely as written, such as two BIAN Service Domains in one feature (GHK102) or PHI access without consent (GHK402). Disable a rule only with a reason and a date to remove the exception:
+
+```json
+{ "industry": { "id": "banking", "disabledRules": ["GHK104"] } }
+```
+
+The profile also adds human-approval paths to the agent firewall (for banking: `**/payments/**`, `**/ledger/**`, `**/*settlement*`).
+
+## 6. Bring in the agents, inside a perimeter
+
+```bash
+ghk mcp install                               # version-pinned, read-only MCP server for Cursor, Claude Desktop and others
+ghk skill                                     # rules file for Cursor, Windsurf or GitHub Copilot
+ghk implement -f features/invoicing.feature   # prompt and context package for one feature
+ghk firewall policy -f features/invoicing.feature
+```
+
+- **MCP is read-only by default.** Write tools need `mcp.allowWrite`, destructive tools also `GHK_ALLOW_DESTRUCTIVE=true`; an organization can lock both ([MCP_GUIDE.md](MCP_GUIDE.md)).
+- **The firewall governs the agent's own actions.** In Claude Code, register `ghk firewall hook` as a `PreToolUse` hook, so edits and shell commands outside the feature's scope or on approval paths are stopped ([ENTERPRISE.md §14](ENTERPRISE.md#14-agent-firewall)).
+- **Keep the LLM repair loops for review.** `ghk verify --auto-fix` and `ghk autopilot` are experimental. They write `.patch` proposals by default, and `--apply` is refused in CI and on protected branches.
+- **Measure before you scale.** `ghk bench` compares your agent on your own tasks with and without the specifications ([ENTERPRISE.md §18](ENTERPRISE.md#18-measuring-value-ab-benchmark)).
+
+## 7. Generate code next to the existing code (levels 2 and 3)
+
+### Level 2: contracts and prompts in an existing module
+
+```bash
+ghk add -f features/invoicing.feature -t src/invoicing
+```
+
+`ghk add` writes the feature's OpenAPI and AsyncAPI documents, an ADR, the agent prompts (`prompts/`), a language-native contract when the stack has one, and a TypeScript contract and a test stub under `__tests__/`. It overwrites those files on every run and does not use the `.ghk-new` protection of `ghk generate`. Keep the target directory for generated artifacts only, and delete the stubs your stack does not use.
+
+### Level 3: a generated service
+
+```bash
+ghk generate -f features/invoicing.feature --dry-run   # what would be created, updated or kept
+ghk generate -f features/invoicing.feature
+```
+
+- **Implemented code is never overwritten.** A file whose checksum no longer matches what gherkin-ai wrote gets the new version next to it as `<file>.ghk-new`. `ghk generate --review` shows each diff and takes the generated version or keeps yours.
+- **Protect more if you need to:** `generation.protect` globs, or a `.ghk-implemented` file at the project root to protect every file that cannot be proven unedited.
+
+  ```json
+  { "generation": { "protect": ["src/main/java/**/domain/**", "src/test/**/bdd/**"] } }
+  ```
+
+- **The checksums live in `.ghe/inventory.json`, which is not committed.** In a fresh clone there is no inventory, and a file that still carries its `Generated by gherkin-ai` header is overwritten even if someone edited it. Once a service is implemented, add a `.ghk-implemented` file at its root (or `generation.protect` globs): every file that cannot be proven unedited then gets a `.ghk-new` instead. Regenerate from one place (a developer machine or a CI job) and commit the result.
+- **The runtime kernel needs its own database objects.** On start it creates `ghk_aggregates`, `ghk_outbox`, `ghk_idempotency`, `ghk_inbox` and `ghk_sagas` in the `public` schema. Give the generated service its own database (or at least its own database user) instead of sharing the legacy application's schema.
+- **Coexistence with the legacy system.** The service publishes its events through the outbox to `<service>.events` (RabbitMQ, Pub/Sub, Service Bus or Kafka). Let the legacy system consume those events, or call the HTTP API `POST /api/v1/<feature>/{id}/{command}` with a JWT that carries the tenant. Move traffic one command at a time.
+- **Several features per service.** Each `ghk generate -f <feature>` adds to the same service; the root contracts, routes and runtime registry cover every generated feature.
+
+### Verify against real infrastructure
+
+```bash
+ghk verify                  # the project's tests
+ghk verify --docker         # in the stack's toolchain image, no network, read-only root
+ghk verify --services       # also the runtime integration suite (IT1–IT7) against PostgreSQL 17 and RabbitMQ 4
+ghk converge --threshold 80
+```
+
+`--services` starts PostgreSQL and RabbitMQ only. For a service on another broker, start it yourself and run the stack's integration command ([RUNTIME-KERNEL.md](RUNTIME-KERNEL.md) lists it per stack) with the variables from `.env.example`:
+
+- **Pub/Sub or Kafka:** `docker compose up -d` with the generated `docker-compose.yml`, which runs the Pub/Sub emulator or a single-node Kafka for those settings.
+- **Service Bus:** a development namespace, or Microsoft's Service Bus emulator (with its Azure SQL Edge database), as the gherkin-ai golden builds do.
+
+## 8. Roles
+
+| Role | Owns | Commands |
+|---|---|---|
+| Product owner, business analyst | The `.feature` files: scenarios, vocabulary, failure paths | `create`, `lint`, `speckit import` |
+| Developers | Tags that name the model, implementation of pending steps, `.ghk-new` reviews | `lint --explain-ir`, `generate`, `implement`, `verify`, `graph` |
+| QA | Scenario coverage, negative paths, the integration suite | `converge`, `verify --services`, `graph --trace` |
+| Platform team | Pinned version, organization layer, CI gates, deployment targets | `config`, `report`, `upgrade --check`, `deploy` |
+| Security and compliance | Industry profile, firewall approval paths, audit trail | `industry`, `firewall`, `audit export` |
+
+## 9. Rollout checklist
+
+**Pilot (one service, two to four weeks):**
+
+- [ ] Exact version pinned in the repository, CI and MCP clients.
+- [ ] Configuration created with `ghk detect` and reviewed; `outputDir` is a dedicated directory.
+- [ ] The features of one bounded context written and linted; model names fixed with tags.
+- [ ] `ghk report` running on pull requests in report-only mode.
+- [ ] Industry profile chosen (or `generic`), its errors fixed.
+- [ ] MCP server and firewall hook installed for the agents the team uses.
+
+**Team:**
+
+- [ ] Lint threshold at the agreed score, risk gate at `CRITICAL`.
+- [ ] Existing code linked with `ghk:implements` / `ghk:trace` markers where `ghk graph` shows gaps.
+- [ ] New services generated at level 3, verified with `--services`, deployed from the generated image.
+- [ ] Regeneration owned by one job or person; `.ghk-new` files resolved before merge.
+
+**Organization:**
+
+- [ ] Organization configuration layer with locked provider, network and MCP settings.
+- [ ] Risk weights calibrated from history (`ghk risk --calibrate --write`), risk gate at `HIGH`.
+- [ ] Audit trail exported to the SIEM (`ghk audit export --format jsonl --since 1d`).
+- [ ] An upgrade owner per release: `ghk upgrade` on a branch, reviewed like any change ([MIGRATION-3.2.md](MIGRATION-3.2.md)).
+
+## What to expect, and what not
+
+- The generated service is a verified starting point: it builds, its tests pass and its runtime passes the integration contract. The business logic in the BDD steps is left pending for your team.
+- Lint, risk and the graph are deterministic; nothing in the gates calls an LLM. Risk scores are heuristics with documented weights: calibrate them before you block on them.
+- Stacks outside the supported matrix (`ghk stacks`) get contracts and prompts only.

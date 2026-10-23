@@ -1,12 +1,12 @@
 # Runtime kernel: the verified persistence, messaging and tracing path
 
-Every generated backend includes a small, framework-neutral runtime next to its domain kernel. It is the code path that `ghk` verifies against real infrastructure: PostgreSQL and RabbitMQ, with OpenTelemetry trace context. Each stack implements it with that language's standard driver, AMQP client and OpenTelemetry SDK. The behavior and the tests are the same in every language.
+Every generated backend includes a small, framework-neutral runtime next to its domain kernel. It is the code path that `ghk` verifies against real infrastructure: PostgreSQL and an event broker (RabbitMQ, Google Cloud Pub/Sub, Azure Service Bus or Apache Kafka), with OpenTelemetry trace context. Each stack implements it with that language's standard driver, broker client and OpenTelemetry SDK. The behavior and the tests are the same in every language and on every broker.
 
-| Stack(s) | Location | Driver / AMQP / OpenTelemetry | Integration tests |
+| Stack(s) | Location | Driver / RabbitMQ client / OpenTelemetry | Integration tests |
 |---|---|---|---|
 | NestJS, Express | `src/runtime/` | `pg`, `amqplib`, `@opentelemetry/*` | `npm run test:integration` |
 | ASP.NET Core | `Runtime/` | Npgsql, RabbitMQ.Client, OpenTelemetry .NET | `dotnet test --filter Category=Integration` |
-| Spring Boot (Java, Kotlin), Quarkus (Java) | `…/runtime/` | JDBC (Quarkus: Agroal pool), amqp-client, OpenTelemetry Java | `mvn verify -Pintegration` / `gradle integrationTest` |
+| Spring Boot (Java, Kotlin), Quarkus (Java, Kotlin) | `…/runtime/` | JDBC (Quarkus: Agroal pool), amqp-client, OpenTelemetry Java | `mvn verify -Pintegration` / `gradle integrationTest` |
 | FastAPI, Django | `app/runtime/` | psycopg 3, pika, opentelemetry-sdk | `pytest -m integration` |
 | Go (chi) | `internal/runtime/` | pgx, amqp091-go, otel-go | `go test -tags integration ./...` |
 | Laravel | `app/Runtime/` | PDO, php-amqplib, OpenTelemetry PHP | `phpunit --group integration` |
@@ -14,7 +14,22 @@ Every generated backend includes a small, framework-neutral runtime next to its 
 | Phoenix | `lib/<app>/runtime/` | Postgrex, AMQP, opentelemetry | `mix test --only integration` |
 | Axum | `src/runtime/` | sqlx, lapin, opentelemetry-rust | `cargo test --features integration --test runtime_integration --test http_integration` |
 
-`ghk verify --services` starts both containers, runs the stack's integration command in its toolchain image and removes everything. The integration tests read `DATABASE_URL` (`postgres://user:pass@host:5432/db`) and `AMQP_URL` (`amqp://user:pass@host:5672`). The golden builds start `postgres:17-alpine` and `rabbitmq:4-alpine` for them. To run them locally:
+## Brokers
+
+The outbox relay and the inbox consumer use broker-neutral ports (publisher, subscription, broker). The adapter is chosen when the service starts: `GHK_BROKER` if set, otherwise the broker whose variables are present, otherwise `stack.messaging`. One image can therefore run on any cloud.
+
+| Broker | Backends | Client | Generated |
+|---|---|---|---|
+| RabbitMQ (also Amazon MQ, CloudAMQP; `amqps://` for TLS) | all | the client in the table above | always |
+| Google Cloud Pub/Sub | all | REST API, no client library (token from the workload identity or `GOOGLE_OAUTH_ACCESS_TOKEN`) | always |
+| Azure Service Bus | JVM, TypeScript, .NET, Python, Go | the official Azure SDK, with Microsoft Entra ID (`SERVICEBUS_NAMESPACE`) or a connection string | with `stack.messaging: "servicebus"` |
+| Apache Kafka | JVM, TypeScript, .NET, Python, Go | `kafka-clients`, `@confluentinc/kafka-javascript`, `Confluent.Kafka`, `confluent-kafka`, franz-go (no cgo) | with `stack.messaging: "kafka"` |
+
+Rust, Ruby, Elixir and PHP have no official Service Bus or Kafka SDK: with those settings they keep RabbitMQ. On Kafka, the exchange and the DLX are topics, and the queue and the DLQ are consumer groups on them; publishing waits for every in-sync replica (`acks=all`, idempotent producer), and an ack commits the offset. The variables of each broker are in [DEPLOYMENT.md](DEPLOYMENT.md#runtime-contract).
+
+## Running the integration suite
+
+`ghk verify --services` starts PostgreSQL and RabbitMQ, runs the stack's integration command in its toolchain image and removes everything. For Pub/Sub and Kafka, the generated `docker-compose.yml` starts the emulator or a single-node broker; export the variables from `.env.example` (`GHK_BROKER`, `PUBSUB_EMULATOR_HOST` or `KAFKA_BOOTSTRAP_SERVERS`) and run the integration command. The integration tests read `DATABASE_URL` (`postgres://user:pass@host:5432/db`) and `AMQP_URL` (`amqp://user:pass@host:5672`). The golden builds start `postgres:17-alpine` and `rabbitmq:4-alpine` for them. To run them locally:
 
 ```bash
 docker run -d --name ghk-pg -e POSTGRES_PASSWORD=ghk -p 5432:5432 postgres:17-alpine
@@ -54,7 +69,7 @@ Every read and write is filtered by `tenant_id`, which is a mandatory argument o
    6. stores the response under the key.
 
    A domain error rolls everything back, including the key. A replayed key returns the stored response without running the command again (`status: replayed`).
-2. **Outbox relay** `publishBatch(workerId, limit)` claims rows with `FOR UPDATE SKIP LOCKED` and a 30 s lease. It publishes each one to the topic exchange `<service>.events` (service = `projectName`, shared by every aggregate; routing key = event type) with publisher confirms, `message_id` = outbox id, and the `traceparent` and `tenant_id` headers, then marks it published. A failed publish releases the lease and records the error. After 5 attempts the row is set aside (`failed_at`).
+2. **Outbox relay** `publishBatch(workerId, limit)` claims rows with `FOR UPDATE SKIP LOCKED` and a 30 s lease. It publishes each one to the topic exchange `<service>.events` (service = `projectName`, shared by every aggregate; routing key = event type) with publisher confirms, `message_id` = outbox id, and the `traceparent` and `tenant_id` headers, then marks it published. A failed publish releases the lease and records the error. After 5 attempts the row is set aside (`failed_at`). On Pub/Sub, Service Bus and Kafka the same names become topics and subscriptions, and the row is marked published only after the broker accepted the message.
 3. **Inbox consumer** consumes `<service>.consumer`. It records `message_id` in `ghk_inbox` in the same transaction as the handler, so a redelivered message is acknowledged without running the handler again. A handler error rejects the message without requeue, so RabbitMQ dead-letters it to `<service>.dlq`.
 4. **Saga orchestrator** runs ordered steps. It persists progress after each step. When a step fails, it runs the compensations of the completed steps in reverse order and ends `COMPENSATED`; otherwise it ends `COMPLETED`.
 5. **Telemetry.** W3C trace context is propagated from the incoming `traceparent` to:
@@ -71,7 +86,7 @@ Every read and write is filtered by `tenant_id`, which is a mandatory argument o
 |---|---|
 | IT1 | A command persists the new aggregate version and exactly one outbox row in one transaction; a domain error persists neither. |
 | IT2 | Five concurrent requests with the same idempotency key produce one effect (one outbox row, version 1) and identical responses. |
-| IT3 | Two relays running concurrently over 20 pending events publish each event to RabbitMQ exactly once, and every row ends published. |
+| IT3 | Two relays running concurrently over 20 pending events publish each event to the broker exactly once, and every row ends published. |
 | IT4 | Tenant B can neither read nor change tenant A's aggregate, even with the same aggregate id. |
 | IT5 | When the third saga step fails, the compensations of steps 2 and 1 run in that order and the saga is persisted as `COMPENSATED`. |
 | IT6 | A message delivered twice is handled once (inbox), and a message whose handler fails ends in the DLQ. |
