@@ -54,10 +54,11 @@ const check = (name, fn) => {
   return ok;
 };
 
-const sha = run('git', ['rev-parse', '--short', ref], repo).out.trim();
+// ^{commit}: an annotated tag names its own object; the candidate is the commit it points to.
+const sha = run('git', ['rev-parse', '--short', `${ref}^{commit}`], repo).out.trim();
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ghk-preflight-'));
 console.log(`Release preflight of ${ref} (${sha}) in a clean worktree: ${dir}`);
-const added = run('git', ['worktree', 'add', '--detach', dir, ref], repo);
+const added = run('git', ['worktree', 'add', '--detach', dir, `${ref}^{commit}`], repo);
 if (added.code !== 0) { console.error(added.out); process.exit(2); }
 
 try {
@@ -98,7 +99,9 @@ try {
   }
   if (run('docker', ['version', '--format', '{{.Server.Version}}'], dir).code === 0) {
     check('actionlint', () => {
-      const r = run('docker', ['run', '--rm', '-v', `${dir}:/repo`, '-w', '/repo', 'rhysd/actionlint:1.7.12', '-no-color'], dir, { env: { ...process.env, MSYS_NO_PATHCONV: '1' } });
+      // Files are named explicitly: in a worktree .git is a file, so actionlint cannot find the repository itself.
+      const workflows = fs.readdirSync(path.join(dir, '.github', 'workflows')).filter(f => /\.ya?ml$/.test(f)).map(f => `.github/workflows/${f}`);
+      const r = run('docker', ['run', '--rm', '-v', `${dir}:/repo`, '-w', '/repo', 'rhysd/actionlint:1.7.12', '-no-color', ...workflows], dir, { env: { ...process.env, MSYS_NO_PATHCONV: '1' } });
       return { ok: r.code === 0, detail: r.code === 0 ? '' : r.out };
     });
   } else {
