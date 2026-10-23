@@ -53,6 +53,8 @@ function run(cmd, cmdArgs, opts = {}) {
 
 function generate(name, def) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), `ghk-golden-${name}-`));
+  // mkdtemp makes the directory owner-only; images that run as a non-root user (actionlint) must read it.
+  fs.chmodSync(dir, 0o755);
   fs.mkdirSync(path.join(dir, 'features'));
   fs.writeFileSync(path.join(dir, 'features', 'payment.feature'), FEATURE);
   fs.writeFileSync(path.join(dir, 'gherkin-ai.config.json'), JSON.stringify({
