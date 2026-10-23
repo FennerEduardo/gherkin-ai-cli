@@ -36,7 +36,7 @@ ghk detect                   # detects the stack and writes gherkin-ai.config.js
 ghk config show --sources    # check the result: which layer set each value
 ```
 
-`ghk detect` reads the build files at the directory root: `package.json`, `pom.xml` / `build.gradle` (including Quarkus, Micronaut and Ktor builds), `go.mod`, `Cargo.toml`, `pyproject.toml` / `requirements.txt` / `manage.py`, `composer.json`, `Gemfile`, `pubspec.yaml`, and `Program.cs` / `appsettings.json` for .NET. It does not detect Elixir, or a .NET solution whose project lives in a subdirectory: run it in the project directory, or write the configuration by hand. Check `stack.database` afterwards: the runtime kernel needs PostgreSQL, and .NET detection defaults to SQL Server. Edit the file for what cannot be detected:
+`ghk detect` reads the build files at the directory root: `package.json`, `pom.xml` / `build.gradle(.kts)` (including Quarkus, Micronaut and Ktor builds), `go.mod`, `Cargo.toml`, `pyproject.toml` / `requirements.txt` / `manage.py`, `composer.json`, `Gemfile`, `mix.exs` (Phoenix, and LiveView as its frontend), `pubspec.yaml`, and for .NET `Program.cs`, `appsettings.json` or a `.csproj` up to two directories down. It sets `outputDir` to `./generated-specs`, so generated code never lands in your `src/` or `app/`. For .NET it takes the database from the project's packages (PostgreSQL unless only SQL Server is referenced); the runtime kernel needs PostgreSQL. Edit the file for what cannot be detected:
 
 ```json
 {
@@ -52,7 +52,8 @@ ghk config show --sources    # check the result: which layer set each value
 
 - **`specDir`** is where the `.feature` files live. Keep them in the repository, reviewed like code.
 - **`outputDir`** is where `ghk generate` writes. In an existing repository, keep it a dedicated directory (`./generated-specs` or `./services/<name>`), never the root of a hand-written application.
-- **`ghk init` is for new projects.** It writes a complete default configuration and replaces an existing `gherkin-ai.config.json` and `.ghkgovernance.yaml` without asking (it merges `.gitignore`). In an existing repository use `ghk detect` once, then edit the file; to start over with `init`, commit first and compare with `git diff`.
+- **`ghk init` is for new projects.** It refuses (exit 2) when `gherkin-ai.config.json` already exists; `ghk init --force` replaces the configuration and the governance policy, so commit first. In an existing repository use `ghk detect` once, then edit the file.
+- **`.ghkgovernance.yaml` is yours to edit.** `generate` refreshes it from the configuration while it is unedited (it carries a checksum of its content); once you edit it, it is kept and the new version is written to `.ghkgovernance.yaml.ghk-new`.
 - **Monorepos:** one `gherkin-ai.config.json` per service directory. `ghk lint --all` and `ghk converge --all` cover every project in the repository; `--project <dir>` targets one.
 
 ## 3. Specify the behavior you already have
@@ -151,7 +152,7 @@ ghk firewall policy -f features/invoicing.feature
 ghk add -f features/invoicing.feature -t src/invoicing
 ```
 
-`ghk add` writes the feature's OpenAPI and AsyncAPI documents, an ADR, the agent prompts (`prompts/`), a language-native contract when the stack has one, and a TypeScript contract and a test stub under `__tests__/`. It overwrites those files on every run and does not use the `.ghk-new` protection of `ghk generate`. Keep the target directory for generated artifacts only, and delete the stubs your stack does not use.
+`ghk add` writes the feature's OpenAPI and AsyncAPI documents, an ADR, the agent prompts (`prompts/`) and a language-native contract when the stack has one. TypeScript and JavaScript projects also get a TypeScript contract and `__tests__/<feature>.stub.spec.ts` with one `it.todo` per step, reported as pending, never as passing. `--target` is required outside NestJS. Like `generate`, `add` keeps a file you edited and writes the new version next to it as `<file>.ghk-new`, and `ghk upgrade` never deletes what `add` wrote.
 
 ### Level 3: a generated service
 
@@ -176,15 +177,16 @@ ghk generate -f features/invoicing.feature
 
 ```bash
 ghk verify                  # the project's tests
-ghk verify --docker         # in the stack's toolchain image, no network, read-only root
-ghk verify --services       # also the runtime integration suite (IT1–IT7) against PostgreSQL 17 and RabbitMQ 4
+ghk verify --docker         # in the stack's toolchain image: no network, read-only root, dependency caches
+ghk verify --services       # also the runtime integration suite (IT1–IT7) against PostgreSQL 17 and the broker
 ghk converge --threshold 80
 ```
 
-`--services` starts PostgreSQL and RabbitMQ only. For a service on another broker, start it yourself and run the stack's integration command ([RUNTIME-KERNEL.md](RUNTIME-KERNEL.md) lists it per stack) with the variables from `.env.example`:
-
-- **Pub/Sub or Kafka:** `docker compose up -d` with the generated `docker-compose.yml`, which runs the Pub/Sub emulator or a single-node Kafka for those settings.
-- **Service Bus:** a development namespace, or Microsoft's Service Bus emulator (with its Azure SQL Edge database), as the gherkin-ai golden builds do.
+- **The broker of `stack.messaging`.** `--services` starts PostgreSQL, RabbitMQ and, when the service uses one, the Pub/Sub emulator, the Service Bus emulator (with its Azure SQL Edge database) or a single-node Kafka. These are the same containers as the gherkin-ai golden builds.
+- **Where it runs.** The stack's build and test commands run in `outputDir`, where the generated project lives; your own `-c` or `testCommand` runs where you call `verify`.
+- **Dependency caches.** Each toolchain's caches (npm, Maven, Gradle, Go, NuGet, pip, Bundler, Mix, Cargo, Composer) are named Docker volumes `ghk-cache-<name>`, shared between runs.
+- **Two container profiles.** `--docker` keeps the strict sandbox: no capabilities, a read-only root and no network by default, for test runs of code an agent may have changed. `--services` installs the stack's dependencies like the golden builds, so it uses the image's own disposable root, with the same resource limits and `no-new-privileges`. Python, Ruby and PHP projects install packages into system directories: build them with `--services`, or give `--docker` a prebuilt image (`sandbox.image`).
+- **Your own services.** `sandbox.services` adds containers (a mail catcher, S3-compatible storage), with `command`, `ready`, `readyLog` and `files` when the image needs them.
 
 ## 8. Roles
 

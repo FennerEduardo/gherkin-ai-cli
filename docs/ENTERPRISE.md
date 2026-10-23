@@ -451,7 +451,9 @@ The graph does not need an LLM or a database. It ignores dependency and build di
 - no network (`--docker-network bridge` when dependencies must be downloaded);
 - 2 GB of memory, 2 CPUs and 512 processes;
 - all capabilities dropped, `no-new-privileges` and a read-only root filesystem;
-- only the project mounted, and no host shell.
+- only the project and the toolchain's dependency caches (named volumes `ghk-cache-<name>`) mounted, and no host shell.
+
+**`ghk verify --services`** runs the runtime integration suite against PostgreSQL and the broker of `stack.messaging`, with the golden builds' containers. Its container keeps the limits and `no-new-privileges` but uses the image's own disposable root and default capabilities: the stacks' installers (pip, Bundler, PHP extensions) write into system directories. Use `--docker`, not `--services`, for test runs of code an agent changed.
 
 Override the limits in `sandbox.*`.
 

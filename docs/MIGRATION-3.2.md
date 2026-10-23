@@ -51,6 +51,13 @@ You do not need to install each version in between. `ghk upgrade` in 3.2 checks 
 |---|---|---|
 | Lint | New rule **GHK016** (info) for features whose commands can only be named generically. It lowers the score of those features by one point | Re-baseline `lint --threshold` if your gate sits exactly at the old score, or add the tags (step 6) |
 | Lint | Industry rules GHK090–GHK803 run only with `industry.id` | Opt in when ready (step 9) |
+| Lint | GHK009 also recognizes rejected, denied, failed, expired and declined outcomes (and the Spanish forms) as error paths; GHK007 no longer reports the word "service". Some scores go up | Nothing; re-read the scores once |
+| `ghk init` | refuses (exit 2) when `gherkin-ai.config.json` exists; `--force` replaces it | Scripts that re-ran `init` over a project must stop doing so, or pass `--force` |
+| `.ghkgovernance.yaml` | carries a checksum; `generate` refreshes it only while it is unedited, otherwise writes `.ghkgovernance.yaml.ghk-new` | A policy written by an earlier version has no checksum, so the next `generate` keeps it and writes `.ghk-new`: compare them once and keep one |
+| `ghk add` | TypeScript files only for TypeScript projects, `it.todo` tests, `.ghk-new` protection, `--target` required outside NestJS | Delete stubs an earlier `add` wrote for other stacks |
+| `ghk detect` | `outputDir: ./generated-specs` (it used to point at `./src` or `./app`); also detects Elixir, nested `.csproj` and `build.gradle.kts` | Check `outputDir` in configurations created by `detect` |
+| `ghk verify --services` | starts the broker of `stack.messaging`, runs in `outputDir`, mounts dependency caches; `--isolated` is an alias | — |
+| `ghk skill` | MCP entries use the pinned `npx -y gherkin-ai@<version> mcp`, like `ghk mcp install` | Re-run `ghk skill` (MCP mode) to replace entries with a local path |
 | `ghk quality --json` | reports `gatePassed`, `reasons`, the risk card and coverage, and exits 4 when the gate fails; it used to print only `{"ok": false}` | Update scripts that parsed the old output |
 | Tiers | every stack and command is stable (`risk`, `quality`, `graph`, `speckit`, `bench`, `web` were beta) | — |
 | New commands and flags | `ghk industry`, `ghk report`, `ghk lint --explain-ir`, `ghk generate --review`, `ghk graph --serve`, `ghk risk --calibrate` | Optional ([COMMANDS.md](COMMANDS.md)) |
@@ -99,13 +106,13 @@ You do not need to install each version in between. `ghk upgrade` in 3.2 checks 
 10. **Verify against real infrastructure.**
 
     ```bash
-    ghk verify --services             # build, tests and IT1–IT7 against PostgreSQL 17 and RabbitMQ 4
+    ghk verify --services             # build, tests and IT1–IT7 against PostgreSQL 17 and the service's broker
     docker build -t my-service .      # then start it and check the liveness and readiness probes
     ghk converge --all --threshold 80
     ghk validate                      # also checks the Dockerfile, .env.example and deploy/ for secrets
     ```
 
-    `--services` starts RabbitMQ. For Pub/Sub or Kafka, start the broker with the generated `docker-compose.yml` and run the integration command yourself ([ADOPTION.md](ADOPTION.md#verify-against-real-infrastructure)).
+    `--services` starts the broker of `stack.messaging` (RabbitMQ, the Pub/Sub or Service Bus emulator, or Kafka) and runs in `outputDir` ([ADOPTION.md](ADOPTION.md#verify-against-real-infrastructure)). `--isolated` is now a deprecated alias of `--services`.
 
 11. **Review and merge** the upgrade branch like any other change. `ghk upgrade` never pushes.
 

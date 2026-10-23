@@ -29,7 +29,7 @@ Rust, Ruby, Elixir and PHP have no official Service Bus or Kafka SDK: with those
 
 ## Running the integration suite
 
-`ghk verify --services` starts PostgreSQL and RabbitMQ, runs the stack's integration command in its toolchain image and removes everything. For Pub/Sub and Kafka, the generated `docker-compose.yml` starts the emulator or a single-node broker; export the variables from `.env.example` (`GHK_BROKER`, `PUBSUB_EMULATOR_HOST` or `KAFKA_BOOTSTRAP_SERVERS`) and run the integration command. The integration tests read `DATABASE_URL` (`postgres://user:pass@host:5432/db`) and `AMQP_URL` (`amqp://user:pass@host:5672`). The golden builds start `postgres:17-alpine` and `rabbitmq:4-alpine` for them. To run them locally:
+`ghk verify --services` starts PostgreSQL, RabbitMQ and the broker of `stack.messaging` (the Pub/Sub emulator, the Service Bus emulator with its database, or a single-node Kafka, as in the golden builds), runs the stack's integration command in its toolchain image and removes everything. The integration tests read `DATABASE_URL` (`postgres://user:pass@host:5432/db`) and `AMQP_URL` (`amqp://user:pass@host:5672`). The golden builds start `postgres:17-alpine` and `rabbitmq:4-alpine` for them. To run them locally:
 
 ```bash
 docker run -d --name ghk-pg -e POSTGRES_PASSWORD=ghk -p 5432:5432 postgres:17-alpine

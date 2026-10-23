@@ -145,13 +145,15 @@ Sixteen reference projects (`ghk-test-projects`, branch `ghk-3.2`) cover realist
 
 **Result: 16 of 16 projects pass, with 28 of 28 stack checks.** In the first run, the production image builds of ts12, ts13 and ts14 timed out while Docker resolved the `node:24-bookworm-slim` base image (`DeadlineExceeded`); their builds and integration suites had already passed. They passed in the rerun, and their times are from that rerun.
 
-A second `ghk generate` over each regenerated project changes no file. `ghk validate` passes in all 16 projects. Compared with the 3.2.0 regeneration of 2026-10-18, `ghk lint` scores ten projects one point lower. The cause is the new informational rule GHK016: their commands are written in Spanish steps, which the generator cannot name, so the API exposes a generic `process_<aggregate>` command. ts01, ts03, ts06 and ts07 are also written in Spanish but keep their scores, because their steps name the command (`"CreateOrderCommand"`). ts15 declares its command and event with `@command:ExecutePayment @event:PaymentExecuted`. It keeps 99/100, its API exposes `execute_payment`, and `ghk converge` rises from 87% to 97% (traceability from 44% to 100%). Each project's README lists its own results.
+A second `ghk generate` over each regenerated project changes no file. `ghk validate` passes in all 16 projects. Compared with the 3.2.0 regeneration of 2026-10-18, `ghk lint` scores ten projects one point lower. The cause is the new informational rule GHK016: their commands are written in Spanish steps, which the generator cannot name, so the API exposes a generic `process_<aggregate>` command. ts01, ts03, ts06 and ts07 are also written in Spanish but keep their scores, because their steps name the command (`"CreateOrderCommand"`). ts15 declares its command and event with `@command:ExecutePayment @event:PaymentExecuted`. It keeps 99/100, its API exposes `execute_payment`, and `ghk converge` rises from 87% to 97% (traceability from 44% to 100%). Two later lint fixes then raised two scores by five points: GHK007 no longer reports the word "service" (ts01, 83/100), and GHK009 recognizes a rejected outcome as an error path (ts13, 78/100). Each project's README lists its own results.
+
+`ghk verify --services` was also run on copies of ts15 (Quarkus, Pub/Sub emulator) and ts06 (Go, RabbitMQ). It now starts the project's broker and runs in the generated project. ts15 passes its integration suite. ts06 passes its tests, and the command then exits 4 at its convergence gate (64% against 80%), as designed.
 
 ## 3. The CLI itself
 
 | Check | Result |
 |---|---|
-| Unit and integration tests (`vitest`) | 774 tests, all passing |
+| Unit and integration tests (`vitest`) | 791 tests, all passing |
 | Type check (`tsc --noEmit`) | clean |
 | CI matrix | Linux, macOS and Windows × Node.js 22 and 24 |
 | CLI contract tests | the built binary is run with `--json` for each command; exit codes and the JSON envelope are asserted |

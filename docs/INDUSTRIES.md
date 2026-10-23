@@ -457,7 +457,7 @@ No reference standard: bounded contexts follow the organization's business capab
 
 ## Notes for teams
 
-- **Every example above passes its profile** with `ghk lint` (3.2.0), and each scores 97–100 overall. The negative scenarios carry `@negative` because the general rule GHK009 does not yet recognize "rejected" or "expired" as error paths.
+- **Every example above passes its profile** with `ghk lint` (3.2.0), and each scores 97–100 overall. The `@negative` tag marks the negative scenarios explicitly; the general rule GHK009 also recognizes them by their outcome (rejected, denied, failed, expired, declined, and the Spanish equivalents).
 - **Tags drive the generated names.** The `@aggregate`, `@command` and `@event` tags in the examples name the aggregate, the command route and the events in every Gherkin dialect (`ghk lint --explain-ir` shows the result). Use them in non-English features, where commands cannot be inferred from the steps (GHK016).
 - **Start with warnings.** On an existing code base, turn on the profile and run `ghk lint` before gating on it. Fix the errors (GHK102, GHK402, GHK801–803, GHK090) first; they mark a feature that cannot be built safely as specified. See [ADOPTION.md](ADOPTION.md#5-turn-on-the-industry-profile).
 - **The rules check specifications, not code.** Whether the code follows the agent rules is shown by review, `ghk converge` and the firewall approvals on the sensitive paths.
