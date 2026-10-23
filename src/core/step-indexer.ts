@@ -6,6 +6,8 @@ import { Project, CallExpression, SyntaxKind } from 'ts-morph';
 import path from 'path';
 import fs from 'fs';
 import { logger } from '../utils/logger';
+import { readInventoryFile } from './inventory';
+import { matchesChecksum } from './write-protection';
 
 export interface ExtractedStep {
   keyword: string; // 'Given', 'When', 'Then', 'step', 'Dado', 'Cuando', 'Entonces'
@@ -153,7 +155,12 @@ export class StepIndexer {
     new RegexStepParser()
   ];
 
-  public getAvailableSteps(workspaceRoot: string): ExtractedStep[] {
+  /**
+   * Step definitions the agents must reuse. Step skeletons that are still exactly what gherkin-ai generated
+   * (checksum in `.ghe/inventory.json`) are left out: they are not existing work, and listing them made a
+   * second `ghk generate` write different prompts than a clean one.
+   */
+  public getAvailableSteps(workspaceRoot: string, outputDir = './'): ExtractedStep[] {
     const allSteps: ExtractedStep[] = [];
     for (const parser of this.parsers) {
       try {
@@ -163,6 +170,31 @@ export class StepIndexer {
         logger.error(`Error parsing steps: ${e.message}`);
       }
     }
-    return allSteps;
+    const generated = unchangedGeneratedFiles(workspaceRoot, outputDir);
+    // A Java annotation also matches the case-insensitive Python pattern: keep one step per source line.
+    const seen = new Set<string>();
+    return allSteps.filter(s => {
+      if (generated.has(path.resolve(s.filePath))) return false;
+      const key = `${path.resolve(s.filePath)}:${s.lineNumber ?? ''}:${s.keyword.toLowerCase()}:${s.pattern}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
   }
+}
+
+/** Absolute paths of the generated files whose content still matches the checksum gherkin-ai recorded. */
+function unchangedGeneratedFiles(workspaceRoot: string, outputDir: string): Set<string> {
+  const unchanged = new Set<string>();
+  const { artifacts } = readInventoryFile(path.join(workspaceRoot, '.ghe', 'inventory.json'));
+  for (const a of artifacts) {
+    if (!a.checksum) continue;
+    const file = path.resolve(workspaceRoot, outputDir, a.filePath);
+    try {
+      if (matchesChecksum(fs.readFileSync(file), a.checksum)) unchanged.add(file);
+    } catch {
+      // Deleted since it was generated.
+    }
+  }
+  return unchanged;
 }

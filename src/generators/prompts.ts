@@ -23,7 +23,7 @@ export function generatePrompts(parsed: ParsedFeature, config: GherkinAIConfig):
   const isSpanishUser = getGlobalUserLocale() === 'es';
 
   const indexer = new StepIndexer();
-  const availableSteps = indexer.getAvailableSteps(process.cwd());
+  const availableSteps = indexer.getAvailableSteps(process.cwd(), config.outputDir);
 
   const extractor = new ContextExtractor();
   const appContext = extractor.extract(process.cwd());
