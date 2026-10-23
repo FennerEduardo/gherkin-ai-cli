@@ -60,6 +60,8 @@ const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ghk-preflight-'));
 console.log(`Release preflight of ${ref} (${sha}) in a clean worktree: ${dir}`);
 const added = run('git', ['worktree', 'add', '--detach', dir, `${ref}^{commit}`], repo);
 if (added.code !== 0) { console.error(added.out); process.exit(2); }
+// mkdtemp makes the directory owner-only; the actionlint container reads it as another user.
+fs.chmodSync(dir, 0o755);
 
 try {
   const installed = check('npm ci', () => {
