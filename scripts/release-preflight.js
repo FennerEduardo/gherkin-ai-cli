@@ -10,7 +10,7 @@
      - the committed config JSON Schema is the one the build generates;
      - the type check and npm audit --audit-level=high (release.yml blocks on it);
      - the tag, if given, matches package.json;
-     - actionlint on the workflows (when Docker is available).
+     - actionlint on the workflows and the quick goldens (when Docker is available).
 
    Usage: node scripts/release-preflight.js [ref] [--tag vX.Y.Z]
    Exit code 0 only when every check passes.
@@ -106,8 +106,17 @@ try {
       const r = run('docker', ['run', '--rm', '-v', `${dir}:/repo`, '-w', '/repo', 'rhysd/actionlint:1.7.12', '-no-color', ...workflows], dir, { env: { ...process.env, MSYS_NO_PATHCONV: '1' } });
       return { ok: r.code === 0, detail: r.code === 0 ? '' : r.out };
     });
+    // The quick goldens use third-party images, some of them non-root (actionlint): they catch file
+    // permission and runner differences that Docker Desktop on Windows or macOS hides. Run on Linux.
+    if (installed) {
+      check('quick goldens (CI pipelines, Helm)', () => {
+        const quick = ['ci-github', 'ci-github-kubernetes', 'ci-gitlab', 'ci-azure-pipelines', 'helm'];
+        const r = run('node', ['scripts/golden-build.js', ...quick], dir);
+        return { ok: r.code === 0, detail: r.code === 0 ? `${quick.length} goldens${process.platform === 'linux' ? '' : '; run on Linux to match the CI runners'}` : r.out };
+      });
+    }
   } else {
-    console.log('  actionlint ... skipped (Docker is not available)');
+    console.log('  actionlint and quick goldens ... skipped (Docker is not available)');
   }
 } finally {
   run('git', ['worktree', 'remove', '--force', dir], repo);
