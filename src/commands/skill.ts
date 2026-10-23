@@ -11,68 +11,56 @@ import chalk from 'chalk';
 import inquirer from 'inquirer';
 
 // ---------------------------------------------------------------------------
-// Skill Content (Enhanced)
+// Skill Content (every command it names must exist; keep the start marker: updates replace from it)
 // ---------------------------------------------------------------------------
 
 const SKILL_CONTENT = `
 # Gherkin AI CLI - IDE Agent Skill
 
-You are an AI assistant in an IDE, equipped with the \`gherkin-ai-cli\` (alias: \`ghk\`).
-You MUST use this CLI natively to help the user design, validate, and generate code architecture.
+You are an AI assistant in an IDE, equipped with the \`gherkin-ai\` CLI (alias: \`ghk\`).
+The \`.feature\` files are the source of truth for behavior. Use the CLI to read them, check them and stay inside their scope.
 
-## CONSTITUTION & CONSTRAINTS
-Before starting any task, read the project constraints:
-- Run \`ghk constitution\` to see the project's architectural guardrails.
-- NEVER violate the constraints defined in \`.gherkin-ai/constitution.yaml\`.
-- Check allowed/forbidden patterns before generating any code.
+## CONSTRAINTS
+Before starting any task:
+- Read \`gherkin-ai.config.json\` (stack, architecture, industry) and, when present, \`.gherkin-ai/constitution.yaml\` (architectural guardrails). NEVER violate them.
+- When \`.ghe/industry-context.md\` exists, follow its industry rules (standards, vocabulary, compliance).
+- Check what you may change: \`ghk firewall policy -f <feature>\`. Paths that need human approval are not yours to edit.
 
 ## SPECIFICATION-FIRST WORKFLOW
 
-### 1. Detection Phase
-- If the user asks about the current architecture or stack, run \`ghk detect\` to see the project's config.
+### 1. Specify
+- Lint the specification before writing code: \`ghk lint -f <feature>\`. Fix errors and warnings.
+- \`ghk lint --explain-ir -f <feature>\` shows the aggregate, route, commands and events the generator will use. Name them with \`@aggregate:\`, \`@command:\` and \`@event:\` tags when they are generic.
 
-### 2. Lint Phase (NEW)
-- Before generating code, lint the specification:
-  \`ghk lint -f <path-to-file.feature>\`
-- Fix any warnings/errors before proceeding.
+### 2. Generate
+- \`ghk generate -f <feature>\` writes contracts (\`contracts/<feature>/\`, \`openapi.json\`, \`asyncapi.json\`), the domain kernel, pending BDD steps, the runtime and the agent prompts (\`prompts/\`) into the configured \`outputDir\`.
+- Edited files are never overwritten: the new version is written next to them as \`<file>.ghk-new\`. Do not delete those; the developer resolves them with \`ghk generate --review\`.
 
-### 3. Generation Phase
-- When the user provides a \`.feature\` file (Gherkin) and asks to implement it, FIRST run:
-  \`ghk generate -f <path-to-file.feature>\`
-- This generates TypeScript/Native interfaces, DTOs, OpenAPI specs, and agent prompts.
+### 3. Implement
+- \`ghk implement -f <feature>\` prints the implementation prompt and context. READ it and the generated prompts before coding.
+- Implement the pending BDD steps and the domain behavior. Keep the generated HTTP contract and the names from the specification.
 
-### 4. Implementation Phase
-- After generating, READ the prompts in \`./generated-specs/prompts/\`.
-- STRICTLY FOLLOW the architecture constraints, layers, and rules defined in those prompts.
-- Follow the domain contracts generated in \`./generated-specs/contracts.ts\`.
-
-### 5. Validation & Convergence
-- Run \`ghk validate -f <feature-file>\` to verify syntactic correctness.
-- Run \`ghk converge\` to measure specification-to-implementation alignment.
-- Run \`ghk diff -f <feature-file> -t <code-file>\` to compare spec vs code.
-
-### 6. Quality Gate
-- Run \`ghk quality\` to check the project quality score before merging.
-
-### 7. Verification Loop
-- Run \`ghk verify --auto-fix\` to execute tests with AI self-healing.
+### 4. Verify
+- \`ghk verify\` runs the project tests. \`ghk verify --services\` adds the runtime integration suite against real PostgreSQL and the broker.
+- \`ghk converge -f <feature>\` measures specification-to-code convergence. \`ghk validate\` checks the specification and the contracts.
+- \`ghk risk --base origin/main\` scores the delivery risk of the change; report it to the developer.
 
 ## AVAILABLE COMMANDS
 | Command | Description |
 |---------|-------------|
-| \`ghk detect\` | Auto-detect project stack and architecture |
-| \`ghk init --enterprise\` | Initialize project with enterprise constitution |
-| \`ghk generate -f <file>\` | Generate contracts, DTOs, prompts from Gherkin |
-| \`ghk validate -f <file>\` | Validate Gherkin syntax |
-| \`ghk lint -f <file>\` | Lint specification quality (14 rules) |
-| \`ghk converge\` | Measure spec-to-implementation convergence |
-| \`ghk quality\` | Calculate project quality scorecard |
-| \`ghk verify --auto-fix\` | Run tests with AI self-healing loop |
-| \`ghk diff -f <spec> -t <code>\` | Compare specification vs implementation |
-| \`ghk sbom\` | Generate Software Bill of Materials |
-| \`ghk skill\` | Install this skill into your IDE |
+| \`ghk lint -f <file>\` | Specification quality rules and score (industry rules included) |
+| \`ghk lint --explain-ir -f <file>\` | Where each generated name comes from |
+| \`ghk validate\` | Specification and architecture rules; contract checks |
+| \`ghk generate -f <file>\` | Contracts, domain kernel, tests, runtime and prompts |
+| \`ghk implement -f <file>\` | Implementation prompt and context for the feature |
+| \`ghk converge\` | Specification-to-code convergence |
+| \`ghk graph --scope <file>\` | Files and tests that belong to a feature |
+| \`ghk firewall check --write <path>\` | Whether a write needs human approval |
+| \`ghk risk --base <ref>\` | Delivery risk of the change |
+| \`ghk verify\` | Run the project tests |
+| \`ghk industry show <id>\` | An industry's standards and rules (\`industry.id\` in the configuration) |
 
-Never guess the architecture. Always rely on \`ghk\` CLI and the constitution as the source of truth.
+Never guess the architecture or the domain names: take them from the specification, the configuration and the CLI.
 `;
 
 // ---------------------------------------------------------------------------

@@ -5,14 +5,16 @@
 import path from 'path';
 import inquirer from 'inquirer';
 import { handleAddCommand } from './add';
-import { ensureCliLanguage, t } from '../utils/i18n-cli';
+import { ensureCliLanguage, promptOrFallback, t } from '../utils/i18n-cli';
 import { fileExistsSync, writeFileSync } from '../utils/file-system';
 import { logger } from '../utils/logger';
+
+/** Spanish keywords parse only under `# language: es`; without it the file is read as English and is invalid. */
+const dialectHeader = (es: boolean): string => (es ? '# language: es\n' : '');
 
 export async function handleCreateCommand(options: { output?: string; target?: string; lang?: string; caveman?: boolean; headless?: boolean; config?: string; yes?: boolean; nonInteractive?: boolean }): Promise<void> {
   logger.banner();
 
-  const { promptOrFallback } = require('../utils/i18n-cli');
   const locale = await ensureCliLanguage(options.lang);
   const isEs = locale === 'es';
 
@@ -36,13 +38,16 @@ export async function handleCreateCommand(options: { output?: string; target?: s
        return;
     }
 
-    const featureKw = isEs ? 'Característica:' : 'Feature:';
-    const asKw = isEs ? 'Como' : 'As a';
-    const wantKw = isEs ? 'Quiero' : 'I want to';
-    const soKw = isEs ? 'Para' : 'So that';
-    const scKw = isEs ? 'Escenario:' : 'Scenario:';
+    // The JSON describes the feature, steps included: its dialect is its own "language" (default English),
+    // never the operator's CLI locale.
+    const specEs = configData.language === 'es';
+    const featureKw = specEs ? 'Característica:' : 'Feature:';
+    const asKw = specEs ? 'Como' : 'As a';
+    const wantKw = specEs ? 'Quiero' : 'I want to';
+    const soKw = specEs ? 'Para' : 'So that';
+    const scKw = specEs ? 'Escenario:' : 'Scenario:';
 
-    let gherkinContent = `${featureKw} ${configData.featureName || 'Headless Feature'}\n`;
+    let gherkinContent = `${dialectHeader(specEs)}${featureKw} ${configData.featureName || 'Headless Feature'}\n`;
     if (configData.actor) gherkinContent += `  ${asKw} ${configData.actor}\n`;
     if (configData.action) gherkinContent += `  ${wantKw} ${configData.action}\n`;
     if (configData.outcome) gherkinContent += `  ${soKw} ${configData.outcome}\n\n`;
@@ -84,7 +89,7 @@ export async function handleCreateCommand(options: { output?: string; target?: s
     const scKw = isEs ? 'Escenario:' : 'Scenario:';
     const givenKw = isEs ? 'Dado' : 'Given';
 
-    let gherkinContent = `${featureKw} Requirement generated from Caveman Mode\n`;
+    let gherkinContent = `${dialectHeader(isEs)}${featureKw} Requirement generated from Caveman Mode\n`;
     gherkinContent += `  ${scKw} Main implementation flow\n`;
     gherkinContent += `    ${givenKw} the following requirement:\n      """\n      ${quickDesc}\n      """\n`;
 
@@ -201,7 +206,7 @@ export async function handleCreateCommand(options: { output?: string; target?: s
   const soKw = isEs ? 'Para' : 'So that';
   const scKw = isEs ? 'Escenario:' : 'Scenario:';
 
-  let gherkinContent = `${featureKw} ${answers.featureName}\n`;
+  let gherkinContent = `${dialectHeader(isEs)}${featureKw} ${answers.featureName}\n`;
   gherkinContent += `  ${asKw} ${answers.actor}\n`;
   gherkinContent += `  ${wantKw} ${answers.action}\n`;
   gherkinContent += `  ${soKw} ${answers.outcome}\n\n`;
