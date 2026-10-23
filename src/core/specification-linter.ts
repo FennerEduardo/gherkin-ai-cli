@@ -362,8 +362,10 @@ const LINT_RULES: LintRule[] = [
     check: (parsed) => {
       const diags: LintDiagnostic[] = [];
       const errorPatterns = [
-        /\b(errors?|fail(s|ed|ure)?|invalid|den(y|ies|ied)|forbidden|not found|unauthori[sz]ed|reject(s|ed|ion)?|declin(e|es|ed)|refus(e|es|ed)|expired?)\b/i,
-        /\b(error|fall(a|an|[oó]|ido)|inv[aá]lid[oa]|deneg(ad[oa]|ar)|prohibid[oa]|no encontrad[oa]|no autorizad[oa]|rechaz(ad[oa]|a|o|ar)|vencid[oa]|caducad[oa]|expirad[oa])/i,
+        // Whole words only: "without errors" / "sin errores" describe a successful run.
+        /\b(error|fail(s|ed|ure)?|invalid|den(y|ies|ied)|forbidden|not found|unauthori[sz]ed|reject(s|ed|ion)?|declin(e|es|ed)|refus(e|es|ed)|expired?)\b/i,
+        // Unicode-aware boundaries: \b does not treat accented letters (falló, inválido) as word characters.
+        /(?<!\p{L})(error|falla|fallan|falló|fallo|fallido|fallida|inválid[oa]|invalid[oa]|denegad[oa]|denegar|prohibid[oa]|no encontrad[oa]|no autorizad[oa]|rechazad[oa]|rechaza|rechazar|vencid[oa]|caducad[oa]|expirad[oa])(?!\p{L})/iu,
         /\b(HTTP\s*(4|5)\d{2})\b/i,
         /\b(should not|must not|cannot|no debe|no puede)\b/i,
       ];

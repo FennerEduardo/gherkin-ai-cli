@@ -216,6 +216,13 @@ Característica: Pedidos
     Entonces el pedido es rechazado
 `;
       expect(lintSpecification(parseGherkinText(es)).diagnostics.find(d => d.ruleId === 'GHK009')).toBeUndefined();
+      expect(lintSpecification(parseGherkinText(es.replace('el pedido es rechazado', 'el pago falló'))).diagnostics.find(d => d.ruleId === 'GHK009')).toBeUndefined();
+    });
+
+    it('does not count a successful run "without errors" as an error path (GHK009)', () => {
+      const happy = (then: string, lang = '') => `${lang}${lang ? 'Característica: Pruebas\n  Escenario: Ejecución\n    Dado un proyecto\n    Cuando se ejecutan las pruebas\n    Entonces ' : 'Feature: Tests\n  Scenario: Run\n    Given a project\n    When the tests run\n    Then '}${then}\n`;
+      expect(lintSpecification(parseGherkinText(happy('the run completes without errors'))).diagnostics.find(d => d.ruleId === 'GHK009')).toBeDefined();
+      expect(lintSpecification(parseGherkinText(happy('la ejecución termina sin errores', '# language: es\n'))).diagnostics.find(d => d.ruleId === 'GHK009')).toBeDefined();
     });
 
     it('does not treat "service" as implementation leakage (GHK007)', () => {
