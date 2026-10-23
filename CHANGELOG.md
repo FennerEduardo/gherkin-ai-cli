@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
-## [3.2.0] - Unreleased
+## [3.2.0] - 2026-10-23
 
 ### Added
 - **Deployment targets (`deploy` in the configuration): Terraform for AWS, Google Cloud and Azure, and a Helm chart.** See `docs/DEPLOYMENT.md`.
@@ -136,6 +136,8 @@ All notable changes to this project will be documented in this file. See [commit
   - **Stacks.** Java + Quarkus and every Pub/Sub and Service Bus broker adapter. Each is built, tested and run against the official emulators by its golden build on every CI run.
   - **Commands.** `risk`, `quality`, `graph`, `speckit`, `bench` and `web`. Their exit codes and `--json` output are covered by the CLI contract tests and kept across 3.x.
   - **`ghk quality --json`.** New. It reports `gatePassed`, the `reasons` a human must approve, the risk card and the coverage result, and exits 4 when the gate fails. Before, `--json` gave only `{"ok": false}`.
+- **Dependencies.** `ip-address` 10.7.4 (through `@modelcontextprotocol/sdk`; GHSA-rxp7-6hxx-x8q5). For development, vitest 4.1.12 and vite 8.3.5 (GHSA-qxg6-89mg-rqv8, GHSA-xp26-3454-mjgp, and the vite and launch-editor advisories). `npm audit` reports no vulnerabilities.
+- **The CLI's own CI and release workflows** use `actions/checkout@v7` and `actions/setup-node@v7`, like the pipelines it generates.
 - **Source layout (4.11).** The command definitions moved from `src/index.ts` to `src/cli/`, one module per group of `docs/COMMANDS.md`, and `ghk --help` lists the commands in those groups. The IR extractors moved from `src/core/ir-builder.ts` to `src/core/ir/`. The IR is unchanged: it was compared with the previous build for 35 features.
 
 ### Fixed
