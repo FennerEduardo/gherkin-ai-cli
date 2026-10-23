@@ -10,6 +10,10 @@ import { runtimeBroker } from '../generators/deploy/broker-env';
 import { toKebab } from '../utils/naming';
 import chalk from 'chalk';
 import { resolve as resolvePath } from 'path';
+import { readFileSync } from 'fs';
+import { calculateConvergence } from '../core/convergence-engine';
+import { parseGherkinText } from '../core/gherkin-parser';
+import { projectFeatureFiles } from '../core/workspace-projects';
 import { DEFAULT_CONTAINER_LIMITS, executeSandbox, SandboxExecutionOptions } from '../core/execution-sandbox';
 import { resolveToolchain } from '../generators/toolchains';
 import { parseExecutionFailure } from '../core/error-parser';
@@ -26,10 +30,22 @@ export interface VerifyCommandOptions {
   isolated?: boolean;
   /** Run the runtime integration suite against PostgreSQL and RabbitMQ (implies --docker). */
   services?: boolean;
+  /** Fail (exit 7) when the convergence score is below this, after the tests pass. Unset: reported only. */
+  convergeThreshold?: string;
   maxRetries?: string | number;
   command?: string;
   allowUnattendedWrites?: boolean;
   forceBranch?: boolean;
+}
+
+/** Average convergence of the project's features, as `ghk converge` computes it; undefined without features. */
+function convergenceScore(cwd: string): number | undefined {
+  let files: string[];
+  try { files = projectFeatureFiles(cwd); } catch { return undefined; }
+  const scores = files.flatMap(file => {
+    try { return [calculateConvergence(parseGherkinText(readFileSync(file, 'utf8')), file, cwd).overallConvergence]; } catch { return []; }
+  });
+  return scores.length ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : undefined;
 }
 
 export async function handleVerifyCommand(options: VerifyCommandOptions = {}): Promise<void> {
@@ -96,6 +112,7 @@ export async function handleVerifyCommand(options: VerifyCommandOptions = {}): P
 
   let iteration = 1;
   let success = false;
+  let drift = false;
   const fileBackups: Record<string, string> = {};
   let guardrailViolationPrompt: string | null = null;
   const metricsEngine = new MetricsEngine();
@@ -115,28 +132,25 @@ export async function handleVerifyCommand(options: VerifyCommandOptions = {}): P
     if (result.success) {
       console.log(chalk.bold.green(`\n✅ Suite Verification Passed! (Duration: ${result.durationMs}ms)`));
       console.log(chalk.green(`   Executed command: ${result.commandExecuted}\n`));
-      
-      console.log(chalk.bold.cyan(`🔍 Running Architectural Convergence Check...`));
-      try {
-        const { handleConvergeCommand } = require('./converge');
-        let oldExitCode = process.exitCode;
-        await handleConvergeCommand({ threshold: '80' });
-        if (process.exitCode !== oldExitCode && process.exitCode !== 0) {
-          console.log(chalk.bold.red(`\n✖ CI/CD Gate Failed: Tests passed but Architectural Convergence is below threshold.`));
-          success = false;
-          break; // break out to fail
-        } else {
-           console.log(chalk.bold.green(`\n✅ CI/CD Gate Passed: Architectural Convergence meets threshold.`));
-           success = true;
-           metricsEngine.recordTestRun(true);
-           execEvents.push({ type: 'test_passed', iteration, durationMs: result.durationMs });
-           break;
-        }
-      } catch (e) {
-        console.log(chalk.yellow(`⚠ Warning: Could not run convergence engine: ${e}`));
-        success = true;
-        break;
+      metricsEngine.recordTestRun(true);
+      execEvents.push({ type: 'test_passed', iteration, durationMs: result.durationMs });
+      success = true;
+
+      // Convergence is reported; it gates only when asked (the same gate as `ghk converge --threshold`).
+      const score = convergenceScore(process.cwd());
+      const threshold = options.convergeThreshold !== undefined ? Number(options.convergeThreshold) : undefined;
+      if (score === undefined) {
+        console.log(chalk.gray('   Convergence: no feature files found.'));
+      } else if (threshold === undefined) {
+        console.log(chalk.gray(`   Convergence: ${score}% (reported only; gate it with --converge-threshold <score> or ghk converge --threshold).`));
+      } else if (score < threshold) {
+        console.log(chalk.bold.red(`\n✖ Tests passed, but convergence is ${score}%, below --converge-threshold ${threshold}% (run ghk converge for the breakdown).`));
+        success = false;
+        drift = true;
+      } else {
+        console.log(chalk.green(`   Convergence: ${score}% (threshold ${threshold}%).`));
       }
+      break;
     }
 
     console.log(chalk.bold.yellow(`\n❌ Execution Failed (Exit Code: ${result.exitCode})`));
@@ -352,7 +366,7 @@ export async function handleVerifyCommand(options: VerifyCommandOptions = {}): P
   console.log(chalk.bold.cyan(`\n📊 Closed-Loop Execution metrics saved to: ${logPath}`));
 
   if (!success) {
-    process.exitCode = ExitCode.GATE_FAILED;
+    process.exitCode = drift ? ExitCode.DRIFT : ExitCode.GATE_FAILED;
   }
   } finally {
     if (services) {

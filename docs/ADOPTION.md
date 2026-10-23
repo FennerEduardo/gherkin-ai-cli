@@ -182,6 +182,7 @@ ghk verify --services       # also the runtime integration suite (IT1–IT7) aga
 ghk converge --threshold 80
 ```
 
+- **Tests, then convergence.** `verify` reports the specification convergence once the tests pass. It fails on it only with `--converge-threshold <score>` (exit 7, like `ghk converge --threshold`), so a service whose tests pass is not reported as failing because its specification is still incomplete.
 - **The broker of `stack.messaging`.** `--services` starts PostgreSQL, RabbitMQ and, when the service uses one, the Pub/Sub emulator, the Service Bus emulator (with its Azure SQL Edge database) or a single-node Kafka. These are the same containers as the gherkin-ai golden builds.
 - **Where it runs.** The stack's build and test commands run in `outputDir`, where the generated project lives; your own `-c` or `testCommand` runs where you call `verify`.
 - **Dependency caches.** Each toolchain's caches (npm, Maven, Gradle, Go, NuGet, pip, Bundler, Mix, Cargo, Composer) are named Docker volumes `ghk-cache-<name>`, shared between runs.

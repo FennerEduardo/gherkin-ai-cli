@@ -57,6 +57,7 @@ You do not need to install each version in between. `ghk upgrade` in 3.2 checks 
 | `ghk add` | TypeScript files only for TypeScript projects, `it.todo` tests, `.ghk-new` protection, `--target` required outside NestJS | Delete stubs an earlier `add` wrote for other stacks |
 | `ghk detect` | `outputDir: ./generated-specs` (it used to point at `./src` or `./app`); also detects Elixir, nested `.csproj` and `build.gradle.kts` | Check `outputDir` in configurations created by `detect` |
 | `ghk verify --services` | starts the broker of `stack.messaging`, runs in `outputDir`, mounts dependency caches; `--isolated` is an alias | — |
+| `ghk verify` after passing tests | reports the convergence score; it no longer fails below a fixed 80% | Pipelines that relied on that gate: add `--converge-threshold 80` (exit 7), or run `ghk converge --threshold 80` |
 | `ghk skill` | MCP entries use the pinned `npx -y gherkin-ai@<version> mcp`, like `ghk mcp install` | Re-run `ghk skill` (MCP mode) to replace entries with a local path |
 | `ghk quality --json` | reports `gatePassed`, `reasons`, the risk card and coverage, and exits 4 when the gate fails; it used to print only `{"ok": false}` | Update scripts that parsed the old output |
 | Tiers | every stack and command is stable (`risk`, `quality`, `graph`, `speckit`, `bench`, `web` were beta) | — |
