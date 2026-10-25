@@ -25,18 +25,27 @@ const os = require('os');
 const path = require('path');
 const { STACKS } = require('./golden-stacks');
 // The same PostgreSQL / RabbitMQ harness as `ghk verify --services` (src/core/services.ts, built into dist/).
-const { startServices } = require('../dist/core/services');
+const { startServices, POSTGRES_IMAGE } = require('../dist/core/services');
 const { resolveAppRuntimeEnv, resolveHealth } = require('../dist/generators/toolchains');
 
 const ROOT = path.resolve(__dirname, '..');
-const CLI = path.join(ROOT, 'bin', 'gherkin-ai.js');
+// GHK_CLI: the CLI under test, e.g. the packaged tarball installed in a clean directory (CI); default: this repository's.
+const CLI = process.env.GHK_CLI ? path.resolve(process.env.GHK_CLI) : path.join(ROOT, 'bin', 'gherkin-ai.js');
 const args = process.argv.slice(2);
 const keep = args.includes('--keep');
 const skipIntegration = args.includes('--no-integration');
 const skipImage = args.includes('--no-image');
 // --db-tls: PostgreSQL accepts TLS only and DATABASE_URL carries sslmode=require (managed databases enforce it).
 const dbTls = args.includes('--db-tls');
-const selected = args.filter(a => !a.startsWith('--'));
+// --project <dir>: build and test an existing generated project (e.g. a ghk-test-projects output directory)
+// with the recipe of the given stack, instead of generating the sample one. The directory is never deleted.
+const projectIndex = args.indexOf('--project');
+const projectDir = projectIndex >= 0 ? path.resolve(args[projectIndex + 1] || '') : undefined;
+if (projectIndex >= 0 && (!args[projectIndex + 1] || !fs.existsSync(projectDir))) {
+  console.error('--project needs an existing directory');
+  process.exit(2);
+}
+const selected = args.filter((a, i) => !a.startsWith('--') && (projectIndex < 0 || i !== projectIndex + 1));
 
 if (args.includes('--list')) {
   for (const [name, s] of Object.entries(STACKS)) console.log(`${name.padEnd(16)} ${s.image}`);
@@ -155,6 +164,16 @@ function signJwt(claims, secret) {
 function commandPath(name) {
   const { parseGherkinText } = require('../dist/core/gherkin-parser');
   const { buildDomainModel } = require('../dist/generators/kernel/domain-model');
+  if (projectDir) {
+    // An existing project: a command of its own feature (the project root holds the config and features/).
+    let root = projectDir;
+    while (!fs.existsSync(path.join(root, 'gherkin-ai.config.json')) && path.dirname(root) !== root) root = path.dirname(root);
+    const config = JSON.parse(fs.readFileSync(path.join(root, 'gherkin-ai.config.json'), 'utf8'));
+    const specDir = path.join(root, config.specDir || 'features');
+    const feature = fs.readdirSync(specDir).filter(f => f.endsWith('.feature')).sort()[0];
+    const m = buildDomainModel(parseGherkinText(fs.readFileSync(path.join(specDir, feature), 'utf8')), { service: config.projectName });
+    return `/api/v1/${m.kebab}/smoke-1/${m.commands[0].snake}`;
+  }
   const m = buildDomainModel(parseGherkinText(FEATURE), { service: `golden-${name}` });
   return `/api/v1/${m.kebab}/smoke-1/${m.commands[0].snake}`;
 }
@@ -183,8 +202,14 @@ function smokeImage(dir, def, name, services) {
     if (otel.code !== 0) return { code: otel.code, out: `collector failed to start\n${otel.out}` };
     const { port } = resolveAppRuntimeEnv({ stack: def.stack });
     const health = resolveHealth({ stack: def.stack });
+    // A database nothing has touched: the service must create the kernel's tables itself when it starts, as in
+    // a first deployment (the integration suite above already migrated the shared one).
+    const freshDb = run('docker', ['run', '--rm', '--network', services.network, POSTGRES_IMAGE, 'psql', services.env.DATABASE_URL,
+      '-v', 'ON_ERROR_STOP=1', '-c', 'CREATE DATABASE ghk_smoke'], opts);
+    if (freshDb.code !== 0) return { code: freshDb.code, out: `could not create the smoke database\n${freshDb.out}` };
     const env = {
       ...IMAGE_ENV, ...services.env,
+      DATABASE_URL: services.env.DATABASE_URL.replace(/\/postgres(\?|$)/, '/ghk_smoke$1'),
       OTEL_EXPORTER_OTLP_ENDPOINT: `http://${collector}:4318`, OTEL_SERVICE_NAME: serviceName, OTEL_BSP_SCHEDULE_DELAY: '500'
     };
     const start = run('docker', ['run', '-d', '--name', container, '--network', services.network,
@@ -245,7 +270,7 @@ for (const [name, def] of Object.entries(STACKS)) {
   let dir;
   const started = Date.now();
   try {
-    dir = generate(name, def);
+    dir = projectDir ?? generate(name, def);
     process.stdout.write(`  building and testing in ${dir} (${def.image}${def.integration && !skipIntegration ? ' + PostgreSQL + RabbitMQ' : ''})\n`);
     const res = buildInDocker(dir, def, name);
     fs.writeFileSync(path.join(os.tmpdir(), `ghk-golden-${name}.log`), res.out);
@@ -267,7 +292,7 @@ for (const [name, def] of Object.entries(STACKS)) {
     results.push([name, 'ERROR', '-']);
     process.stdout.write(`  ✖ ${err.message}\n`);
   } finally {
-    if (dir && !keep) {
+    if (dir && !keep && !projectDir) {
       try {
         fs.rmSync(dir, { recursive: true, force: true });
       } catch {

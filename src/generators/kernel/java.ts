@@ -285,6 +285,35 @@ const AZURE_DEPS = ['azure-messaging-servicebus', 'azure-identity'].map(a => `
  * Agroal, Quarkus REST and the scheduler. OpenTelemetry is imported before the Quarkus BOM so the kernel
  * gets the API version it is written against; the quarkus-opentelemetry extension is not used (one SDK).
  */
+/**
+ * JaCoCo: the agent instruments the tests and the report is written right after them (also by plain
+ * `mvn test`), at target/site/jacoco/, where `ghk converge` and `ghk quality` read it. Unit tests and the
+ * -Pintegration suite each produce their own run (no appending to an older jacoco.exec).
+ */
+const JACOCO_PLUGIN = `      <plugin>
+        <groupId>org.jacoco</groupId>
+        <artifactId>jacoco-maven-plugin</artifactId>
+        <version>${JVM_VERSIONS.jacocoMavenPlugin}</version>
+        <configuration>
+          <append>false</append>
+        </configuration>
+        <executions>
+          <execution>
+            <id>prepare-agent</id>
+            <goals>
+              <goal>prepare-agent</goal>
+            </goals>
+          </execution>
+          <execution>
+            <id>report</id>
+            <phase>test</phase>
+            <goals>
+              <goal>report</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>`;
+
 export function renderQuarkusPom(artifactId: string, groupId = 'com.example', { serviceBus = false, kafka = false } = {}): string {
   const dep = (g: string, a: string, extra = '') => `    <dependency>\n      <groupId>${g}</groupId>\n      <artifactId>${a}</artifactId>${extra}\n    </dependency>`;
   const test = '\n      <scope>test</scope>';
@@ -417,6 +446,7 @@ ${dep('org.junit.platform', 'junit-platform-suite', test)}
           </systemPropertyVariables>
         </configuration>
       </plugin>
+${JACOCO_PLUGIN}
     </plugins>
   </build>
 
@@ -573,6 +603,7 @@ export function renderPom(artifactId: string, groupId = 'com.example', { service
           <excludedGroups>\${test.excludedGroups}</excludedGroups>
         </configuration>
       </plugin>
+${JACOCO_PLUGIN}
     </plugins>
   </build>
 

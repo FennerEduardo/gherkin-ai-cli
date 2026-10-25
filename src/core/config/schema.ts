@@ -69,7 +69,7 @@ export const llmSchema = z.object({
   /** Base URL for OpenAI-compatible gateways (LiteLLM, internal proxies) or a custom Ollama host. */
   baseUrl: z.string().url().optional(),
   /** Extra HTTP headers sent to the provider (e.g. gateway routing or cost-center headers). */
-  headers: z.record(z.string()).optional(),
+  headers: z.record(z.string(), z.string()).optional(),
   timeoutMs: z.number().int().positive().optional(),
   maxRetries: z.number().int().min(0).max(10).optional(),
   maxOutputTokens: z.number().int().positive().optional(),
@@ -153,9 +153,9 @@ const sandboxSchema = z.object({
     name: z.string().regex(/^[a-z][a-z0-9-]*$/),
     image: z.string(),
     /** Variables for the service container. */
-    environment: z.record(z.string()).optional(),
+    environment: z.record(z.string(), z.string()).optional(),
     /** Variables for the test container. */
-    env: z.record(z.string()).optional(),
+    env: z.record(z.string(), z.string()).optional(),
     /** Command (and arguments) that replaces the image default, e.g. an emulator start command. */
     command: z.array(z.string()).optional(),
     /** Readiness probe run inside the container (exit 0 = ready). */
@@ -163,7 +163,7 @@ const sandboxSchema = z.object({
     /** Ready once the container log contains this text. */
     readyLog: z.string().optional(),
     /** Files mounted read-only into the container: container path -> content. */
-    files: z.record(z.string()).optional()
+    files: z.record(z.string(), z.string()).optional()
   })).optional()
 });
 
@@ -254,7 +254,7 @@ export const configShape = {
     /** Industry lint rules to skip (e.g. ["GHK104"]). */
     disabledRules: z.array(z.string()).optional()
   }).optional(),
-  channelMapping: z.record(z.string()).optional(),
+  channelMapping: z.record(z.string(), z.string()).optional(),
   locale: z.enum(['en', 'es']).optional(),
   llm: llmSchema.optional(),
   mcp: mcpSchema.optional(),
@@ -280,6 +280,8 @@ export const configShape = {
   generation: z.object({
     /** Globs (from the project root) that generate never overwrites; new versions go to <file>.ghk-new. */
     protect: z.array(z.string()).optional(),
+    /** Globs (from the project root) that generate never writes: not created, updated or written as <file>.ghk-new. */
+    exclude: z.array(z.string()).optional(),
     /** Base package / namespace for JVM and .NET code (e.g. "com.acme.orders"). */
     package: z.string().optional(),
     /** Maven/Gradle groupId (defaults to the package). */

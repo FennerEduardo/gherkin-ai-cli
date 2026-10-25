@@ -43,29 +43,45 @@ describe('ghk upgrade --kernel', () => {
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
-  it('replaces unedited kernel files, keeps edited ones and leaves the rest alone', async () => {
+  /** Makes `file` an older generated version: its content changes and its checksum is on record. */
+  const makeStale = (file: string) => {
+    const inv = readInventoryFile('.ghe/inventory.json');
+    fs.writeFileSync(file, '// old kernel\n');
+    inv.artifacts = inv.artifacts.map(a => (a.filePath === file ? { ...a, checksum: sha256('// old kernel\n') } : a));
+    writeInventoryFile('.ghe/inventory.json', inv);
+  };
+
+  it('replaces unedited kernel files and leaves the rest alone', async () => {
     const kernelFiles = readInventoryFile('.ghe/inventory.json').artifacts.map(a => a.filePath).filter(isKernelFile);
     expect(kernelFiles.length).toBeGreaterThan(2);
-    const [stale, edited] = kernelFiles;
-
-    // `stale` is an older generated version (its checksum is on record); `edited` was changed by the developer.
-    const inv = readInventoryFile('.ghe/inventory.json');
-    fs.writeFileSync(stale, '// old kernel\n');
-    inv.artifacts = inv.artifacts.map(a => (a.filePath === stale ? { ...a, checksum: sha256('// old kernel\n') } : a));
-    writeInventoryFile('.ghe/inventory.json', inv);
-    const editedContent = fs.readFileSync(edited, 'utf8') + '\n// my change\n';
-    fs.writeFileSync(edited, editedContent);
+    const [stale] = kernelFiles;
+    makeStale(stale);
     const domainBefore = fs.readdirSync('.').sort();
 
     const [result] = await handleKernelRefresh({});
-    const action = (f: string) => result.plans.find(p => p.filePath === f)?.action;
-    expect(action(stale)).toBe('update');
-    expect(action(edited)).toBe('side-by-side');
+    expect(result.plans.find(p => p.filePath === stale)?.action).toBe('update');
     expect(fs.readFileSync(stale, 'utf8')).not.toBe('// old kernel\n');
-    expect(fs.readFileSync(edited, 'utf8')).toBe(editedContent);
-    expect(fs.existsSync(`${edited}.ghk-new`)).toBe(true);
     expect(result.plans.every(p => isKernelFile(p.filePath))).toBe(true);
     expect(fs.readdirSync('.').sort()).toEqual(domainBefore);
+  });
+
+  it('keeps the whole kernel as it is while one kernel file is edited (a half-new kernel does not compile)', async () => {
+    const [stale, edited] = readInventoryFile('.ghe/inventory.json').artifacts.map(a => a.filePath).filter(isKernelFile);
+    makeStale(stale);
+    const editedContent = fs.readFileSync(edited, 'utf8') + '\n// my change\n';
+    fs.writeFileSync(edited, editedContent);
+
+    const [result] = await handleKernelRefresh({});
+    const plan = (f: string) => result.plans.find(p => p.filePath === f);
+    expect(plan(edited)?.action).toBe('side-by-side');
+    expect(plan(stale)).toMatchObject({ action: 'side-by-side', held: true });
+    expect(fs.readFileSync(edited, 'utf8')).toBe(editedContent);
+    expect(fs.readFileSync(stale, 'utf8')).toBe('// old kernel\n');
+    expect(fs.existsSync(`${edited}.ghk-new`)).toBe(true);
+    expect(fs.existsSync(`${stale}.ghk-new`)).toBe(true);
+
+    // The held file keeps its record: once the kernel is merged, it is still provably unedited.
+    expect(readInventoryFile('.ghe/inventory.json').artifacts.find(a => a.filePath === stale)?.checksum).toBe(sha256('// old kernel\n'));
   });
 
   it('--dry-run writes nothing', async () => {

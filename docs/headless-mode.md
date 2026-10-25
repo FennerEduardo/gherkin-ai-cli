@@ -45,11 +45,11 @@ jobs:
         with:
           node-version: 24
       - name: Feature from its JSON description
-        run: npx --yes gherkin-ai@3.2.0 create --headless --config specs/two-factor.json --output features/two_factor.feature
+        run: npx --yes gherkin-ai@3.2.1 create --headless --config specs/two-factor.json --output features/two_factor.feature
       - name: Lint gate
-        run: npx --yes gherkin-ai@3.2.0 lint -f features/two_factor.feature --threshold 80
+        run: npx --yes gherkin-ai@3.2.1 lint -f features/two_factor.feature --threshold 80
       - name: Contracts, kernel, tests and prompts
-        run: npx --yes gherkin-ai@3.2.0 generate -f features/two_factor.feature --yes
+        run: npx --yes gherkin-ai@3.2.1 generate -f features/two_factor.feature --yes
 ```
 
 For the pull-request gates (lint, convergence and risk on the change), see [ADOPTION.md §4](ADOPTION.md#4-gate-pull-requests-then-tighten).

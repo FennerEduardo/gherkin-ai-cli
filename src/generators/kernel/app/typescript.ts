@@ -112,7 +112,7 @@ import { randomUUID } from 'crypto';
 import { Pool } from 'pg';
 import { DEFAULT_TOPOLOGY, brokerConfigured, connectBroker, type Broker } from './broker';
 import { OutboxRelay } from './outbox-relay';
-import { pgConnectionString } from './schema';
+import { migrate, pgConnectionString } from './schema';
 import { InboxConsumer, type MessageHandler } from './inbox-consumer';
 
 export const PG_POOL = Symbol('PG_POOL');
@@ -195,7 +195,16 @@ export class HealthController {
 @Module({
   controllers: [HealthController],
   providers: [
-    { provide: PG_POOL, useFactory: () => new Pool({ connectionString: pgConnectionString() }) },
+    // The kernel's tables are created before the app serves or relays (idempotent, serialized across
+    // replicas). GHK_MIGRATE=false when a migration job owns the schema.
+    {
+      provide: PG_POOL,
+      useFactory: async () => {
+        const pool = new Pool({ connectionString: pgConnectionString() });
+        if (process.env.GHK_MIGRATE !== 'false') await migrate(pool);
+        return pool;
+      }
+    },
     { provide: EVENT_HANDLERS, useValue: {} satisfies EventHandlers },
     RuntimeWorker
   ],
@@ -412,13 +421,16 @@ import { createApp } from './app';
 import { CommandService } from './runtime/command-service';
 import { DEFAULT_TOPOLOGY, brokerConfigured, connectBroker, type Broker } from './runtime/broker';
 import { OutboxRelay } from './runtime/outbox-relay';
-import { pgConnectionString } from './runtime/schema';
+import { migrate, pgConnectionString } from './runtime/schema';
 import { startTelemetry, stopTelemetry } from './runtime/otel';
 
 async function main(): Promise<void> {
   // OTLP export when OTEL_EXPORTER_OTLP_ENDPOINT is set (runtime/otel.ts).
   startTelemetry();
   const pool = new Pool({ connectionString: pgConnectionString() });
+  // The kernel's tables, before serving or relaying (idempotent, serialized across replicas).
+  // GHK_MIGRATE=false when a migration job owns the schema.
+  if (process.env.GHK_MIGRATE !== 'false') await migrate(pool);
   const port = Number(process.env.PORT) || 3000;
   const server = createApp(new CommandService(pool)).listen(port, () => console.log(\`listening on :\${port}\`));
 

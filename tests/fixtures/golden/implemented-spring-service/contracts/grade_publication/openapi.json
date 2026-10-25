@@ -1,0 +1,99 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Grading and grade publication API Specification",
+    "version": "1.0.0",
+    "description": "Auto-generated OpenAPI specification for Grading and grade publication from Gherkin feature spec."
+  },
+  "paths": {
+    "/api/v1/grading-and-grade-publication": {
+      "post": {
+        "summary": "POST /api/v1/grading-and-grade-publication",
+        "operationId": "unknownGrade",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "requestId": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "timestamp": {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  "payload": {
+                    "type": "object",
+                    "properties": {
+                      "grades": {
+                        "type": "string"
+                      },
+                      "status": {
+                        "type": "string"
+                      },
+                      "become": {
+                        "type": "string"
+                      },
+                      "error": {
+                        "type": "string"
+                      },
+                      "scale": {
+                        "type": "string"
+                      },
+                      "reason": {
+                        "type": "string"
+                      },
+                      "no": {
+                        "type": "string"
+                      },
+                      "because": {
+                        "type": "string"
+                      },
+                      "teacher": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "grades",
+                      "status",
+                      "become",
+                      "error",
+                      "scale",
+                      "reason",
+                      "no",
+                      "because",
+                      "teacher"
+                    ]
+                  }
+                },
+                "required": [
+                  "requestId",
+                  "timestamp",
+                  "payload"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "403": {
+            "description": "Forbidden"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      }
+    }
+  }
+}

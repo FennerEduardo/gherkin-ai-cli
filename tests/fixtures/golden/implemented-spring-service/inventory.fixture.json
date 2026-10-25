@@ -1,0 +1,292 @@
+{
+  "version": "1.0",
+  "generatedAt": "2026-10-06T18:58:03.526Z",
+  "createdBy": "gherkin-ai-cli",
+  "artifacts": [
+    {
+      "filePath": "ADR-001-architecture-decisions.md",
+      "type": "other",
+      "checksum": "b93821ff2596ce38f453a9902739fd8eaaaf2ba38f145a413cf6f7704cb31ab9"
+    },
+    {
+      "filePath": "openapi.json",
+      "type": "openapi",
+      "checksum": "b7c2d977ff6126af2ee911e8fb662972227b0a21966c859facd4e06231476b09"
+    },
+    {
+      "filePath": "asyncapi.json",
+      "type": "contract",
+      "checksum": "ade3d6dc3c6f1c93078da0a11e644f21281d12a32ea6390e4f0e4b5defd223f6"
+    },
+    {
+      "filePath": "pom.xml",
+      "type": "config",
+      "checksum": "1d92bf8d1a981b2931424e720965f6593602e58d554ae8665ccf8003fd844249"
+    },
+    {
+      "filePath": "fixtures.ts",
+      "type": "fixture",
+      "checksum": "fa3571cfd70533d4754cef353f23ce5534907e5f95450eb446895d44ac4910bb"
+    },
+    {
+      "filePath": "seed.sql",
+      "type": "fixture",
+      "checksum": "4f8d7bf31ae2da5359325e9681fcc3f300bb760f2eb6ffd0dcb04541ee5db6f2"
+    },
+    {
+      "filePath": "src/main/java/com/example/assessmentservice/Application.java",
+      "type": "test",
+      "checksum": "56e7cef55e1ffaedfc8958460c5733de05dceb94b35d1452c8fae7a0b57ff47b"
+    },
+    {
+      "filePath": "src/main/java/com/example/assessmentservice/domain/DomainValidationException.java",
+      "type": "test",
+      "checksum": "f4af17aabccffe99192c4334e36665dd2c51091db1118ccd2c297e5ecf8c346f"
+    },
+    {
+      "filePath": "src/main/java/com/example/assessmentservice/domain/GradeState.java",
+      "type": "test",
+      "checksum": "975395d63fa43c1a2c05eeef4ef4a9ae29d1ac7a725c88e59f85a7275ff415c4"
+    },
+    {
+      "filePath": "src/main/java/com/example/assessmentservice/domain/GradeEventType.java",
+      "type": "test",
+      "checksum": "dd996b13f233f02a6ba3f259b2175ed0f85253817ae2a1bc47fd236ac60ffbee"
+    },
+    {
+      "filePath": "src/main/java/com/example/assessmentservice/domain/GradeCommand.java",
+      "type": "test",
+      "checksum": "bb231fc384d1a6664a3464190b1f7121fb778a263694999ad62e0824f786cf5f"
+    },
+    {
+      "filePath": "src/main/java/com/example/assessmentservice/domain/GradeDomainEvent.java",
+      "type": "test",
+      "checksum": "dd8d2ea16363b0546f10a8df6d04fb7325222e8ccc46174f2953718202eb6485"
+    },
+    {
+      "filePath": "src/main/java/com/example/assessmentservice/domain/GradeAggregate.java",
+      "type": "test",
+      "checksum": "6c28b83e38e13b828482b209b7efd428e616faa8c534f9e0605743be25757407"
+    },
+    {
+      "filePath": "src/test/java/com/example/assessmentservice/domain/GradeAggregateTest.java",
+      "type": "test",
+      "checksum": "1bcbaa95d27a74f4acefbee8ac018c3a8e0de0ab94a0898675a4213d19a2233b"
+    },
+    {
+      "filePath": "src/test/java/com/example/assessmentservice/bdd/RunCucumberTest.java",
+      "type": "test",
+      "checksum": "c0c0a55452a42008e11e8b6ddb1e61f7eccbbe421a4af9346b59f042b7083ca6"
+    },
+    {
+      "filePath": "src/test/java/com/example/assessmentservice/bdd/GradeSteps.java",
+      "type": "test",
+      "checksum": "cff7f9222aa5c1e791eea19960d40ed7d23115ae1232e89a8e6b6a8b2a5838eb"
+    },
+    {
+      "filePath": "src/main/java/com/example/assessmentservice/runtime/ConnectionFactory.java",
+      "type": "test",
+      "checksum": "a60c0ed68ef2ab8f59c0c1a8a7f3566ea1e18b8b368828873d03fd4ab8685057"
+    },
+    {
+      "filePath": "src/main/java/com/example/assessmentservice/runtime/Schema.java",
+      "type": "test",
+      "checksum": "b3454c2a92cdc026a5bb6b87a4a08cbbe163602716d79c951d18456293f4c811"
+    },
+    {
+      "filePath": "src/main/java/com/example/assessmentservice/runtime/Telemetry.java",
+      "type": "test",
+      "checksum": "4035eed106616c9685818e12a176b8c9f384de6a5d9d11f16ac30c4a356bd8ef"
+    },
+    {
+      "filePath": "src/main/java/com/example/assessmentservice/runtime/CommandService.java",
+      "type": "test",
+      "checksum": "fc1c48e9919611e91e9b09e6b2632206ccfdf2961f4fbefbe605a102d11b0def"
+    },
+    {
+      "filePath": "src/main/java/com/example/assessmentservice/runtime/Topology.java",
+      "type": "test",
+      "checksum": "68d3a182418f44baa38cc35a22473bf43c29c46d5e649b4c4178a1536bcf2955"
+    },
+    {
+      "filePath": "src/main/java/com/example/assessmentservice/runtime/OutboxRelay.java",
+      "type": "test",
+      "checksum": "7e36ff22a8db1d7986c8f96afd3bf3304babd98fe70f7b35cb3857ec4a4e4a3c"
+    },
+    {
+      "filePath": "src/main/java/com/example/assessmentservice/runtime/InboxConsumer.java",
+      "type": "test",
+      "checksum": "9d27941cca09f8e6a9c72822f5be45ea18b7a7886c9d074e583b91dd52731270"
+    },
+    {
+      "filePath": "src/main/java/com/example/assessmentservice/runtime/SagaOrchestrator.java",
+      "type": "test",
+      "checksum": "42e84aee9b7663f69ae4f8a5413bb5e87eaeca2507011c0ec37d876e7f89d2c5"
+    },
+    {
+      "filePath": "src/test/java/com/example/assessmentservice/runtime/RuntimeIntegrationTest.java",
+      "type": "test",
+      "checksum": "f4c6ca74174eedc17e0e6c5ab8d94063c1f05d81e6a54dead566c9d4f83c1d23"
+    },
+    {
+      "filePath": "src/main/java/com/example/assessmentservice/infrastructure/outbox/OutboxMessage.java",
+      "type": "test",
+      "checksum": "5de69104b6020bc5a5088ac798ff35b22e0f248f099600df1b7633c0526dff0b"
+    },
+    {
+      "filePath": "src/main/java/com/example/assessmentservice/infrastructure/outbox/OutboxRepository.java",
+      "type": "test",
+      "checksum": "62ffd6cf9521586ad00d0dd8826e1b258966ca094d42cab7cbf5433d7911382d"
+    },
+    {
+      "filePath": "src/main/java/com/example/assessmentservice/infrastructure/outbox/OutboxService.java",
+      "type": "test",
+      "checksum": "765ce4f26e0afd2e45e067a2e19620741c1691b96348180f1b2f2c79c08cd02f"
+    },
+    {
+      "filePath": "src/main/java/com/example/assessmentservice/infrastructure/outbox/IMessageBrokerPublisher.java",
+      "type": "test",
+      "checksum": "f220a14210bad3a3d49e72132ec949fe6630ac6b608075a4127b6e8885b1971f"
+    },
+    {
+      "filePath": "src/main/java/com/example/assessmentservice/infrastructure/outbox/OutboxPublisher.java",
+      "type": "test",
+      "checksum": "8823fab7e106210be36a20cb7afb4ae29733584917bbf0c58de7a610cacf5102"
+    },
+    {
+      "filePath": "src/main/java/com/example/assessmentservice/application/sagas/GradeSagaContract.java",
+      "type": "test",
+      "checksum": "acfbc840aabc81ac55b15f1bd5e3cd9e280a6dac67aa251d42aaae7ec234d739"
+    },
+    {
+      "filePath": "src/main/java/com/example/assessmentservice/application/sagas/GradeSagaInstance.java",
+      "type": "test",
+      "checksum": "e2f104c7da71e01bcce1649218890ddf5e4239a3b4aae65b2be4eb084b2c178c"
+    },
+    {
+      "filePath": "src/main/java/com/example/assessmentservice/application/sagas/GradeSagaInstanceRepository.java",
+      "type": "test",
+      "checksum": "e339df0cd4f709df7defd9218da15b9d22fa54993f39d40928f98ca3ae44c7f1"
+    },
+    {
+      "filePath": "src/main/java/com/example/assessmentservice/application/sagas/GradeSagaOrchestrator.java",
+      "type": "test",
+      "checksum": "78e08140e8627aa993369c8a7bda971791028249307693716734342d7258cbf7"
+    },
+    {
+      "filePath": "src/main/java/com/example/assessmentservice/infrastructure/idempotency/IdempotencyKeyRecord.java",
+      "type": "test",
+      "checksum": "b164fa83ba3860adbbd24219bb92387fbaf5728af8bbd5f5add266d16f672cf9"
+    },
+    {
+      "filePath": "src/main/java/com/example/assessmentservice/infrastructure/idempotency/IdempotencyKeyRepository.java",
+      "type": "test",
+      "checksum": "6681b36feae9287370a7d06879d89861e6b4fc0ae985d5f51c028838338af20d"
+    },
+    {
+      "filePath": "src/main/java/com/example/assessmentservice/infrastructure/idempotency/IdempotencyFilter.java",
+      "type": "test",
+      "checksum": "3c1c4445dfa480fc142d790e061973cbc9fcfa44c253e8a6092d8e6aef1b7e81"
+    },
+    {
+      "filePath": "src/main/java/com/example/assessmentservice/infrastructure/idempotency/IdempotencyCleanupService.java",
+      "type": "test",
+      "checksum": "9ef23dbc9e5dbc21f0b93d0c1416908d4a8d01266b3e52eb93631bdf2f55a588"
+    },
+    {
+      "filePath": "src/main/java/com/example/assessmentservice/infrastructure/telemetry/OpenTelemetryConfig.java",
+      "type": "test",
+      "checksum": "f31b3e0fc2dc6f54266926565639d10ca44d0c62c73c996f8c135848f09b5023"
+    },
+    {
+      "filePath": "src/main/java/com/example/assessmentservice/application/cqrs/CreateGradeCommand.java",
+      "type": "test",
+      "checksum": "2d47222650ff047386f8a0f1bf5c2aa5026b34c464f7fbf3962be30bc34cf94a"
+    },
+    {
+      "filePath": "src/main/java/com/example/assessmentservice/application/cqrs/GetGradeQuery.java",
+      "type": "test",
+      "checksum": "4aa34e1e82906f2274e04ea8b447beb16eea759328ab9d3385357f5df88303c3"
+    },
+    {
+      "filePath": "src/main/java/com/example/assessmentservice/application/cqrs/GradeCreatedEvent.java",
+      "type": "test",
+      "checksum": "7b00ee0cf02d641455fe0c207163959852e5962f2e1a446b696c3a7bc5222561"
+    },
+    {
+      "filePath": "src/main/java/com/example/assessmentservice/application/cqrs/GradeDTO.java",
+      "type": "test",
+      "checksum": "49feb02992f800d216d3fd353985867623c771cf17af676b91c64bb5deb113dd"
+    },
+    {
+      "filePath": "src/main/java/com/example/assessmentservice/application/cqrs/CreateGradeCommandHandler.java",
+      "type": "test",
+      "checksum": "2770c2f9498935b16ba233b94b596b6d7c134c0727c1164d40ec385845d38796"
+    },
+    {
+      "filePath": "src/main/java/com/example/assessmentservice/application/cqrs/GetGradeQueryHandler.java",
+      "type": "test",
+      "checksum": "41d3d8b31f210bd744d16f37313ef3b4a6d95ee7d6cf96d42435b874476396e8"
+    },
+    {
+      "filePath": "src/main/java/com/example/assessmentservice/infrastructure/multitenancy/TenantContext.java",
+      "type": "test",
+      "checksum": "9a1045616ce75f528d18d75ca9b5b41fdcb4261ad34296b435c463138a83a825"
+    },
+    {
+      "filePath": "src/main/java/com/example/assessmentservice/infrastructure/multitenancy/TenantFilter.java",
+      "type": "test",
+      "checksum": "03a263a92e6da895ecc840082d1d9dcc4eecb49edd280635b288ffce2e1683cf"
+    },
+    {
+      "filePath": "src/main/java/com/example/assessmentservice/infrastructure/multitenancy/CustomTenantIdentifierResolver.java",
+      "type": "test",
+      "checksum": "fdc4a83a585af07036980c204354ed08bc8a8fda475a79959f922953cd8b2c94"
+    },
+    {
+      "filePath": "src/main/java/com/example/assessmentservice/application/dto/GradesDTO.java",
+      "type": "test",
+      "checksum": "f6e6a709bc9d7a38bf5864dd2a27476ac4a0f0eba0d7f453bf4299badacc6a6e"
+    },
+    {
+      "filePath": "src/main/java/com/example/assessmentservice/application/dto/StatusDTO.java",
+      "type": "test",
+      "checksum": "77d31a490839a2753f7f82471f6d5934ac566e6b53fc74e38da090730982dde0"
+    },
+    {
+      "filePath": "src/main/java/com/example/assessmentservice/application/dto/BecomeDTO.java",
+      "type": "test",
+      "checksum": "b970d1c10ade4f323326240425ef7857f1bfeefc1863d5bdb4fec1389fc1d8d6"
+    },
+    {
+      "filePath": "src/main/java/com/example/assessmentservice/application/dto/ErrorDTO.java",
+      "type": "test",
+      "checksum": "194288bfecdc49ba7394a75061796e9fa962d7b4ad50a0525f60d28b8c93e235"
+    },
+    {
+      "filePath": "docker-compose.yml",
+      "type": "config",
+      "checksum": "7ce35a63696aab48681c675cdf5770b90d34cbeac682ffa8a1f9483277795510"
+    },
+    {
+      "filePath": ".env.example",
+      "type": "config",
+      "checksum": "4f2b563db6146cacc10671d6590faec56734f92711341f07d66e6e293baf0ea1"
+    },
+    {
+      "filePath": "prompts/domain-agent.md",
+      "type": "prompt",
+      "checksum": "e0a63da5248a58560bca352bdabafc66bf7fd215d85b84ee9bdf7efe9fcf853c"
+    },
+    {
+      "filePath": "prompts/backend-agent.md",
+      "type": "prompt",
+      "checksum": "e9261e97b57f52081972a7a1bcfb361c3864585daf08e6a1e0982b54d16d80e8"
+    },
+    {
+      "filePath": "prompts/qa-agent.md",
+      "type": "prompt",
+      "checksum": "918a72d6ec417aa00f17d2e574a67ee9948911e4a7462bd208974bb68feae8fb"
+    }
+  ]
+}

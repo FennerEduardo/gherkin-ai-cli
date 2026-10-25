@@ -63,6 +63,8 @@ export interface RiskOptions {
   /** Git ref to diff against (e.g. origin/main). */
   base?: string;
   config?: Partial<GherkinAIConfig>;
+  /** Line coverage the caller just measured (ghk quality), preferred over a coverage/ report on disk. */
+  coveragePct?: number;
 }
 
 const SECURITY_PATH = /(^|[\/_.-])(auth|security|crypto|permission|rbac|acl|iam|oauth|jwt|token|session|password|secret|tenant)/i;
@@ -216,12 +218,13 @@ export function assessDeliveryRisk(cwd: string = process.cwd(), options: RiskOpt
   }
 
   // 4. Test weakness (100 - test strength)
-  const coverage = coveragePct(cwd);
+  const measured = options.coveragePct !== undefined ? Math.round(options.coveragePct) : undefined;
+  const coverage = measured ?? coveragePct(cwd);
   let strength: number;
   const testEvidence: string[] = [];
   if (coverage !== undefined) {
     strength = coverage;
-    testEvidence.push(`Line coverage ${coverage}% (coverage/coverage-summary.json)`);
+    testEvidence.push(`Line coverage ${coverage}% (${measured !== undefined ? 'measured by this run' : 'coverage/coverage-summary.json'})`);
   } else {
     const hasTests = ['tests', 'test', 'spec', 'src/__tests__', 'src/test'].some(d => fs.existsSync(path.join(cwd, d)));
     strength = hasTests ? 40 : 0;

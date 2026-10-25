@@ -11,7 +11,7 @@ gherkin-ai turns requirements into executable Gherkin specifications and generat
 - **Specify.** Write or import (GitHub Spec Kit) `.feature` files, lint them, and build a semantic model of commands, events, endpoints, states and rules.
 - **Generate.** Contracts, a domain kernel, tests bound to the feature, and a runtime for persistence, messaging and tracing. Every stable stack is built and tested in CI.
 - **Govern.** An agent firewall for MCP clients, IDE agents and the CLI's own agent loops. Risk scoring of every change, traceability from requirement to code to tests, and a local audit trail.
-- **Verify.** Spec-to-code convergence, drift detection and sandboxed test runs, with stable exit codes and `--json` for CI.
+- **Verify.** Spec-to-code convergence, contract drift checks (a feature changed alone, a route the running service no longer serves), and agent repair loops sandboxed in a container by default, with stable exit codes and `--json` for CI.
 
 Adding it to an existing code base? Start with [docs/ADOPTION.md](docs/ADOPTION.md); for the organization-wide rollout, [docs/ENTERPRISE.md](docs/ENTERPRISE.md). Upgrading a generated project? See [docs/MIGRATION-3.2.md](docs/MIGRATION-3.2.md), which covers every path from 2.x.
 

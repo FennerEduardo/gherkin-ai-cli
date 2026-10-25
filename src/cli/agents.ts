@@ -29,6 +29,7 @@ export function registerAgentCommands(program: Command): void {
     .option('--apply', 'Write generated code to disk (default: dry-run .patch files)')
     .option('--allow-unattended-writes', 'Allow --apply in CI (otherwise refused; see policy.allowUnattendedWrites)')
     .option('--force-branch', 'Allow --apply on a protected branch (main/master by default)')
+    .option('--host', 'Run the repair loop\'s tests on this machine instead of the sandbox container')
     .action(async (options) => {
       // Like verify, autopilot only writes LLM output to disk with an explicit --apply.
       if (!options.apply) process.env.GHK_DRY_RUN = 'true';

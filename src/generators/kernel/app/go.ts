@@ -287,6 +287,13 @@ func main() {
 		log.Fatalf("DATABASE_URL: %v", err)
 	}
 	defer pool.Close()
+	// The kernel's tables, before serving or relaying (idempotent, serialized across replicas).
+	// GHK_MIGRATE=false when a migration job owns the schema.
+	if os.Getenv("GHK_MIGRATE") != "false" {
+		if err := runtime.Migrate(ctx, pool, "public"); err != nil {
+			log.Fatalf("migrate: %v", err)
+		}
+	}
 	commands, err := runtime.NewCommandService(pool, "public")
 	if err != nil {
 		log.Fatal(err)

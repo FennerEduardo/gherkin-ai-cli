@@ -9,16 +9,22 @@ import { brokerServices, RunningServices, startServices } from '../core/services
 import { runtimeBroker } from '../generators/deploy/broker-env';
 import { toKebab } from '../utils/naming';
 import chalk from 'chalk';
-import { resolve as resolvePath } from 'path';
-import { readFileSync } from 'fs';
+import crypto from 'crypto';
+import path, { resolve as resolvePath } from 'path';
+import { existsSync, readFileSync } from 'fs';
+import { validateGuardrails } from '../core/guardrails';
+import { validateTypeScriptSyntax } from '../core/syntax-validator';
+import { resolveSafePath } from '../utils/file-system';
 import { calculateConvergence } from '../core/convergence-engine';
 import { parseGherkinText } from '../core/gherkin-parser';
+import { buildIR } from '../core/ir-builder';
+import { AgentChangeSet, writeProposal } from '../core/governance/agent-changes';
 import { projectFeatureFiles } from '../core/workspace-projects';
 import { DEFAULT_CONTAINER_LIMITS, executeSandbox, SandboxExecutionOptions } from '../core/execution-sandbox';
 import { resolveToolchain } from '../generators/toolchains';
 import { parseExecutionFailure } from '../core/error-parser';
 import { planDeterministicRepair } from '../core/deterministic-repair';
-import { RealAgentProvider, LLMConfig } from '../core/agent-adapter';
+import { RealAgentProvider, LLMConfig, resolveLLMConfig } from '../core/agent-adapter';
 import { loadConfig } from '../core/config';
 import { MetricsEngine } from '../core/metrics-engine';
 
@@ -33,9 +39,13 @@ export interface VerifyCommandOptions {
   /** Fail (exit 7) when the convergence score is below this, after the tests pass. Unset: reported only. */
   convergeThreshold?: string;
   maxRetries?: string | number;
+  /** Feature the repair is for: the agent may only write inside its impact scope (`ghk graph --scope`). */
+  feature?: string;
   command?: string;
   allowUnattendedWrites?: boolean;
   forceBranch?: boolean;
+  /** With --auto-fix: run on this machine instead of the sandbox (credentials are left out of the environment). */
+  host?: boolean;
 }
 
 /** Average convergence of the project's features, as `ghk converge` computes it; undefined without features. */
@@ -48,15 +58,39 @@ function convergenceScore(cwd: string): number | undefined {
   return scores.length ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : undefined;
 }
 
+/**
+ * Requirements specified in the project's features and how many of them a test references (the
+ * Traceability dimension of `ghk converge`). Undefined without features: the metric is then unavailable.
+ */
+export function specRequirementCoverage(cwd: string): { covered: number; total: number } | undefined {
+  let files: string[];
+  try { files = projectFeatureFiles(cwd); } catch { return undefined; }
+  let covered = 0;
+  let total = 0;
+  for (const file of files) {
+    try {
+      const coverage = buildIR(parseGherkinText(readFileSync(file, 'utf8')), file).traceability.coverage;
+      covered += coverage.testedRequirements;
+      total += coverage.specifiedRequirements;
+    } catch { /* an unparsable feature is reported by lint, not here */ }
+  }
+  return total ? { covered, total } : undefined;
+}
+
 export async function handleVerifyCommand(options: VerifyCommandOptions = {}): Promise<void> {
   console.log(chalk.bold.cyan('\n🔁 Executing Closed-Loop Verification Pipeline...\n'));
 
   const maxRetries = parseInt(String(options.maxRetries || '3'), 10);
   const config = loadConfig();
+  // Arguments first (usage error, exit 2), then the write policy (CI and protected-branch guards, exit 5).
+  if (options.feature && !existsSync(resolvePath(process.cwd(), options.feature))) {
+    throw new GhkError(`Feature file not found: ${options.feature}`, ExitCode.USAGE);
+  }
   if (options.autoFix && process.env.GHK_DRY_RUN !== 'true') {
     assertAgentWritesAllowed(config, { command: 'verify', allowUnattendedWrites: options.allowUnattendedWrites, forceBranch: options.forceBranch });
   }
-  const firewall = AgentFirewall.forWorkspace(process.cwd(), config);
+  // With --feature, the repair loop may only write inside that feature's impact scope.
+  const firewall = AgentFirewall.forWorkspace(process.cwd(), config, options.feature ? { feature: options.feature } : {});
   // --isolated used to write its own docker-compose.test.yml with older images; it is now --services.
   if (options.isolated) {
     console.log(chalk.yellow('   --isolated is deprecated: it runs as --services (the same containers as the golden builds).'));
@@ -64,6 +98,15 @@ export async function handleVerifyCommand(options: VerifyCommandOptions = {}): P
   }
   // --services runs the runtime integration suite in the toolchain container against real PostgreSQL and the broker.
   if (options.services) options.docker = true;
+  // --auto-fix runs code an LLM wrote: in the disposable container unless --host says otherwise.
+  if (options.autoFix && !options.docker) {
+    if (options.host) {
+      console.log(chalk.yellow('   --host: the agent\'s code runs on this machine, with your files and network. LLM, cloud and registry credentials are left out of its environment.'));
+    } else {
+      options.docker = true;
+      console.log(chalk.gray('   --auto-fix runs the tests in the sandbox container (pass --host to run them on this machine).'));
+    }
+  }
   // In a container, default to the stack's verified toolchain image and test commands.
   const toolchain = options.docker ? resolveToolchain(config) : undefined;
   if (options.services && !toolchain?.integration?.length) {
@@ -92,7 +135,8 @@ export async function handleVerifyCommand(options: VerifyCommandOptions = {}): P
     caches: toolchain?.caches,
     // The integration suite installs the stack's dependencies like the golden builds do (pip, Bundler and
     // PHP extensions write into system directories), so it runs in the image's own disposable root.
-    profile: options.services ? 'toolchain' : 'strict'
+    profile: options.services ? 'toolchain' : 'strict',
+    scrubCredentials: Boolean(options.autoFix)
   };
   let services: RunningServices | undefined;
   if (options.services) {
@@ -113,15 +157,15 @@ export async function handleVerifyCommand(options: VerifyCommandOptions = {}): P
   let iteration = 1;
   let success = false;
   let drift = false;
-  const fileBackups: Record<string, string> = {};
+  let testsPassed = false;
+  // Every file the repair loop writes; undone in `finally` unless the tests ended up passing.
+  const changes = new AgentChangeSet();
   let guardrailViolationPrompt: string | null = null;
   const metricsEngine = new MetricsEngine();
   const execEvents: any[] = [];
   const execErrors: any[] = [];
   const previousPatchHashes = new Set<string>();
 
-  const fs = require('fs');
-  const path = require('path');
   try {
     const triedRepairs = new Set<string>();
     while (iteration <= maxRetries && !success) {
@@ -135,6 +179,7 @@ export async function handleVerifyCommand(options: VerifyCommandOptions = {}): P
       metricsEngine.recordTestRun(true);
       execEvents.push({ type: 'test_passed', iteration, durationMs: result.durationMs });
       success = true;
+      testsPassed = true;
 
       // Convergence is reported; it gates only when asked (the same gate as `ghk converge --threshold`).
       const score = convergenceScore(process.cwd());
@@ -181,26 +226,7 @@ export async function handleVerifyCommand(options: VerifyCommandOptions = {}): P
     }
 
     if (iteration === maxRetries) {
-      console.log(chalk.bold.red(`\n✖ Auto-fix retry limit reached (${maxRetries} attempts). Initiating rollback...\n`));
-      
-      const fs = require('fs');
-      const backupKeys = Object.keys(fileBackups);
-      if (backupKeys.length > 0) {
-        console.log(chalk.yellow(`   The agent failed to fix the tests. The following ${backupKeys.length} files were modified and will be reverted:`));
-        for (const [filePath, backupPath] of Object.entries(fileBackups)) {
-          try {
-            if (fs.existsSync(backupPath)) {
-              fs.copyFileSync(backupPath, filePath);
-              console.log(chalk.yellow(`   ↺ Rolled back: ${filePath}`));
-            }
-          } catch (e: any) {
-            console.log(chalk.red(`   ✖ Failed to rollback ${filePath}: ${e.message}`));
-          }
-        }
-      } else {
-        console.log(chalk.gray(`   No files were modified during the attempts. Nothing to rollback.`));
-      }
-      
+      console.log(chalk.bold.red(`\n✖ Auto-fix retry limit reached (${maxRetries} attempts).\n`));
       metricsEngine.recordHumanIntervention();
       metricsEngine.recordTestRun(false);
       const logPath = metricsEngine.saveExecutionLog(execEvents, execErrors);
@@ -237,7 +263,6 @@ export async function handleVerifyCommand(options: VerifyCommandOptions = {}): P
     }
 
     console.log(chalk.cyan(`\n🤖 Invoking Agent Repair Loop (Attempt ${iteration})...`));
-    const { resolveLLMConfig } = require('../core/agent-adapter');
     const llmConfig: LLMConfig = resolveLLMConfig();
     const agent = new RealAgentProvider(llmConfig);
     const repairResult = await agent.executeTask({
@@ -256,7 +281,6 @@ export async function handleVerifyCommand(options: VerifyCommandOptions = {}): P
     
     // Apply Code Modifications if provided by RealAgentProvider
     if (repairResult.codeModifications && repairResult.codeModifications.length > 0) {
-      const crypto = require('crypto');
       const patchHash = crypto.createHash('sha256').update(JSON.stringify(repairResult.codeModifications)).digest('hex');
 
       if (previousPatchHashes.has(patchHash)) {
@@ -266,7 +290,6 @@ export async function handleVerifyCommand(options: VerifyCommandOptions = {}): P
       }
       previousPatchHashes.add(patchHash);
 
-      const { validateGuardrails } = require('../core/guardrails');
       const proposedFiles = repairResult.codeModifications.map((m: any) => m.filePath);
       
       // Anti-Stub Validation (Prevent Agent from leaving TODOs)
@@ -291,9 +314,11 @@ export async function handleVerifyCommand(options: VerifyCommandOptions = {}): P
         continue;
       }
       
+      // A repair changes the implementation: specifications, contracts and tests are what it is measured against.
       const guardrailValidation = validateGuardrails({
         action: 'generate_code',
-        targetFiles: proposedFiles
+        targetFiles: proposedFiles,
+        mode: 'repair'
       }, process.cwd());
       
       if (!guardrailValidation.allowed) {
@@ -309,9 +334,6 @@ export async function handleVerifyCommand(options: VerifyCommandOptions = {}): P
       console.log(chalk.green(`   Applying ${repairResult.codeModifications.length} code modification(s)...`));
       for (const mod of repairResult.codeModifications) {
         try {
-          const fs = require('fs');
-          const path = require('path');
-          const { validateTypeScriptSyntax } = require('../core/syntax-validator');
           
           if (!validateTypeScriptSyntax(mod.filePath, mod.content)) {
             console.log(chalk.yellow(`     ✖ Skipped writing ${mod.filePath} due to syntax errors.`));
@@ -322,33 +344,14 @@ export async function handleVerifyCommand(options: VerifyCommandOptions = {}): P
             if (process.env.GHK_STDOUT === 'true') {
               console.log(chalk.yellow(`     [DRY RUN] Proposed changes for ${mod.filePath}:\n${mod.content}`));
             } else {
-              const fs = require('fs');
-              const path = require('path');
-              const patchDir = path.resolve('.ghe', 'patches');
-              fs.mkdirSync(patchDir, { recursive: true });
-              
-              // We'll just save the proposed file for now instead of a real git patch
-              // as this is safer and doesn't require git/diff CLI
-              const patchPath = path.join(patchDir, path.basename(mod.filePath) + '.proposed');
-              fs.writeFileSync(patchPath, mod.content, 'utf8');
-              console.log(chalk.yellow(`     [DRY RUN] Saved proposed file to ${patchPath}`));
+              const patchPath = writeProposal(process.cwd(), resolveSafePath(process.cwd(), mod.filePath), mod.content);
+              console.log(chalk.yellow(`     [DRY RUN] Saved proposed patch to ${path.relative(process.cwd(), patchPath)} (git apply it to take it)`));
             }
             continue;
           }
 
-          const { resolveSafePath } = require('../utils/file-system');
           const fullPath = resolveSafePath(process.cwd(), mod.filePath);
-          
-          if (!fileBackups[fullPath] && fs.existsSync(fullPath)) {
-             const backupDir = path.resolve('.ghe', 'backups');
-             fs.mkdirSync(backupDir, { recursive: true });
-             const hash = crypto.createHash('md5').update(fullPath).digest('hex');
-             const backupPath = path.join(backupDir, `${path.basename(fullPath)}.${hash}.bak`);
-             fs.copyFileSync(fullPath, backupPath);
-             fileBackups[fullPath] = backupPath;
-          }
-          
-          reportAgentWrite(writeAgentFile(firewall, fullPath, mod.content, 'verify'), mod.filePath);
+          reportAgentWrite(writeAgentFile(firewall, fullPath, mod.content, 'verify', changes), mod.filePath);
         } catch (e: any) {
           console.log(chalk.red(`     ✖ Failed to process ${mod.filePath}: ${e.message}`));
         }
@@ -358,10 +361,9 @@ export async function handleVerifyCommand(options: VerifyCommandOptions = {}): P
     iteration++;
   }
 
-  // Set mock requirements since this is just the verify command
-  // In a real scenario, this would be passed down from the parsed features
-  metricsEngine.setRequirements(success ? 10 : 0, 10);
-  
+  const requirements = specRequirementCoverage(process.cwd());
+  if (requirements) metricsEngine.setRequirements(requirements.covered, requirements.total, 'specification-traceability');
+
   const logPath = metricsEngine.saveExecutionLog(execEvents, execErrors);
   console.log(chalk.bold.cyan(`\n📊 Closed-Loop Execution metrics saved to: ${logPath}`));
 
@@ -369,6 +371,13 @@ export async function handleVerifyCommand(options: VerifyCommandOptions = {}): P
     process.exitCode = drift ? ExitCode.DRIFT : ExitCode.GATE_FAILED;
   }
   } finally {
+    // Whatever ended the loop (retry limit, circuit breaker, a stop rule, an error), the agent's changes do
+    // not stay behind unless they made the tests pass.
+    if (!testsPassed && changes.size) {
+      const undone = changes.rollback();
+      console.log(chalk.yellow(`\n   ↺ Rolled back the agent's changes: ${undone.restored.length} file(s) restored, ${undone.removed.length} created file(s) removed.`));
+      for (const f of undone.failed) console.log(chalk.red(`   ✖ Could not roll back ${f.file}: ${f.error}`));
+    }
     if (services) {
       services.stop();
       console.log(chalk.gray('   Integration services stopped.'));

@@ -1,0 +1,34 @@
+# gherkin-ai CLI Logs, Telemetry & Secrets
+.ghe/
+.gherkin-ai/*
+!.gherkin-ai/constitution.yaml
+*.log
+*.jsonl
+telemetry.jsonl
+.env
+.env.local
+.env.*.local
+
+# Dependencies & Testing Artifacts
+node_modules/
+vendor/
+coverage/
+
+# Build outputs
+target/
+build/
+.gradle/
+**/bin/Debug/
+**/bin/Release/
+**/obj/
+_build/
+deps/
+.dart_tool/
+__pycache__/
+.pytest_cache/
+.next/
+dist/
+
+# OS Files
+.DS_Store
+Thumbs.db

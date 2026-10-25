@@ -1,731 +1,354 @@
 {
   "$id": "https://unpkg.com/gherkin-ai/schemas/config.schema.json",
   "title": "gherkin-ai configuration",
-  "$ref": "#/definitions/GherkinAIConfig",
-  "definitions": {
-    "GherkinAIConfig": {
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "version": {
+      "type": "string"
+    },
+    "projectName": {
+      "type": "string",
+      "minLength": 1
+    },
+    "projectMode": {
+      "type": "string",
+      "enum": [
+        "greenfield",
+        "brownfield",
+        "monorepo"
+      ]
+    },
+    "architecture": {
+      "type": "string",
+      "enum": [
+        "ddd",
+        "hexagonal",
+        "clean",
+        "cqrs",
+        "microservices",
+        "monolith",
+        "modular",
+        "api-rest",
+        "serverless",
+        "event-driven",
+        "monorepo-workspaces",
+        "desktop"
+      ]
+    },
+    "stack": {
       "type": "object",
       "properties": {
-        "version": {
+        "language": {
           "type": "string"
         },
-        "projectName": {
-          "type": "string",
-          "minLength": 1
+        "framework": {
+          "type": "string"
         },
-        "projectMode": {
+        "frameworkVersion": {
+          "description": "Framework major to generate for. NestJS: \"11\" (default, CommonJS) or \"12\" (ES modules).",
+          "type": "string"
+        },
+        "orm": {
+          "type": "string"
+        },
+        "ormVersion": {
+          "description": "ORM major to generate for. Prisma: \"6\" (default) or \"7\" (prisma-client generator, prisma.config.ts, driver adapter).",
+          "type": "string"
+        },
+        "database": {
+          "type": "string"
+        },
+        "validation": {
+          "type": "string"
+        },
+        "auth": {
+          "type": "string"
+        },
+        "messaging": {
+          "type": "string"
+        },
+        "testing": {
+          "type": "string"
+        },
+        "aiEngine": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "frontendStack": {
+      "type": "object",
+      "properties": {
+        "framework": {
+          "type": "string"
+        },
+        "language": {
+          "type": "string"
+        },
+        "bundler": {
+          "type": "string"
+        },
+        "stateManagement": {
+          "type": "string"
+        },
+        "orm": {
+          "type": "string"
+        },
+        "database": {
+          "type": "string"
+        },
+        "validation": {
+          "type": "string"
+        },
+        "testing": {
+          "type": "string"
+        },
+        "unitTesting": {
+          "type": "string"
+        },
+        "e2eTesting": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "rules": {
+      "type": "object",
+      "properties": {
+        "bcryptCostFactor": {
+          "type": "integer",
+          "minimum": 4,
+          "maximum": 31
+        },
+        "jwtTtlSeconds": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        },
+        "strictLayerBoundaries": {
+          "type": "boolean"
+        },
+        "coverageTarget": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        }
+      },
+      "additionalProperties": false
+    },
+    "audit": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "maxEntries": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        },
+        "persistInGit": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "designPatterns": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "codingRules": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "outputDir": {
+      "type": "string"
+    },
+    "specDir": {
+      "type": "string"
+    },
+    "testCommand": {
+      "type": "string"
+    },
+    "domainProfile": {
+      "type": "string"
+    },
+    "industry": {
+      "type": "object",
+      "properties": {
+        "id": {
           "type": "string",
           "enum": [
-            "greenfield",
-            "brownfield",
-            "monorepo"
+            "generic",
+            "banking",
+            "telecom",
+            "manufacturing",
+            "health",
+            "supply-chain",
+            "insurance",
+            "aviation",
+            "automotive"
           ]
         },
-        "architecture": {
-          "type": "string",
-          "enum": [
-            "ddd",
-            "hexagonal",
-            "clean",
-            "cqrs",
-            "microservices",
-            "monolith",
-            "modular",
-            "api-rest",
-            "serverless",
-            "event-driven",
-            "monorepo-workspaces",
-            "desktop"
-          ]
-        },
-        "stack": {
-          "type": "object",
-          "properties": {
-            "language": {
-              "type": "string"
-            },
-            "framework": {
-              "type": "string"
-            },
-            "frameworkVersion": {
-              "type": "string",
-              "description": "Framework major to generate for. NestJS: \"11\" (default, CommonJS) or \"12\" (ES modules)."
-            },
-            "orm": {
-              "type": "string"
-            },
-            "ormVersion": {
-              "type": "string",
-              "description": "ORM major to generate for. Prisma: \"6\" (default) or \"7\" (prisma-client generator, prisma.config.ts, driver adapter)."
-            },
-            "database": {
-              "type": "string"
-            },
-            "validation": {
-              "type": "string"
-            },
-            "auth": {
-              "type": "string"
-            },
-            "messaging": {
-              "type": "string"
-            },
-            "testing": {
-              "type": "string"
-            },
-            "aiEngine": {
-              "type": "string"
-            }
-          },
-          "additionalProperties": false
-        },
-        "frontendStack": {
-          "type": "object",
-          "properties": {
-            "framework": {
-              "type": "string"
-            },
-            "language": {
-              "type": "string"
-            },
-            "bundler": {
-              "type": "string"
-            },
-            "stateManagement": {
-              "type": "string"
-            },
-            "orm": {
-              "type": "string"
-            },
-            "database": {
-              "type": "string"
-            },
-            "validation": {
-              "type": "string"
-            },
-            "testing": {
-              "type": "string"
-            },
-            "unitTesting": {
-              "type": "string"
-            },
-            "e2eTesting": {
-              "type": "string"
-            }
-          },
-          "additionalProperties": false
-        },
-        "rules": {
-          "type": "object",
-          "properties": {
-            "bcryptCostFactor": {
-              "type": "integer",
-              "minimum": 4,
-              "maximum": 31
-            },
-            "jwtTtlSeconds": {
-              "type": "integer",
-              "exclusiveMinimum": 0
-            },
-            "strictLayerBoundaries": {
-              "type": "boolean"
-            },
-            "coverageTarget": {
-              "type": "number",
-              "minimum": 0,
-              "maximum": 100
-            }
-          },
-          "additionalProperties": false
-        },
-        "audit": {
-          "type": "object",
-          "properties": {
-            "enabled": {
-              "type": "boolean"
-            },
-            "maxEntries": {
-              "type": "integer",
-              "exclusiveMinimum": 0
-            },
-            "persistInGit": {
-              "type": "boolean"
-            }
-          },
-          "additionalProperties": false
-        },
-        "designPatterns": {
+        "disabledRules": {
           "type": "array",
           "items": {
             "type": "string"
           }
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "additionalProperties": false
+    },
+    "channelMapping": {
+      "type": "object",
+      "propertyNames": {
+        "type": "string"
+      },
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "locale": {
+      "type": "string",
+      "enum": [
+        "en",
+        "es"
+      ]
+    },
+    "llm": {
+      "type": "object",
+      "properties": {
+        "provider": {
+          "type": "string",
+          "enum": [
+            "openai",
+            "openai-compatible",
+            "azure-openai",
+            "anthropic",
+            "bedrock",
+            "gemini",
+            "vertex",
+            "ollama",
+            "ide_delegate"
+          ]
         },
-        "codingRules": {
-          "type": "array",
-          "items": {
+        "model": {
+          "type": "string"
+        },
+        "baseUrl": {
+          "type": "string",
+          "format": "uri"
+        },
+        "headers": {
+          "type": "object",
+          "propertyNames": {
             "type": "string"
-          }
-        },
-        "outputDir": {
-          "type": "string"
-        },
-        "specDir": {
-          "type": "string"
-        },
-        "testCommand": {
-          "type": "string"
-        },
-        "domainProfile": {
-          "type": "string"
-        },
-        "industry": {
-          "type": "object",
-          "properties": {
-            "id": {
-              "type": "string",
-              "enum": [
-                "generic",
-                "banking",
-                "telecom",
-                "manufacturing",
-                "health",
-                "supply-chain",
-                "insurance",
-                "aviation",
-                "automotive"
-              ]
-            },
-            "disabledRules": {
-              "type": "array",
-              "items": {
-                "type": "string"
-              }
-            }
           },
-          "required": [
-            "id"
-          ],
-          "additionalProperties": false
-        },
-        "channelMapping": {
-          "type": "object",
           "additionalProperties": {
             "type": "string"
           }
         },
-        "locale": {
-          "type": "string",
-          "enum": [
-            "en",
-            "es"
-          ]
+        "timeoutMs": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
         },
-        "llm": {
+        "maxRetries": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10
+        },
+        "maxOutputTokens": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        },
+        "azure": {
           "type": "object",
           "properties": {
-            "provider": {
-              "type": "string",
-              "enum": [
-                "openai",
-                "openai-compatible",
-                "azure-openai",
-                "anthropic",
-                "bedrock",
-                "gemini",
-                "vertex",
-                "ollama",
-                "ide_delegate"
-              ]
-            },
-            "model": {
-              "type": "string"
-            },
-            "baseUrl": {
+            "endpoint": {
               "type": "string",
               "format": "uri"
             },
-            "headers": {
-              "type": "object",
-              "additionalProperties": {
-                "type": "string"
-              }
+            "deployment": {
+              "type": "string"
             },
-            "timeoutMs": {
-              "type": "integer",
-              "exclusiveMinimum": 0
+            "apiVersion": {
+              "type": "string"
             },
-            "maxRetries": {
-              "type": "integer",
-              "minimum": 0,
-              "maximum": 10
-            },
-            "maxOutputTokens": {
-              "type": "integer",
-              "exclusiveMinimum": 0
-            },
-            "azure": {
-              "type": "object",
-              "properties": {
-                "endpoint": {
-                  "type": "string",
-                  "format": "uri"
-                },
-                "deployment": {
-                  "type": "string"
-                },
-                "apiVersion": {
-                  "type": "string"
-                },
-                "useEntraId": {
-                  "type": "boolean"
-                }
-              },
-              "additionalProperties": false
-            },
-            "bedrock": {
-              "type": "object",
-              "properties": {
-                "region": {
-                  "type": "string"
-                }
-              },
-              "additionalProperties": false
-            },
-            "vertex": {
-              "type": "object",
-              "properties": {
-                "project": {
-                  "type": "string"
-                },
-                "location": {
-                  "type": "string"
-                }
-              },
-              "additionalProperties": false
-            },
-            "budget": {
-              "type": "object",
-              "properties": {
-                "maxTokensPerRun": {
-                  "type": "integer",
-                  "exclusiveMinimum": 0
-                }
-              },
-              "additionalProperties": false
-            },
-            "allowedProviders": {
-              "type": "array",
-              "items": {
-                "type": "string",
-                "enum": [
-                  "openai",
-                  "openai-compatible",
-                  "azure-openai",
-                  "anthropic",
-                  "bedrock",
-                  "gemini",
-                  "vertex",
-                  "ollama",
-                  "ide_delegate"
-                ]
-              }
-            },
-            "allowedModels": {
-              "type": "array",
-              "items": {
-                "type": "string"
-              }
-            },
-            "allowedBaseUrls": {
-              "type": "array",
-              "items": {
-                "type": "string"
-              }
-            }
-          },
-          "additionalProperties": false
-        },
-        "mcp": {
-          "type": "object",
-          "properties": {
-            "allowWrite": {
+            "useEntraId": {
               "type": "boolean"
             }
           },
           "additionalProperties": false
         },
-        "network": {
+        "bedrock": {
           "type": "object",
           "properties": {
-            "proxy": {
-              "type": "string",
-              "format": "uri"
-            },
-            "noProxy": {
-              "type": "string"
-            },
-            "caFile": {
-              "type": "string"
-            }
-          },
-          "additionalProperties": false
-        },
-        "logging": {
-          "type": "object",
-          "properties": {
-            "level": {
-              "type": "string",
-              "enum": [
-                "silent",
-                "error",
-                "warn",
-                "info",
-                "verbose",
-                "debug"
-              ]
-            },
-            "file": {
-              "type": "string"
-            },
-            "maxSizeMb": {
-              "type": "number",
-              "exclusiveMinimum": 0
-            },
-            "maxFiles": {
-              "type": "integer",
-              "exclusiveMinimum": 0
-            }
-          },
-          "additionalProperties": false
-        },
-        "telemetry": {
-          "type": "object",
-          "properties": {
-            "enabled": {
-              "type": "boolean"
-            },
-            "dir": {
-              "type": "string"
-            }
-          },
-          "additionalProperties": false
-        },
-        "plugins": {
-          "type": "object",
-          "properties": {
-            "load": {
-              "type": "array",
-              "items": {
-                "type": "string"
-              }
-            },
-            "allow": {
-              "type": "array",
-              "items": {
-                "type": "string"
-              }
-            }
-          },
-          "additionalProperties": false
-        },
-        "policy": {
-          "type": "object",
-          "properties": {
-            "allowUnattendedWrites": {
-              "type": "boolean"
-            },
-            "protectedBranches": {
-              "type": "array",
-              "items": {
-                "type": "string"
-              }
-            },
-            "redactPii": {
-              "type": "boolean"
-            },
-            "firewall": {
-              "type": "object",
-              "properties": {
-                "allowPaths": {
-                  "type": "array",
-                  "items": {
-                    "type": "string"
-                  }
-                },
-                "denyPaths": {
-                  "type": "array",
-                  "items": {
-                    "type": "string"
-                  }
-                },
-                "approvalPaths": {
-                  "type": "array",
-                  "items": {
-                    "type": "string"
-                  }
-                },
-                "allowCommands": {
-                  "type": "array",
-                  "items": {
-                    "type": "string"
-                  }
-                },
-                "denyCommands": {
-                  "type": "array",
-                  "items": {
-                    "type": "string"
-                  }
-                },
-                "allowHosts": {
-                  "type": "array",
-                  "items": {
-                    "type": "string"
-                  }
-                },
-                "allowSecrets": {
-                  "type": "array",
-                  "items": {
-                    "type": "string"
-                  }
-                },
-                "enforceFeatureScope": {
-                  "type": "boolean"
-                }
-              },
-              "additionalProperties": false
-            },
-            "risk": {
-              "type": "object",
-              "properties": {
-                "requireApprovalAt": {
-                  "type": "string",
-                  "enum": [
-                    "LOW",
-                    "MEDIUM",
-                    "HIGH",
-                    "CRITICAL"
-                  ]
-                },
-                "criticalPaths": {
-                  "type": "array",
-                  "items": {
-                    "type": "string"
-                  }
-                },
-                "weights": {
-                  "type": "object",
-                  "properties": {
-                    "security": {
-                      "type": "number",
-                      "minimum": 0
-                    },
-                    "businessCriticality": {
-                      "type": "number",
-                      "minimum": 0
-                    },
-                    "changeRadius": {
-                      "type": "number",
-                      "minimum": 0
-                    },
-                    "testWeakness": {
-                      "type": "number",
-                      "minimum": 0
-                    },
-                    "contractDrift": {
-                      "type": "number",
-                      "minimum": 0
-                    },
-                    "architectureDrift": {
-                      "type": "number",
-                      "minimum": 0
-                    }
-                  },
-                  "additionalProperties": false
-                }
-              },
-              "additionalProperties": false
-            }
-          },
-          "additionalProperties": false
-        },
-        "sandbox": {
-          "type": "object",
-          "properties": {
-            "network": {
-              "type": "string"
-            },
-            "memory": {
-              "type": "string"
-            },
-            "cpus": {
-              "type": "string"
-            },
-            "pidsLimit": {
-              "type": "integer",
-              "exclusiveMinimum": 0
-            },
-            "image": {
-              "type": "string"
-            },
-            "services": {
-              "type": "array",
-              "items": {
-                "type": "object",
-                "properties": {
-                  "name": {
-                    "type": "string",
-                    "pattern": "^[a-z][a-z0-9-]*$"
-                  },
-                  "image": {
-                    "type": "string"
-                  },
-                  "environment": {
-                    "type": "object",
-                    "additionalProperties": {
-                      "type": "string"
-                    }
-                  },
-                  "env": {
-                    "type": "object",
-                    "additionalProperties": {
-                      "type": "string"
-                    }
-                  },
-                  "command": {
-                    "type": "array",
-                    "items": {
-                      "type": "string"
-                    }
-                  },
-                  "ready": {
-                    "type": "array",
-                    "items": {
-                      "type": "string"
-                    }
-                  },
-                  "readyLog": {
-                    "type": "string"
-                  },
-                  "files": {
-                    "type": "object",
-                    "additionalProperties": {
-                      "type": "string"
-                    }
-                  }
-                },
-                "required": [
-                  "name",
-                  "image"
-                ],
-                "additionalProperties": false
-              }
-            }
-          },
-          "additionalProperties": false
-        },
-        "infrastructure": {
-          "type": "object",
-          "properties": {
-            "awsCdk": {
-              "type": "boolean"
-            }
-          },
-          "additionalProperties": false
-        },
-        "deploy": {
-          "type": "object",
-          "properties": {
-            "cloud": {
-              "type": "string",
-              "enum": [
-                "aws",
-                "gcp",
-                "azure"
-              ]
-            },
-            "compute": {
-              "type": "string",
-              "enum": [
-                "containers",
-                "kubernetes",
-                "both"
-              ]
-            },
-            "environments": {
-              "type": "array",
-              "items": {
-                "type": "string",
-                "pattern": "^[a-z][a-z0-9-]{0,15}$"
-              },
-              "minItems": 1
-            },
             "region": {
               "type": "string"
             }
           },
-          "required": [
-            "cloud"
-          ],
           "additionalProperties": false
         },
-        "ci": {
+        "vertex": {
           "type": "object",
           "properties": {
-            "provider": {
-              "type": "string",
-              "enum": [
-                "github",
-                "gitlab",
-                "azure-devops"
-              ]
-            }
-          },
-          "required": [
-            "provider"
-          ],
-          "additionalProperties": false
-        },
-        "security": {
-          "type": "object",
-          "properties": {
-            "tenantClaim": {
-              "type": "string",
-              "pattern": "^[A-Za-z_][A-Za-z0-9_:.\\/-]*$"
-            }
-          },
-          "additionalProperties": false
-        },
-        "generation": {
-          "type": "object",
-          "properties": {
-            "protect": {
-              "type": "array",
-              "items": {
-                "type": "string"
-              }
-            },
-            "package": {
+            "project": {
               "type": "string"
             },
-            "groupId": {
+            "location": {
               "type": "string"
             }
           },
           "additionalProperties": false
         },
-        "contracts": {
+        "budget": {
           "type": "object",
           "properties": {
-            "grpc": {
-              "type": "boolean"
-            },
-            "graphql": {
-              "type": "boolean"
+            "maxTokensPerRun": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
             }
           },
           "additionalProperties": false
         },
-        "locked": {
+        "allowedProviders": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "openai",
+              "openai-compatible",
+              "azure-openai",
+              "anthropic",
+              "bedrock",
+              "gemini",
+              "vertex",
+              "ollama",
+              "ide_delegate"
+            ]
+          }
+        },
+        "allowedModels": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "allowedBaseUrls": {
           "type": "array",
           "items": {
             "type": "string"
@@ -733,7 +356,410 @@
         }
       },
       "additionalProperties": false
+    },
+    "mcp": {
+      "type": "object",
+      "properties": {
+        "allowWrite": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "network": {
+      "type": "object",
+      "properties": {
+        "proxy": {
+          "type": "string",
+          "format": "uri"
+        },
+        "noProxy": {
+          "type": "string"
+        },
+        "caFile": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "logging": {
+      "type": "object",
+      "properties": {
+        "level": {
+          "type": "string",
+          "enum": [
+            "silent",
+            "error",
+            "warn",
+            "info",
+            "verbose",
+            "debug"
+          ]
+        },
+        "file": {
+          "type": "string"
+        },
+        "maxSizeMb": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "maxFiles": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        }
+      },
+      "additionalProperties": false
+    },
+    "telemetry": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "dir": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "plugins": {
+      "type": "object",
+      "properties": {
+        "load": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "allow": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "policy": {
+      "type": "object",
+      "properties": {
+        "allowUnattendedWrites": {
+          "type": "boolean"
+        },
+        "protectedBranches": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "redactPii": {
+          "type": "boolean"
+        },
+        "firewall": {
+          "type": "object",
+          "properties": {
+            "allowPaths": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "denyPaths": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "approvalPaths": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "allowCommands": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "denyCommands": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "allowHosts": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "allowSecrets": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "enforceFeatureScope": {
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false
+        },
+        "risk": {
+          "type": "object",
+          "properties": {
+            "requireApprovalAt": {
+              "type": "string",
+              "enum": [
+                "LOW",
+                "MEDIUM",
+                "HIGH",
+                "CRITICAL"
+              ]
+            },
+            "criticalPaths": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "weights": {
+              "type": "object",
+              "properties": {
+                "security": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "businessCriticality": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "changeRadius": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "testWeakness": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "contractDrift": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "architectureDrift": {
+                  "type": "number",
+                  "minimum": 0
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "sandbox": {
+      "type": "object",
+      "properties": {
+        "network": {
+          "type": "string"
+        },
+        "memory": {
+          "type": "string"
+        },
+        "cpus": {
+          "type": "string"
+        },
+        "pidsLimit": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        },
+        "image": {
+          "type": "string"
+        },
+        "services": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]*$"
+              },
+              "image": {
+                "type": "string"
+              },
+              "environment": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "env": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "command": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "ready": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "readyLog": {
+                "type": "string"
+              },
+              "files": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "name",
+              "image"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "infrastructure": {
+      "type": "object",
+      "properties": {
+        "awsCdk": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "deploy": {
+      "type": "object",
+      "properties": {
+        "cloud": {
+          "type": "string",
+          "enum": [
+            "aws",
+            "gcp",
+            "azure"
+          ]
+        },
+        "compute": {
+          "type": "string",
+          "enum": [
+            "containers",
+            "kubernetes",
+            "both"
+          ]
+        },
+        "environments": {
+          "minItems": 1,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]{0,15}$"
+          }
+        },
+        "region": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "cloud"
+      ],
+      "additionalProperties": false
+    },
+    "ci": {
+      "type": "object",
+      "properties": {
+        "provider": {
+          "type": "string",
+          "enum": [
+            "github",
+            "gitlab",
+            "azure-devops"
+          ]
+        }
+      },
+      "required": [
+        "provider"
+      ],
+      "additionalProperties": false
+    },
+    "security": {
+      "type": "object",
+      "properties": {
+        "tenantClaim": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_:.\\/-]*$"
+        }
+      },
+      "additionalProperties": false
+    },
+    "generation": {
+      "type": "object",
+      "properties": {
+        "protect": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "exclude": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "package": {
+          "type": "string"
+        },
+        "groupId": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "contracts": {
+      "type": "object",
+      "properties": {
+        "grpc": {
+          "type": "boolean"
+        },
+        "graphql": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "locked": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
     }
   },
-  "$schema": "http://json-schema.org/draft-07/schema#"
+  "additionalProperties": false
 }

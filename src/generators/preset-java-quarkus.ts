@@ -34,8 +34,8 @@ export function generateJavaQuarkusPreset(parsed: ParsedFeature, config?: Gherki
     ...renderQuarkusAppLayer(m, pkg, tenantClaim(config))
   ];
 
-  // Field DTOs inferred from the specification
-  for (const field of parsed.domainAnalysis?.fields ?? []) {
+  // Field DTOs for the fields the specification declares (DataTable headers), not for words before quoted values
+  for (const field of (parsed.domainAnalysis?.fields ?? []).filter(f => f.source === 'table')) {
     const type = field.type === 'number' ? 'Double' : field.type === 'boolean' ? 'Boolean' : 'String';
     const recordName = `${toPascal(field.name)}DTO`;
     if (!/^[A-Za-z]/.test(recordName)) continue;

@@ -9,14 +9,22 @@ permissions:
   id-token: write   # npm trusted publishing and provenance (OIDC)
 
 jobs:
+  # The whole CI pipeline on the tagged commit: tests on every OS and Node, audit, e2e, the golden builds
+  # (run against the packaged tarball) and the implemented-service golden. Nothing is published unless it passes.
+  ci:
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+
   publish:
+    needs: ci
     runs-on: ubuntu-latest
     # Must match the environment configured in the npm trusted publisher (npmjs.com → gherkin-ai → Settings).
     environment: npm
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '22'
           cache: npm
@@ -32,18 +40,22 @@ jobs:
           PKG="v$(node -p "require('./package.json').version")"
           if [ "$PKG" != "$GITHUB_REF_NAME" ]; then echo "Tag $GITHUB_REF_NAME does not match package.json ($PKG)"; exit 1; fi
 
-      - run: npm run build
-      - run: npx vitest run --coverage
       - run: npm audit --audit-level=high
 
+      # The tarball the goldens ran against, not a new build.
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: package
+          path: package
+
       - name: SBOM (CycloneDX)
-        run: npx --yes @cyclonedx/cyclonedx-npm@1 --omit dev --output-format JSON --output-file sbom.cdx.json
+        run: npx --yes @cyclonedx/cyclonedx-npm@6.0.1 --omit dev --output-format JSON --output-file sbom.cdx.json
 
       # Authenticates through the npm trusted publisher (OIDC): no NPM_TOKEN secret. Provenance is attached automatically.
       - name: Publish to npm (trusted publishing, provenance)
         run: |
           if node -p "require('./package.json').version" | grep -q -- '-'; then TAG=beta; else TAG=latest; fi
-          npm publish --provenance --access public --tag "$TAG"
+          npm publish package/gherkin-ai-*.tgz --provenance --access public --tag "$TAG"
 
       - name: GitHub Release
         env:
@@ -53,4 +65,4 @@ jobs:
           # Release notes = this version's CHANGELOG section.
           awk -v v="$VERSION" 'index($0, "## [" v "]")==1 {p=1; next} /^## \[/ {if (p) exit} p' CHANGELOG.md > notes.md
           PRERELEASE=""; case "$VERSION" in *-*) PRERELEASE="--prerelease";; esac
-          gh release create "$GITHUB_REF_NAME" sbom.cdx.json --title "$GITHUB_REF_NAME" --notes-file notes.md $PRERELEASE
+          gh release create "$GITHUB_REF_NAME" sbom.cdx.json package/gherkin-ai-*.tgz --title "$GITHUB_REF_NAME" --notes-file notes.md $PRERELEASE

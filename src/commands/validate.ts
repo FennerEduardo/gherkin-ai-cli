@@ -16,6 +16,8 @@ import { validateAsyncAPIAgainstIR, validateAsyncAPISpec } from '../core/asyncap
 import { runAllValidators, ValidatorContext } from '../core/validators/index';
 import { validateDeploymentReadiness } from '../core/validators/deployment-readiness';
 import { buildIR } from '../core/ir-builder';
+import { StepIndexer } from '../core/step-indexer';
+import { undefinedSteps } from '../core/step-coverage';
 
 /** Dependencies and build output are not the project's code. */
 export const VALIDATE_SKIP_DIRS = new Set(['node_modules', 'dist', 'build', 'target', '.git', 'bin', 'obj', 'coverage', '.gradle', '_build', 'deps', 'vendor', '.venv', '__pycache__', '.next', '.dart_tool']);
@@ -74,7 +76,7 @@ function collectFilesRecursively(dir: string): { path: string; content: string }
   return results;
 }
 
-export async function handleValidateCommand(options: { feature?: string; config?: string; openapi?: string; asyncapi?: string; target?: string }): Promise<void> {
+export async function handleValidateCommand(options: { feature?: string; config?: string; openapi?: string; asyncapi?: string; target?: string; strictSteps?: boolean }): Promise<void> {
   logger.banner();
   logger.info('Validating project architecture, step coverage & layer boundaries...');
 
@@ -110,6 +112,21 @@ export async function handleValidateCommand(options: { feature?: string; config?
         if (parsed.domainAnalysis.fixtures.length === 0) {
           logger.warn('No "Given" preconditions detected. Test seeds will be empty.');
           warningsCount++;
+        }
+
+        // Steps no step definition implements (they fail as "undefined" at run time). Generated pending
+        // skeletons count as definitions.
+        const steps = [...(parsed.background ? [parsed.background] : []), ...parsed.scenarios].flatMap(s => s.steps);
+        const missing = undefinedSteps(steps, new StepIndexer().getAllSteps(process.cwd()));
+        if (missing === undefined) {
+          logger.info('Step coverage: no step definitions found in the project (not checked).');
+        } else if (missing.length === 0) {
+          logger.success('Step coverage: every step has a step definition.');
+        } else {
+          const log = options.strictSteps ? logger.error.bind(logger) : logger.warn.bind(logger);
+          log(`Step coverage: ${missing.length} step(s) match no step definition${options.strictSteps ? '' : ' (--strict-steps fails on them)'}:`);
+          for (const step of missing.slice(0, 20)) log(`  - ${step}`);
+          if (options.strictSteps) errorsCount += missing.length; else warningsCount += missing.length;
         }
       }
     }

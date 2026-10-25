@@ -28,6 +28,8 @@ function looksLikeGherkin(text: string): boolean {
 const NOT_A_FIELD = new Set([
   'a', 'an', 'the', 'this', 'that', 'its', 'their', 'his', 'her', 'my', 'our', 'your',
   'with', 'is', 'are', 'was', 'were', 'be', 'been', 'for', 'of', 'to', 'in', 'on', 'at', 'from', 'by', 'as', 'into', 'onto', 'than', 'via', 'and', 'or', 'not', 'no',
+  'because', 'if', 'when', 'then', 'but', 'so', 'until', 'unless', 'while', 'after', 'before', 'since', 'about', 'over', 'under', 'per', 'without', 'between',
+  'porque', 'si', 'cuando', 'pero', 'hasta', 'mientras', 'desde', 'sobre', 'entre', 'tras', 'según',
   'become', 'becomes', 'became', 'equals', 'contains', 'shows', 'show', 'displays', 'display', 'reads', 'read', 'says', 'see', 'sees', 'has', 'have', 'had',
   'named', 'called', 'titled', 'labeled', 'labelled', 'set', 'sets', 'enter', 'enters', 'type', 'types', 'select', 'selects', 'choose', 'chooses', 'click', 'clicks',
   'register', 'registers', 'create', 'creates', 'add', 'adds', 'submit', 'submits', 'send', 'sends', 'receive', 'receives', 'publish', 'publishes', 'request', 'requests',
@@ -176,7 +178,9 @@ export function parseGherkinText(gherkinText: string): ParsedFeature {
         for (const cell of names) {
           const fieldName = cell.toLowerCase().replace(/[^a-z0-9_]/g, '_');
           if (fieldName && fieldName.length > 2 && !/^_*\d/.test(fieldName) && !fieldsMap.has(fieldName)) {
-            fieldsMap.set(fieldName, { name: fieldName, type: 'string', validations: [] });
+            fieldsMap.set(fieldName, { name: fieldName, type: 'string', validations: [], source: 'table' });
+          } else if (fieldsMap.get(fieldName)?.source === 'step') {
+            fieldsMap.get(fieldName)!.source = 'table';
           }
         }
       }
@@ -196,7 +200,7 @@ export function parseGherkinText(gherkinText: string): ParsedFeature {
         if (!isNaN(Number(qMatch[2]))) type = 'number';
         
         if (!fieldsMap.has(fieldName)) {
-          fieldsMap.set(fieldName, { name: fieldName, type, validations: [] });
+          fieldsMap.set(fieldName, { name: fieldName, type, validations: [], source: 'step' });
         }
         
         const existing = fieldsMap.get(fieldName)!;

@@ -9,7 +9,8 @@ import { DomainModel } from '../domain-model';
 /** Placeholder replaced at runtime by the (validated) PostgreSQL schema name. */
 export const SCHEMA_TOKEN = '__SCHEMA__';
 
-export const RUNTIME_SCHEMA_SQL: string[] = [
+/** The kernel's tables, one statement each (documentation, RUNTIME-KERNEL.md). */
+export const RUNTIME_TABLES_SQL: string[] = [
   `CREATE SCHEMA IF NOT EXISTS ${SCHEMA_TOKEN}`,
   `CREATE TABLE IF NOT EXISTS ${SCHEMA_TOKEN}.ghk_aggregates (tenant_id TEXT NOT NULL, aggregate_type TEXT NOT NULL, id TEXT NOT NULL, state TEXT NOT NULL, version INT NOT NULL, updated_at TIMESTAMPTZ NOT NULL DEFAULT now(), PRIMARY KEY (tenant_id, aggregate_type, id))`,
   `CREATE TABLE IF NOT EXISTS ${SCHEMA_TOKEN}.ghk_outbox (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, aggregate_id TEXT NOT NULL, event_type TEXT NOT NULL, payload TEXT NOT NULL, traceparent TEXT, created_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(), claimed_by TEXT, claimed_until TIMESTAMPTZ, published_at TIMESTAMPTZ, attempts INT NOT NULL DEFAULT 0, last_error TEXT, failed_at TIMESTAMPTZ)`,
@@ -17,6 +18,16 @@ export const RUNTIME_SCHEMA_SQL: string[] = [
   `CREATE TABLE IF NOT EXISTS ${SCHEMA_TOKEN}.ghk_idempotency (tenant_id TEXT NOT NULL, key TEXT NOT NULL, status TEXT NOT NULL, response TEXT, created_at TIMESTAMPTZ NOT NULL DEFAULT now(), PRIMARY KEY (tenant_id, key))`,
   `CREATE TABLE IF NOT EXISTS ${SCHEMA_TOKEN}.ghk_inbox (consumer TEXT NOT NULL, message_id TEXT NOT NULL, processed_at TIMESTAMPTZ NOT NULL DEFAULT now(), PRIMARY KEY (consumer, message_id))`,
   `CREATE TABLE IF NOT EXISTS ${SCHEMA_TOKEN}.ghk_sagas (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, status TEXT NOT NULL, completed_steps TEXT NOT NULL DEFAULT '', updated_at TIMESTAMPTZ NOT NULL DEFAULT now())`
+];
+
+/**
+ * What every kernel's `migrate` executes: the tables above in one atomic statement that first takes a
+ * transaction-scoped advisory lock. Every replica (and a separate relay process) migrates when it starts;
+ * the lock serializes them, because concurrent CREATE ... IF NOT EXISTS can still fail on PostgreSQL's
+ * catalog (duplicate pg_type). Idempotent.
+ */
+export const RUNTIME_SCHEMA_SQL: string[] = [
+  `DO $$ BEGIN PERFORM pg_advisory_xact_lock(hashtext('ghk_runtime_schema')); ${RUNTIME_TABLES_SQL.map(s => `${s};`).join(' ')} END $$`
 ];
 
 /** Row-level security to enable as defense in depth (connect with a role that is not the table owner). */

@@ -120,7 +120,8 @@ describe('agent firewall', () => {
     const blocked = writeAgentFile(fw, path.join(dir, '.env'), 'SECRET=1', 'verify');
     expect(blocked.verdict).toBe('DENY');
     expect(fs.existsSync(path.join(dir, '.env'))).toBe(false);
-    expect(fs.readFileSync(blocked.proposalPath!, 'utf8')).toBe('SECRET=1');
+    expect(path.basename(blocked.proposalPath!)).toBe('.env.patch');
+    expect(fs.readFileSync(blocked.proposalPath!, 'utf8')).toMatch(/--- \/dev\/null[^\n]*\n\+\+\+ b\/\.env[^\n]*\n@@[^\n]*\n\+SECRET=1/);
     const allowed = writeAgentFile(fw, path.join(dir, 'src/payments/new.ts'), 'export {};', 'verify');
     expect(allowed.verdict).toBe('ALLOW');
     expect(fs.existsSync(path.join(dir, 'src/payments/new.ts'))).toBe(true);

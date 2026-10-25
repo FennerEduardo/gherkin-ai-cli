@@ -6,6 +6,8 @@ on:
     branches: [main, master, 'release/**']
   pull_request:
   workflow_dispatch:
+  # release.yml runs this whole pipeline on the tag and publishes the tarball it verified.
+  workflow_call:
 
 permissions:
   contents: read
@@ -24,9 +26,9 @@ jobs:
         os: [ubuntu-latest, windows-latest, macos-latest]
         node: ['22', '24']
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: ${{ matrix.node }}
           cache: npm
@@ -50,8 +52,8 @@ jobs:
   security:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '22'
           cache: npm
@@ -67,8 +69,8 @@ jobs:
     # Web Studio in a real browser, with network isolation checks (no CDN requests).
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '22'
           cache: npm
@@ -77,13 +79,39 @@ jobs:
       - run: npm run build
       - run: npm run test:e2e
 
+  package:
+    # The tarball npm would publish. The goldens run against it, and release.yml publishes this exact file.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      # `npm pack` does not run prepublishOnly: build dist/ first, as `npm publish` would.
+      - run: npm run build
+      - run: npm pack
+      - name: The tarball installs and runs from a clean directory
+        shell: bash
+        run: |
+          set -euo pipefail
+          tgz=$(ls gherkin-ai-*.tgz)
+          mkdir -p "$RUNNER_TEMP/ghk-pkg" && npm install --prefix "$RUNNER_TEMP/ghk-pkg" --no-fund --no-audit "./$tgz"
+          test "$("$RUNNER_TEMP/ghk-pkg/node_modules/.bin/ghk" -V)" = "$(node -p "require('./package.json').version")"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: package
+          path: gherkin-ai-*.tgz
+          if-no-files-found: error
+
   golden-matrix:
     runs-on: ubuntu-latest
     outputs:
       stacks: ${{ steps.list.outputs.stacks }}
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '22'
           cache: npm
@@ -102,8 +130,9 @@ jobs:
   golden-builds:
     # Every STABLE stack is generated, built and its generated test suite run inside the
     # stack's official Docker image (see docs/ENTERPRISE.md, "Stack support tiers").
+    # The CLI under test is the packaged tarball (GHK_CLI); the repository build only provides the harness.
     name: golden (${{ matrix.stack }})
-    needs: golden-matrix
+    needs: [golden-matrix, package]
     runs-on: ubuntu-latest
     timeout-minutes: 45
     strategy:
@@ -111,12 +140,39 @@ jobs:
       matrix:
         stack: ${{ fromJson(needs.golden-matrix.outputs.stacks) }}
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '22'
           cache: npm
       - run: npm ci
       - run: npm run build
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: package
+          path: ${{ runner.temp }}/package
+      - name: Install the tarball
+        shell: bash
+        run: npm install --prefix "$RUNNER_TEMP/ghk-pkg" --no-fund --no-audit "$RUNNER_TEMP"/package/gherkin-ai-*.tgz
       - name: Generate, build and test
+        env:
+          GHK_CLI: ${{ runner.temp }}/ghk-pkg/node_modules/gherkin-ai/bin/gherkin-ai.js
         run: node scripts/golden-build.js ${{ matrix.stack }}
+
+  golden-implemented:
+    # An implemented service (the LMS assessment-service before its 3.2 pilot) regenerated and upgraded:
+    # nothing is created next to its own code, and it still compiles (tests/golden/implemented-service.test.ts).
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      # Maven resolves the service's dependencies from Maven Central during the compile
+      # (dependency:go-offline does not fetch everything the compile resolves).
+      - name: Golden with the Maven compile
+        env:
+          GHK_GOLDEN_MAVEN: '1'
+        run: npx vitest run tests/golden

@@ -46,6 +46,14 @@ export interface ArtifactEntry {
   generatedAt?: string;
   /** Checksum of a generated version the user declined in `ghk generate --review` (not offered again). */
   declined?: string;
+  /** Not written by the last run (generation.exclude, or scaffolding in an implemented project). */
+  skipped?: boolean;
+}
+
+export interface FeatureRecord {
+  checksum: string;
+  /** Contract file (relative to outputDir) → sha256 on disk after the run. */
+  contracts: Record<string, string>;
 }
 
 /**
@@ -56,6 +64,13 @@ export interface ArtifactEntry {
  */
 export interface InventoryFile {
   version: '2';
+  /** CLI version of the last `ghk generate` (since 3.2.1; earlier inventories have none). */
+  cliVersion?: string;
+  /**
+   * Each feature file (project-relative path) as it was when last generated from (since 3.2.1): its sha256,
+   * and the sha256 of its contract files as they were on disk right after that run.
+   */
+  features?: Record<string, FeatureRecord>;
   artifacts: ArtifactEntry[];
   executions: InventoryRecord[];
 }
@@ -73,6 +88,8 @@ export function readInventoryFile(file: string): InventoryFile {
     const obj = json as Partial<InventoryFile>;
     return {
       version: '2',
+      ...(typeof obj.cliVersion === 'string' ? { cliVersion: obj.cliVersion } : {}),
+      ...(obj.features && typeof obj.features === 'object' ? { features: obj.features } : {}),
       artifacts: Array.isArray(obj.artifacts) ? obj.artifacts.filter(a => a && typeof a.filePath === 'string') : [],
       executions: Array.isArray(obj.executions) ? obj.executions : []
     };

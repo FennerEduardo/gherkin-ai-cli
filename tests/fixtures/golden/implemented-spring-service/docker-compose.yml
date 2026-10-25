@@ -1,0 +1,52 @@
+version: '3.8'
+
+services:
+  # Host Environment SDK Isolation Sandbox
+  app:
+    image: maven:3.9-eclipse-temurin-17
+    container_name: assessment-service-app
+    volumes:
+      - .:/app
+    working_dir: /app
+    environment:
+      - ENVIRONMENT=development
+      - DATABASE_URL=${DATABASE_URL:-postgresql://dev_user:dev_password@postgresql:5432/assessment-service_db}
+    ports:
+      - "8000:8000"
+    depends_on:
+      - postgresql
+
+  # Database Service (postgresql)
+  postgresql:
+    image: postgres:16-alpine
+    container_name: assessment-service-db
+    restart: always
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-assessment-service_db}
+      POSTGRES_USER: ${POSTGRES_USER:-dev_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dev_password}
+    ports:
+      - "5432:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+
+  
+  # Message Broker
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: assessment-service-mq
+    restart: always
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+  
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: assessment-service-redis
+    ports:
+      - "6379:6379"
+
+volumes:
+  db_data:

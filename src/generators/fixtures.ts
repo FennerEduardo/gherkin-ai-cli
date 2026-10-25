@@ -11,13 +11,15 @@ export function generateFixtures(parsed: ParsedFeature, config: GherkinAIConfig)
   const spec = getStackSpec(config.stack);
 
   const fixtureName = featurePascalName(parsed) + 'Fixture';
-  
-  const properties = parsed.domainAnalysis.fields.map(f => {
+  // Only declared fields (DataTable headers): `the teacher "t-7"` names an identifier, not a column.
+  const fields = parsed.domainAnalysis.fields.filter(f => f.source === 'table');
+
+  const properties = fields.map(f => {
     let type = f.type === 'number' ? 'number' : 'string';
     return `  ${f.name}: ${type};`;
   }).join('\n');
 
-  const defaults = parsed.domainAnalysis.fields.map(f => {
+  const defaults = fields.map(f => {
     let val = f.type === 'number' ? '0' : "'test_value'";
     if (f.name.toLowerCase().includes('email')) val = "'test@example.com'";
     return `    ${f.name}: ${val},`;
@@ -46,8 +48,8 @@ ${parsed.domainAnalysis.fixtures.map(f => `  ${JSON.stringify(f)}`).join(',\n')}
 ];
 `;
 
-  const columns = ['id', ...parsed.domainAnalysis.fields.map(f => f.name)].join(', ');
-  const values = ["'f47ac10b-58cc-4372-a567-0e02b2c3d479'", ...parsed.domainAnalysis.fields.map(f => f.type === 'number' ? '0' : "'test'")].join(', ');
+  const columns = ['id', ...fields.map(f => f.name)].join(', ');
+  const values = ["'f47ac10b-58cc-4372-a567-0e02b2c3d479'", ...fields.map(f => f.type === 'number' ? '0' : "'test'")].join(', ');
   const tableName = parsed.featureName.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
 
   const seedSql = `-- Generated Seed SQL Fixtures for PostgreSQL / MySQL

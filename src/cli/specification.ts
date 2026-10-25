@@ -43,6 +43,7 @@ export function registerSpecificationCommands(program: Command): void {
     .option('--openapi <file>', 'Path to OpenAPI spec file to validate against IR')
     .option('--asyncapi <file>', 'Path to AsyncAPI spec file to validate against IR')
     .option('-t, --target <dir>', 'Directory to validate (defaults to the configured outputDir)')
+    .option('--strict-steps', 'With -f: fail when a step of the feature matches no step definition (otherwise a warning)')
     .action(async (options) => {
       await (await import('../commands/validate')).handleValidateCommand(options);
     });

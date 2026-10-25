@@ -139,6 +139,7 @@ function buildIRUncached(
     validations: extractValidationRules(f.validations),
     exampleValues: [],
     enumValues: undefined,
+    ...(f.source ? { source: f.source } : {}),
   })));
 
   const stateMachines = extractStateMachines(parsed, sourceFile);

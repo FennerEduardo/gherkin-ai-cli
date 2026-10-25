@@ -41,6 +41,8 @@ export DATABASE_URL=postgres://postgres:ghk@localhost:5432/postgres AMQP_URL=amq
 
 All tables live in a configurable PostgreSQL schema. The tests create a fresh schema per test, which keeps them isolated.
 
+**The service creates them when it starts**, in `public`, before it serves a request or relays an event: `migrate` runs from the generated startup code of every stack (and from the separate relay process of Django, Laravel and Rails). It is idempotent, and it runs as one statement that first takes a transaction-scoped advisory lock, so replicas starting together do not race on PostgreSQL's catalog. Set `GHK_MIGRATE=false` when a migration job or another tool owns the schema and the service connects without DDL rights; then create the tables below before it starts.
+
 ```sql
 CREATE TABLE ghk_aggregates (tenant_id TEXT, aggregate_type TEXT, id TEXT, state TEXT NOT NULL, version INT NOT NULL,
                              updated_at TIMESTAMPTZ NOT NULL DEFAULT now(), PRIMARY KEY (tenant_id, aggregate_type, id));

@@ -2,7 +2,12 @@
    gherkin-ai-cli - Enterprise Guardrails & Role-Based Enforcement Engine
    ========================================================================== */
 
+import path from 'path';
 import { loadConstitution, getAgentPermissions, Constitution } from './constitution';
+import { loadConfig } from './config';
+import { AgentFirewall, loadFirewallPolicy } from './governance/agent-firewall';
+import { writeVerdict } from './governance/policy-session';
+import { firstMatch } from '../utils/glob';
 
 export interface GuardrailPolicies {
   requireTests: boolean;
@@ -18,7 +23,8 @@ export const DEFAULT_GUARDRAILS: GuardrailPolicies = {
   requireTests: true,
   requireTypecheck: true,
   maxFilesChanged: 30,
-  protectedPaths: ['infrastructure/**', 'migrations/**', 'config/production*', '.env*', 'secrets/**'],
+  // On top of the agent firewall's rules (which already hold secrets, migrations and infrastructure at any depth).
+  protectedPaths: ['infrastructure/**', 'migrations/**', 'config/production*', '.env', '.env.*', 'secrets/**'],
   requireHumanApproval: ['database-migration', 'auth-change', 'infrastructure-change']
 };
 
@@ -33,6 +39,8 @@ export interface AgentActionRequest {
   action: 'read_spec' | 'write_spec' | 'generate_code' | 'execute_tests' | 'apply_migration' | 'deploy' | 'custom';
   targetFiles?: string[];
   toolName?: string;
+  /** `repair`: an auto-fix loop, which may not change specifications, contracts or tests. */
+  mode?: 'agent' | 'repair';
 }
 
 export function validateGuardrails(
@@ -56,9 +64,7 @@ export function validateGuardrails(
 
       if (action !== 'read_spec' && modifiedFiles.length > 0) {
         for (const file of modifiedFiles) {
-          const matchesAllowed = perms.write.some((perm: string) => 
-            matchGlobPattern(file, perm)
-          );
+          const matchesAllowed = perms.write.some((perm: string) => perm === '*' || perm === '**' || firstMatch(file, [perm]));
           if (!matchesAllowed) {
             violations.push(`Role '${roleName}' is not permitted to write to file: ${file}`);
           }
@@ -78,12 +84,18 @@ export function validateGuardrails(
     violations.push(`Too many modified files (${modifiedFiles.length} > ${policies.maxFilesChanged} limit)`);
   }
 
-  // Check protected path patterns
-  for (const file of modifiedFiles) {
-    for (const protectedPattern of policies.protectedPaths) {
-      if (matchGlobPattern(file, protectedPattern)) {
-        violations.push(`Modification of protected path prohibited: ${file} (matches '${protectedPattern}')`);
-      }
+  // Paths: the agent firewall decides (the one matcher every entry point uses), with protectedPaths as extra
+  // deny globs. Anything it does not ALLOW is a violation for an unattended loop.
+  if (modifiedFiles.length) {
+    let config = {};
+    try { config = loadConfig(path.join(cwd, 'gherkin-ai.config.json')); } catch { /* defaults */ }
+    const policy = loadFirewallPolicy(cwd, config);
+    policy.denyPaths.push(...policies.protectedPaths);
+    const firewall = new AgentFirewall(policy);
+    const mode = Array.isArray(request) ? 'agent' : request.mode ?? 'agent';
+    for (const file of modifiedFiles) {
+      const verdict = writeVerdict(firewall, file, mode);
+      if (verdict.verdict !== 'ALLOW') violations.push(`Modification of protected path prohibited: ${file} (${verdict.verdict}, ${verdict.rule}: ${verdict.reason})`);
     }
   }
 
@@ -101,19 +113,4 @@ export function validateGuardrails(
     violations,
     requiresHumanApproval
   };
-}
-
-function matchGlobPattern(filePath: string, pattern: string): boolean {
-  const normalizedFile = filePath.replace(/\\/g, '/');
-  const normalizedPattern = pattern.replace(/\\/g, '/');
-
-  if (normalizedPattern === '*' || normalizedPattern === '**') return true;
-
-  const regexPattern = normalizedPattern
-    .replace(/\./g, '\\.')
-    .replace(/\*\*/g, '.*')
-    .replace(/\*(?!\*)/g, '[^/]*');
-
-  const regex = new RegExp(`^${regexPattern}`, 'i');
-  return regex.test(normalizedFile);
 }

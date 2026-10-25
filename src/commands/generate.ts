@@ -16,6 +16,10 @@ import { fileExistsSync, readFileSync, writeFileSync, writeGeneratedFile } from 
 import { logger } from '../utils/logger';
 import { ensureGitignore } from '../utils/gitignore-manager';
 import { detectMissingDependencies } from '../core/stack-setup';
+import { emitJson } from '../utils/output';
+import { CLI_VERSION } from '../version';
+import type { ArtifactRole } from '../core/artifact-roles';
+import type { WriteAction } from '../core/write-protection';
 import inquirer from 'inquirer';
 import chalk from 'chalk';
 
@@ -53,9 +57,24 @@ export interface GenerateCommandOptions {
   force?: boolean;
   /** Print what would be written, write nothing. */
   dryRun?: boolean;
+  /** Also create scaffolding (controllers, wiring, tests) in a project marked as implemented. */
+  includeScaffold?: boolean;
+  /** Overwrite header-marked files without a checksum even when there is no inventory (`ghk upgrade --apply`). */
+  trustHeaders?: boolean;
+  json?: boolean;
 }
 
-export async function handleGenerateCommand(options: GenerateCommandOptions): Promise<void> {
+/** What `ghk generate` planned for each file (also its --json output). */
+export interface GenerateResult {
+  feature?: string;
+  dryRun: boolean;
+  plan: { file: string; target: string; action: WriteAction; role: ArtifactRole; reason?: string; held?: boolean }[];
+  summary: Record<WriteAction, number>;
+  /** Kernel files kept as they are: the generated code waits in .ghk-new until they are merged. */
+  kernelPendingMerge: string[];
+}
+
+export async function handleGenerateCommand(options: GenerateCommandOptions): Promise<GenerateResult | undefined> {
   logger.banner();
 
   const config = loadConfig(options.config);
@@ -279,7 +298,7 @@ Objective: Write detailed Gherkin feature scenarios for ${title}.
   // Implemented code is never overwritten: only files whose checksum still matches what was generated
   // are updated; edited or protected files get the new version as <file>.ghk-new.
   const { readInventoryFile, writeInventoryFile, mergeArtifacts } = await import('../core/inventory');
-  const { planWrites, applyWrites, sha256, NEW_SUFFIX } = await import('../core/write-protection');
+  const { planWrites, applyWrites, kernelPendingMerge, sha256, NEW_SUFFIX, IMPLEMENTED_MARKER } = await import('../core/write-protection');
   const gheDir = path.join(process.cwd(), '.ghe');
   const inventoryPath = path.join(gheDir, 'inventory.json');
   const previous = readInventoryFile(inventoryPath);
@@ -288,22 +307,47 @@ Objective: Write detailed Gherkin feature scenarios for ${title}.
     outputDir: config.outputDir,
     inventory: previous.artifacts,
     protect: config.generation?.protect,
+    exclude: config.generation?.exclude,
+    includeScaffold: options.includeScaffold,
+    trustHeaders: options.trustHeaders,
     force: options.force
   });
   const typeOf = new Map(filteredArtifacts.map(a => [a.filePath, a.type]));
   const dryRun = Boolean(options.dryRun) || getRunContext().dryRun;
+  // An explicit `json: false` wins over the global --json: `upgrade --apply --json` regenerates through this
+  // function and prints its own report (stdout carries exactly one JSON document).
+  const json = options.json ?? getRunContext().json;
+  const pendingKernel = kernelPendingMerge(plans);
+  const result: GenerateResult = {
+    feature: options.feature,
+    dryRun,
+    plan: plans.map(p => ({
+      file: p.filePath,
+      target: path.relative(process.cwd(), p.target).replace(/\\/g, '/'),
+      action: p.action,
+      role: p.role,
+      ...(p.reason ? { reason: p.reason } : {}),
+      ...(p.held ? { held: true } : {})
+    })),
+    summary: { create: 0, update: 0, unchanged: 0, overwrite: 0, 'side-by-side': 0, skipped: 0 },
+    kernelPendingMerge: pendingKernel.map(p => p.filePath)
+  };
+  for (const p of plans) result.summary[p.action]++;
 
   if (dryRun) {
     console.log(chalk.bold.cyan('\n📝 Dry run: nothing is written.\n'));
     for (const p of plans) {
       console.log(`  ${p.action.padEnd(12)} ${p.filePath}${p.action === 'side-by-side' ? NEW_SUFFIX : ''}${p.reason ? chalk.gray(`  (${p.reason})`) : ''}`);
     }
-    return;
+    if (json) emitJson(result);
+    return result;
   }
 
   applyWrites(plans, new Map(filteredArtifacts.map(a => [a.filePath, a.content])), writeGeneratedFile);
   for (const p of plans) {
-    if (p.action === 'side-by-side') logger.warn(`[Protected] ${p.filePath} kept (${p.reason}); new version: ${p.filePath}${NEW_SUFFIX}`);
+    if (p.held) logger.warn(`[Held] ${p.filePath}: written as ${p.filePath}${NEW_SUFFIX} (${p.reason})`);
+    else if (p.action === 'side-by-side') logger.warn(`[Protected] ${p.filePath} kept (${p.reason}); new version: ${p.filePath}${NEW_SUFFIX}`);
+    else if (p.action === 'skipped') logger.info(`[Skipped] ${p.filePath} (${p.reason})`);
     else if (p.action === 'unchanged') logger.info(`[Plugin ${typeOf.get(p.filePath)}] Unchanged: ${p.filePath}`);
     else logger.success(`[Plugin ${typeOf.get(p.filePath)}] ${p.action === 'create' ? 'Generated' : 'Updated'}: ${p.filePath}${p.action === 'overwrite' && p.reason ? chalk.gray(` (${p.reason})`) : ''}`);
   }
@@ -313,19 +357,37 @@ Objective: Write detailed Gherkin feature scenarios for ${title}.
   }
   // The application layer is generated against this CLI's runtime kernel; a kept (older or edited) kernel
   // may not have what it calls (e.g. the aggregate type of a multi-feature service).
-  const { isKernelFile } = await import('../core/upgrade/kernel-refresh');
-  const keptKernel = sideBySide.filter(p => isKernelFile(p.filePath));
-  if (keptKernel.length) {
-    logger.warn(`The runtime kernel was kept (${keptKernel.map(p => p.filePath).slice(0, 3).join(', ')}${keptKernel.length > 3 ? ', ...' : ''}). ` +
-      `The generated application layer targets the new kernel: merge the kernel ${NEW_SUFFIX} files first (ghk upgrade --kernel shows them).`);
+  if (pendingKernel.length) {
+    const held = plans.filter(p => p.held).length;
+    logger.warn(`Runtime kernel pending merge: ${pendingKernel.length} kernel file(s) kept (${pendingKernel.map(p => p.filePath).slice(0, 3).join(', ')}${pendingKernel.length > 3 ? ', ...' : ''})` +
+      `${held ? `; ${held} generated source file(s) held as ${NEW_SUFFIX} so the project still compiles` : ''}. ` +
+      `Merge the kernel ${NEW_SUFFIX} files first (ghk upgrade --kernel shows them), then generate again.`);
   }
+  const skipped = plans.filter(p => p.action === 'skipped');
+  if (skipped.length) logger.info(`${skipped.length} file(s) skipped (generation.exclude, or not created in a project marked ${IMPLEMENTED_MARKER}).`);
 
   // Traceability inventory: checksums of what this run generated, merged with earlier features' entries.
   const generatedAt = new Date().toISOString();
   const declinedBefore = new Map(previous.artifacts.filter(a => a.declined).map(a => [a.filePath.replace(/\\/g, '/'), a.declined]));
+  const previousEntry = new Map(previous.artifacts.map(a => [a.filePath.replace(/\\/g, '/'), a]));
+  const notWritten = new Map(plans.filter(p => p.action === 'skipped' || p.held).map(p => [p.filePath, p.action === 'skipped']));
+  // The feature and its contracts as they are after this run: `ghk converge` reports a feature edited since
+  // while its contracts were not (they still describe the previous feature).
+  const featureRel = options.feature ? path.relative(process.cwd(), path.resolve(process.cwd(), options.feature)).replace(/\\/g, '/') : undefined;
+  const { artifactRole } = await import('../core/artifact-roles');
+  const contractsOnDisk = Object.fromEntries(plans
+    .filter(p => artifactRole(p.filePath, typeOf.get(p.filePath)) === 'contract' && fs.existsSync(p.fullPath))
+    .map(p => [p.filePath.replace(/\\/g, '/'), sha256(fs.readFileSync(p.fullPath).toString('utf8').replace(/\r\n/g, '\n'))]));
   writeInventoryFile(inventoryPath, {
     ...previous,
+    cliVersion: CLI_VERSION,
+    ...(featureRel ? { features: { ...previous.features, [featureRel]: { checksum: sha256(gherkinText.replace(/\r\n/g, '\n')), contracts: contractsOnDisk } } } : {}),
     artifacts: mergeArtifacts(previous.artifacts, filteredArtifacts.map(a => {
+      // Skipped, or held as .ghk-new: the file on disk did not change, so keep what was on record (its checksum
+      // still proves an untouched file). It counts as generated by this run: `ghk upgrade` does not prune it.
+      if (notWritten.has(a.filePath)) {
+        return { ...previousEntry.get(a.filePath.replace(/\\/g, '/')), filePath: a.filePath, type: a.type, generatedAt, ...(notWritten.get(a.filePath) ? { skipped: true } : {}) };
+      }
       const checksum = sha256(a.content);
       // A version declined in `ghk generate --review` stays declined while the generator produces the same content.
       const declined = declinedBefore.get(a.filePath.replace(/\\/g, '/')) === checksum ? checksum : undefined;
@@ -333,7 +395,7 @@ Objective: Write detailed Gherkin feature scenarios for ${title}.
         filePath: a.filePath,
         type: a.type,
         checksum,
-        feature: options.feature ? path.relative(process.cwd(), path.resolve(process.cwd(), options.feature)).replace(/\\/g, '/') : undefined,
+        feature: featureRel,
         generatedAt,
         ...(declined ? { declined } : {})
       };
@@ -371,4 +433,6 @@ Next Steps:
   ensureGitignore(process.cwd());
   logger.success(`All artifacts successfully generated under ${config.outputDir}!`);
   logger.info('Ready for AI Agents (Claude Code, Cursor, Antigravity, Copilot).');
+  if (json) emitJson(result);
+  return result;
 }

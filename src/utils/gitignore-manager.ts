@@ -11,8 +11,12 @@ import { logger } from './logger';
 // policy (ghk init --enterprise) and is versioned: ignore the directory's contents, then re-include it.
 const GHK_LOCAL_DIR = ['.gherkin-ai/*', '!.gherkin-ai/constitution.yaml'];
 
+// .ghe/ is CLI state (caches, context bundles), but the inventory holds the checksums that prove a generated
+// file is unedited. Without it, a fresh clone or a CI job cannot tell generated code from implemented code.
+const GHE_DIR = ['.ghe/*', '!.ghe/inventory.json'];
+
 const GHK_DEFAULT_IGNORES = [
-  '.ghe/',
+  ...GHE_DIR,
   ...GHK_LOCAL_DIR,
   '*.log',
   '*.jsonl',
@@ -46,7 +50,7 @@ export function ensureGitignore(workspaceDir: string = process.cwd()): string {
   
   if (!fileExistsSync(gitignorePath)) {
     const content = `# gherkin-ai CLI Logs, Telemetry & Secrets
-.ghe/
+${GHE_DIR.join('\n')}
 ${GHK_LOCAL_DIR.join('\n')}
 *.log
 *.jsonl
@@ -85,10 +89,13 @@ Thumbs.db
     logger.info(`Removed "generated-specs/" from .gitignore so contracts are tracked in Git at: ${gitignorePath}`);
   }
 
-  // Earlier versions ignored the whole directory, which git cannot re-include from: switch to its contents.
-  if (existingContent.split(/\r?\n/).some(l => l.trim() === '.gherkin-ai/' || l.trim() === '.gherkin-ai')) {
-    existingContent = existingContent.split(/\r?\n/).map(l => (l.trim() === '.gherkin-ai/' || l.trim() === '.gherkin-ai') ? GHK_LOCAL_DIR.join('\n') : l).join('\n');
-    writeFileSync(gitignorePath, existingContent);
+  // Earlier versions ignored whole directories, which git cannot re-include from: switch to their contents.
+  for (const [dir, entries] of [['.gherkin-ai', GHK_LOCAL_DIR], ['.ghe', GHE_DIR]] as const) {
+    const whole = (l: string) => l.trim() === `${dir}/` || l.trim() === dir;
+    if (existingContent.split(/\r?\n/).some(whole)) {
+      existingContent = existingContent.split(/\r?\n/).map(l => (whole(l) ? entries.join('\n') : l)).join('\n');
+      writeFileSync(gitignorePath, existingContent);
+    }
   }
 
   const lines = existingContent.split(/\r?\n/).map(l => l.trim());

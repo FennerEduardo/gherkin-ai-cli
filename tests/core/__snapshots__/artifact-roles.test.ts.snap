@@ -1,0 +1,308 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`artifact roles > csharp/dotnet: kernel and wiring files 1`] = `
+[
+  "kernel src/Domain/Kernel/DomainValidationException.cs",
+  "kernel src/Domain/Kernel/OrderCheckoutAggregate.cs",
+  "kernel src/Runtime/Brokers.cs",
+  "kernel src/Runtime/CommandService.cs",
+  "kernel src/Runtime/Connections.cs",
+  "kernel src/Runtime/InboxConsumer.cs",
+  "kernel src/Runtime/OutboxRelay.cs",
+  "kernel src/Runtime/SagaOrchestrator.cs",
+  "kernel src/Runtime/Schema.cs",
+  "kernel src/Runtime/Telemetry.cs",
+  "kernel src/Runtime/Topology.cs",
+  "kernel tests/orders.Tests/Domain/OrderCheckoutAggregateTests.cs",
+  "kernel tests/orders.Tests/Runtime/RuntimeIntegrationTests.cs",
+  "wiring src/Api/Workers/OutboxRelayWorker.cs",
+]
+`;
+
+exports[`artifact roles > elixir/phoenix: kernel and wiring files 1`] = `
+[
+  "kernel lib/orders/domain/order_checkout_aggregate.ex",
+  "kernel lib/orders/runtime/broker.ex",
+  "kernel lib/orders/runtime/command_service.ex",
+  "kernel lib/orders/runtime/inbox_consumer.ex",
+  "kernel lib/orders/runtime/outbox_relay.ex",
+  "kernel lib/orders/runtime/saga.ex",
+  "kernel lib/orders/runtime/schema.ex",
+  "kernel lib/orders/runtime/telemetry.ex",
+  "kernel lib/orders/runtime/topology.ex",
+  "kernel test/orders/domain/order_checkout_aggregate_test.exs",
+  "kernel test/orders/runtime/integration_test.exs",
+  "wiring lib/orders/outbox_relay_worker.ex",
+  "wiring test/orders_web/order_checkout_http_integration_test.exs",
+]
+`;
+
+exports[`artifact roles > go/chi: kernel and wiring files 1`] = `
+[
+  "kernel internal/domain/kernel.go",
+  "kernel internal/domain/order_checkout.go",
+  "kernel internal/domain/order_checkout_test.go",
+  "kernel internal/runtime/broker.go",
+  "kernel internal/runtime/command_service.go",
+  "kernel internal/runtime/inbox_consumer.go",
+  "kernel internal/runtime/otel.go",
+  "kernel internal/runtime/outbox_relay.go",
+  "kernel internal/runtime/runtime_integration_test.go",
+  "kernel internal/runtime/saga.go",
+  "kernel internal/runtime/schema.go",
+  "kernel internal/runtime/telemetry.go",
+  "wiring internal/runtime/http_integration_test.go",
+]
+`;
+
+exports[`artifact roles > java/quarkus: kernel and wiring files 1`] = `
+[
+  "kernel src/main/java/com/example/orders/domain/DomainValidationException.java",
+  "kernel src/main/java/com/example/orders/domain/OrderCheckoutAggregate.java",
+  "kernel src/main/java/com/example/orders/domain/OrderCheckoutCommand.java",
+  "kernel src/main/java/com/example/orders/domain/OrderCheckoutDomainEvent.java",
+  "kernel src/main/java/com/example/orders/domain/OrderCheckoutEventType.java",
+  "kernel src/main/java/com/example/orders/domain/OrderCheckoutState.java",
+  "kernel src/main/java/com/example/orders/runtime/Broker.java",
+  "kernel src/main/java/com/example/orders/runtime/BrokerMessage.java",
+  "kernel src/main/java/com/example/orders/runtime/CommandService.java",
+  "kernel src/main/java/com/example/orders/runtime/ConnectionFactory.java",
+  "kernel src/main/java/com/example/orders/runtime/EventPublisher.java",
+  "kernel src/main/java/com/example/orders/runtime/EventSubscription.java",
+  "kernel src/main/java/com/example/orders/runtime/InboxConsumer.java",
+  "kernel src/main/java/com/example/orders/runtime/OutboxRelay.java",
+  "kernel src/main/java/com/example/orders/runtime/PubSubBroker.java",
+  "kernel src/main/java/com/example/orders/runtime/RabbitMqBroker.java",
+  "kernel src/main/java/com/example/orders/runtime/SagaOrchestrator.java",
+  "kernel src/main/java/com/example/orders/runtime/Schema.java",
+  "kernel src/main/java/com/example/orders/runtime/Telemetry.java",
+  "kernel src/main/java/com/example/orders/runtime/Topology.java",
+  "kernel src/test/java/com/example/orders/domain/OrderCheckoutAggregateTest.java",
+  "kernel src/test/java/com/example/orders/runtime/RuntimeIntegrationTest.java",
+  "wiring src/main/java/com/example/orders/runtime/DatabaseUrlConfigSource.java",
+  "wiring src/main/java/com/example/orders/runtime/OutboxRelayWorker.java",
+  "wiring src/main/java/com/example/orders/runtime/RuntimeProducers.java",
+  "wiring src/main/resources/META-INF/services/org.eclipse.microprofile.config.spi.ConfigSource",
+]
+`;
+
+exports[`artifact roles > java/spring-boot: kernel and wiring files 1`] = `
+[
+  "kernel src/main/java/com/example/orders/domain/DomainValidationException.java",
+  "kernel src/main/java/com/example/orders/domain/OrderCheckoutAggregate.java",
+  "kernel src/main/java/com/example/orders/domain/OrderCheckoutCommand.java",
+  "kernel src/main/java/com/example/orders/domain/OrderCheckoutDomainEvent.java",
+  "kernel src/main/java/com/example/orders/domain/OrderCheckoutEventType.java",
+  "kernel src/main/java/com/example/orders/domain/OrderCheckoutState.java",
+  "kernel src/main/java/com/example/orders/runtime/Broker.java",
+  "kernel src/main/java/com/example/orders/runtime/BrokerMessage.java",
+  "kernel src/main/java/com/example/orders/runtime/CommandService.java",
+  "kernel src/main/java/com/example/orders/runtime/ConnectionFactory.java",
+  "kernel src/main/java/com/example/orders/runtime/EventPublisher.java",
+  "kernel src/main/java/com/example/orders/runtime/EventSubscription.java",
+  "kernel src/main/java/com/example/orders/runtime/InboxConsumer.java",
+  "kernel src/main/java/com/example/orders/runtime/OutboxRelay.java",
+  "kernel src/main/java/com/example/orders/runtime/PubSubBroker.java",
+  "kernel src/main/java/com/example/orders/runtime/RabbitMqBroker.java",
+  "kernel src/main/java/com/example/orders/runtime/SagaOrchestrator.java",
+  "kernel src/main/java/com/example/orders/runtime/Schema.java",
+  "kernel src/main/java/com/example/orders/runtime/Telemetry.java",
+  "kernel src/main/java/com/example/orders/runtime/Topology.java",
+  "kernel src/test/java/com/example/orders/domain/OrderCheckoutAggregateTest.java",
+  "kernel src/test/java/com/example/orders/runtime/RuntimeIntegrationTest.java",
+  "wiring src/main/java/com/example/orders/runtime/RuntimeConfiguration.java",
+]
+`;
+
+exports[`artifact roles > kotlin/quarkus: kernel and wiring files 1`] = `
+[
+  "kernel src/main/java/com/example/orders/runtime/Broker.java",
+  "kernel src/main/java/com/example/orders/runtime/BrokerMessage.java",
+  "kernel src/main/java/com/example/orders/runtime/CommandService.java",
+  "kernel src/main/java/com/example/orders/runtime/ConnectionFactory.java",
+  "kernel src/main/java/com/example/orders/runtime/EventPublisher.java",
+  "kernel src/main/java/com/example/orders/runtime/EventSubscription.java",
+  "kernel src/main/java/com/example/orders/runtime/InboxConsumer.java",
+  "kernel src/main/java/com/example/orders/runtime/OutboxRelay.java",
+  "kernel src/main/java/com/example/orders/runtime/PubSubBroker.java",
+  "kernel src/main/java/com/example/orders/runtime/RabbitMqBroker.java",
+  "kernel src/main/java/com/example/orders/runtime/SagaOrchestrator.java",
+  "kernel src/main/java/com/example/orders/runtime/Schema.java",
+  "kernel src/main/java/com/example/orders/runtime/Telemetry.java",
+  "kernel src/main/java/com/example/orders/runtime/Topology.java",
+  "kernel src/main/kotlin/com/example/orders/domain/DomainValidationException.kt",
+  "kernel src/main/kotlin/com/example/orders/domain/OrderCheckoutAggregate.kt",
+  "kernel src/test/java/com/example/orders/runtime/RuntimeIntegrationTest.java",
+  "kernel src/test/kotlin/com/example/orders/domain/OrderCheckoutAggregateTest.kt",
+  "wiring src/main/java/com/example/orders/runtime/DatabaseUrlConfigSource.java",
+  "wiring src/main/java/com/example/orders/runtime/OutboxRelayWorker.java",
+  "wiring src/main/java/com/example/orders/runtime/RuntimeProducers.java",
+  "wiring src/main/resources/META-INF/services/org.eclipse.microprofile.config.spi.ConfigSource",
+]
+`;
+
+exports[`artifact roles > kotlin/spring-boot: kernel and wiring files 1`] = `
+[
+  "kernel src/main/java/com/example/orders/runtime/Broker.java",
+  "kernel src/main/java/com/example/orders/runtime/BrokerMessage.java",
+  "kernel src/main/java/com/example/orders/runtime/CommandService.java",
+  "kernel src/main/java/com/example/orders/runtime/ConnectionFactory.java",
+  "kernel src/main/java/com/example/orders/runtime/EventPublisher.java",
+  "kernel src/main/java/com/example/orders/runtime/EventSubscription.java",
+  "kernel src/main/java/com/example/orders/runtime/InboxConsumer.java",
+  "kernel src/main/java/com/example/orders/runtime/OutboxRelay.java",
+  "kernel src/main/java/com/example/orders/runtime/PubSubBroker.java",
+  "kernel src/main/java/com/example/orders/runtime/RabbitMqBroker.java",
+  "kernel src/main/java/com/example/orders/runtime/SagaOrchestrator.java",
+  "kernel src/main/java/com/example/orders/runtime/Schema.java",
+  "kernel src/main/java/com/example/orders/runtime/Telemetry.java",
+  "kernel src/main/java/com/example/orders/runtime/Topology.java",
+  "kernel src/main/kotlin/com/example/orders/domain/DomainValidationException.kt",
+  "kernel src/main/kotlin/com/example/orders/domain/OrderCheckoutAggregate.kt",
+  "kernel src/test/java/com/example/orders/runtime/RuntimeIntegrationTest.java",
+  "kernel src/test/kotlin/com/example/orders/domain/OrderCheckoutAggregateTest.kt",
+  "wiring src/main/java/com/example/orders/runtime/RuntimeConfiguration.java",
+]
+`;
+
+exports[`artifact roles > php/laravel: kernel and wiring files 1`] = `
+[
+  "kernel app/Domain/OrderCheckout/DomainValidationException.php",
+  "kernel app/Domain/OrderCheckout/OrderCheckoutAggregate.php",
+  "kernel app/Domain/OrderCheckout/OrderCheckoutCommand.php",
+  "kernel app/Domain/OrderCheckout/OrderCheckoutDomainEvent.php",
+  "kernel app/Domain/OrderCheckout/OrderCheckoutEventType.php",
+  "kernel app/Domain/OrderCheckout/OrderCheckoutState.php",
+  "kernel app/Runtime/Broker.php",
+  "kernel app/Runtime/BrokerMessage.php",
+  "kernel app/Runtime/Brokers.php",
+  "kernel app/Runtime/CommandService.php",
+  "kernel app/Runtime/Database.php",
+  "kernel app/Runtime/Delivery.php",
+  "kernel app/Runtime/EventPublisher.php",
+  "kernel app/Runtime/EventSubscription.php",
+  "kernel app/Runtime/InboxConsumer.php",
+  "kernel app/Runtime/Messaging.php",
+  "kernel app/Runtime/OutboxRelay.php",
+  "kernel app/Runtime/PubSubBroker.php",
+  "kernel app/Runtime/RabbitMqBroker.php",
+  "kernel app/Runtime/SagaOrchestrator.php",
+  "kernel app/Runtime/Schema.php",
+  "kernel app/Runtime/Telemetry.php",
+  "kernel tests/Integration/RuntimeIntegrationTest.php",
+  "wiring app/Application/RuntimeCommandPort.php",
+  "wiring app/Console/Commands/OutboxRelayCommand.php",
+  "wiring app/Providers/RuntimeServiceProvider.php",
+]
+`;
+
+exports[`artifact roles > python/django: kernel and wiring files 1`] = `
+[
+  "kernel app/domain/__init__.py",
+  "kernel app/domain/errors.py",
+  "kernel app/domain/order_checkout.py",
+  "kernel app/runtime/__init__.py",
+  "kernel app/runtime/broker.py",
+  "kernel app/runtime/command_service.py",
+  "kernel app/runtime/inbox_consumer.py",
+  "kernel app/runtime/otel.py",
+  "kernel app/runtime/outbox_relay.py",
+  "kernel app/runtime/saga.py",
+  "kernel app/runtime/schema.py",
+  "kernel app/runtime/telemetry.py",
+]
+`;
+
+exports[`artifact roles > python/fastapi: kernel and wiring files 1`] = `
+[
+  "kernel app/domain/__init__.py",
+  "kernel app/domain/errors.py",
+  "kernel app/domain/order_checkout.py",
+  "kernel app/runtime/__init__.py",
+  "kernel app/runtime/broker.py",
+  "kernel app/runtime/command_service.py",
+  "kernel app/runtime/inbox_consumer.py",
+  "kernel app/runtime/otel.py",
+  "kernel app/runtime/outbox_relay.py",
+  "kernel app/runtime/saga.py",
+  "kernel app/runtime/schema.py",
+  "kernel app/runtime/telemetry.py",
+]
+`;
+
+exports[`artifact roles > ruby/rails: kernel and wiring files 1`] = `
+[
+  "kernel app/domain/domain_validation_error.rb",
+  "kernel app/domain/order_checkout_aggregate.rb",
+  "kernel app/domain/order_checkout_command.rb",
+  "kernel app/domain/order_checkout_domain_event.rb",
+  "kernel app/runtime/broker_delivery.rb",
+  "kernel app/runtime/broker_message.rb",
+  "kernel app/runtime/command_service.rb",
+  "kernel app/runtime/event_broker.rb",
+  "kernel app/runtime/inbox_consumer.rb",
+  "kernel app/runtime/outbox_relay.rb",
+  "kernel app/runtime/pub_sub_broker.rb",
+  "kernel app/runtime/rabbit_mq_broker.rb",
+  "kernel app/runtime/runtime_schema.rb",
+  "kernel app/runtime/runtime_telemetry.rb",
+  "kernel app/runtime/runtime_topology.rb",
+  "kernel app/runtime/saga_orchestrator.rb",
+  "kernel spec/domain/order_checkout_aggregate_spec.rb",
+  "wiring lib/tasks/outbox.rake",
+]
+`;
+
+exports[`artifact roles > rust/axum: kernel and wiring files 1`] = `
+[
+  "kernel src/domain/mod.rs",
+  "kernel src/domain/order_checkout.rs",
+  "kernel src/runtime/broker.rs",
+  "kernel src/runtime/command_service.rs",
+  "kernel src/runtime/error.rs",
+  "kernel src/runtime/inbox_consumer.rs",
+  "kernel src/runtime/mod.rs",
+  "kernel src/runtime/otel.rs",
+  "kernel src/runtime/outbox_relay.rs",
+  "kernel src/runtime/saga.rs",
+  "kernel src/runtime/schema.rs",
+  "kernel src/runtime/telemetry.rs",
+  "kernel tests/runtime_integration.rs",
+  "wiring tests/http_integration.rs",
+]
+`;
+
+exports[`artifact roles > typescript/express: kernel and wiring files 1`] = `
+[
+  "kernel src/domain/order-checkout.aggregate.spec.ts",
+  "kernel src/domain/order-checkout.aggregate.ts",
+  "kernel src/runtime/broker.ts",
+  "kernel src/runtime/command-service.ts",
+  "kernel src/runtime/inbox-consumer.ts",
+  "kernel src/runtime/index.ts",
+  "kernel src/runtime/otel.ts",
+  "kernel src/runtime/outbox-relay.ts",
+  "kernel src/runtime/saga.ts",
+  "kernel src/runtime/schema.ts",
+  "kernel src/runtime/telemetry.ts",
+  "kernel test/integration/runtime.int-spec.ts",
+]
+`;
+
+exports[`artifact roles > typescript/nestjs: kernel and wiring files 1`] = `
+[
+  "kernel src/order-checkout/domain/order-checkout.aggregate.spec.ts",
+  "kernel src/order-checkout/domain/order-checkout.aggregate.ts",
+  "kernel src/runtime/broker.ts",
+  "kernel src/runtime/command-service.ts",
+  "kernel src/runtime/inbox-consumer.ts",
+  "kernel src/runtime/index.ts",
+  "kernel src/runtime/otel.ts",
+  "kernel src/runtime/outbox-relay.ts",
+  "kernel src/runtime/saga.ts",
+  "kernel src/runtime/schema.ts",
+  "kernel src/runtime/telemetry.ts",
+  "kernel test/integration/runtime.int-spec.ts",
+  "wiring src/runtime/runtime.module.ts",
+]
+`;
