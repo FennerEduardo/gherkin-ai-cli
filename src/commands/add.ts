@@ -107,7 +107,8 @@ export async function handleAddCommand(options: { feature?: string; target?: str
   }));
   const inventoryPath = path.join(cwd, '.ghe', 'inventory.json');
   const previous = readInventoryFile(inventoryPath);
-  const plans = planWrites(artifacts, { cwd, outputDir, inventory: previous.artifacts, protect: config.generation?.protect });
+  // `ghk add` is an explicit request for these files: it creates them in an implemented project too.
+  const plans = planWrites(artifacts, { cwd, outputDir, inventory: previous.artifacts, protect: config.generation?.protect, exclude: config.generation?.exclude, includeScaffold: true });
   applyWrites(plans, new Map(artifacts.map(a => [a.filePath, a.content])), (file, content) => writeFileSync(file, content));
   for (const p of plans) {
     const shown = path.relative(cwd, p.fullPath);

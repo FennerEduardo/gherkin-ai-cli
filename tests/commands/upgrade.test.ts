@@ -50,6 +50,16 @@ describe('upgrade analysis', () => {
     expect(generatedFindings({ oldest: '3.0.0', newest: '3.0.0', files: ['a'] }, '3.0.0', './out')[0].id).toBe('generated.current');
   });
 
+  it('knows generated files from the inventory when they carry no header (E-03)', () => {
+    const none = { files: [] };
+    expect(generatedFindings(none, '3.2.1', './')[0].id).toBe('generated.none');
+    expect(generatedFindings(none, '3.2.1', './', { files: 57 })[0]).toMatchObject({ id: 'generated.inventory-only', severity: 'recommended', fix: 'auto' });
+    expect(generatedFindings(none, '3.2.1', './', { files: 57, cliVersion: '3.2.0' })[0]).toMatchObject({ id: 'generated.refresh', message: expect.stringContaining('v3.2.0') });
+    expect(generatedFindings(none, '3.2.1', './', { files: 57, cliVersion: '3.2.1' })[0].id).toBe('generated.current');
+    // The older of header and inventory wins.
+    expect(generatedFindings({ oldest: '3.1.1', newest: '3.1.1', files: ['a.ts'] }, '3.2.1', './', { files: 3, cliVersion: '3.2.1' })[0].message).toContain('v3.1.1');
+  });
+
   it('adds $schema automatically and reports schema errors and unknown keys', () => {
     const ok = checkProjectConfig({ projectName: 'x', outputDir: './out' }, 'gherkin-ai.config.json');
     expect(Object.keys(ok.fixed!)[0]).toBe('$schema');

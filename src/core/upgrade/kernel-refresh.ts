@@ -19,12 +19,9 @@ import { readInventoryFile, writeInventoryFile, mergeArtifacts } from '../invent
 import { planWrites, applyWrites, sha256, PlannedWrite } from '../write-protection';
 import { projectFeatureFiles } from '../workspace-projects';
 import { writeGeneratedFile } from '../../utils/file-system';
+import { isKernelFile } from '../artifact-roles';
 
-/** Runtime kernel files in every stack: a `runtime` directory or module, and the runtime integration test. */
-export function isKernelFile(filePath: string): boolean {
-  const p = filePath.replace(/\\/g, '/');
-  return /(^|\/)runtime\//i.test(p) || /(^|\/)[^/]*runtime[_.-]?(int|integration)[^/]*$/i.test(p) || /RuntimeIntegration(Test|Tests|Spec)?\.\w+$/.test(p);
-}
+export { isKernelFile };
 
 export interface KernelRefreshResult {
   project: string;
@@ -62,13 +59,17 @@ export function refreshKernel(projectDir: string, opts: { dryRun?: boolean } = {
     }
 
     const artifacts = [...kernel.values()];
-    const plans = planWrites(artifacts, { cwd: projectDir, outputDir: config.outputDir, inventory: inventory.artifacts, protect: config.generation?.protect });
+    const plans = planWrites(artifacts, { cwd: projectDir, outputDir: config.outputDir, inventory: inventory.artifacts, protect: config.generation?.protect, exclude: config.generation?.exclude });
     if (!opts.dryRun) {
       applyWrites(plans, new Map(artifacts.map(a => [a.filePath, a.content])), writeGeneratedFile);
       const generatedAt = new Date().toISOString();
+      // Skipped files (wiring in an implemented project, generation.exclude) and files held as .ghk-new left the
+      // file on disk as it was: keep what is on record.
+      const written = new Set(plans.filter(p => p.action !== 'skipped' && !p.held).map(p => p.filePath));
       writeInventoryFile(inventoryPath, {
         ...inventory,
-        artifacts: mergeArtifacts(inventory.artifacts, artifacts.map(a => ({ filePath: a.filePath, type: a.type, checksum: sha256(a.content), feature: a.feature, generatedAt })))
+        artifacts: mergeArtifacts(inventory.artifacts, artifacts.filter(a => written.has(a.filePath))
+          .map(a => ({ filePath: a.filePath, type: a.type, checksum: sha256(a.content), feature: a.feature, generatedAt })))
       });
     }
     return { project: projectDir, plans };

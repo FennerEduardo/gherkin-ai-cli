@@ -30,7 +30,10 @@ import {
 import { emitJson } from '../utils/output';
 import { logger } from '../utils/logger';
 import { CLI_NAME, CLI_VERSION } from '../version';
+import { readInventoryFile } from '../core/inventory';
 import { KernelRefreshResult, refreshKernel } from '../core/upgrade/kernel-refresh';
+import { isSourceCode } from '../core/artifact-roles';
+import { IMPLEMENTED_MARKER } from '../core/write-protection';
 import { findGhkProjects } from '../core/workspace-projects';
 
 export interface UpgradeOptions {
@@ -63,6 +66,8 @@ export interface UpgradeApplied {
   kept: string[];
   changedFiles: string[];
   commit?: string;
+  /** Kernel files kept as they are: the regenerated code waits in .ghk-new until they are merged. */
+  kernelPendingMerge?: string[];
 }
 
 export interface UpgradeReport {
@@ -174,7 +179,8 @@ export async function analyzeProject(options: UpgradeOptions, cwd = process.cwd(
   const outputAbs = path.resolve(cwd, outputDir);
 
   const generated = detectGeneratedVersion(outputAbs);
-  findings.push(...generatedFindings(generated, CLI_VERSION, outputDir));
+  const inventory = readInventoryFile(path.join(cwd, '.ghe', 'inventory.json'));
+  findings.push(...generatedFindings(generated, CLI_VERSION, outputDir, { files: inventory.artifacts.filter(a => a.checksum).length, cliVersion: inventory.cliVersion }));
 
   let features: string[] = [];
   try {
@@ -239,12 +245,15 @@ async function applyUpgrade(analysis: Analysis, options: UpgradeOptions, cwd: st
   } else if (options.regenerate !== false && analysis.features.length) {
     const previousInventory = readInventory(cwd);
     const generated = new Set<string>();
+    const pendingKernel: string[] = [];
     const { handleGenerateCommand } = await import('./generate');
     // The inventory accumulates entries across features: only those written by this run count as regenerated.
     const runStartedAt = new Date().toISOString();
     for (const feature of analysis.features) {
       logger.info(`Regenerating from ${feature} ...`);
-      await handleGenerateCommand({ feature, config: options.config, yes: true });
+      // On its own branch, a generated header is enough to replace a file without a checksum (2.x projects).
+      const result = await handleGenerateCommand({ feature, config: options.config, yes: true, json: false, trustHeaders: true });
+      for (const file of result?.kernelPendingMerge ?? []) if (!pendingKernel.includes(file)) pendingKernel.push(file);
       for (const entry of readInventory(cwd)) {
         if (entry.generatedAt && entry.generatedAt >= runStartedAt) generated.add(entry.filePath.replace(/\\/g, '/'));
       }
@@ -266,6 +275,14 @@ async function applyUpgrade(analysis: Analysis, options: UpgradeOptions, cwd: st
       trackedFiles,
       prune: options.prune
     });
+    // In an implemented project, hand-written code may still use a generated file the generator dropped
+    // (e.g. a kernel class that moved): stale source files are reported, never deleted.
+    if (fs.existsSync(path.join(cwd, IMPLEMENTED_MARKER)) && !options.prune) {
+      const code = stale.removable.filter(isSourceCode);
+      stale.removable = stale.removable.filter(f => !isSourceCode(f));
+      stale.kept = [...stale.kept, ...code].sort();
+    }
+    applied.kernelPendingMerge = pendingKernel;
     for (const rel of stale.removable) {
       const full = path.join(analysis.outputAbs, rel);
       fs.rmSync(full, { force: true });
@@ -383,6 +400,10 @@ export async function handleUpgradeCommand(options: UpgradeOptions = {}): Promis
     analysis.findings = analysis.findings.filter(f => f.area !== 'generated' || f.fix !== 'auto');
     if (applied.kept.length) {
       analysis.findings.push({ id: 'generated.stale-kept', area: 'generated', severity: 'recommended', fix: 'manual', message: `${applied.kept.length} file(s) from the previous generation are no longer generated: ${applied.kept.slice(0, 5).join(', ')}${applied.kept.length > 5 ? ', ...' : ''}`, hint: 'Delete them if they are unused, or re-run with --prune.' });
+    }
+    const pending = applied.kernelPendingMerge ?? [];
+    if (pending.length) {
+      analysis.findings.push({ id: 'kernel.pending-merge', area: 'generated', severity: 'recommended', fix: 'manual', message: `Runtime kernel pending merge: ${pending.length} kernel file(s) kept (${pending.slice(0, 3).join(', ')}${pending.length > 3 ? ', ...' : ''}). The regenerated source files were written as .ghk-new so the project still compiles.`, hint: 'Merge the kernel .ghk-new files (ghk upgrade --kernel --dry-run lists them), then run ghk generate again.' });
     }
   }
   summary = summarize(analysis.findings);

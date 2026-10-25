@@ -105,12 +105,14 @@ export function registerGenerationCommands(program: Command): void {
     .option('--review', 'Review the <file>.ghk-new versions next to edited files: take the generated version or keep yours')
     .option('--accept-new', 'With --review: take every generated version')
     .option('--keep-mine', 'With --review: keep every edited file (those generated versions are not offered again)')
-    .option('--json', 'With --review: output the pending versions as JSON')
+    .option('--include-scaffold', 'In a project marked .ghk-implemented, also create controllers, wiring and tests (only the kernel and contracts by default)')
+    .option('--json', 'Output the write plan as JSON (with --review: the pending versions)')
     .action(async (options) => {
+      const json = options.json || program.opts().json;
       if (options.review) {
-        await (await import('../commands/review')).handleGenerateReview({ ...options, json: options.json || program.opts().json });
+        await (await import('../commands/review')).handleGenerateReview({ ...options, json });
         return;
       }
-      await (await import('../commands/generate')).handleGenerateCommand(options);
+      await (await import('../commands/generate')).handleGenerateCommand({ ...options, json });
     });
 }
