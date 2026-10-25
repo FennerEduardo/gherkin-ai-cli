@@ -15,7 +15,13 @@ export interface ExecutionMetrics {
   requirementsCovered: number;
   totalRequirements: number;
   developmentValueEfficiency: number;
-  requirementCoveragePct: number;
+  /** null when nothing measured it (see requirementCoverageMethod). */
+  requirementCoveragePct: number | null;
+  /**
+   * How requirementsCovered was obtained. "specification-traceability": requirements in the project's
+   * features that a test references (the Traceability dimension of `ghk converge`), not observed execution.
+   */
+  requirementCoverageMethod: 'specification-traceability' | 'unavailable';
 }
 
 export class MetricsEngine {
@@ -51,18 +57,20 @@ export class MetricsEngine {
     this.metrics.humanInterventions = (this.metrics.humanInterventions || 0) + 1;
   }
 
-  public setRequirements(covered: number, total: number) {
+  public setRequirements(covered: number, total: number, method: ExecutionMetrics['requirementCoverageMethod'] = 'specification-traceability') {
     this.metrics.requirementsCovered = covered;
     this.metrics.totalRequirements = total;
+    this.metrics.requirementCoverageMethod = method;
   }
 
   public calculateFinalMetrics(): ExecutionMetrics {
     this.metrics.endTime = new Date().toISOString();
     this.metrics.durationMs = new Date(this.metrics.endTime).getTime() - new Date(this.metrics.startTime!).getTime();
-    
+
     const covered = this.metrics.requirementsCovered || 0;
-    const totalReq = this.metrics.totalRequirements || 1;
-    this.metrics.requirementCoveragePct = (covered / totalReq) * 100;
+    const measured = this.metrics.requirementCoverageMethod !== undefined && this.metrics.requirementCoverageMethod !== 'unavailable' && (this.metrics.totalRequirements ?? 0) > 0;
+    this.metrics.requirementCoverageMethod = measured ? this.metrics.requirementCoverageMethod : 'unavailable';
+    this.metrics.requirementCoveragePct = measured ? (covered / this.metrics.totalRequirements!) * 100 : null;
 
     // DVE = Verified Useful Output / (Human Intervention + Agent Cost)
     // Here we define Useful Output as covered requirements + successful test runs
@@ -94,7 +102,7 @@ export class MetricsEngine {
     const report = `# Execution Report - ${finalMetrics.runId}
 ## Metrics
 - **DVE (Development Value Efficiency):** ${finalMetrics.developmentValueEfficiency}
-- **Requirement Coverage:** ${finalMetrics.requirementCoveragePct.toFixed(2)}% (${finalMetrics.requirementsCovered}/${finalMetrics.totalRequirements})
+- **Requirement Coverage:** ${finalMetrics.requirementCoveragePct === null ? 'unavailable (no feature requirements measured)' : `${finalMetrics.requirementCoveragePct.toFixed(2)}% (${finalMetrics.requirementsCovered}/${finalMetrics.totalRequirements}, ${finalMetrics.requirementCoverageMethod})`}
 - **Duration:** ${finalMetrics.durationMs}ms
 - **Agent Attempts:** ${finalMetrics.agentAttempts}
 - **Test Runs:** ${finalMetrics.testRuns} (${finalMetrics.testFailures} failures)

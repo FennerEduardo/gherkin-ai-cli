@@ -15,6 +15,7 @@ import fs from 'fs';
 import path from 'path';
 import type { GherkinAIConfig } from '../config';
 import type { AgentFirewall, FirewallDecision } from './agent-firewall';
+import { AgentChangeSet, writeProposal } from './agent-changes';
 import { logger } from '../../utils/logger';
 import { PolicyError } from '../errors';
 import { isCI } from '../run-context';
@@ -42,21 +43,19 @@ export function currentGitBranch(cwd = process.cwd()): string | null {
 
 /**
  * Writes one agent-generated file if the agent firewall allows it. Anything else (DENY or
- * REQUIRE_APPROVAL) is saved as a proposal in .ghe/patches for a human to review instead.
+ * REQUIRE_APPROVAL) is saved as a unified-diff proposal in .ghe/patches for a human to review instead.
+ * A write is recorded in `changes` first, so the run can be rolled back.
  * Returns the decision so the caller can report it.
  */
-export function writeAgentFile(firewall: AgentFirewall, fullPath: string, content: string, command: string): FirewallDecision & { proposalPath?: string } {
+export function writeAgentFile(firewall: AgentFirewall, fullPath: string, content: string, command: string, changes?: AgentChangeSet): FirewallDecision & { proposalPath?: string } {
   const decision = firewall.check({ kind: 'write', target: fullPath, agent: command });
   if (decision.verdict === 'ALLOW') {
+    changes?.beforeWrite(fullPath);
     fs.mkdirSync(path.dirname(fullPath), { recursive: true });
     fs.writeFileSync(fullPath, content, 'utf8');
     return decision;
   }
-  const patchDir = path.join(firewall.policy.workspace, '.ghe', 'patches');
-  fs.mkdirSync(patchDir, { recursive: true });
-  const proposalPath = path.join(patchDir, `${path.basename(fullPath)}.proposed`);
-  fs.writeFileSync(proposalPath, content, 'utf8');
-  return { ...decision, proposalPath };
+  return { ...decision, proposalPath: writeProposal(firewall.policy.workspace, fullPath, content) };
 }
 
 export function reportAgentWrite(result: ReturnType<typeof writeAgentFile>, displayPath: string, what = 'changes'): void {

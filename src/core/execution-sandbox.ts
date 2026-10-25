@@ -38,6 +38,16 @@ export interface SandboxExecutionOptions {
    * extensions into system directories (pip, Bundler, PHP extensions). Both keep the limits.
    */
   profile?: SandboxProfile;
+  /** On the host: leave LLM, cloud and registry credentials out of the environment (code an agent wrote runs). */
+  scrubCredentials?: boolean;
+}
+
+/** Credentials the CLI and its user hold that a test run never needs: LLM providers, clouds, registries, git hosts. */
+const CREDENTIAL_ENV = /^(ANTHROPIC|CLAUDE|OPENAI|AZURE_OPENAI|GEMINI|GOOGLE|VERTEX|DEEPSEEK|MISTRAL|COHERE|GROQ|XAI|OPENROUTER|BEDROCK|AWS|AZURE|ARM|GCP|GCLOUD|GH|GITHUB|GITLAB|NPM|NODE_AUTH|PYPI|TWINE|DOCKER|HF|HUGGINGFACE|GHK_LLM|LLM)_?\w*(KEY|TOKEN|SECRET|PASSWORD|CREDENTIALS?)\w*$/i;
+
+/** The environment without the credentials an agent-written test must not see. */
+export function scrubCredentialEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  return Object.fromEntries(Object.entries(env).filter(([name]) => !CREDENTIAL_ENV.test(name) && name !== 'GOOGLE_APPLICATION_CREDENTIALS'));
 }
 
 export type SandboxProfile = 'strict' | 'toolchain';
@@ -113,7 +123,7 @@ export function executeSandbox(options: SandboxExecutionOptions = {}): SandboxRe
       timeout,
       encoding: 'utf8',
       stdio: ['pipe', 'pipe', 'pipe'],
-      env: { ...process.env, ...(options.env ?? {}), CI: 'true', FORCE_COLOR: '0' }
+      env: { ...(options.scrubCredentials ? scrubCredentialEnv(process.env) : process.env), ...(options.env ?? {}), CI: 'true', FORCE_COLOR: '0' }
     });
 
     return {

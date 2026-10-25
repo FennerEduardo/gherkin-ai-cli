@@ -16,7 +16,8 @@ import path from 'path';
 import { buildProjectContext } from '../core/context-builder';
 import { assessDeliveryRisk } from '../core/risk-engine';
 import { RealAgentProvider, LLMConfig } from '../core/agent-adapter';
-import { handleVerifyCommand } from './verify';
+import { handleVerifyCommand, specRequirementCoverage } from './verify';
+import { writeProposal } from '../core/governance/agent-changes';
 import { loadConfig } from '../core/config';
 import { resolveSpecDir } from '../utils/spec-dir-resolver';
 import { validateRequirement } from '../core/requirement-validator';
@@ -28,6 +29,8 @@ export interface AutopilotOptions {
   command?: string;
   allowUnattendedWrites?: boolean;
   forceBranch?: boolean;
+  /** Run the repair loop's tests on this machine instead of the sandbox container. */
+  host?: boolean;
 }
 
 interface AutopilotRunLog {
@@ -150,6 +153,8 @@ export async function handleAutopilotCommand(options: AutopilotOptions = {}): Pr
   }
 
   let specContent = '';
+  /** The feature written to disk: the bindings are then limited to its impact scope. */
+  let specFile: string | undefined;
   if (specRes.success && specRes.codeModifications && specRes.codeModifications.length > 0) {
     metricsEngine.recordAgentAttempt(specRes.tokensUsed || 0, specRes.codeModifications.length);
     execEvents.push({ type: 'spec_agent_attempt', tokens: specRes.tokensUsed });
@@ -174,11 +179,8 @@ export async function handleAutopilotCommand(options: AutopilotOptions = {}): Pr
         if (process.env.GHK_STDOUT === 'true') {
           console.log(chalk.yellow(`   [DRY RUN] Proposed spec for ${p}:\n${mod.content}`));
         } else {
-          const patchDir = path.resolve('.ghe', 'patches');
-          fs.mkdirSync(patchDir, { recursive: true });
-          const patchPath = path.join(patchDir, path.basename(p) + '.proposed');
-          fs.writeFileSync(patchPath, mod.content, 'utf8');
-          console.log(chalk.yellow(`   [DRY RUN] Saved proposed spec to ${patchPath}`));
+          const patchPath = writeProposal(process.cwd(), fullPath, mod.content);
+          console.log(chalk.yellow(`   [DRY RUN] Saved proposed spec to ${path.relative(process.cwd(), patchPath)}`));
         }
       } else {
         reportAgentWrite(writeAgentFile(firewall, fullPath, mod.content, 'autopilot'), p, 'specification');
@@ -186,6 +188,7 @@ export async function handleAutopilotCommand(options: AutopilotOptions = {}): Pr
       
       if (mod.filePath.endsWith('.feature')) {
         specContent = mod.content;
+        if (fs.existsSync(fullPath)) specFile = fullPath;
       }
     }
     runLog.specGenerated = true;
@@ -259,6 +262,9 @@ export async function handleAutopilotCommand(options: AutopilotOptions = {}): Pr
     return;
   }
 
+  // With the feature on disk, the firewall limits the bindings to its impact scope (the repository graph), as
+  // `ghk firewall check --feature` does.
+  const bindingsFirewall = specFile ? AgentFirewall.forWorkspace(process.cwd(), configInstance, { feature: specFile }) : firewall;
   if (scaffoldRes.success && scaffoldRes.codeModifications && scaffoldRes.codeModifications.length > 0) {
     metricsEngine.recordAgentAttempt(scaffoldRes.tokensUsed || 0, scaffoldRes.codeModifications.length);
     execEvents.push({ type: 'scaffold_agent_attempt', tokens: scaffoldRes.tokensUsed });
@@ -291,14 +297,11 @@ export async function handleAutopilotCommand(options: AutopilotOptions = {}): Pr
         if (process.env.GHK_STDOUT === 'true') {
           console.log(chalk.yellow(`   [DRY RUN] Proposed bindings for ${mod.filePath}:\n${mod.content}`));
         } else {
-          const patchDir = path.resolve('.ghe', 'patches');
-          fs.mkdirSync(patchDir, { recursive: true });
-          const patchPath = path.join(patchDir, path.basename(mod.filePath) + '.proposed');
-          fs.writeFileSync(patchPath, mod.content, 'utf8');
-          console.log(chalk.yellow(`   [DRY RUN] Saved proposed bindings to ${patchPath}`));
+          const patchPath = writeProposal(process.cwd(), fullPath, mod.content);
+          console.log(chalk.yellow(`   [DRY RUN] Saved proposed bindings to ${path.relative(process.cwd(), patchPath)}`));
         }
       } else {
-        reportAgentWrite(writeAgentFile(firewall, fullPath, mod.content, 'autopilot'), mod.filePath, 'bindings');
+        reportAgentWrite(writeAgentFile(bindingsFirewall, fullPath, mod.content, 'autopilot'), mod.filePath, 'bindings');
       }
     }
   } else {
@@ -314,7 +317,7 @@ export async function handleAutopilotCommand(options: AutopilotOptions = {}): Pr
   }
 
   console.log(chalk.blue(`4. Invoking Verification Agent & Closed-Loop Repair...`));
-  await handleVerifyCommand({ autoFix: true, maxRetries: 2, command: options.command, allowUnattendedWrites: options.allowUnattendedWrites, forceBranch: options.forceBranch });
+  await handleVerifyCommand({ autoFix: true, maxRetries: 2, command: options.command, allowUnattendedWrites: options.allowUnattendedWrites, forceBranch: options.forceBranch, host: options.host });
 
   console.log(chalk.blue(`5. Evaluating Enterprise Quality Score Gate...`));
   const riskCard = assessDeliveryRisk(process.cwd(), { config: configInstance });
@@ -337,7 +340,8 @@ export async function handleAutopilotCommand(options: AutopilotOptions = {}): Pr
   }
   console.log('\nRun `ghk quality` to see a detailed risk breakdown.\n');
 
-  metricsEngine.setRequirements(validation.score > 70 ? 10 : 5, 10); // Mock coverage mapping
+  const requirements = specRequirementCoverage(process.cwd());
+  if (requirements) metricsEngine.setRequirements(requirements.covered, requirements.total, 'specification-traceability');
   const logPath = metricsEngine.saveExecutionLog(execEvents, execErrors);
   console.log(chalk.bold.magenta(`\n📊 DVE Metrics & Execution Log saved to: ${logPath}`));
 

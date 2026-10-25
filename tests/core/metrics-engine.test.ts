@@ -62,6 +62,15 @@ describe('MetricsEngine', () => {
     engine.setRequirements(8, 10);
     const metrics = engine.calculateFinalMetrics();
     expect(metrics.requirementCoveragePct).toBe(80);
+    expect(metrics.requirementCoverageMethod).toBe('specification-traceability');
+  });
+
+  it('reports requirement coverage as unavailable when nothing measured it (no made-up figure)', () => {
+    const metrics = engine.calculateFinalMetrics();
+    expect(metrics.requirementCoveragePct).toBeNull();
+    expect(metrics.requirementCoverageMethod).toBe('unavailable');
+    engine.setRequirements(0, 0);
+    expect(engine.calculateFinalMetrics().requirementCoveragePct).toBeNull();
   });
 
   it('calculates DVE accurately', () => {
