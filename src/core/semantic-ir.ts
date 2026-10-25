@@ -85,6 +85,8 @@ export interface FieldSpec {
   validations: ValidationRule[];
   exampleValues: string[];
   enumValues?: string[];
+  /** DataTable header (declared) or the word before a quoted value in a step (inferred, often an identifier). */
+  source?: 'table' | 'step';
 }
 
 export interface ValidationRule {

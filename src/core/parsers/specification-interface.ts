@@ -20,6 +20,11 @@ export interface DomainField {
   name: string;
   type: string;
   validations: string[];
+  /**
+   * Where the field was found: a DataTable header (a declared field) or the word before a quoted value in a
+   * step (`the teacher "t-7"`: often an identifier, not a field). Only table fields become DTOs and columns.
+   */
+  source?: 'table' | 'step';
 }
 
 export interface ParsedFeature {
