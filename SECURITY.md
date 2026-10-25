@@ -53,3 +53,17 @@ Details are in [docs/ENTERPRISE.md](docs/ENTERPRISE.md).
 - **Agent-driven changes.** They are dry-run by default. CI and protected-branch guards apply. Model-proposed paths outside the workspace are dropped.
 - **Web Studio.** It binds to localhost and requires a per-session token, an exact Host match and a same-origin Origin. Commands run without a shell.
 - **Releases.** They are published from CI with npm provenance and a CycloneDX SBOM. `npm audit --audit-level=high` blocks CI.
+
+## Third-party dependencies
+
+What a supply-chain scanner (e.g. Socket) reports for `gherkin-ai`, and why. Last reviewed for 3.2.1.
+
+| Alert | Packages | Why it is there |
+|---|---|---|
+| Network access | LLM SDKs (`@anthropic-ai/sdk`, `@anthropic-ai/bedrock-sdk`, `openai`, `@google/genai`), `undici`, `@modelcontextprotocol/sdk`, `express` | The CLI reaches the network only through the LLM provider you configure, `ghk upgrade --cli` (npm registry), and the servers you start (`web`, `mcp`, `graph --serve`, on localhost). Provider SDKs are loaded only for the provider in use. In egress-restricted networks, allow only your provider's endpoint |
+| Shell access | `ts-morph`, `inquirer` (`external-editor`, for `$EDITOR`), `@napi-rs/keyring`, `@google/genai` | The CLI's own commands (`verify`, `quality`, goldens) run your test commands. The agent firewall governs the agent's commands, not the internals of these libraries |
+| `new Function` / install script | `protobufjs` (from `@google/genai`) | Compiles protobuf decoders at run time; its postinstall only checks the version. It is loaded only when the Gemini provider is used |
+| Deprecated | `node-domexception` (from `@google/genai` → `google-auth-library` → `gaxios` → `node-fetch`) | A polyfill still pulled in by Google's SDK chain, up to its latest versions. It is not used on Node ≥ 22, where `DOMException` is global. 3.2.1 dropped the other path (`openai` 4 → `formdata-node`) by moving to `openai` 7 |
+| Trivial packages | about 13 transitive micro-packages | Not direct dependencies of `gherkin-ai` |
+
+Fixed in 3.2.1: `zod` < 4.6.6 (GHSA-mrhx-c7xc-m3w5, high), now `zod` 4; also `undici`, `body-parser` and `fast-uri` advisories. `npm audit` reports 0 vulnerabilities.
