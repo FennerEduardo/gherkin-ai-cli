@@ -25,6 +25,7 @@ import { buildRepositoryGraph, scopeForFeature } from '../graph/repository-graph
 import { firstMatch } from '../../utils/glob';
 import { isPathInside } from '../../utils/path-guard';
 import { industryForConfig } from '../profiles/industries';
+import { analyzeShell, unwrapCommand } from './shell-command';
 
 export type FirewallActionKind = 'write' | 'execute' | 'network' | 'secret' | 'tool';
 export type FirewallVerdict = 'ALLOW' | 'REQUIRE_APPROVAL' | 'DENY';
@@ -82,8 +83,24 @@ export const BUILTIN_ALLOW_COMMANDS = [
   'ls', 'cat', 'git status', 'git diff', 'git log', 'npm test', 'npm run test', 'npm run build', 'npm run lint', 'npx jest', 'npx vitest',
   'pytest', 'python -m pytest', 'go test', 'go vet', 'go build', 'mvn test', 'mvn verify', './mvnw', 'gradle test', './gradlew', 'dotnet build',
   'dotnet test', 'cargo build', 'cargo test', 'mix test', 'bundle exec rspec', 'vendor/bin/phpunit', 'php artisan test', 'flutter test',
-  'flutter analyze', 'ghk ', 'gherkin-ai '
+  'flutter analyze'
 ];
+/**
+ * gherkin-ai subcommands an agent may run without approval: they read and report. Anything that writes
+ * code, calls an LLM or changes state (generate, implement, autopilot, upgrade --apply, verify --auto-fix,
+ * auth, mcp install...) needs a human.
+ */
+export const READ_ONLY_GHK_COMMANDS = [
+  'lint', 'validate', 'converge', 'quality', 'q', 'graph', 'diff', 'report', 'detect', 'risk', 'verify', 'evaluate', 'eval',
+  'config validate', 'config show', 'config schema', 'upgrade --check', 'firewall check', 'industry show', 'industry list',
+  'help', '--help', '-h', '--version', '-V'
+];
+const GHK_BINARIES = new Set(['ghk', 'gherkin-ai', 'gherkin-cli', 'gherkin-ia']);
+/** Flags that turn a read-only gherkin-ai command into one that writes or serves. */
+const GHK_WRITE_FLAGS = /^--(apply|auto-fix|force|commit|serve|prune|calibrate|accept-new|keep-mine|fix)(=|$)/;
+/** Commands whose arguments are files they read: the write deny-list (secrets, keys) applies to them too. */
+const READ_COMMANDS = new Set(['cat', 'tac', 'nl', 'head', 'tail', 'less', 'more', 'ls', 'grep', 'egrep', 'fgrep', 'rg', 'sed', 'awk', 'strings',
+  'xxd', 'od', 'hexdump', 'base64', 'cp', 'mv', 'tar', 'zip', 'diff', 'cmp', 'sort', 'uniq', 'wc', 'cut', 'file', 'stat', 'source', '.', 'find', 'tee']);
 /** Environment variables that hold secrets: reading them needs an explicit allowSecrets entry. */
 const SECRET_NAME = /(KEY|TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIAL|PRIVATE|AUTH)/i;
 
@@ -134,6 +151,28 @@ const startsWithCommand = (command: string, prefix: string) => {
   return command === p || command.startsWith(`${p} `);
 };
 
+/**
+ * The gherkin-ai subcommand line of `ghk ...`, `npx [--yes] gherkin-ai[@v] ...`, without the global flags
+ * (--json, --yes, --project <dir>...). Undefined for any other command.
+ */
+function ghkSubcommand(argv: string[]): string | undefined {
+  let rest = argv;
+  if (rest[0] === 'npx') {
+    rest = rest.slice(1);
+    while (rest[0]?.startsWith('-')) rest = rest.slice(1);
+  }
+  if (!rest.length || !GHK_BINARIES.has(rest[0].replace(/@[^/]*$/, ''))) return undefined;
+  rest = rest.slice(1);
+  const words: string[] = [];
+  for (let i = 0; i < rest.length; i++) {
+    const a = rest[i];
+    if (a === '--project' || a === '-C' || a === '--locale') { i++; continue; }
+    if (/^--(json|yes|non-interactive|quiet|verbose|no-color|stdout|dry-run)$/.test(a) || a === '-y' || /^--(project|locale)=/.test(a)) continue;
+    words.push(a);
+  }
+  return words.join(' ');
+}
+
 function hostOf(target: string): string {
   try {
     return new URL(target.includes('://') ? target : `https://${target}`).hostname.toLowerCase();
@@ -172,12 +211,43 @@ export class AgentFirewall {
       }
       case 'execute': {
         const command = request.target.trim().replace(/\s+/g, ' ');
-        const segments = command.split(/\s*(?:&&|\|\||;|\|)\s*/).filter(Boolean);
         for (const pattern of p.denyCommands) {
           const re = new RegExp(`(^|[\\s;&|(\`$])${pattern.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?=$|[\\s;&|)])`, 'i');
           if (re.test(command)) return decide('DENY', `deny-command: ${pattern.trim()}`, `"${pattern.trim()}" is not allowed for agents.`);
         }
-        const unknown = segments.filter(segment => !p.allowCommands.some(prefix => startsWithCommand(segment, prefix)));
+        // Parsed as the shell splits it: a newline separates commands, quotes group words.
+        const shell = analyzeShell(request.target);
+        const commands = shell.commands.map(unwrapCommand).filter(argv => argv.length);
+
+        // Files read through a command or a redirection follow the write deny-list: no secrets, nothing outside the workspace.
+        const readArgs = [
+          ...commands.filter(argv => READ_COMMANDS.has(argv[0])).flatMap(argv => argv.slice(1).filter(a => !a.startsWith('-'))),
+          ...shell.redirectTargets
+        ];
+        for (const arg of readArgs) {
+          if (arg.startsWith('~') || (path.isAbsolute(arg) && !isPathInside(p.workspace, arg)) || !isPathInside(p.workspace, path.resolve(p.workspace, arg))) {
+            return decide('DENY', 'read-outside-workspace', `${arg} is outside the workspace.`);
+          }
+          const rel = path.relative(p.workspace, path.resolve(p.workspace, arg)).replace(/\\/g, '/');
+          const denied = rel && firstMatch(rel, p.denyPaths);
+          if (denied) return decide('DENY', `deny-path: ${denied}`, `${rel} is protected; agents may not read it through a command either.`);
+        }
+
+        if (shell.hazards.length) {
+          return decide('REQUIRE_APPROVAL', 'shell-metacharacters', `The command is more than its arguments (${shell.hazards.join(', ')}); a human must check what it runs or writes.`);
+        }
+
+        const unknown: string[] = [];
+        for (const argv of commands) {
+          const line = argv.join(' ');
+          const ghk = ghkSubcommand(argv);
+          if (ghk !== undefined) {
+            if (argv.some(a => GHK_WRITE_FLAGS.test(a) || a === '-o')) return decide('REQUIRE_APPROVAL', 'ghk-write', `"${line}" writes code, files or changes state.`);
+            if (READ_ONLY_GHK_COMMANDS.some(c => startsWithCommand(ghk, c))) continue;
+          }
+          if (argv.some(a => /^--output(-file)?(=|$)/.test(a))) return decide('REQUIRE_APPROVAL', 'writes-file', `"${line}" writes a file (--output).`);
+          if (!p.allowCommands.some(prefix => startsWithCommand(line, prefix))) unknown.push(line);
+        }
         if (unknown.length > 0) return decide('REQUIRE_APPROVAL', 'allow-commands', `Not in the allowed commands: ${unknown.join(' ; ')}`);
         return decide('ALLOW', 'allow-commands', 'Allowed command.');
       }
