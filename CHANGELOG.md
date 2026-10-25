@@ -14,6 +14,11 @@ Most of these were found by adopting 3.2.0 in an implemented multi-service proje
 - **Release gate.** `release.yml` runs the whole CI pipeline on the tag and publishes the tarball the golden builds ran against (`npm pack`, installed in a clean directory). Every action is pinned by commit SHA; CycloneDX is pinned to 6.0.1.
 
 ### Fixed
+- **Generated backends did not create their database tables.** In every stack only the HTTP integration tests ran the kernel's `migrate`: a service deployed against an empty database answered 500 to its first command (`relation "public.ghk_idempotency" does not exist`). The golden image smoke did not see it, because it reused the database the integration suite had just migrated. Found by rebuilding the reference projects with 3.2.1.
+  - Every backend now migrates when it starts, before it serves or relays: Spring (Java, Kotlin), Quarkus (Java, Kotlin), NestJS, Express, FastAPI, Django (WSGI and `outbox_relay`), Go, Rust, ASP.NET Core, Laravel (once per container, and `outbox:relay`), Rails (initializer, also for `outbox:relay`) and Phoenix.
+  - `migrate` runs as one statement that first takes a transaction-scoped advisory lock, so replicas starting together do not race on PostgreSQL's catalog.
+  - `GHK_MIGRATE=false` skips it, for services whose database user has no DDL rights.
+  - The golden image smoke now starts the image against a fresh database.
 - **`ghk upgrade --apply` left an implemented service that did not compile.** The new kernel files were created while the edited ones were kept, so the new files called an API the kept kernel did not have.
   - The runtime kernel (runtime and domain model) is now written as a unit. While a kernel file is kept, every generated source file that would be created or updated is written as `<file>.ghk-new` too, so the project compiles as before.
   - `generate` warns "Runtime kernel pending merge" and `upgrade` reports the finding `kernel.pending-merge`.

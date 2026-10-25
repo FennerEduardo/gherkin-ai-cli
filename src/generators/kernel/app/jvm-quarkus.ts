@@ -174,8 +174,11 @@ public class DatabaseUrlConfigSource implements ConfigSource {
   const producers = `package ${pkg}.runtime;
 
 import io.agroal.api.AgroalDataSource;
+import io.quarkus.runtime.StartupEvent;
 import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.enterprise.event.Observes;
 import jakarta.enterprise.inject.Produces;
+import org.eclipse.microprofile.config.inject.ConfigProperty;
 
 /** Wires the runtime kernel into CDI: connections from the Agroal pool (DATABASE_URL) and the CommandService. */
 @ApplicationScoped
@@ -184,6 +187,14 @@ public class RuntimeProducers {
     @ApplicationScoped
     ConnectionFactory connectionFactory(AgroalDataSource dataSource) {
         return dataSource::getConnection;
+    }
+
+    /**
+     * Creates the kernel's tables when the service starts, before it serves or relays anything: idempotent
+     * and serialized across replicas. GHK_MIGRATE=false when a migration job owns the schema.
+     */
+    void migrate(@Observes StartupEvent event, ConnectionFactory connections, @ConfigProperty(name = "ghk.schema.migrate", defaultValue = "true") boolean migrate) throws java.sql.SQLException {
+        if (migrate) Schema.migrate(connections, "public");
     }
 
     @Produces
@@ -374,6 +385,8 @@ quarkus.banner.enabled=false
 quarkus.datasource.db-kind=postgresql
 # The runtime kernel manages its own JDBC transactions (outbox in the same transaction as the aggregate).
 quarkus.datasource.jdbc.transactions=disabled
+# The kernel's tables are created when the service starts; GHK_MIGRATE=false when a migration job owns them.
+ghk.schema.migrate=\${GHK_MIGRATE:true}
 # PostgreSQL and RabbitMQ are provided (docker compose / CI): no Dev Services containers.
 quarkus.devservices.enabled=false
 # HS256 secret of the bearer tokens (the tenant comes from their claim, never from a header).

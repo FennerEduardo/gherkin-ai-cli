@@ -153,7 +153,7 @@ pub fn sign_jwt(claims: &Value, secret: &str) -> String {
   const main = `use std::sync::Arc;
 use std::time::Duration;
 
-use ${crate}::runtime::{broker_configured, Broker, CommandService, OutboxRelay, Topology};
+use ${crate}::runtime::{broker_configured, migrate, Broker, CommandService, OutboxRelay, Topology};
 
 #[tokio::main]
 async fn main() {
@@ -161,6 +161,11 @@ async fn main() {
     let telemetry = ${crate}::runtime::start_telemetry();
     let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL (postgres://user:password@host:5432/db)");
     let pool = sqlx::PgPool::connect(&database_url).await.expect("database");
+    // The kernel's tables, before serving or relaying (idempotent, serialized across replicas).
+    // GHK_MIGRATE=false when a migration job owns the schema.
+    if std::env::var("GHK_MIGRATE").as_deref() != Ok("false") {
+        migrate(&pool, "public").await.expect("migrate");
+    }
     let commands = CommandService::new(pool.clone(), "public").expect("command service");
     if broker_configured() {
         tokio::spawn(relay_outbox(pool.clone()));

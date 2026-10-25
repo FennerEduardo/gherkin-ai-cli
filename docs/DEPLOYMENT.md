@@ -175,6 +175,8 @@ The rules:
 - handle SIGTERM;
 - backward-compatible migrations.
 
+The runtime kernel's tables are created by the service itself when it starts (every replica, serialized by an advisory lock), so the first deployment needs no migration step. With `GHK_MIGRATE=false` the service skips it: use that when the service's database user has no DDL rights and a migration job creates the tables ([RUNTIME-KERNEL.md](RUNTIME-KERNEL.md#schema)).
+
 The `implement` prompt (compact with `-C`) and the domain and backend agent prompts include a **Deployment Readiness** section.
 
 `ghk validate` checks deployment readiness:

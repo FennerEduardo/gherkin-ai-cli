@@ -145,9 +145,16 @@ public class RuntimeConfiguration {
             .build();
     }
 
+    /**
+     * The kernel's tables are created before anything uses this factory (the command service, the relay):
+     * idempotent and serialized across replicas. GHK_MIGRATE=false when a migration job or another tool owns
+     * the schema (and this service connects without DDL rights).
+     */
     @Bean
-    public ConnectionFactory connectionFactory(DataSource dataSource) {
-        return dataSource::getConnection;
+    public ConnectionFactory connectionFactory(DataSource dataSource, @Value("\${ghk.schema.migrate:true}") boolean migrate) throws java.sql.SQLException {
+        ConnectionFactory connections = dataSource::getConnection;
+        if (migrate) Schema.migrate(connections, "public");
+        return connections;
     }
 
     @Bean
@@ -301,9 +308,11 @@ public class HealthController {
 # the DataSource is built from DATABASE_URL in runtime/RuntimeConfiguration.java.
 server.port=\${SERVER_PORT:8080}
 spring.application.name=${m.kebab}
-# The runtime kernel creates its own tables (Schema.migrate); JPA must not alter the schema.
+# The runtime kernel creates its own tables when the service starts (Schema.migrate); JPA must not alter
+# the schema. GHK_MIGRATE=false when a migration job owns it.
 spring.jpa.hibernate.ddl-auto=none
 spring.jpa.open-in-view=false
+ghk.schema.migrate=\${GHK_MIGRATE:true}
 # HS256 secret of the bearer tokens (the tenant comes from their claim, never from a header).
 ghk.jwt-secret=\${JWT_SECRET:}
 # Publish the outbox from this process (turn off when a separate relay process runs).

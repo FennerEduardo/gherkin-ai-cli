@@ -94,8 +94,17 @@ from typing import Callable
 
 from app.runtime.broker import DEFAULT_TOPOLOGY, connect_broker
 from app.runtime.outbox_relay import OutboxRelay
+from app.runtime.schema import migrate
 
 log = logging.getLogger(__name__)
+
+
+def migrate_on_start() -> None:
+    """Creates the kernel's tables when a process starts (idempotent, serialized across replicas).
+    GHK_MIGRATE=false when a migration job owns the schema."""
+    dsn = os.environ.get("DATABASE_URL")
+    if dsn and os.environ.get("GHK_MIGRATE", "true") != "false":
+        migrate(dsn)
 
 
 def start_outbox_relay(dsn: str, interval: float = ${RELAY_INTERVAL_MS / 1000}) -> Callable[[], None]:
@@ -146,7 +155,7 @@ from app.domain import DomainValidationError
 from app.runtime.command_service import CommandService
 from app.runtime.broker import broker_configured
 from app.runtime.otel import start_telemetry, stop_telemetry
-from app.worker import start_outbox_relay
+from app.worker import migrate_on_start, start_outbox_relay
 
 STATUS = {"created": 202, "replayed": 200, "in-progress": 409}
 
@@ -160,6 +169,8 @@ def command_service() -> CommandService:
 async def lifespan(_app: FastAPI):
     # OTLP export when OTEL_EXPORTER_OTLP_ENDPOINT is set (app/runtime/otel.py).
     start_telemetry()
+    # The kernel's tables, before serving or relaying.
+    migrate_on_start()
     stop = None
     if broker_configured() and os.environ.get("DATABASE_URL"):
         stop = start_outbox_relay(os.environ["DATABASE_URL"])
@@ -392,7 +403,7 @@ import threading
 from django.core.management.base import BaseCommand
 
 from app.runtime.otel import start_telemetry
-from app.worker import start_outbox_relay
+from app.worker import migrate_on_start, start_outbox_relay
 
 
 class Command(BaseCommand):
@@ -400,6 +411,8 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         start_telemetry()
+        # The relay may start before the web process: it creates the kernel's tables too.
+        migrate_on_start()
         stop = start_outbox_relay(os.environ["DATABASE_URL"])
         done = threading.Event()
         signal.signal(signal.SIGTERM, lambda *_: done.set())
