@@ -1,10 +1,17 @@
 /* ==========================================================================
    gherkin-ai-cli - Agent Policy Engine ("Rieles Claros" Guardrails)
+
+   Deprecated: kept for the MCP `ghk_governance_check` tool and the legacy
+   .ghkgovernance.yaml. Its decisions come from the agent firewall (same
+   rules and matcher as every other entry point); migrate the YAML keys to
+   policy.firewall in gherkin-ai.config.json.
    ========================================================================== */
 
 import fs from 'fs';
 import path from 'path';
 import YAML from 'yaml';
+import { AgentFirewall, BUILTIN_APPROVAL_PATHS, BUILTIN_DENY_PATHS } from './agent-firewall';
+import { firstMatch } from '../../utils/glob';
 
 export interface GovernancePolicyConfig {
   version: string;
@@ -24,8 +31,10 @@ export interface PolicyEvaluationResult {
 
 export class AgentPolicyEngine {
   private config: GovernancePolicyConfig;
+  private readonly workspaceDir: string;
 
   constructor(workspaceDir: string, customConfig?: Partial<GovernancePolicyConfig>) {
+    this.workspaceDir = path.resolve(workspaceDir);
     const configPath = path.join(workspaceDir, '.ghkgovernance.yaml');
     if (customConfig) {
       this.config = this.normalizeConfig(customConfig);
@@ -76,22 +85,25 @@ export class AgentPolicyEngine {
       violations.push(`Task modifies ${targetFiles.length} files, exceeding limit of ${this.config.maxFilesPerTask}.`);
     }
 
+    // Same decision point and glob matcher as the agent firewall (M-01): the built-in deny list (secrets,
+    // keys, .git) always applies, this policy's protectedPaths and allowedPaths on top.
+    const firewall = new AgentFirewall({
+      workspace: this.workspaceDir,
+      allowPaths: this.config.allowedPaths,
+      denyPaths: [...BUILTIN_DENY_PATHS, ...this.config.protectedPaths],
+      approvalPaths: [],
+      allowCommands: [],
+      denyCommands: [],
+      allowHosts: [],
+      allowSecrets: []
+    });
     for (const file of targetFiles) {
       const normalized = file.replace(/\\/g, '/');
+      const decision = firewall.evaluate({ kind: 'write', target: normalized });
+      if (decision.verdict === 'DENY') violations.push(`File '${file}' is not writable by policy (${decision.rule}).`);
 
-      // 2. Check protected paths
-      for (const protectedPattern of this.config.protectedPaths) {
-        if (this.matchGlobLike(normalized, protectedPattern)) {
-          violations.push(`File '${file}' is protected by policy (${protectedPattern}).`);
-        }
-      }
-
-      // 3. Check human approval requirement
-      for (const approvalPattern of (this.config.requireHumanApprovalOn || [])) {
-        if (this.matchGlobLike(normalized, approvalPattern)) {
-          approvalReasons.push(`Modification to '${file}' matches approval policy (${approvalPattern}).`);
-        }
-      }
+      const approval = firstMatch(normalized, [...BUILTIN_APPROVAL_PATHS, ...(this.config.requireHumanApprovalOn || [])]);
+      if (approval) approvalReasons.push(`Modification to '${file}' matches approval policy (${approval}).`);
     }
 
     return {
@@ -100,13 +112,5 @@ export class AgentPolicyEngine {
       requiresApproval: approvalReasons.length > 0,
       approvalReasons
     };
-  }
-
-  private matchGlobLike(filePath: string, pattern: string): boolean {
-    const regexPattern = pattern
-      .replace(/\./g, '\\.')
-      .replace(/\*\*/g, '.*')
-      .replace(/\*/g, '[^/]*');
-    return new RegExp(`^${regexPattern}$`, 'i').test(filePath) || filePath.includes(pattern.replace(/\*/g, ''));
   }
 }
