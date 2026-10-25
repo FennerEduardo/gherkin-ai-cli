@@ -3,7 +3,8 @@
    ========================================================================== */
 
 import { emitJson } from '../utils/output';
-import { ExitCode } from '../core/errors';
+import { ExitCode, UsageError } from '../core/errors';
+import { parseApiDocument } from '../core/contract-drift';
 import fs from 'fs';
 import path from 'path';
 import chalk from 'chalk';
@@ -17,16 +18,42 @@ export interface ConvergeCommandOptions {
   json?: boolean;
   /** Every feature of every project under the working directory. */
   all?: boolean;
+  /** OpenAPI document the running service serves: a file, or an http(s) URL such as http://localhost:8080/v3/api-docs. */
+  live?: string;
+  /** Fail when the feature names a state that no enum of the contracts lists. */
+  strictContracts?: boolean;
+}
+
+/** Reads the live OpenAPI document from a file or a URL. */
+async function readLiveDocument(source: string): Promise<unknown> {
+  let text: string;
+  if (/^https?:\/\//i.test(source)) {
+    const res = await fetch(source, { signal: AbortSignal.timeout(15000) }).catch((e: Error) => {
+      throw new UsageError(`Cannot fetch the live OpenAPI document from ${source}: ${e.message}`, { hint: 'Start the service, or export its document to a file and pass the file.' });
+    });
+    if (!res.ok) throw new UsageError(`Cannot fetch the live OpenAPI document from ${source}: HTTP ${res.status}`);
+    text = await res.text();
+  } else {
+    if (!fs.existsSync(source)) throw new UsageError(`Live OpenAPI document not found: ${source}`);
+    text = fs.readFileSync(source, 'utf8');
+  }
+  try {
+    return parseApiDocument(text);
+  } catch (e: any) {
+    throw new UsageError(`The live document ${source} is not JSON or YAML: ${e.message}`);
+  }
 }
 
 export async function handleConvergeCommand(options: ConvergeCommandOptions = {}): Promise<void> {
   const threshold = parseInt(options.threshold || '80', 10);
+  if (options.live && options.all) throw new UsageError('--live compares one service with its document: use it with a single project, not --all.');
+  const engineOptions = { live: options.live ? await readLiveDocument(options.live) : undefined, strictContracts: options.strictContracts };
 
   if (options.all) {
     // Every feature of every gherkin-ai project under the working directory (monorepos).
     const rows = forEachProjectFeature(process.cwd(), (projectDir, file) => {
-      const report = calculateConvergence(parseGherkinText(fs.readFileSync(file, 'utf8')), file, projectDir);
-      return { score: report.overallConvergence, passed: report.overallConvergence >= threshold, status: report.status };
+      const report = calculateConvergence(parseGherkinText(fs.readFileSync(file, 'utf8')), file, projectDir, engineOptions);
+      return { score: report.overallConvergence, passed: report.overallConvergence >= threshold && !report.contractDrift, status: report.contractDrift ? 'DRIFT' : report.status };
     });
     if (options.json) emitJson(rows);
     else {
@@ -78,7 +105,7 @@ export async function handleConvergeCommand(options: ConvergeCommandOptions = {}
       continue;
     }
 
-    const report = calculateConvergence(parsed, file);
+    const report = calculateConvergence(parsed, file, process.cwd(), engineOptions);
     allReports.push(report);
     totalConvergence += report.overallConvergence;
 
@@ -116,6 +143,12 @@ export async function handleConvergeCommand(options: ConvergeCommandOptions = {}
       }
     }
 
+    for (const check of report.contractChecks ?? []) {
+      const mark = check.passed ? chalk.green('✓ pass') : check.gating ? chalk.red('✖ FAIL') : chalk.yellow('⚠ warn');
+      console.log(`     ${`Contract: ${check.check}`.padEnd(25)} ${mark}`);
+      for (const finding of check.findings.slice(0, 5)) console.log(chalk.gray(`       ↳ ${finding}`));
+    }
+
     console.log('');
     console.log(`     ${'Overall Convergence'.padEnd(25)} ${statusColor.bold(`${report.overallConvergence}%`)}  ${statusColor(`[${report.status}]`)}`);
 
@@ -132,8 +165,10 @@ export async function handleConvergeCommand(options: ConvergeCommandOptions = {}
     console.log('');
   }
 
+  const drift = allReports.some(r => r.contractDrift);
   if (options.json) {
     emitJson(allReports);
+    if (drift || (allReports.length > 0 && Math.round(totalConvergence / allReports.length) < threshold)) process.exitCode = ExitCode.DRIFT;
     return;
   }
 
@@ -149,7 +184,8 @@ export async function handleConvergeCommand(options: ConvergeCommandOptions = {}
   console.log(chalk.bold('═'.repeat(60)));
   console.log('');
 
-  if (avgConvergence < threshold) {
+  if (drift) console.log(chalk.red.bold('  Contract drift: the feature, the contracts and the service disagree (see the contract checks above).\n'));
+  if (avgConvergence < threshold || drift) {
     process.exitCode = ExitCode.DRIFT;
   }
 }

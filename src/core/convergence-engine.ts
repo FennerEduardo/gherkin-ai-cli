@@ -18,6 +18,8 @@ import { loadConfig } from './config';
 import { COVERAGE_REPORT_PATHS, findCoverage } from './coverage-reports';
 import { findLayerDirs } from './arch-rules';
 import { CONTRACTS_DIR, featureContractSlug } from './contracts/merge';
+import { ContractCheck, contractChecks } from './contract-drift';
+import { readInventoryFile } from './inventory';
 
 // ---------------------------------------------------------------------------
 // Convergence Metrics
@@ -46,6 +48,14 @@ export interface ConvergenceReport {
 
   // Actionable recommendations
   recommendations: string[];
+
+  /**
+   * Pass/fail contract checks next to the score (core/contract-drift.ts). The score measures alignment
+   * of artifacts; these catch a feature or a route that changed on one side only.
+   */
+  contractChecks?: ContractCheck[];
+  /** A gating contract check failed: `ghk converge` fails whatever the score. */
+  contractDrift?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -55,6 +65,10 @@ export interface ConvergenceReport {
 export interface ConvergenceOptions {
   /** Directory of the generated artifacts (config.outputDir). Defaults to the project config value. */
   outputDir?: string;
+  /** OpenAPI document the running service serves (`ghk converge --live`). */
+  live?: unknown;
+  /** States the feature names must be in the contracts' enums (`--strict-contracts`). */
+  strictContracts?: boolean;
 }
 
 function configuredOutputDir(projectDir: string): string {
@@ -81,7 +95,19 @@ export function calculateConvergence(
   options: ConvergenceOptions = {}
 ): ConvergenceReport {
   const ir = buildIR(parsed, sourceFile);
-  return checkConvergence(ir, projectDir, options);
+  const report = checkConvergence(ir, projectDir, options);
+
+  let featureText: string | undefined;
+  try { featureText = fs.readFileSync(path.resolve(projectDir, sourceFile), 'utf8'); } catch { /* a feature parsed from text: no file to compare */ }
+  if (featureText !== undefined) {
+    const steps = [...(parsed.background ? [parsed.background] : []), ...parsed.scenarios].flatMap(s => s.steps.map(st => st.text));
+    const checks = contractChecks(projectDir, sourceFile, featureText, steps, readInventoryFile(path.join(projectDir, '.ghe', 'inventory.json')),
+      options.outputDir ?? configuredOutputDir(projectDir), { live: options.live, strict: options.strictContracts });
+    report.contractChecks = checks;
+    report.contractDrift = checks.some(c => c.gating && !c.passed);
+    for (const c of checks.filter(c => !c.passed)) report.recommendations.push(...c.findings.map(f => `[${c.check}] ${f}`));
+  }
+  return report;
 }
 
 export function checkConvergence(

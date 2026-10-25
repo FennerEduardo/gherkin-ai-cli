@@ -20,6 +20,7 @@ export function registerVerificationCommands(program: Command): void {
     .option('-c, --command <cmd>', 'Custom test execution command')
     .option('--allow-unattended-writes', 'Allow --apply in CI (otherwise refused; see policy.allowUnattendedWrites)')
     .option('--force-branch', 'Allow --apply on a protected branch (main/master by default)')
+    .option('--host', 'With --auto-fix: run the tests on this machine instead of the sandbox container (credentials are left out of the environment)')
     .action(async (options) => {
       // If --apply is not passed, force dry run
       if (!options.apply) {
@@ -33,6 +34,8 @@ export function registerVerificationCommands(program: Command): void {
     .alias('q')
     .description('Calculate feature quality score index and enterprise gate compliance (exit 4 when human approval is required)')
     .option('--json', 'Output as JSON')
+    .option('--allow-missing-coverage', 'Do not fail the gate when no coverage figure is available (failing tests still fail it)')
+    .option('--base <ref>', 'Gate on the risk of the change against this git ref (without it, and with a clean tree, the risk is reported only)')
     .action(async (options) => {
       await (await import('../commands/quality')).handleQualityCommand({ ...options, json: options.json || program.opts().json });
     });
@@ -77,9 +80,11 @@ export function registerVerificationCommands(program: Command): void {
     .option('--threshold <score>', 'Minimum convergence 0-100 (default: 80); below it exits with code 7')
     .option('--strict', 'Deprecated: the threshold is always enforced')
     .option('--all', 'Evaluate every feature of every gherkin-ai project under the current directory')
+    .option('--live <file|url>', 'Compare the contract operations with the OpenAPI document the running service serves (e.g. http://localhost:8080/v3/api-docs); a missing one exits 7')
+    .option('--strict-contracts', 'Also exit 7 when the feature names a state that no enum of the contracts lists')
     .option('--json', 'Output report as JSON')
     .action(async (options) => {
-      await (await import('../commands/converge')).handleConvergeCommand(options);
+      await (await import('../commands/converge')).handleConvergeCommand({ ...options, json: options.json || program.opts().json });
     });
 
   program

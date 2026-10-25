@@ -161,6 +161,12 @@ export class StepIndexer {
    * second `ghk generate` write different prompts than a clean one.
    */
   public getAvailableSteps(workspaceRoot: string, outputDir = './'): ExtractedStep[] {
+    const generated = unchangedGeneratedFiles(workspaceRoot, outputDir);
+    return this.getAllSteps(workspaceRoot).filter(s => !generated.has(path.resolve(s.filePath)));
+  }
+
+  /** Every step definition in the project, generated skeletons included (step coverage: a pending step is defined). */
+  public getAllSteps(workspaceRoot: string): ExtractedStep[] {
     const allSteps: ExtractedStep[] = [];
     for (const parser of this.parsers) {
       try {
@@ -170,11 +176,9 @@ export class StepIndexer {
         logger.error(`Error parsing steps: ${e.message}`);
       }
     }
-    const generated = unchangedGeneratedFiles(workspaceRoot, outputDir);
     // A Java annotation also matches the case-insensitive Python pattern: keep one step per source line.
     const seen = new Set<string>();
     return allSteps.filter(s => {
-      if (generated.has(path.resolve(s.filePath))) return false;
       const key = `${path.resolve(s.filePath)}:${s.lineNumber ?? ''}:${s.keyword.toLowerCase()}:${s.pattern}`;
       if (seen.has(key)) return false;
       seen.add(key);
