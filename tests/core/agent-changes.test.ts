@@ -40,9 +40,17 @@ describe('agent changes', () => {
   it('writes a unified diff that git apply takes', () => {
     put('src/a.ts', 'line 1\nline 2\nline 3\n');
     execFileSync('git', ['init', '-q'], { cwd: dir });
+    // The patch format is under test, not the machine's line-ending policy (Windows runners set autocrlf/safecrlf globally).
+    for (const [key, value] of [['core.autocrlf', 'false'], ['core.safecrlf', 'false'], ['core.eol', 'lf']]) execFileSync('git', ['config', key, value], { cwd: dir });
     const edit = writeProposal(dir, file('src/a.ts'), 'line 1\nline two\nline 3\n');
     const create = writeProposal(dir, file('src/b.ts'), 'export const b = 1;\n');
-    for (const patch of [edit, create]) execFileSync('git', ['apply', patch], { cwd: dir });
+    for (const patch of [edit, create]) {
+      try {
+        execFileSync('git', ['apply', '--verbose', patch], { cwd: dir, stdio: 'pipe' });
+      } catch (e: any) {
+        throw new Error(`git apply ${path.basename(patch)} failed:\n${e.stderr}\n--- patch ---\n${fs.readFileSync(patch, 'utf8')}`);
+      }
+    }
     expect(fs.readFileSync(file('src/a.ts'), 'utf8')).toBe('line 1\nline two\nline 3\n');
     expect(fs.readFileSync(file('src/b.ts'), 'utf8')).toBe('export const b = 1;\n');
   });
