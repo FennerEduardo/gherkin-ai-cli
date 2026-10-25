@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { defaultConfig } from '../../src/core/config';
 import { renderCiPipelines } from '../../src/generators/cicd';
 import { CoreInfraPlugin } from '../../src/plugins/core-generators-plugin';
+import { CLI_VERSION } from '../../src/version';
 
 const cfg = (language: string, framework: string, extra: object = {}) =>
   ({ ...defaultConfig, projectName: 'orders', outputDir: './generated-specs', stack: { ...defaultConfig.stack, language, framework, database: 'postgresql' }, ...extra }) as any;
@@ -19,7 +20,7 @@ describe('CI/CD pipelines', () => {
     const wf = one(cfg('java', 'spring-boot', { deploy: { cloud: 'aws', environments: ['dev', 'prod'] } })).content;
     expect(wf).toContain('image: maven:3.9-eclipse-temurin-17');
     expect(wf).toContain('working-directory: generated-specs');
-    expect(wf).toContain('GHK_VERSION: "3.2.0"');
+    expect(wf).toContain(`GHK_VERSION: "${CLI_VERSION}"`);
     expect(wf).toContain('DATABASE_URL: "postgres://postgres:ghk@postgres:5432/postgres"');
     expect(wf).toContain('mvn -B -ntp test -Pintegration');
     expect(wf).toMatch(/deploy-dev:[\s\S]*needs: \[backend, image, spec-gates\][\s\S]*deploy-prod:[\s\S]*needs: \[deploy-dev\]/);

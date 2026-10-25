@@ -156,7 +156,10 @@ Other behaviour automation can rely on:
 - **CI guard.** In CI, `--apply` is refused unless you pass `--allow-unattended-writes` or set `policy.allowUnattendedWrites: true`.
 - **Branch guard.** `--apply` is refused on protected branches (`policy.protectedBranches`, default `main` and `master`) unless you pass `--force-branch`.
 - **Workspace guard.** File paths returned by the model are ignored when they point outside the workspace.
-- **Agent firewall.** Every file goes through the [agent firewall](#14-agent-firewall). Anything it does not ALLOW is saved to `.ghe/patches/<file>.proposed` for review instead of being written.
+- **Agent firewall.** Every file goes through the [agent firewall](#14-agent-firewall). Anything it does not ALLOW is saved for review instead of being written, as a unified diff: `.ghe/patches/<path with / as __>.patch` (`git apply` takes it).
+- **What the loop is measured against stays put.** In the `verify --auto-fix` repair loop, specifications, contracts (OpenAPI, AsyncAPI, `contracts/`) and tests need human approval: the loop must change the implementation, not the checks.
+- **Sandbox by default.** `--auto-fix` runs the tests in the disposable toolchain container (no network, limits, read-only root). `--host` runs them on this machine instead. Either way, LLM, cloud and registry credentials (`*_API_KEY`, `AWS_*`, `GITHUB_TOKEN`, `NPM_TOKEN`, ...) are left out of the environment of the code the agent wrote.
+- **Rollback.** When the loop ends without passing tests (retry limit, circuit breaker, a stop rule, an error), every file it wrote is restored and every file it created is removed.
 - **Audit.** Every allowed or blocked write decision is recorded in the audit trail.
 
 Recommended practice: run the agent loop on a feature branch and review the patch in a pull request.
@@ -306,9 +309,9 @@ node scripts/golden-build.js java vue      # selected stacks (all when omitted)
 Use the composite action and **pin the version**:
 
 ```yaml
-- uses: FennerEduardo/gherkin-ai-cli/.github/actions/audit@v3.2.0
+- uses: FennerEduardo/gherkin-ai-cli/.github/actions/audit@v3.2.1
   with:
-    version: 3.2.0
+    version: 3.2.1
     lint-threshold: 80
     converge-threshold: 80
 ```
@@ -316,9 +319,9 @@ Use the composite action and **pin the version**:
 Or call the CLI directly:
 
 ```bash
-npx --yes gherkin-ai@3.2.0 lint --threshold 80 --json > ghk-lint.json        # exit 4 below threshold
-npx --yes gherkin-ai@3.2.0 converge --threshold 80 --json > ghk-converge.json # exit 7 below threshold
-npx --yes gherkin-ai@3.2.0 risk --base origin/main --fail-on HIGH --json        # exit 4 at HIGH or above
+npx --yes gherkin-ai@3.2.1 lint --threshold 80 --json > ghk-lint.json        # exit 4 below threshold
+npx --yes gherkin-ai@3.2.1 converge --threshold 80 --json > ghk-converge.json # exit 7 below threshold
+npx --yes gherkin-ai@3.2.1 risk --base origin/main --fail-on HIGH --json        # exit 4 at HIGH or above
 ```
 
 ## 13. Verifying releases
@@ -338,7 +341,7 @@ One decision point for what an agent may do, whichever agent it is: an MCP clien
 | Action | Target | Decision rules (in order) |
 |---|---|---|
 | `write` | file path | outside the workspace → DENY · `denyPaths` → DENY · outside the feature's impact scope → DENY · not in `allowPaths` (when set) → DENY · existing `gherkin-ai.config.json` or `approvalPaths` → REQUIRE_APPROVAL · otherwise ALLOW |
-| `execute` | command line | any `denyCommands` match anywhere in the line → DENY · every segment (`&&`, `;`, `\|`) starts with an `allowCommands` prefix → ALLOW · otherwise REQUIRE_APPROVAL |
+| `execute` | command line | parsed as a POSIX shell splits it (quotes, escapes; `;`, `&&`, `\|\|`, `\|`, `&` and newlines separate commands; `env`/`VAR=x` wrappers unwrapped) · any `denyCommands` match anywhere in the line → DENY · a file read by `cat`, `head`, `grep`, `cp`... or a redirection that is protected (`denyPaths`) or outside the workspace (`~`, absolute, `..`) → DENY · command or process substitution, `$VAR` expansion, redirection to a file, here-documents, background jobs, unquoted globs or an unterminated quote → REQUIRE_APPROVAL · gherkin-ai itself: only read-only subcommands (`lint`, `validate`, `converge`, `quality`, `graph`, `upgrade --check`...), and never with `--apply`, `--auto-fix`, `--force`, `--commit` or `--serve` · every command starts with an `allowCommands` prefix → ALLOW · otherwise REQUIRE_APPROVAL |
 | `network` | host or URL | `allowHosts` (exact or `*.domain`) → ALLOW · otherwise DENY |
 | `secret` | variable or file name | `allowSecrets` → ALLOW · secret-like names (`*KEY*`, `*TOKEN*`, `*PASSWORD*`, `.env*`, keys) → DENY |
 | `tool` | MCP tool | destructive tools → REQUIRE_APPROVAL · otherwise ALLOW |
@@ -349,6 +352,7 @@ Built-in lists apply even with no configuration:
 - **Approval required:** CI workflows, migrations, `schema.prisma`, Dockerfiles, compose files, infrastructure (`*.tf`, k8s, helm) and `package.json`.
 - **Denied commands:** `sudo`, `git push`, `npm publish`, `curl`, `ssh`, `kubectl`, `terraform apply` and others.
 - **Allowed commands:** read-only commands, and the build and test commands of every supported stack plus your `testCommand`.
+- **One policy.** The guardrails of the repair loops and the MCP `ghk_governance_check` tool decide paths through this firewall, with the same glob matcher (`tests/security/policy-consistency.test.ts` holds them to the same verdicts). The adversarial command suite is `tests/security/firewall-evasion.test.ts`.
 
 Configure it in `policy.firewall`. Lock it at organization level with `"locked": ["policy.firewall"]`:
 
@@ -384,7 +388,7 @@ ghk firewall policy --feature features/refunds.feature                          
 {
   "hooks": {
     "PreToolUse": [
-      { "matcher": "Write|Edit|MultiEdit|NotebookEdit|Bash|WebFetch|Read|mcp__.*", "hooks": [{ "type": "command", "command": "npx --yes gherkin-ai@3.2.0 firewall hook" }] }
+      { "matcher": "Write|Edit|MultiEdit|NotebookEdit|Bash|WebFetch|Read|mcp__.*", "hooks": [{ "type": "command", "command": "npx --yes gherkin-ai@3.2.1 firewall hook" }] }
     ]
   }
 }

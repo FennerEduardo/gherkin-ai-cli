@@ -2,6 +2,56 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [3.2.1] - 2026-10-24
+
+Most of these were found by adopting 3.2.0 in an implemented multi-service project (the LMS reference project); the rest by a code-verified security and governance review of 3.2.0. A golden built from one of the LMS services (`tests/golden/implemented-service.test.ts`, also a CI job that compiles it) keeps the generation fixes; it fails on 3.2.0. Upgrade notes: [MIGRATION-3.2.md, "From 3.2.0 to 3.2.1"](docs/MIGRATION-3.2.md#from-320-to-321).
+
+### Security
+- **`zod` 4.** `zod` 3.25.76 is affected by GHSA-mrhx-c7xc-m3w5 (memory exhaustion validating oversized constrained collections, high) and has no 3.x fix; `npm audit --audit-level=high` blocked the release. `zod-to-json-schema` is replaced by zod's own `z.toJSONSchema`; the published schemas validate the same configurations, except that `$schema` (which `ghk upgrade` adds) is now accepted. `openai` moves to 7 (version 4 requires zod 3). `undici`, `body-parser` and `fast-uri` advisories fixed too: `npm audit` reports 0 vulnerabilities.
+- **Agent firewall: command evasions.** `cat .env`, `cat ~/.ssh/id_rsa`, `cat a > src/x.ts`, `ls $(…)`, a second command after a newline and `ghk verify --auto-fix --apply` were all ALLOW. Commands are now parsed as a shell splits them; files read by a command or a redirection follow the write deny-list; substitutions, expansions, redirections to files, here-documents, background jobs and unquoted globs need approval; `ghk` is allowed only for read-only subcommands. 48 vectors in `tests/security/firewall-evasion.test.ts`.
+- **One write policy.** The repair loops' guardrails and the MCP `ghk_governance_check` decided paths with their own regexes (one allowed migrations and infrastructure the firewall held, the other blocked `src/.environment.ts` and allowed a root `secrets.ts`). Both now ask the agent firewall, with its glob matcher (`tests/security/policy-consistency.test.ts`). In the `verify --auto-fix` repair loop, specifications, contracts and tests need a human.
+- **`verify --auto-fix` runs in the sandbox container by default** (`--host` to run on this machine). LLM, cloud and registry credentials are left out of the environment of the code the agent wrote, also with `--host`.
+- **Release gate.** `release.yml` runs the whole CI pipeline on the tag and publishes the tarball the golden builds ran against (`npm pack`, installed in a clean directory). Every action is pinned by commit SHA; CycloneDX is pinned to 6.0.1.
+
+### Fixed
+- **`ghk upgrade --apply` left an implemented service that did not compile.** The new kernel files were created while the edited ones were kept, so the new files called an API the kept kernel did not have.
+  - The runtime kernel (runtime and domain model) is now written as a unit. While a kernel file is kept, every generated source file that would be created or updated is written as `<file>.ghk-new` too, so the project compiles as before.
+  - `generate` warns "Runtime kernel pending merge" and `upgrade` reports the finding `kernel.pending-merge`.
+  - A held file keeps its checksum on record, so it is still provably unedited once the kernel is merged.
+- **`.ghk-implemented` did not stop `generate` from creating files.** In the LMS service, 3.2.0 created 32 of them: a second aggregate, a tenant filter, step definitions that broke Cucumber with ambiguous steps, `application.properties` next to `application.yml`, a `HealthController` and 10 DTOs.
+  - In a project marked as implemented, only the runtime kernel and the contracts are created. Everything else is reported as `skipped`; `--include-scaffold` creates it anyway.
+  - `ghk add` is unchanged: it creates its files.
+- **Second DataSource and outbox relay in implemented services (also with `upgrade --kernel`).** The kernel wiring is never created in a project marked as implemented: `RuntimeConfiguration`, `RuntimeProducers`, `OutboxRelayWorker`, `DatabaseUrlConfigSource`, the NestJS `runtime.module.ts`, the Laravel provider and command, and the Elixir and Rails relay workers.
+- **`upgrade --apply` deletes no source files in an implemented project.** Stale generated source files are reported in `generated.stale-kept` (hand-written code may still use them). `--prune` still deletes them.
+- **`ghk quality` passed its gate when the tests failed or no coverage could be read** (exit 0, `gatePassed: true`).
+  - Failing tests now always fail the gate (exit 4), even when a report from an earlier run is on disk.
+  - A missing coverage figure fails the gate unless `--allow-missing-coverage`.
+- **`ghk quality` coverage was not reproducible.** The report is deleted before the tests run; for Maven, so is `target/jacoco.exec`, which JaCoCo appends to.
+  - The JSON records `coverage.command`, `coverage.exitCode`, `coverage.reportPath` and `coverage.reportMtime`. Kotlin and Gradle builds are measured too (they were "not supported").
+- **`ghk quality` failed 7 of 9 unchanged LMS services on risk alone.** Without a change set (no `--base`, clean tree) the risk describes the whole specification: it is reported (`risk.gating: false`) but no longer gates. `--base <ref>` gates on the risk of a change. The risk score uses the coverage `quality` just measured instead of "no coverage report".
+- **`verify --auto-fix` left the agent's changes behind** when the circuit breaker, a stop rule or an error ended the loop, and never removed the files it created. Whatever ends the loop without passing tests, every file it wrote is restored and every file it created is removed.
+- **Proposals collided by file name.** `src/button.ts` and `components/button.ts` both became `button.ts.proposed`. Proposals are now unified diffs named after the relative path: `.ghe/patches/src__button.ts.patch` (`git apply` takes them), in `verify`, `autopilot` and the firewall.
+- **Made-up metrics.** `verify` and `autopilot` wrote a fixed requirement coverage (10/10, 0/10 or 5/10) to `.ghe/execution/metrics.json`. It is now the requirements of the project's features that a test references (`requirementCoverageMethod: "specification-traceability"`), or `null` with `"unavailable"`.
+- **A fresh clone could overwrite edited code.** `.ghe/` was ignored, so a clone had no inventory, and a file with a `Generated by gherkin-ai` header was overwritten even if edited. The `.gitignore` now keeps `.ghe/inventory.json` (`.ghe/*`, `!.ghe/inventory.json`; existing `.ghe/` entries are migrated), and without an inventory a header alone no longer allows overwriting (`.ghk-new`, unless `--force`; `upgrade --apply` still trusts headers on its own branch).
+- **`ghk upgrade` saw nothing generated** in projects whose files carry no header (most 3.x files): it now reads the inventory too (`generated.inventory-only`), and the inventory records the CLI version (`cliVersion`).
+- **Names from the words of the steps.** `the teacher "t-7"` or `because "late"` produced `TeacherDTO`, `BecauseDTO` and `teacher` / `because` columns in `seed.sql`. Field DTOs and seed columns now come from DataTable headers only; conjunctions and prepositions (`because`, `porque`, ...) are never fields.
+- **`application.properties` next to `application.yml`.** Not created when the project's YAML exists (Spring and Quarkus read both).
+- **No coverage in generated JVM builds.** Maven POMs (Spring, Quarkus) and Gradle builds (Kotlin) include JaCoCo, with the report written after the tests, where `converge` and `quality` read it.
+- **Node.js older than 22.12** ran the CLI without a warning (`engines` is only checked by npm). The CLI now exits 2 and names the version it found.
+- **`ghk converge -f <file> --json`** exited 0 below the threshold; it exits 7 like the text output.
+
+### Added
+- **Contract drift checks in `ghk converge`** (pass/fail, next to the score). In the LMS mutation protocol, converge scored 62 for the untouched service and for every mutation, including a state renamed in the feature only and a route renamed in the controller only.
+  - `spec-changed`: the feature was edited after it was generated from, and its contracts were not (the inventory records the feature's and the contracts' checksums). Exit 7.
+  - `live-contract` (`--live <file|url>`, e.g. `http://localhost:8080/v3/api-docs`): contract operations the running service does not serve. Exit 7. Operations it serves but the contract does not list are reported.
+  - `spec-states`: states the feature spells out (`status "DRAFT"`) that no enum of the contracts lists. Reported; exit 7 with `--strict-contracts`.
+- **Step coverage in `ghk validate -f <feature>`.** Steps that no step definition matches (Cucumber expressions and regular expressions, in every language the step indexer reads) are reported; `--strict-steps` fails on them.
+- **`autopilot` limits the bindings to the feature's impact scope** once the specification is on disk (the repository graph, as `ghk firewall check --feature` does).
+- **`generation.exclude`.** Globs from the project root that `generate`, `add` and `upgrade --kernel` never write: no create, no update and no `.ghk-new`.
+  - Skipped files are recorded in the inventory (`skipped: true`, with the previous checksum kept), so `upgrade` does not prune them as stale.
+- **`ghk generate --json`.** Prints the write plan, also with `--dry-run`: `{plan: [{file, target, action, role, reason, held}], summary, kernelPendingMerge}`. Before, the plan was only text on stderr.
+- **`SECURITY.md`: third-party dependencies.** What a supply-chain scanner reports for gherkin-ai (network and shell access, `protobufjs`, `node-domexception`) and why.
+
 ## [3.2.0] - 2026-10-23
 
 ### Added
