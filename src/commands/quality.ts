@@ -12,16 +12,34 @@ import { emitJson } from '../utils/output';
 
 export interface QualityOptions {
   json?: boolean;
+  /** Pass the gate without a coverage figure (unsupported stack, no report). Failing tests still fail it. */
+  allowMissingCoverage?: boolean;
+  /** Git ref the change is measured against (e.g. origin/main). */
+  base?: string;
 }
 
 export async function handleQualityCommand(options: QualityOptions = {}): Promise<void> {
   const config = loadConfig();
-  const riskCard = assessDeliveryRisk(process.cwd(), { config });
   const coverageResult = runCoverage(process.cwd(), config);
+  // The coverage this run measured is the test evidence for the risk score (not an older report on disk).
+  const riskCard = assessDeliveryRisk(process.cwd(), {
+    config,
+    base: options.base,
+    coveragePct: coverageResult.errorMessage ? undefined : coverageResult.coveragePercentage
+  });
+  // Without a change (no --base, clean tree) the risk describes the whole specification, not a delivery:
+  // reported, but not a reason to stop one.
+  const riskGates = riskCard.basis !== 'specification';
 
+  // Missing data never counts as a pass: failing tests always fail the gate, a missing coverage figure
+  // fails it unless --allow-missing-coverage.
+  const testsFailed = (coverageResult.exitCode ?? 0) !== 0;
+  const coverageMissing = !testsFailed && Boolean(coverageResult.errorMessage);
   const coverageBelowTarget = !coverageResult.success && !coverageResult.errorMessage;
   const reasons = [
-    ...(riskCard.requiresHumanApproval ? [`Delivery risk ${riskCard.riskLevel} (score ${riskCard.overallRiskScore}) requires human approval`] : []),
+    ...(riskGates && riskCard.requiresHumanApproval ? [`Delivery risk ${riskCard.riskLevel} (score ${riskCard.overallRiskScore}) requires human approval`] : []),
+    ...(testsFailed ? [coverageResult.errorMessage as string] : []),
+    ...(coverageMissing && !options.allowMissingCoverage ? [`Coverage unavailable: ${coverageResult.errorMessage}`] : []),
     ...(coverageBelowTarget ? [`Code coverage ${coverageResult.coveragePercentage}% is below the target ${coverageResult.targetPercentage}%`] : [])
   ];
   const gatePassed = reasons.length === 0;
@@ -32,13 +50,17 @@ export async function handleQualityCommand(options: QualityOptions = {}): Promis
       gatePassed,
       humanApprovalRequired: !gatePassed,
       reasons,
-      risk: riskCard,
+      risk: { ...riskCard, gating: riskGates, ...(riskGates ? {} : { note: 'No change set (pass --base <ref> or have uncommitted changes): the risk describes the whole specification and does not gate.' }) },
       coverage: {
         tool: coverageResult.toolUsed,
         available: !coverageResult.errorMessage,
         percentage: coverageResult.errorMessage ? null : coverageResult.coveragePercentage,
         target: coverageResult.targetPercentage,
-        error: coverageResult.errorMessage ?? null
+        error: coverageResult.errorMessage ?? null,
+        command: coverageResult.command ?? null,
+        exitCode: coverageResult.exitCode ?? null,
+        reportPath: coverageResult.reportPath || null,
+        reportMtime: coverageResult.reportMtime ?? null
       }
     });
     return;
@@ -60,6 +82,7 @@ export async function handleQualityCommand(options: QualityOptions = {}): Promis
                     riskCard.riskLevel === 'MEDIUM' ? chalk.yellow : chalk.green;
 
   console.log(chalk.bold(`Risk Level:           ${riskColor(riskCard.riskLevel)} (Score: ${riskCard.overallRiskScore})`));
+  if (!riskGates) console.log(chalk.gray('  (no change set: pass --base <ref> to gate on the risk of a change; reported only)'));
 
   if (riskCard.factors.length > 0) {
     console.log(chalk.yellow('\nKey Risk Drivers:'));
