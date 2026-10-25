@@ -79,6 +79,19 @@ describe('verify --auto-fix rollback (N-02)', () => {
     expect(sandboxRuns[0]).toMatchObject({ docker: false, scrubCredentials: false });
   });
 
+  it('with --feature, writes outside the feature impact scope become proposals', async () => {
+    fs.mkdirSync(path.join(dir, 'features'));
+    fs.writeFileSync(path.join(dir, 'features', 'refunds.feature'), 'Feature: Refunds\n  Scenario: Refund an order\n    Given a paid order\n    When the clerk refunds the order\n    Then the order is refunded\n');
+    await handleVerifyCommand({ autoFix: true, maxRetries: 2, command: 'npm test', allowUnattendedWrites: true, forceBranch: true, feature: 'features/refunds.feature' });
+    expect(fs.readFileSync(path.join(dir, 'src', 'app.ts'), 'utf8')).toBe(original);
+    // Without --feature the same write is allowed (first test): the scope made the difference.
+    expect(fs.existsSync(path.join(dir, '.ghe', 'patches', 'src__app.ts.patch'))).toBe(true);
+  });
+
+  it('rejects a --feature that does not exist', async () => {
+    await expect(handleVerifyCommand({ autoFix: true, command: 'npm test', feature: 'features/missing.feature' })).rejects.toMatchObject({ exitCode: 2 });
+  });
+
   it('records no made-up requirement coverage', async () => {
     await handleVerifyCommand({ autoFix: true, maxRetries: 3, command: 'npm test', allowUnattendedWrites: true, forceBranch: true });
     const metrics = JSON.parse(fs.readFileSync(path.join(dir, '.ghe', 'execution', 'metrics.json'), 'utf8'));

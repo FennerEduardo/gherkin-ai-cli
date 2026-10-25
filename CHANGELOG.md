@@ -51,7 +51,7 @@ Most of these were found by adopting 3.2.0 in an implemented multi-service proje
   - `live-contract` (`--live <file|url>`, e.g. `http://localhost:8080/v3/api-docs`): contract operations the running service does not serve. Exit 7. Operations it serves but the contract does not list are reported.
   - `spec-states`: states the feature spells out (`status "DRAFT"`) that no enum of the contracts lists. Reported; exit 7 with `--strict-contracts`.
 - **Step coverage in `ghk validate -f <feature>`.** Steps that no step definition matches (Cucumber expressions and regular expressions, in every language the step indexer reads) are reported; `--strict-steps` fails on them.
-- **`autopilot` limits the bindings to the feature's impact scope** once the specification is on disk (the repository graph, as `ghk firewall check --feature` does).
+- **Feature scope for agent writes.** `verify --auto-fix -f <feature>` limits the repair loop's writes to that feature's impact scope (the repository graph, as `ghk firewall check --feature` does; writes outside it become proposals), and `autopilot` does the same for the bindings once the specification is on disk.
 - **`generation.exclude`.** Globs from the project root that `generate`, `add` and `upgrade --kernel` never write: no create, no update and no `.ghk-new`.
   - Skipped files are recorded in the inventory (`skipped: true`, with the previous checksum kept), so `upgrade` does not prune them as stale.
 - **`ghk generate --json`.** Prints the write plan, also with `--dry-run`: `{plan: [{file, target, action, role, reason, held}], summary, kernelPendingMerge}`. Before, the plan was only text on stderr.

@@ -11,7 +11,7 @@ import { toKebab } from '../utils/naming';
 import chalk from 'chalk';
 import crypto from 'crypto';
 import path, { resolve as resolvePath } from 'path';
-import { readFileSync } from 'fs';
+import { existsSync, readFileSync } from 'fs';
 import { validateGuardrails } from '../core/guardrails';
 import { validateTypeScriptSyntax } from '../core/syntax-validator';
 import { resolveSafePath } from '../utils/file-system';
@@ -39,6 +39,8 @@ export interface VerifyCommandOptions {
   /** Fail (exit 7) when the convergence score is below this, after the tests pass. Unset: reported only. */
   convergeThreshold?: string;
   maxRetries?: string | number;
+  /** Feature the repair is for: the agent may only write inside its impact scope (`ghk graph --scope`). */
+  feature?: string;
   command?: string;
   allowUnattendedWrites?: boolean;
   forceBranch?: boolean;
@@ -83,7 +85,11 @@ export async function handleVerifyCommand(options: VerifyCommandOptions = {}): P
   if (options.autoFix && process.env.GHK_DRY_RUN !== 'true') {
     assertAgentWritesAllowed(config, { command: 'verify', allowUnattendedWrites: options.allowUnattendedWrites, forceBranch: options.forceBranch });
   }
-  const firewall = AgentFirewall.forWorkspace(process.cwd(), config);
+  if (options.feature && !existsSync(resolvePath(process.cwd(), options.feature))) {
+    throw new GhkError(`Feature file not found: ${options.feature}`, ExitCode.USAGE);
+  }
+  // With --feature, the repair loop may only write inside that feature's impact scope.
+  const firewall = AgentFirewall.forWorkspace(process.cwd(), config, options.feature ? { feature: options.feature } : {});
   // --isolated used to write its own docker-compose.test.yml with older images; it is now --services.
   if (options.isolated) {
     console.log(chalk.yellow('   --isolated is deprecated: it runs as --services (the same containers as the golden builds).'));

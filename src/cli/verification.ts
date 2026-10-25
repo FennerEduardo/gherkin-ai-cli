@@ -21,6 +21,7 @@ export function registerVerificationCommands(program: Command): void {
     .option('--allow-unattended-writes', 'Allow --apply in CI (otherwise refused; see policy.allowUnattendedWrites)')
     .option('--force-branch', 'Allow --apply on a protected branch (main/master by default)')
     .option('--host', 'With --auto-fix: run the tests on this machine instead of the sandbox container (credentials are left out of the environment)')
+    .option('-f, --feature <file>', 'With --auto-fix: the feature being repaired; the agent may only write inside its impact scope (ghk graph --scope)')
     .action(async (options) => {
       // If --apply is not passed, force dry run
       if (!options.apply) {
