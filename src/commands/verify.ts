@@ -82,11 +82,12 @@ export async function handleVerifyCommand(options: VerifyCommandOptions = {}): P
 
   const maxRetries = parseInt(String(options.maxRetries || '3'), 10);
   const config = loadConfig();
-  if (options.autoFix && process.env.GHK_DRY_RUN !== 'true') {
-    assertAgentWritesAllowed(config, { command: 'verify', allowUnattendedWrites: options.allowUnattendedWrites, forceBranch: options.forceBranch });
-  }
+  // Arguments first (usage error, exit 2), then the write policy (CI and protected-branch guards, exit 5).
   if (options.feature && !existsSync(resolvePath(process.cwd(), options.feature))) {
     throw new GhkError(`Feature file not found: ${options.feature}`, ExitCode.USAGE);
+  }
+  if (options.autoFix && process.env.GHK_DRY_RUN !== 'true') {
+    assertAgentWritesAllowed(config, { command: 'verify', allowUnattendedWrites: options.allowUnattendedWrites, forceBranch: options.forceBranch });
   }
   // With --feature, the repair loop may only write inside that feature's impact scope.
   const firewall = AgentFirewall.forWorkspace(process.cwd(), config, options.feature ? { feature: options.feature } : {});

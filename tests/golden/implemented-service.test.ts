@@ -8,8 +8,8 @@
    ghk 3.2.0 created 32 files there and left a tree that did not compile
    (LMS evidence report, E-06, E-07, #20). This golden keeps it from coming back.
 
-   GHK_GOLDEN_MAVEN=1 also compiles the upgraded service with Maven (offline:
-   needs the dependencies in ~/.m2).
+   GHK_GOLDEN_MAVEN=1 also compiles the upgraded service with Maven (dependencies
+   from Maven Central; GHK_GOLDEN_MAVEN_OFFLINE=1 uses ~/.m2 only).
    ========================================================================== */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
@@ -174,10 +174,11 @@ describe('golden: implemented Spring service (LMS assessment-service before 3.2)
     });
   });
 
-  it.skipIf(process.env.GHK_GOLDEN_MAVEN !== '1')('the upgraded service still compiles (mvn -o test-compile)', async () => {
+  // GHK_GOLDEN_MAVEN_OFFLINE=1 compiles from ~/.m2 only (a machine without network that built the service before).
+  it.skipIf(process.env.GHK_GOLDEN_MAVEN !== '1')('the upgraded service still compiles (mvn test-compile)', async () => {
     await handleUpgradeCommand({ apply: true, commit: true, yes: true, branch: 'ghk-upgrade' });
     try {
-      execFileSync('mvn', ['-B', '-o', '-q', 'test-compile'], { cwd: dir, stdio: 'pipe', timeout: 300_000 });
+      execFileSync('mvn', ['-B', '-q', ...(process.env.GHK_GOLDEN_MAVEN_OFFLINE === '1' ? ['-o'] : []), 'test-compile'], { cwd: dir, stdio: 'pipe', timeout: 300_000 });
     } catch (e: any) {
       throw new Error(`mvn test-compile failed:\n${String(e.stdout ?? '').split('\n').filter(l => /ERROR/.test(l)).slice(0, 15).join('\n')}`);
     }

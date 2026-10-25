@@ -170,9 +170,8 @@ jobs:
           node-version: '22'
           cache: npm
       - run: npm ci
-      - name: Fetch the service's Maven dependencies (the golden compiles offline)
-        working-directory: tests/fixtures/golden/implemented-spring-service
-        run: mvn -B -q dependency:go-offline
+      # Maven resolves the service's dependencies from Maven Central during the compile
+      # (dependency:go-offline does not fetch everything the compile resolves).
       - name: Golden with the Maven compile
         env:
           GHK_GOLDEN_MAVEN: '1'
