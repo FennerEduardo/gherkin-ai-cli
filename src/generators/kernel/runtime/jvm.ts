@@ -877,6 +877,16 @@ public final class KafkaBroker implements Broker {
                 for (long joined = System.currentTimeMillis(); buffered.isEmpty() && consumer.assignment().isEmpty() && System.currentTimeMillis() - joined < 30_000;) {
                     consumer.poll(Duration.ofMillis(200)).forEach(buffered::add);
                 }
+                // Assigned but nothing fetched yet: the partitions may still hold unread records (the offset lookup and
+                // the first fetch take a while on a loaded broker). Keep reading while the position is behind the end
+                // offset (30 s at most), so an empty poll means the source is drained, as with RabbitMQ.
+                if (buffered.isEmpty() && !consumer.assignment().isEmpty()) {
+                    Map<TopicPartition, Long> end = consumer.endOffsets(consumer.assignment(), Duration.ofSeconds(10));
+                    for (long started = System.currentTimeMillis(); buffered.isEmpty() && System.currentTimeMillis() - started < 30_000
+                            && end.entrySet().stream().anyMatch(e -> consumer.assignment().contains(e.getKey()) && consumer.position(e.getKey()) < e.getValue());) {
+                        consumer.poll(Duration.ofMillis(200)).forEach(buffered::add);
+                    }
+                }
                 Iterator<ConsumerRecord<String, byte[]>> it = buffered.iterator();
                 if (!it.hasNext()) return null;
                 ConsumerRecord<String, byte[]> r = it.next();
