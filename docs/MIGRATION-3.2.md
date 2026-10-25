@@ -87,7 +87,7 @@ You do not need to install each version in between. `ghk upgrade` in 3.2 checks 
 1. **Run the upgrade on a branch.**
 
    ```bash
-   ghk upgrade --apply --commit      # branch ghk-upgrade-v3.2.0: config fixes, every feature regenerated, unedited leftovers removed
+   ghk upgrade --apply --commit      # branch ghk-upgrade-v3.2.1: config fixes, every feature regenerated, unedited leftovers removed
    ```
 
    Items marked `[manual]` (CI files, MCP clients, credentials) are reported with a hint and never edited. For a monorepo, run it in each service directory.

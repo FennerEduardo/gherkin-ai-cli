@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
-## [3.2.1] - 2026-10-24
+## [3.2.1] - 2026-10-25
 
 Most of these were found by adopting 3.2.0 in an implemented multi-service project (the LMS reference project); the rest by a code-verified security and governance review of 3.2.0. A golden built from one of the LMS services (`tests/golden/implemented-service.test.ts`, also a CI job that compiles it) keeps the generation fixes; it fails on 3.2.0. Upgrade notes: [MIGRATION-3.2.md, "From 3.2.0 to 3.2.1"](docs/MIGRATION-3.2.md#from-320-to-321).
 
