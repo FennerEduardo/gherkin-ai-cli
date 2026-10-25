@@ -1,0 +1,6 @@
+target
+.ghe
+.gherkin-ai
+contracts
+prompts
+*.md

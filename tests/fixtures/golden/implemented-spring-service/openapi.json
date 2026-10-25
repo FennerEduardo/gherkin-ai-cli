@@ -1,0 +1,326 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "LMS Assessment Service",
+    "description": "Errors follow the standard contract {timestamp, status, code, message, correlationId}.",
+    "version": "v1"
+  },
+  "security": [
+    {
+      "bearer": []
+    }
+  ],
+  "paths": {
+    "/api/v1/institutions/{institutionId}/submissions/{submissionId}/grade": {
+      "put": {
+        "tags": [
+          "grade-controller"
+        ],
+        "operationId": "grade",
+        "parameters": [
+          {
+            "name": "institutionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "submissionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GradeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/GradeView"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/institutions/{institutionId}/submissions/{submissionId}/grade/publication": {
+      "post": {
+        "tags": [
+          "grade-controller"
+        ],
+        "operationId": "publish",
+        "parameters": [
+          {
+            "name": "institutionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "submissionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/GradeView"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/institutions/{institutionId}/submissions/{submissionId}/grade/corrections": {
+      "post": {
+        "tags": [
+          "grade-controller"
+        ],
+        "operationId": "correct",
+        "parameters": [
+          {
+            "name": "institutionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "submissionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CorrectionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/GradeView"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/institutions/{institutionId}/students/{studentId}/grades": {
+      "get": {
+        "tags": [
+          "grade-controller"
+        ],
+        "operationId": "studentGrades",
+        "parameters": [
+          {
+            "name": "institutionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "studentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/GradeView"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/institutions/{institutionId}/assignments/{assignmentId}/grades": {
+      "get": {
+        "tags": [
+          "grade-controller"
+        ],
+        "operationId": "assignmentGrades",
+        "parameters": [
+          {
+            "name": "institutionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "assignmentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/GradeView"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "GradeRequest": {
+        "type": "object",
+        "properties": {
+          "score": {
+            "type": "number"
+          },
+          "feedback": {
+            "type": "string",
+            "maxLength": 5000,
+            "minLength": 0
+          }
+        },
+        "required": [
+          "score"
+        ]
+      },
+      "GradeView": {
+        "type": "object",
+        "properties": {
+          "gradeId": {
+            "type": "string"
+          },
+          "submissionId": {
+            "type": "string"
+          },
+          "assignmentId": {
+            "type": "string"
+          },
+          "assignmentTitle": {
+            "type": "string"
+          },
+          "courseId": {
+            "type": "string"
+          },
+          "studentId": {
+            "type": "string"
+          },
+          "score": {
+            "type": "number"
+          },
+          "scaleMin": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "scaleMax": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "feedback": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "DRAFT",
+              "PUBLISHED"
+            ]
+          },
+          "gradedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "publishedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "CorrectionRequest": {
+        "type": "object",
+        "properties": {
+          "score": {
+            "type": "number"
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 500,
+            "minLength": 0
+          }
+        },
+        "required": [
+          "score"
+        ]
+      }
+    },
+    "securitySchemes": {
+      "bearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      }
+    }
+  }
+}

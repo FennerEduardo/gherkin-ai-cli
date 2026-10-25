@@ -1,0 +1,31 @@
+{
+  "projectName": "assessment-service",
+  "projectMode": "greenfield",
+  "architecture": "microservices",
+  "stack": {
+    "language": "java",
+    "framework": "spring-boot",
+    "orm": "hibernate",
+    "database": "postgresql",
+    "validation": "jakarta-validation",
+    "auth": "jwt-bcrypt",
+    "messaging": "rabbitmq",
+    "testing": "junit"
+  },
+  "rules": {
+    "bcryptCostFactor": 12,
+    "jwtTtlSeconds": 900,
+    "strictLayerBoundaries": true,
+    "coverageTarget": 85
+  },
+  "specDir": "features",
+  "outputDir": "./",
+  "locale": "en",
+  "generation": {
+    "package": "com.lms.assessmentservice",
+    "groupId": "com.lms"
+  },
+  "security": {
+    "tenantClaim": "tenant"
+  }
+}
