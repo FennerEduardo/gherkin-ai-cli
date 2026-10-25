@@ -25,5 +25,7 @@ export const JVM_VERSIONS = {
   /** Azure SDK BOM (Service Bus adapter only): azure-messaging-servicebus 7.18.1, azure-identity 1.18.7. */
   azureSdkBom: '1.3.9',
   mavenCompilerPlugin: '3.13.0',
-  mavenSurefirePlugin: '3.5.2'
+  mavenSurefirePlugin: '3.5.2',
+  /** Coverage for `ghk converge` and `ghk quality` (target/site/jacoco/jacoco.xml and jacoco.csv). */
+  jacocoMavenPlugin: '0.8.14'
 } as const;

@@ -209,6 +209,7 @@ export function renderGradleKts(groupId = 'com.example', { serviceBus = false, k
     kotlin("jvm") version "${JVM_VERSIONS.kotlin}"
     kotlin("plugin.spring") version "${JVM_VERSIONS.kotlin}"
     kotlin("plugin.jpa") version "${JVM_VERSIONS.kotlin}"
+    jacoco
 }
 
 group = "${groupId}"
@@ -279,6 +280,15 @@ tasks.withType<Test> {
 // Runtime integration tests (tag "integration") need DATABASE_URL / AMQP_URL: gradle integrationTest
 tasks.test {
     useJUnitPlatform { excludeTags("integration") }
+    finalizedBy(tasks.jacocoTestReport)
+}
+
+// Coverage for ghk converge and ghk quality: build/reports/jacoco/test/jacocoTestReport.{xml,csv}
+tasks.jacocoTestReport {
+    reports {
+        xml.required = true
+        csv.required = true
+    }
 }
 
 val integrationTest by tasks.registering(Test::class) {
@@ -302,6 +312,7 @@ export function renderQuarkusGradleKts(groupId = 'com.example', { serviceBus = f
     kotlin("jvm") version "${JVM_VERSIONS.kotlin}"
     kotlin("plugin.allopen") version "${JVM_VERSIONS.kotlin}"
     id("io.quarkus") version "${JVM_VERSIONS.quarkus}"
+    jacoco
 }
 
 group = "${groupId}"
@@ -384,6 +395,15 @@ tasks.withType<Test> {
 // Runtime integration tests (tag "integration") need DATABASE_URL / AMQP_URL: gradle integrationTest
 tasks.test {
     useJUnitPlatform { excludeTags("integration") }
+    finalizedBy(tasks.jacocoTestReport)
+}
+
+// Coverage for ghk converge and ghk quality: build/reports/jacoco/test/jacocoTestReport.{xml,csv}
+tasks.jacocoTestReport {
+    reports {
+        xml.required = true
+        csv.required = true
+    }
 }
 
 val integrationTest by tasks.registering(Test::class) {
