@@ -26,7 +26,8 @@ const path = require('path');
 const args = process.argv.slice(2);
 const tagIndex = args.indexOf('--tag');
 const tag = tagIndex >= 0 ? args[tagIndex + 1] : undefined;
-const ref = args.find((a, i) => !a.startsWith('--') && i !== tagIndex + 1) || 'HEAD';
+// Without --tag, tagIndex + 1 is 0: the ref in first position must not be taken for the tag's value.
+const ref = args.find((a, i) => !a.startsWith('--') && (tagIndex < 0 || i !== tagIndex + 1)) || 'HEAD';
 const repo = path.resolve(__dirname, '..');
 // npm 10.8 can crash resolving this tree ("edgesOut"); NPM=npx -y npm@11 selects another npm.
 const npm = (process.env.NPM || 'npm').split(' ');
