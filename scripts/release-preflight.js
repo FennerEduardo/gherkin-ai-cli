@@ -9,6 +9,7 @@
      - the golden-builds matrix (golden-stacks.js must load and list stacks);
      - the committed config JSON Schema is the one the build generates;
      - the type check and npm audit --audit-level=high (release.yml blocks on it);
+     - release.yml's npm publish line, dry run, on the packed tarball;
      - the tag, if given, matches package.json;
      - actionlint on the workflows and the quick goldens (when Docker is available).
 
@@ -90,6 +91,17 @@ try {
     check('npm audit --audit-level=high', () => {
       const r = run(npm[0], [...npm.slice(1), 'audit', '--audit-level=high'], dir);
       return { ok: r.code === 0, detail: r.out.trim().split('\n').pop() };
+    });
+    // release.yml's own publish line, on a tarball laid out as its download-artifact step leaves it (package/).
+    // 3.2.1's first release failed here: npm took package/gherkin-ai-3.2.1.tgz for a GitHub repository.
+    check('release.yml publishes the tarball (npm publish --dry-run)', () => {
+      const line = fs.readFileSync(path.join(dir, '.github', 'workflows', 'release.yml'), 'utf8').match(/^\s*(npm publish .+)$/m);
+      if (!line) return { ok: false, detail: 'no npm publish line in release.yml' };
+      fs.mkdirSync(path.join(dir, 'package'));
+      const packed = run(npm[0], [...npm.slice(1), 'pack', '--silent', '--pack-destination', 'package'], dir);
+      if (packed.code !== 0) return { ok: false, detail: packed.out };
+      const r = run('bash', ['-c', `TAG=latest; ${line[1]} --dry-run`], dir, { shell: false });
+      return { ok: r.code === 0, detail: r.code === 0 ? '' : r.out };
     });
   }
   if (tag) {

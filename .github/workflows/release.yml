@@ -52,10 +52,12 @@ jobs:
         run: npx --yes @cyclonedx/cyclonedx-npm@6.0.1 --omit dev --output-format JSON --output-file sbom.cdx.json
 
       # Authenticates through the npm trusted publisher (OIDC): no NPM_TOKEN secret. Provenance is attached automatically.
+      # The ./ is required: npm reads package/gherkin-ai-X.tgz as the GitHub shorthand github:package/gherkin-ai-X.tgz.
+      # scripts/release-preflight.js runs this line with --dry-run.
       - name: Publish to npm (trusted publishing, provenance)
         run: |
           if node -p "require('./package.json').version" | grep -q -- '-'; then TAG=beta; else TAG=latest; fi
-          npm publish package/gherkin-ai-*.tgz --provenance --access public --tag "$TAG"
+          npm publish ./package/gherkin-ai-*.tgz --provenance --access public --tag "$TAG"
 
       - name: GitHub Release
         env:
