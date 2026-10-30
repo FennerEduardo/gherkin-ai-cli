@@ -290,7 +290,7 @@ const AZURE_DEPS = ['azure-messaging-servicebus', 'azure-identity'].map(a => `
  * `mvn test`), at target/site/jacoco/, where `ghk converge` and `ghk quality` read it. Unit tests and the
  * -Pintegration suite each produce their own run (no appending to an older jacoco.exec).
  */
-const JACOCO_PLUGIN = `      <plugin>
+export const JACOCO_PLUGIN = `      <plugin>
         <groupId>org.jacoco</groupId>
         <artifactId>jacoco-maven-plugin</artifactId>
         <version>${JVM_VERSIONS.jacocoMavenPlugin}</version>

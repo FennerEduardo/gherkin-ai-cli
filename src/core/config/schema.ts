@@ -34,7 +34,25 @@ const stackSchema = z.object({
   auth: z.string(),
   messaging: z.string().optional(),
   testing: z.string(),
-  aiEngine: z.string().optional()
+  aiEngine: z.string().optional(),
+  /**
+   * service (default): a stateful command service with the runtime kernel (database, outbox, events).
+   * bff: a backend-for-frontend that owns no data and publishes no events; it forwards each command to the
+   * service in `bff.upstreams` (NestJS, Express and Spring Boot).
+   */
+  role: z.enum(['service', 'bff']).optional().describe('"service" (default, runtime kernel) or "bff" (stateless gateway to bff.upstreams).')
+});
+
+/** Services a BFF forwards to; each is reached at the URL in its environment variable (default <NAME>_URL). */
+const bffSchema = z.object({
+  upstreams: z.record(z.string().regex(/^[a-z][a-z0-9-]*$/), z.object({
+    /** Environment variable with the base URL (default: the name upper-cased + _URL, e.g. ENROLLMENT_URL). */
+    urlEnv: z.string().regex(/^[A-Z][A-Z0-9_]*$/).optional(),
+    /** URL used in docker-compose and .env.example. */
+    url: z.string().url().optional()
+  })).optional(),
+  /** Upstream request timeout in milliseconds (default 10000). */
+  timeoutMs: z.number().int().min(100).max(120000).optional()
 });
 
 const frontendStackSchema = z.object({
@@ -257,6 +275,7 @@ export const configShape = {
     command: z.string().min(1).optional(),
     report: z.string().min(1).optional()
   }).optional(),
+  bff: bffSchema.optional(),
   domainProfile: z.string().optional(),
   /** Industry reference standard (BIAN, TM Forum, HL7 FHIR, ...): adds lint rules, IR constraints and LLM guidance. */
   industry: z.object({

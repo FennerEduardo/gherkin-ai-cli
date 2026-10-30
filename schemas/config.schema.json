@@ -76,6 +76,14 @@
         },
         "aiEngine": {
           "type": "string"
+        },
+        "role": {
+          "description": "\"service\" (default, runtime kernel) or \"bff\" (stateless gateway to bff.upstreams).",
+          "type": "string",
+          "enum": [
+            "service",
+            "bff"
+          ]
         }
       },
       "additionalProperties": false
@@ -188,6 +196,38 @@
         "report": {
           "type": "string",
           "minLength": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "bff": {
+      "type": "object",
+      "properties": {
+        "upstreams": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]*$"
+          },
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "urlEnv": {
+                "type": "string",
+                "pattern": "^[A-Z][A-Z0-9_]*$"
+              },
+              "url": {
+                "type": "string",
+                "format": "uri"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "timeoutMs": {
+          "type": "integer",
+          "minimum": 100,
+          "maximum": 120000
         }
       },
       "additionalProperties": false

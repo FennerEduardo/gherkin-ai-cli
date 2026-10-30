@@ -22,6 +22,10 @@ import { dartPackageName, generateFlutterPreset } from './preset-flutter';
 import { renderFlutterProject } from './frontend/kernel/flutter';
 
 import { getStackSupport } from './stack-support';
+import { ConfigError } from '../core/errors';
+import { bffFramework, isBff } from './bff/model';
+import { renderTsBff } from './bff/typescript';
+import { renderSpringBff } from './bff/spring';
 import { renderContainerFiles } from './deploy/container';
 import { buildDomainModel } from './kernel/domain-model';
 import { siblingDomainModels } from './kernel/siblings';
@@ -77,13 +81,24 @@ function backendPreset(id: string): BackendPreset | undefined {
   return BACKEND_PRESETS[id];
 }
 
+/** stack.role "bff": a stateless gateway instead of a command service (bff/model.ts). */
+function bffPreset(config: GherkinAIConfig): BackendPreset {
+  const framework = bffFramework(config);
+  if (!framework) {
+    throw new ConfigError(`stack.role "bff" is not generated for ${config.stack.language} / ${config.stack.framework}.`, {
+      hint: 'The BFF role is generated for TypeScript (Express, NestJS) and Java (Spring Boot). Other stacks get the contracts and prompts only: drop stack.role.'
+    });
+  }
+  return framework === 'spring' ? (p, c) => renderSpringBff(p, c) : (p, c) => renderTsBff(p, c, framework);
+}
+
 /** @param featureFile path of the source .feature relative to the project root, when known (used by BDD runners that bind one file). */
 export function generatePresets(parsed: ParsedFeature, config: GherkinAIConfig, featureFile?: string): { filename: string; content: string }[] {
   const results: { filename: string; content: string }[] = [];
 
   // Frontend-only stacks (`frontend/*`) are rendered below; unsupported stacks (experimental
   // tier, e.g. Kotlin + Ktor) only get contracts and prompts.
-  const backend = backendPreset(getStackSupport(config).id);
+  const backend = isBff(config) ? bffPreset(config) : backendPreset(getStackSupport(config).id);
   if (backend) {
     results.push(...backend(parsed, config, featureFile));
     // Production image (Dockerfile + .dockerignore) for container platforms (ECS, Cloud Run, Container Apps, Kubernetes).

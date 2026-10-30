@@ -11,7 +11,8 @@ const { STACKS } = require(path.resolve(__dirname, '../../scripts/golden-stacks.
 describe('toolchain registry', () => {
   it('uses the same image as the golden build of every stable backend', () => {
     for (const s of STACK_SUPPORT.filter(x => x.kind === 'backend')) {
-      const id = s.id.startsWith('typescript/nestjs') ? 'typescript/nestjs' : s.id.startsWith('typescript/express') ? 'typescript/express' : s.id;
+      // A BFF (stack.role "bff") builds with the toolchain of its framework.
+      const id = /^(typescript|bff)\/nestjs/.test(s.id) ? 'typescript/nestjs' : /^(typescript|bff)\/express/.test(s.id) ? 'typescript/express' : s.id === 'bff/spring' ? 'java/spring' : s.id;
       expect(TOOLCHAINS[id], s.id).toBeDefined();
       expect(TOOLCHAINS[id].image, s.id).toBe(STACKS[s.golden!].image);
     }

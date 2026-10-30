@@ -178,6 +178,8 @@ const DEFAULT_HEALTH = { live: '/health', ready: '/health' };
 
 /** Liveness / readiness paths of a backend. */
 export function resolveHealth(config: Pick<GherkinAIConfig, 'stack'>): { live: string; ready: string } {
+  // A BFF has no database to be ready for.
+  if (config.stack.role === 'bff') return { live: '/health', ready: '/health' };
   // NestJS checks the database in /health/ready (RuntimeModule); Express shares the node entry and has /health only.
   if (getStackSupport(config).id.startsWith('typescript/nestjs')) return { live: '/health', ready: '/health/ready' };
   return resolveAppRuntimeEnv(config).health ?? DEFAULT_HEALTH;

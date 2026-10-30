@@ -124,6 +124,36 @@ const STACKS = {
     test: ['mvn -B -ntp test'],
     integration: ['mvn -B -ntp test -Pintegration']
   },
+  // stack.role "bff": no database or broker; the tests run against a stub upstream service.
+  'express-bff': {
+    stack: { ...base, language: 'typescript', framework: 'express', orm: 'none', validation: 'zod', testing: 'jest', role: 'bff' },
+    config: { bff: { upstreams: { payments: { url: 'http://payments:3000' } } } },
+    image: 'node:24-bookworm',
+    caches: [['npm', '/root/.npm']],
+    build: ['npm install --no-audit --no-fund --loglevel=error', 'npm run build'],
+    test: ['npm test', 'test ! -e seed.sql && test ! -e asyncapi.json && grep -q "/bff/v1/" openapi.json']
+  },
+  'nestjs-bff': {
+    stack: { ...base, language: 'typescript', framework: 'nestjs', orm: 'none', validation: 'zod', testing: 'jest', role: 'bff' },
+    image: 'node:24-bookworm',
+    caches: [['npm', '/root/.npm']],
+    build: ['npm install --no-audit --no-fund --loglevel=error', 'npm run build'],
+    test: ['npm test', `node -e "require('./dist/src/app.module').AppModule.register"`]
+  },
+  'nestjs-12-bff': {
+    stack: { ...base, language: 'typescript', framework: 'nestjs', frameworkVersion: '12', orm: 'none', validation: 'zod', testing: 'jest', role: 'bff' },
+    image: 'node:24-bookworm',
+    caches: [['npm', '/root/.npm']],
+    build: ['npm install --no-audit --no-fund --loglevel=error', 'npm run build'],
+    test: ['npm test']
+  },
+  'spring-bff': {
+    stack: { ...base, language: 'java', framework: 'spring-boot', orm: 'none', validation: 'jakarta-validation', testing: 'junit', role: 'bff' },
+    image: 'maven:3.9-eclipse-temurin-17',
+    caches: [['m2', '/root/.m2']],
+    build: ['mvn -q -B -ntp -DskipTests package'],
+    test: ['mvn -B -ntp test', 'test ! -d src/main/java/com/example/goldenspringbff/runtime && test ! -e seed.sql']
+  },
   quarkus: {
     stack: { ...base, language: 'java', framework: 'quarkus', orm: 'jdbc', validation: 'jakarta-validation', testing: 'junit' },
     image: 'maven:3.9-eclipse-temurin-21',

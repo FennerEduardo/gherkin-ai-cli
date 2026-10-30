@@ -15,6 +15,7 @@ export function awsCdkEnabled(config: GherkinAIConfig): boolean {
   return config.infrastructure?.awsCdk ?? ['sqs', 'sns'].includes((config.stack.messaging || '').toLowerCase());
 }
 import { generatePresets } from '../generators/presets';
+import { isBff, renderBffInfra } from '../generators/bff/model';
 import { generatePrismaStack } from '../generators/prisma-stack';
 import { ParsedFeature } from '../core/gherkin-parser';
 import { getSourceFeature } from '../core/ir-builder';
@@ -107,6 +108,12 @@ export class CoreContractsPlugin implements GherkinAIPlugin {
   generate(ir: SpecificationIR, config: GherkinAIConfig): GeneratedArtifact[] {
     const parsed = irToParsedFeature(ir);
     const result = generateContracts(parsed, ir, config);
+    if (isBff(config)) {
+      // A BFF serves the client routes (/bff/v1/...), publishes no events and has its own build file (bff/*).
+      result.openApiJson = result.openApiJson.replace(/"\/api\/v1\//g, '"/bff/v1/');
+      result.asyncApiJson = '';
+      result.projectRootFile = undefined;
+    }
 
     // Each feature owns contracts/<feature>/; the root openapi.json / asyncapi.json are the union of all
     // features, so generating one feature no longer drops the routes and channels of the others.
@@ -158,7 +165,8 @@ export class CoreFixturesPlugin implements GherkinAIPlugin {
     const result = generateFixtures(parsed, config);
     return [
       { filePath: 'fixtures.ts', content: result.fixturesTs, type: 'fixture' },
-      { filePath: 'seed.sql', content: result.seedSql, type: 'fixture' }
+      // A BFF has no database to seed.
+      ...(isBff(config) ? [] : [{ filePath: 'seed.sql', content: result.seedSql, type: 'fixture' as const }])
     ];
   }
 }
@@ -185,8 +193,8 @@ export class CorePrismaPlugin implements GherkinAIPlugin {
   version = '1.0.0';
 
   generate(ir: SpecificationIR, config: GherkinAIConfig): GeneratedArtifact[] {
-    if (config.stack.orm !== 'prisma') return [];
-    
+    if (config.stack.orm !== 'prisma' || isBff(config)) return [];
+
     const parsed = irToParsedFeature(ir);
     const prismaArtifacts = generatePrismaStack(parsed, config, otherProjectFeatures(ir, parsed));
     return prismaArtifacts.map((p: any) => ({
@@ -202,6 +210,14 @@ export class CoreInfraPlugin implements GherkinAIPlugin {
   version = '1.0.0';
 
   generate(ir: SpecificationIR, config: GherkinAIConfig): GeneratedArtifact[] {
+    if (isBff(config)) {
+      // No database, broker or cloud data plane: the BFF image and the URLs of the services it calls.
+      const bff = renderBffInfra(config);
+      return [
+        { filePath: 'docker-compose.yml', content: bff.compose, type: 'config' },
+        { filePath: '.env.example', content: bff.env, type: 'config' }
+      ];
+    }
     const result = generateInfra(config);
     const artifacts: GeneratedArtifact[] = [];
 

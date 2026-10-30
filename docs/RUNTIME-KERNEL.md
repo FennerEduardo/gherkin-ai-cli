@@ -114,3 +114,33 @@ The generated `openapi.json` (and `contracts/<feature>/openapi.json`) describes 
 HTTP codes written in the scenarios are not copied into the contract, because the route answers with the codes above.
 
 Each backend has unit tests of this contract with a fake command port, and an HTTP integration test against PostgreSQL. It proves that `X-Tenant-Id` alone gets 401, a command writes one outbox row under the token's tenant, and a replay returns 200. The golden builds generate a two-feature service and run both features' tests.
+
+## Backend-for-frontend (`stack.role: "bff"`)
+
+A backend-for-frontend owns no data and publishes no events, so it gets none of the above: no runtime kernel, database, outbox, aggregate or `seed.sql`, and no `asyncapi.json`. It is generated for Express, NestJS (11 and 12) and Spring Boot.
+
+```json
+{
+  "stack": { "language": "java", "framework": "spring-boot", "orm": "none", "role": "bff" },
+  "bff": {
+    "upstreams": {
+      "enrollment": { "url": "http://enrollment-service:8080" },
+      "academic": { "urlEnv": "ACADEMIC_API_URL" }
+    },
+    "timeoutMs": 10000
+  }
+}
+```
+
+Each feature names the service that owns its commands with `@upstream:<name>` (the first upstream when it has none). The BFF exposes `POST /bff/v1/<feature>/{id}/{command}` and forwards it to `POST /api/v1/<feature>/{id}/{command}`, the route of the service's application layer above, at the URL in the upstream's environment variable (`ENROLLMENT_URL` by default).
+
+| The BFF | Behaviour |
+|---|---|
+| Passes on | `Authorization`, `traceparent`, `tracestate`, `Idempotency-Key`, `Accept-Language`; `X-Request-Id` (created when missing, returned to the client) |
+| 401 | No bearer token: the call is never forwarded anonymously. The service validates the token |
+| 404 | A command the feature does not declare |
+| 4xx | The service's answer, as it came |
+| 502 | The service answered 5xx (its body is not passed on) or could not be reached |
+| 504 | No answer within `bff.timeoutMs` |
+
+`GET /health` answers without calling the services. The generated tests run each of these cases against a stub upstream; the goldens `express-bff`, `nestjs-bff`, `nestjs-12-bff` and `spring-bff` build and run them on every change. `docker-compose.yml` and `.env.example` hold only the BFF and the upstream URLs. Terraform, Helm and the CI/CD pipeline are not generated for a BFF yet (the cloud targets would provision a database it does not use): deploy its image next to the services.
