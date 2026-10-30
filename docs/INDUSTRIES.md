@@ -60,6 +60,22 @@ A legacy `domainProfile` such as `"payments"` does **not** turn on an industry. 
 
 Rules read only the parsed specification: tags, scenario names and step text. Quoted example values are ignored unless a rule says otherwise. Keyword lists cover English and Spanish specifications.
 
+### Contract rules
+
+Banking, health and telecom also check what the service exposes: the feature's generated `openapi.json` (else the service-wide one), or the document passed with `--openapi`, so they work on a repository's own contract too. `ghk validate` reports them (an error fails it, exit 4); `ghk converge` takes 15 points per error and 5 per warning from *Architecture Compliance*. `industry.disabledRules` turns any of them off.
+
+| Rule | Industry | Severity | Checks |
+|---|---|---|---|
+| GHK151 | banking | error | Amount-like properties (`amount`, `balance`, `fee`, `…Amt`) are not `float`/`double` (ISO 20022 amounts are decimals) |
+| GHK152 | banking | warning | Every amount has an ISO 4217 `currency` / `ccy` property next to it |
+| GHK153 | banking | warning | `iban` and `bic` declare a pattern or format (ISO 13616, ISO 9362) |
+| GHK154 | banking | error | No card data (`pan`, `cardNumber`, `cvv`) in requests or responses (PCI DSS) |
+| GHK451 | health | warning | A schema named after a FHIR resource (`Patient`, `Observation`, …) has `resourceType` |
+| GHK452 | health | error | An operation that carries PHI (`birthDate`, `ssn`, `mrn`, `diagnosis`, …) declares a security requirement (HIPAA) |
+| GHK251 | telecom | warning | TM Forum entities (`ProductOrder`, `ServiceOrder`, `Customer`, …) carry `id`, `href` and `@type` (TMF630) |
+
+`ghk industry show <id>` lists them. The contracts gherkin-ai generates pass them (checked on the reference project ts15-quarkus-banking).
+
 ---
 
 ## Banking & Financial Services (`banking`)

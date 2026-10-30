@@ -19,6 +19,7 @@ import { COVERAGE_REPORT_PATHS, findCoverage } from './coverage-reports';
 import { findLayerDirs } from './arch-rules';
 import { CONTRACTS_DIR, featureContractSlug } from './contracts/merge';
 import { ContractCheck, contractChecks } from './contract-drift';
+import { checkContracts } from './profiles/industries/contract-rules';
 import { readInventoryFile } from './inventory';
 
 // ---------------------------------------------------------------------------
@@ -165,6 +166,7 @@ export function checkConvergence(
   const archCompliance = managed || constitution ? evaluateArchitectureCompliance(ir, constitution, projectDir, outputDir)
     : notApplicable('Architecture Compliance', 'artifacts', 'No constitution in this repository (not counted in the overall score).',
       '→ `ghk init` writes one (.gherkin-ai/constitution.yaml) with the architecture rules to check.');
+  applyIndustryContractRules(archCompliance, ir, projectDir, outputDir, options.openapi);
   dimensions.push(archCompliance);
 
   // 5. Security Policy
@@ -376,6 +378,30 @@ function evaluateContractCoverage(
     status: score >= 80 ? 'pass' : score >= 50 ? 'warn' : 'fail',
     basis: 'artifacts'
   };
+}
+
+/**
+ * The industry's contract rules (core/profiles/industries/contract-rules) over the contract the feature exposes:
+ * each error takes 15 points from Architecture Compliance, each warning 5. Nothing without an industry.
+ */
+function applyIndustryContractRules(dim: ConvergenceDimension, ir: SpecificationIR, projectDir: string, outputDir: string, openapiFile?: string): void {
+  let industry: { id: string; disabledRules?: string[] } | undefined;
+  try {
+    industry = loadConfig(path.join(projectDir, 'gherkin-ai.config.json')).industry;
+  } catch {
+    return;
+  }
+  if (!industry?.id) return;
+  const outAbs = path.resolve(projectDir, outputDir);
+  const featureDoc = path.join(outAbs, CONTRACTS_DIR, featureContractSlug(ir.sourceFile, ir.featureName), 'openapi.json');
+  const file = openapiFile ?? (fs.existsSync(featureDoc) ? featureDoc : path.join(outAbs, 'openapi.json'));
+  const findings = checkContracts(industry.id, readJson(file), industry.disabledRules);
+  if (!findings.length) return;
+  const penalty = findings.reduce((sum, f) => sum + (f.severity === 'error' ? 15 : 5), 0);
+  if (dim.applicable === false) Object.assign(dim, { applicable: true, score: 100, details: [] });
+  dim.score = Math.max(0, dim.score - penalty);
+  dim.status = dim.score >= 80 ? 'pass' : dim.score >= 50 ? 'warn' : 'fail';
+  dim.details.push(...findings.slice(0, 5).map(f => `[${f.ruleId}] ${f.location}: ${f.message}`), ...(findings.length > 5 ? [`…and ${findings.length - 5} more (ghk validate lists them all).`] : []));
 }
 
 function notApplicable(name: string, basis: ConvergenceDimension['basis'], ...details: string[]): ConvergenceDimension {

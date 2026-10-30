@@ -18,6 +18,7 @@ import {
   renderIndustryContextJson, renderIndustryContextMarkdown, IndustryProfile
 } from '../core/profiles/industries';
 import { INDUSTRY_CONTEXT_MD, writeIndustryContext } from '../core/profiles/industries/context-files';
+import { CONTRACT_RULES_BY_INDUSTRY } from '../core/profiles/industries/contract-rules';
 
 export interface IndustryCommandOptions {
   json?: boolean;
@@ -35,13 +36,14 @@ export async function handleIndustryCommand(subcommand = 'list', id: string | un
       id: p.id,
       label: p.label,
       standards: p.standards.map(s => s.id),
-      lintRules: [...p.lintRules, CAPABILITY_DEPTH_RULE].map(r => r.id)
+      lintRules: [...p.lintRules, CAPABILITY_DEPTH_RULE].map(r => r.id),
+      contractRules: (CONTRACT_RULES_BY_INDUSTRY[p.id] ?? []).map(r => r.id)
     }));
     if (options.json) return emitJson(rows);
     console.log(chalk.bold.cyan('\n🏛️  Industry profiles\n'));
     for (const r of rows) {
       console.log(`  ${chalk.bold(r.id.padEnd(14))} ${r.label}`);
-      console.log(chalk.gray(`  ${''.padEnd(14)} standards: ${r.standards.join(', ') || '-'} · lint: ${r.lintRules.join(', ')}`));
+      console.log(chalk.gray(`  ${''.padEnd(14)} standards: ${r.standards.join(', ') || '-'} · lint: ${r.lintRules.join(', ')}${r.contractRules.length ? ` · contracts: ${r.contractRules.join(', ')}` : ''}`));
     }
     console.log(chalk.gray('\n  ghk industry show <id> for the rules; ghk industry apply <id> to use one in this project.\n'));
     return;
@@ -51,6 +53,12 @@ export async function handleIndustryCommand(subcommand = 'list', id: string | un
     const profile = requireIndustry(id);
     if (options.json) return emitJson(JSON.parse(renderIndustryContextJson(profile)));
     console.log(renderIndustryContextMarkdown(profile));
+    const contractRules = CONTRACT_RULES_BY_INDUSTRY[profile.id] ?? [];
+    if (contractRules.length) {
+      console.log('## Contract rules (ghk validate, ghk converge)\n');
+      for (const r of contractRules) console.log(`- ${r.id} (${r.severity}): ${r.name}`);
+      console.log('');
+    }
     return;
   }
 

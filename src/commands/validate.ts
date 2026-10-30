@@ -19,6 +19,7 @@ import { buildIR } from '../core/ir-builder';
 import { StepIndexer } from '../core/step-indexer';
 import { undefinedSteps } from '../core/step-coverage';
 import { resolveFeatureFile } from '../core/workspace-projects';
+import { checkContracts } from '../core/profiles/industries/contract-rules';
 
 /** Dependencies and build output are not the project's code. */
 export const VALIDATE_SKIP_DIRS = new Set(['node_modules', 'dist', 'build', 'target', '.git', 'bin', 'obj', 'coverage', '.gradle', '_build', 'deps', 'vendor', '.venv', '__pycache__', '.next', '.dart_tool']);
@@ -247,6 +248,18 @@ export async function handleValidateCommand(options: { feature?: string; config?
         warningsCount += oaResult.warnings.length;
       }
     }
+  }
+
+  // 4b. Industry rules over the contract the service exposes (the given --openapi, else the generated one).
+  if (config.industry?.id) {
+    const contractPath = options.openapi ? path.resolve(process.cwd(), options.openapi) : path.join(outputDirResolved, 'openapi.json');
+    const document = (() => { try { return JSON.parse(fs.readFileSync(contractPath, 'utf8')); } catch { return undefined; } })();
+    const findings = checkContracts(config.industry.id, document, config.industry.disabledRules);
+    for (const f of findings) {
+      const line = `[${f.ruleId}] ${f.location}: ${f.message} ${f.suggestion}`;
+      if (f.severity === 'error') { logger.error(line); errorsCount++; } else { logger.warn(line); warningsCount++; }
+    }
+    if (document && findings.length === 0) logger.success(`Industry contract rules (${config.industry.id}) passed on ${path.relative(process.cwd(), contractPath) || contractPath}.`);
   }
 
   // 5. AsyncAPI Specification Validation (Optional or auto-detect)
