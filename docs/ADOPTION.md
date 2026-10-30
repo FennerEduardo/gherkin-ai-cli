@@ -24,7 +24,7 @@ npx ghk --version
 ```
 
 - **Pin an exact version** in the repository, in CI (`npx --yes gherkin-ai@3.2.1`) and in MCP clients (`ghk mcp install` pins it). An unpinned install changes generated output and lint scores without a commit.
-- **Requirements:** Node.js 22.12 or later. Docker for `ghk verify --docker`, `--services` and the golden recipes.
+- **Requirements:** Node.js 22.19 or later. Docker for `ghk verify --docker`, `--services` and the golden recipes.
 - **Organization settings:** providers, proxies, locked keys and allow-lists belong in the organization configuration layer, not in each repository ([ENTERPRISE.md §1](ENTERPRISE.md#1-configuration-layers-and-organization-policy)). Set it up once, before the first team starts.
 
 ## 2. Create the configuration

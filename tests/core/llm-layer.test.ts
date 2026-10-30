@@ -139,15 +139,25 @@ describe('LLM layer', () => {
     }
   });
 
-  it('routes provider traffic through the corporate proxy (CONNECT tunnel)', async () => {
+  it('routes provider traffic through the corporate proxy', async () => {
     const backend = await startServer((_r, res) => json(res, 200, openAIReply));
-    const connects: string[] = [];
-    const proxy = http.createServer();
+    const { port: backendPort } = new URL(backend.url);
+    // Hosts the proxy was asked to reach. undici 8 forwards plain-HTTP requests in absolute form
+    // (undici 6 tunnelled them with CONNECT); corporate proxies accept both, so the test does too.
+    const proxied: string[] = [];
+    const proxy = http.createServer((req, res) => {
+      const target = new URL(req.url ?? '');
+      proxied.push(target.host);
+      const upstream = http.request({ host: '127.0.0.1', port: Number(backendPort), path: `${target.pathname}${target.search}`, method: req.method, headers: req.headers }, up => {
+        res.writeHead(up.statusCode ?? 502, up.headers);
+        up.pipe(res);
+      });
+      req.pipe(upstream);
+    });
     proxy.on('connect', (req, clientSocket, head) => {
-      connects.push(req.url ?? '');
+      proxied.push(req.url ?? '');
       // Every tunnel goes to the local backend, whatever host was requested.
-      const { port } = new URL(backend.url);
-      const upstream = net.connect(Number(port), '127.0.0.1', () => {
+      const upstream = net.connect(Number(backendPort), '127.0.0.1', () => {
         clientSocket.write('HTTP/1.1 200 Connection Established\r\n\r\n');
         upstream.write(head);
         upstream.pipe(clientSocket);
@@ -161,7 +171,7 @@ describe('LLM layer', () => {
       const client = new LLMClient(settings({ baseUrl: 'http://llm.gateway.internal.test/v1' }));
       const res = await client.complete({ system: 's', user: 'u' });
       expect(res.text).toBe('{"files":[]}');
-      expect(connects).toEqual(['llm.gateway.internal.test:80']);
+      expect(proxied.map(h => h.replace(/:80$/, ''))).toEqual(['llm.gateway.internal.test']);
       expect(backend.requests[0].url).toBe('/v1/chat/completions');
     } finally {
       resetNetwork();

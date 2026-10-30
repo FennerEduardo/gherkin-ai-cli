@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [3.2.2] - Unreleased
+
+### Security
+- **The corporate proxy and CA were ignored on Node.js 26.** Node 26 ships undici 8, whose `fetch` reads the global dispatcher from a new symbol; gherkin-ai's undici 6 only set the old one, so with `HTTPS_PROXY`, `network.proxy` or `network.caFile` the LLM traffic went straight to the provider, with the system CA list and no warning. `undici` moves to 8, which sets both. Plain-HTTP gateways are now reached through the proxy as forwarded requests (undici 6 opened a CONNECT tunnel). `@hono/node-server` (via the MCP SDK) is updated for GHSA-rmxm-3fg6-px4f: `npm audit` reports 0 vulnerabilities.
+
+### Changed
+- **Node.js 22.19 or later** (was 22.12), the minimum undici 8 supports. CI also tests Node 26.
+
 ## [3.2.1] - 2026-10-25
 
 Most of these were found by adopting 3.2.0 in an implemented multi-service project (the LMS reference project); the rest by a code-verified security and governance review of 3.2.0. A golden built from one of the LMS services (`tests/golden/implemented-service.test.ts`, also a CI job that compiles it) keeps the generation fixes; it fails on 3.2.0. Upgrade notes: [MIGRATION-3.2.md, "From 3.2.0 to 3.2.1"](docs/MIGRATION-3.2.md#from-320-to-321).

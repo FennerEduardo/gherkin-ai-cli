@@ -17,7 +17,7 @@ Adding it to an existing code base? Start with [docs/ADOPTION.md](docs/ADOPTION.
 
 ## Installation
 
-Requires Node.js 22.12 or later.
+Requires Node.js 22.19 or later.
 
 ```bash
 npm install -g gherkin-ai     # installs the `gherkin-ai` and `ghk` commands

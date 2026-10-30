@@ -314,7 +314,7 @@ export function scanAutomation(cwd: string, files = listAutomationFiles(cwd)): U
     const lines = text.split(/\r?\n/);
     lines.forEach((line, i) => {
       if (OLD_NODE.test(line)) {
-        findings.push({ id: 'automation.node-version', area: 'automation', severity: 'required', fix: 'manual', file: rel, line: i + 1, message: 'This pipeline runs gherkin-ai on Node.js < 22; v3 requires Node.js 22.12 or later.', hint: 'Use Node 22 or 24 (e.g. actions/setup-node with node-version: 22).' });
+        findings.push({ id: 'automation.node-version', area: 'automation', severity: 'required', fix: 'manual', file: rel, line: i + 1, message: 'This pipeline runs gherkin-ai on Node.js < 22; v3 requires Node.js 22.19 or later.', hint: 'Use Node 22 or 24 (e.g. actions/setup-node with node-version: 22).' });
       }
       if (!CLI_INVOCATION.test(`${line} `)) return;
       for (const rule of LINE_RULES) {

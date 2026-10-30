@@ -20,7 +20,7 @@ No configuration change is required. The CLI contract (commands, exit codes, `--
 | Repair loop writes | specs could not be edited; contracts and tests could | specs, contracts and tests need a human | – |
 | Proposals | `.ghe/patches/<basename>.proposed` (full file; equal basenames collided) | `.ghe/patches/<path as a__b>.patch` (unified diff) | `git apply` them |
 | Agent firewall, commands | prefix match on the raw line | parsed like a shell (see ENTERPRISE.md §14); `ghk` only for read-only subcommands | add exact commands to `policy.firewall.allowCommands` if a hook now asks for approval |
-| Node.js older than 22.12 | ran anyway | exits 2 with the version found | – |
+| Node.js older than 22.19 (22.12 in 3.2.1) | ran anyway | exits 2 with the version found | – |
 
 ## Choose your path
 
@@ -36,7 +36,7 @@ You do not need to install each version in between. `ghk upgrade` in 3.2 checks 
 
 - [ ] **Commit or stash** everything. The upgrade runs on its own branch and refuses a dirty working tree (unless `--force`).
 - [ ] **Pin 3.2.1** in the repository, CI and MCP clients (`npm install --save-dev --save-exact gherkin-ai@3.2.1`, `ghk mcp install`).
-- [ ] **Node.js 22.12 or later** on developer machines and build agents.
+- [ ] **Node.js 22.19 or later** on developer machines and build agents.
 - [ ] **Check that `.ghe/inventory.json` exists** where you regenerate. It holds the checksums that prove a file is unedited. From 3.2.1 it is versioned; in a clone of an older project it may be missing, and then generated files get a `.ghk-new` instead of being overwritten. Add a `.ghk-implemented` file at the root of every implemented service.
 - [ ] **Read the report** before applying anything:
 
