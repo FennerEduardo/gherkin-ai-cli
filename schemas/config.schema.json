@@ -726,7 +726,8 @@
           "enum": [
             "containers",
             "kubernetes",
-            "both"
+            "both",
+            "vm"
           ]
         },
         "environments": {

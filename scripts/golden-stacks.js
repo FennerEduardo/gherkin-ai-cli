@@ -305,9 +305,9 @@ for (const [name, brokers] of Object.entries(NATIVE_BROKERS)) {
 // must lint and render for every environment. Nothing is applied. Stacks are chosen to cover the variants: a
 // separate relay process (Rails, Laravel, Django), framework secrets (SECRET_KEY_BASE, APP_KEY) and Service Bus.
 const DEPLOY_TOOL_IMAGES = { terraform: 'hashicorp/terraform:1.16.6', helm: 'alpine/helm:3.22.1' };
-const terraform = (name, cloud, backend, extraStack = {}) => ({
+const terraform = (name, cloud, backend, extraStack = {}, compute = 'containers') => ({
   stack: { ...STACKS[backend].stack, ...extraStack },
-  config: { deploy: { cloud, compute: 'containers' } },
+  config: { deploy: { cloud, compute } },
   image: DEPLOY_TOOL_IMAGES.terraform,
   entrypoint: 'sh',
   workdir: `deploy/terraform/${cloud}`,
@@ -324,6 +324,10 @@ STACKS['terraform-azure-rabbitmq'] = terraform('terraform-azure-rabbitmq', 'azur
 STACKS['terraform-aws-kafka'] = terraform('terraform-aws-kafka', 'aws', 'nestjs', { messaging: 'kafka' });
 STACKS['terraform-gcp-kafka'] = terraform('terraform-gcp-kafka', 'gcp', 'go', { messaging: 'kafka' });
 STACKS['terraform-azure-kafka'] = terraform('terraform-azure-kafka', 'azure', 'dotnet', { messaging: 'kafka' });
+// compute "vm": the same database, broker and secrets, on one virtual machine (Docker + Caddy).
+STACKS['terraform-aws-vm'] = terraform('terraform-aws-vm', 'aws', 'rails', {}, 'vm');
+STACKS['terraform-gcp-vm'] = terraform('terraform-gcp-vm', 'gcp', 'laravel', {}, 'vm');
+STACKS['terraform-azure-vm'] = terraform('terraform-azure-vm', 'azure', 'nestjs', { messaging: 'servicebus' }, 'vm');
 STACKS.helm = {
   stack: STACKS.django.stack,
   config: { deploy: { cloud: 'gcp', compute: 'kubernetes' } },

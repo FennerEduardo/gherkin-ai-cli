@@ -92,7 +92,8 @@ The adapter is chosen when the service starts: `GHK_BROKER` if set, otherwise th
 - **`compute`:**
   - `containers` (the default) is the managed container service, under `deploy/terraform/<cloud>/`;
   - `kubernetes` is a Helm chart under `deploy/helm/<service>/`;
-  - `both` writes both.
+  - `both` writes both;
+  - `vm` runs the image on one virtual machine (below), for demos and small workloads.
 - **`environments`:** one `.tfvars`, Terraform backend file and Helm values file per environment.
 
 `ghk generate` writes `deploy/README.md` with the exact commands. Only backends with a production image get deployment targets.
@@ -117,6 +118,21 @@ The adapter is chosen when the service starts: `GHK_BROKER` if set, otherwise th
   - a ServiceAccount whose workload-identity annotation (`eks.amazonaws.com/role-arn`, `iam.gke.io/gcp-service-account` or `azure.workload.identity/client-id`) is set in `values-<env>.yaml`.
 
   Secrets come from an existing Kubernetes Secret, created from the cloud secret manager by External Secrets Operator or the Secrets Store CSI driver. They are never in values files.
+
+### One virtual machine (`compute: "vm"`)
+
+The database, broker and secret store are the same as for `containers` (the same Terraform files). Only the compute changes:
+
+| | AWS | Google Cloud | Azure |
+|---|---|---|---|
+| Machine | EC2, Amazon Linux 2023 (`instance_type`, default `t3.small`), Elastic IP | Compute Engine, Debian 12 (`machine_type`, default `e2-small`), static IP | Linux VM, Ubuntu 24.04 (`vm_size`, default `Standard_B2s`), public IP |
+| Identity | Instance profile: read the service's secrets, pull from ECR | The service account (also Artifact Registry reader) | The user-assigned identity (Key Vault Secrets User, AcrPull) |
+| Access | SSM Session Manager (no key pair, no port 22) | OS Login | SSH key required by Azure; port 22 stays closed (Bastion or Run Command) |
+| Inputs | `subnet_id` (public) and the same `vpc_id` / `private_subnet_ids` | the same `network` / `subnetwork` | `vm_subnet_id`, `admin_ssh_public_key` |
+
+At boot, cloud-init installs Docker, reads each secret from the secret store with the machine's identity into `/opt/app/app.env` (mode 600; the values are never in the user data), and runs the image behind Caddy: with `domain` set, Caddy obtains a Let's Encrypt certificate for it (point the DNS record at the `public_ip` output); without it, the service answers plain HTTP on port 80. Stacks with a separate relay process also run it there. Only ports 80 and 443 are open, to `allowed_cidrs`.
+
+A new image changes the boot script, so each deployment replaces the machine: a few minutes without service. Use `containers` when that matters. There is no collector sidecar: set `OTEL_EXPORTER_OTLP_ENDPOINT` in `extra_environment` to export traces.
 
 ## Telemetry
 

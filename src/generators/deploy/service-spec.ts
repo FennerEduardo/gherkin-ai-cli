@@ -13,7 +13,7 @@ import { resolveAppRuntimeEnv, resolveHealth } from '../toolchains';
 import { runtimeBroker, RuntimeBroker } from './broker-env';
 
 export type DeployCloud = 'aws' | 'gcp' | 'azure';
-export type DeployCompute = 'containers' | 'kubernetes' | 'both';
+export type DeployCompute = 'containers' | 'kubernetes' | 'both' | 'vm';
 
 export interface DeployConfig {
   cloud: DeployCloud;

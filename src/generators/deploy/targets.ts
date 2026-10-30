@@ -15,6 +15,7 @@ import { deployConfig, DeployConfig, serviceSpec, ServiceSpec } from './service-
 import { renderTerraformAws, TerraformFile } from './terraform-aws';
 import { renderTerraformAzure } from './terraform-azure';
 import { renderTerraformGcp } from './terraform-gcp';
+import { renderTerraformVm } from './terraform-vm';
 
 const CLOUD_LABEL = { aws: 'AWS', gcp: 'Google Cloud', azure: 'Azure' } as const;
 
@@ -25,18 +26,22 @@ export function renderDeploymentTargets(config: GherkinAIConfig): TerraformFile[
   const files: TerraformFile[] = [];
   if (deploy.compute !== 'kubernetes') {
     const render = { aws: renderTerraformAws, gcp: renderTerraformGcp, azure: renderTerraformAzure }[deploy.cloud];
-    files.push(...render(spec, deploy));
+    const module = render(spec, deploy);
+    // "vm": the same database, broker and secrets, on one virtual machine instead of the managed container service.
+    files.push(...(deploy.compute === 'vm' ? renderTerraformVm(spec, deploy, module) : module));
   }
-  if (deploy.compute !== 'containers') files.push(...renderHelmChart(spec, deploy, CLI_VERSION));
+  if (deploy.compute === 'kubernetes' || deploy.compute === 'both') files.push(...renderHelmChart(spec, deploy, CLI_VERSION));
   files.push({ filename: 'deploy/README.md', content: deployReadme(spec, deploy) });
   return files;
 }
 
 function deployReadme(spec: ServiceSpec, d: DeployConfig): string {
   const tf = d.compute !== 'kubernetes';
-  const helm = d.compute !== 'containers';
+  const helm = d.compute === 'kubernetes' || d.compute === 'both';
   const backendExt = { aws: 's3', gcp: 'gcs', azure: 'azurerm' }[d.cloud];
-  const platform = { aws: 'ECS Fargate behind an Application Load Balancer', gcp: 'Cloud Run', azure: 'Azure Container Apps' }[d.cloud];
+  const platform = d.compute === 'vm'
+    ? { aws: 'one EC2 instance (Docker + Caddy for HTTPS), Elastic IP, SSM Session Manager', gcp: 'one Compute Engine VM (Docker + Caddy for HTTPS), static IP, OS Login', azure: 'one Linux VM (Docker + Caddy for HTTPS), public IP' }[d.cloud]
+    : { aws: 'ECS Fargate behind an Application Load Balancer', gcp: 'Cloud Run', azure: 'Azure Container Apps' }[d.cloud];
   const db = { aws: 'RDS for PostgreSQL', gcp: 'Cloud SQL for PostgreSQL (private IP)', azure: 'Azure Database for PostgreSQL Flexible Server (VNet-integrated)' }[d.cloud];
   const broker = spec.broker === 'pubsub' ? 'Pub/Sub topics and subscriptions (least-privilege IAM)'
     : spec.broker === 'servicebus' ? 'Service Bus namespace, topics and subscriptions (Entra ID, data roles only)'

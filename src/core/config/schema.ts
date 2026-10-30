@@ -194,8 +194,8 @@ const infrastructureSchema = z.object({
 const deploySchema = z.object({
   /** aws: ECS Fargate + RDS + Amazon MQ; gcp: Cloud Run + Cloud SQL + Pub/Sub; azure: Container Apps + PostgreSQL Flexible + Service Bus. */
   cloud: z.enum(['aws', 'gcp', 'azure']),
-  /** containers (default): the managed container service; kubernetes: a Helm chart (EKS / GKE / AKS); both. */
-  compute: z.enum(['containers', 'kubernetes', 'both']).optional(),
+  /** containers (default): the managed container service; kubernetes: a Helm chart (EKS / GKE / AKS); both; vm: one virtual machine with Docker (demos, small workloads). */
+  compute: z.enum(['containers', 'kubernetes', 'both', 'vm']).optional(),
   /** One tfvars file (and Helm values file) per environment. Default: dev, staging, prod. */
   environments: z.array(z.string().regex(/^[a-z][a-z0-9-]{0,15}$/)).min(1).optional(),
   /** Default region of the generated tfvars. */
