@@ -43,7 +43,7 @@ export function registerGenerationCommands(program: Command): void {
         emitJson(STACK_SUPPORT);
         return;
       }
-      for (const s of STACK_SUPPORT) logger.info(`${s.kind.padEnd(10)} ${s.tier.padEnd(13)} ${s.label}${s.notes ? `  — ${s.notes}` : ''}`);
+      for (const s of STACK_SUPPORT) logger.info(`${s.kind.padEnd(10)} ${s.tier.padEnd(13)} ${(s.maintenance ?? 'core').padEnd(10)} ${s.label}${s.notes ? `  — ${s.notes}` : ''}`);
     });
 
   program

@@ -229,6 +229,13 @@ ghk stacks          # or: ghk stacks --json
 
 Every target below is **stable**: on every change CI generates a sample project, builds it **and runs its generated test suite** inside the stack's official Docker image (`scripts/golden-build.js`, one CI job per stack). Pending BDD steps are allowed; failing or erroring tests are not.
 
+**Maintenance tier** (`ghk stacks`, third column; `maintenance` in `--json`). It says who keeps a stack current, not how well it works today: both tiers run the same golden builds.
+
+- **core**: NestJS, Express, ASP.NET Core, Spring Boot and Quarkus (Java and Kotlin), FastAPI, Go; React, Vue, Angular; the contracts, brokers, Terraform, Helm and CI targets. New runtime features (databases, generation roles) land here first.
+- **community**: Django, Laravel, Rails, Phoenix, Rust, Flutter, React Native, Next.js, Phoenix LiveView, and the Pub/Sub adapters of Rust, Ruby, Elixir and PHP. Kept current through contributions ([CONTRIBUTING.md](../CONTRIBUTING.md)); a framework upgrade may arrive later than for core stacks.
+
+No new stacks are added in 3.x.
+
 | Kind | Stack | Build / test toolchain (image) |
 |---|---|---|
 | backend | TypeScript · NestJS 11 + Prisma 6 (default, CommonJS) | npm, Jest, cucumber-js (`node:24`) |

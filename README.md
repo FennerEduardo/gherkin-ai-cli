@@ -98,7 +98,9 @@ Every stack below is built and tested in CI. A sample project is generated, buil
 | Brokers (runtime kernel) | RabbitMQ (every backend; Amazon MQ, CloudAMQP), Google Cloud Pub/Sub (every backend), Azure Service Bus and Apache Kafka (JVM, TypeScript, .NET, Python, Go) |
 | Contracts and infrastructure | gRPC (Protobuf, buf-linted), GraphQL SDL, Terraform (AWS, GCP, Azure) and Helm (validated and linted), CI/CD for GitHub Actions, GitLab CI and Azure Pipelines, AWS CDK (opt-in, synthesized in CI) |
 
-Other combinations generate contracts and prompts only and are reported as experimental. `ghk stacks` lists the current matrix. The evidence behind these claims, and how to reproduce it, is in [docs/EVALUATION_REPORT.md](docs/EVALUATION_REPORT.md).
+Other combinations generate contracts and prompts only and are reported as experimental. `ghk stacks` lists the current matrix.
+
+**Maintenance tiers.** Every stack above passes the same golden builds on every change. *Core* stacks (NestJS, Express, Spring Boot and Quarkus in Java and Kotlin, FastAPI, ASP.NET Core, Go; React, Vue, Angular) are kept current by the maintainers and get new runtime features first. *Community* stacks (Django, Laravel, Rails, Phoenix, Rust, Flutter, React Native, Next.js, Phoenix LiveView) are kept current through contributions. No new stacks are added in 3.x; the effort goes into governance and verification. The evidence behind these claims, and how to reproduce it, is in [docs/EVALUATION_REPORT.md](docs/EVALUATION_REPORT.md).
 
 ## Industry standards
 
@@ -162,4 +164,4 @@ See [SUPPORT.md](SUPPORT.md) for the support and versioning policy and for how t
 
 ## License
 
-[MIT](LICENSE). Published on npm by the [fenner](https://www.npmjs.com/org/fenner) organization. Product page: <https://fennereduardo.com/pages/gherkin-ai-agent-architect>.
+[MIT](LICENSE). Published on npm by the [fenner](https://www.npmjs.com/org/fenner) organization. Documentation: <https://fennereduardo.github.io/gherkin-ai-cli/>.

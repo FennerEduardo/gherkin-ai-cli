@@ -34,6 +34,8 @@ All notable changes to this project will be documented in this file. See [commit
 
 ### Changed
 - **Node.js 22.19 or later** (was 22.12), the minimum undici 8 supports. CI also tests Node 26.
+- **Maintenance tiers.** `ghk stacks` (and `maintenance` in `--json`) says whether a stack is *core* (kept current by the maintainers, new runtime features first) or *community* (kept current through contributions). Both run the same golden builds. No new stacks are added in 3.x ([ENTERPRISE.md §11](docs/ENTERPRISE.md#11-stack-support-tiers)).
+- **npm metadata.** The keywords describe the category (spec-driven development, AI governance, agent firewall, drift detection) instead of the frameworks it generates; a package aggregator had listed gherkin-ai as a React charts library. The homepage, the CLI banner and the README point to one documentation URL, <https://fennereduardo.github.io/gherkin-ai-cli/>.
 
 ## [3.2.1] - 2026-10-25
 

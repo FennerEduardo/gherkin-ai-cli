@@ -26,7 +26,16 @@ export interface StackSupport {
   /** Golden build entry that verifies it (scripts/golden-stacks.js). */
   golden?: string;
   notes?: string;
+  /**
+   * Who keeps it current. core: the maintainers, first to get new runtime features (new databases, roles).
+   * community: verified by the same golden builds, kept current through contributions. Both are tested on
+   * every change; the tier says where the next feature lands first, not how well it works today.
+   */
+  maintenance?: 'core' | 'community';
 }
+
+/** Stacks kept current through contributions (PLAN-3.2.2 MD-04). Everything else is core. */
+const COMMUNITY_STACKS = /^(python\/django|php\/|ruby\/|elixir\/|rust\/|dart\/|frontend\/(flutter|react-native|nextjs|phoenix-liveview)|messaging\/gcp-pubsub-(rust|ruby|elixir|php))/;
 
 export const STACK_SUPPORT: StackSupport[] = [
   { id: 'typescript/nestjs', label: 'TypeScript · NestJS 11 + Prisma 6 (CommonJS)', kind: 'backend', tier: 'stable', golden: 'nestjs', notes: 'Default. stack.frameworkVersion "12" and/or stack.ormVersion "7" select the newer majors.' },
@@ -94,6 +103,7 @@ export const STACK_SUPPORT: StackSupport[] = [
   { id: 'ci/azure-pipelines', label: 'Azure Pipelines: spec gates, build, tests, integration, image, Trivy scan and SBOM', kind: 'infrastructure', tier: 'stable', golden: 'ci-azure-pipelines', notes: 'ci.provider "azure-devops". Verified against the Azure Pipelines schema. Deployment: the generated Terraform / Helm with your service connection.' },
   { id: 'infrastructure/aws-cdk', label: 'AWS CDK v2 (SNS/SQS + DLQ alarm, DynamoDB, Secrets Manager, EKS + IRSA)', kind: 'infrastructure', tier: 'stable', golden: 'aws-cdk', notes: 'Enable with infrastructure.awsCdk: true (default when messaging is sqs/sns). Verified with assertion tests and cdk synth.' }
 ];
+for (const s of STACK_SUPPORT) s.maintenance = COMMUNITY_STACKS.test(s.id) ? 'community' : 'core';
 
 const find = (id: string) => STACK_SUPPORT.find(s => s.id === id)!;
 const FRONTEND_ALIASES: Record<string, string> = {

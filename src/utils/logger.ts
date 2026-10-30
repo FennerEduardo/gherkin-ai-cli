@@ -149,7 +149,7 @@ export const logger = {
     console.log(`
 ${paint('35', `🥒 gherkin-ai CLI v${CLI_VERSION}`, process.stdout)}
 ${paint('90', 'Executable Prompt & Contract Generator for AI Coding Agents', process.stdout)}
-${paint('90', 'Website: https://fennereduardo.com/pages/GherkinIATool/', process.stdout)}
+${paint('90', 'Docs: https://fennereduardo.github.io/gherkin-ai-cli/', process.stdout)}
 `);
   }
 };
