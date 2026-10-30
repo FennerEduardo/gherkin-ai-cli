@@ -19,6 +19,36 @@ export interface CoverageResult {
   exitCode?: number;
   /** When the report that was read was written (ISO 8601). */
   reportMtime?: string;
+  /** Where the command came from: the stack default, or `coverage.command` in the configuration. */
+  commandSource?: 'stack-default' | 'config';
+  /** Something the user should fix for the figure to be right (e.g. a chained npm test script). */
+  warning?: string;
+}
+
+/** The tool whose report format a configured `coverage.report` file has. */
+export function coverageToolForReport(report: string): string | undefined {
+  const name = path.basename(report).toLowerCase();
+  if (name === 'coverage-summary.json') return 'Istanbul/c8 (Jest/Vitest)';
+  if (name.endsWith('.csv')) return 'JaCoCo';
+  if (name.endsWith('.json')) return 'coverage.py (pytest)';
+  if (name.endsWith('.txt')) return 'go tool cover';
+  return undefined;
+}
+
+/**
+ * `npm test -- --coverage` hands the flags to the last command of the script, so with "jest && cucumber-js"
+ * cucumber-js gets them and jest measures nothing (LMS P-02).
+ */
+function chainedNpmTestWarning(projectDir: string): string | undefined {
+  try {
+    const script: string | undefined = JSON.parse(fs.readFileSync(path.join(projectDir, 'package.json'), 'utf8')).scripts?.test;
+    if (script && /&&|\|\||;/.test(script)) {
+      return `The "test" script chains commands ("${script}"); npm passes the coverage flags to the last one only. Make the coverage tool run last, or set coverage.command and coverage.report.`;
+    }
+  } catch {
+    // no package.json: nothing to check
+  }
+  return undefined;
 }
 
 export function runCoverage(projectDir: string, config: GherkinAIConfig): CoverageResult {
@@ -28,9 +58,25 @@ export function runCoverage(projectDir: string, config: GherkinAIConfig): Covera
   let command = '';
   let toolUsed = '';
   let reportPath = '';
+  let warning: string | undefined;
+  const configured = config.coverage;
 
   try {
-    if (stack.language === 'typescript' || stack.language === 'javascript') {
+    if (configured?.command || configured?.report) {
+      if (!configured.command || !configured.report) {
+        return { success: false, coveragePercentage: 0, targetPercentage, toolUsed: 'Configured', reportPath: '', commandSource: 'config',
+          errorMessage: 'coverage.command and coverage.report go together: set both in gherkin-ai.config.json.' };
+      }
+      const tool = coverageToolForReport(configured.report);
+      if (!tool) {
+        return { success: false, coveragePercentage: 0, targetPercentage, toolUsed: 'Configured', reportPath: configured.report, commandSource: 'config',
+          errorMessage: `Unknown coverage report format: ${configured.report}. Use coverage-summary.json, a JaCoCo .csv, coverage.json or a go tool cover .txt.` };
+      }
+      toolUsed = tool;
+      command = configured.command;
+      reportPath = path.resolve(projectDir, configured.report);
+    } else if (stack.language === 'typescript' || stack.language === 'javascript') {
+      warning = chainedNpmTestWarning(projectDir);
       toolUsed = 'Istanbul/c8 (Jest/Vitest)';
       command = 'npm test -- --coverage --coverageReporters="json-summary"';
       reportPath = path.join(projectDir, 'coverage', 'coverage-summary.json');
@@ -74,6 +120,7 @@ export function runCoverage(projectDir: string, config: GherkinAIConfig): Covera
       fs.rmSync(path.join(projectDir, 'build', 'jacoco', 'test.exec'), { force: true });
     }
 
+    const meta = { commandSource: (configured?.command ? 'config' : 'stack-default') as CoverageResult['commandSource'], ...(warning ? { warning } : {}) };
     let exitCode = 0;
     try {
       execSync(command, { cwd: projectDir, stdio: 'pipe' });
@@ -90,6 +137,7 @@ export function runCoverage(projectDir: string, config: GherkinAIConfig): Covera
         toolUsed,
         reportPath,
         command,
+        ...meta,
         exitCode,
         errorMessage: `Tests failed: \`${command}\` exited with code ${exitCode}`
       };
@@ -103,6 +151,7 @@ export function runCoverage(projectDir: string, config: GherkinAIConfig): Covera
         toolUsed,
         reportPath,
         command,
+        ...meta,
         exitCode,
         errorMessage: `Coverage report not found at ${reportPath}. Ensure ${toolUsed} is installed and configured.`
       };
@@ -117,6 +166,7 @@ export function runCoverage(projectDir: string, config: GherkinAIConfig): Covera
       toolUsed,
       reportPath,
       command,
+      ...meta,
       exitCode,
       reportMtime: fs.statSync(reportPath).mtime.toISOString()
     };

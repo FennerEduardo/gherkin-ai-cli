@@ -5,21 +5,26 @@
 import { DomainModel } from '../../kernel/domain-model';
 import { FeFile, renderApiClient, renderApiClientTest } from './client';
 
-export function renderAngularProject(m: DomainModel, root = 'frontend', siblings: DomainModel[] = []): FeFile[] {
+/**
+ * `realtime`: the SignalR client for the backend's domain-event hub. Only the ASP.NET Core backend has that hub
+ * (LMS limitation 22: a Spring backend got a client with nothing to connect to).
+ */
+export function renderAngularProject(m: DomainModel, root = 'frontend', siblings: DomainModel[] = [], opts: { realtime?: boolean } = {}): FeFile[] {
+  const realtime = opts.realtime ?? true;
   // Service-wide files (entry point) cover every generated feature.
   const all = [...siblings, m].sort((a, b) => a.pascal.localeCompare(b.pascal));
   const first = m.commands[0];
   const f = (p: string) => `${root}/${p}`;
   const name = `${m.kebab}-frontend`;
-  return [
+  const files: FeFile[] = [
     {
       filename: f('package.json'),
       content: JSON.stringify({
         name, private: true, version: '0.1.0',
-        scripts: { build: 'ng build --configuration production', test: 'ng test --watch=false' },
+        scripts: { start: 'ng serve', build: 'ng build --configuration production', test: 'ng test --watch=false' },
         dependencies: {
           '@angular/common': '^22.2.1', '@angular/compiler': '^22.2.1', '@angular/core': '^22.2.1',
-          '@angular/platform-browser': '^22.2.1', '@microsoft/signalr': '^10.0.11', '@ngrx/signals': '^22.0.1',
+          '@angular/platform-browser': '^22.2.1', ...(realtime ? { '@microsoft/signalr': '^10.0.11' } : {}), '@ngrx/signals': '^22.0.1',
           rxjs: '~7.8.2', tslib: '^2.8.1'
         },
         devDependencies: {
@@ -55,6 +60,14 @@ export function renderAngularProject(m: DomainModel, root = 'frontend', siblings
                   development: { optimization: false, sourceMap: true }
                 },
                 defaultConfiguration: 'production'
+              },
+              serve: {
+                builder: '@angular/build:dev-server',
+                configurations: {
+                  production: { buildTarget: `${name}:build:production` },
+                  development: { buildTarget: `${name}:build:development` }
+                },
+                defaultConfiguration: 'development'
               },
               test: {
                 builder: '@angular/build:unit-test',
@@ -301,4 +314,5 @@ bootstrapApplication(AppComponent, { providers: [provideZonelessChangeDetection(
 `
     }
   ];
+  return realtime ? files : files.filter(file => file.filename !== f('src/app/realtime/realtime.service.ts'));
 }

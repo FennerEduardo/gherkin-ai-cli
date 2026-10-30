@@ -90,7 +90,9 @@ export function resolveChangeSet(cwd: string, options: Pick<RiskOptions, 'change
     const diff = git(cwd, ['diff', '--name-only', '--relative', `${options.base}...HEAD`]);
     if (diff === undefined) throw new Error(`Cannot diff against "${options.base}" (not a git repository or unknown ref).`);
     const local = git(cwd, ['diff', '--name-only', '--relative', 'HEAD']);
-    return { basis: 'git-diff', files: [...new Set([...lines(diff), ...lines(local)])].sort() };
+    // New files not yet added are part of the change too (as without --base).
+    const untracked = git(cwd, ['-c', 'core.quotepath=off', 'ls-files', '--others', '--exclude-standard']);
+    return { basis: 'git-diff', files: [...new Set([...lines(diff), ...lines(local), ...lines(untracked)])].sort() };
   }
   // Both commands print paths relative to cwd. (git status --porcelain is relative to the repository
   // root, and converting it breaks on symlinked temp dirs on macOS and 8.3 short paths on Windows.)

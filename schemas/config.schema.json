@@ -178,6 +178,20 @@
     "testCommand": {
       "type": "string"
     },
+    "coverage": {
+      "type": "object",
+      "properties": {
+        "command": {
+          "type": "string",
+          "minLength": 1
+        },
+        "report": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": false
+    },
     "domainProfile": {
       "type": "string"
     },

@@ -14,6 +14,10 @@ All notable changes to this project will be documented in this file. See [commit
   - `converge --openapi <file>` measures contract coverage against the repository's own OpenAPI document: a command is covered by an operation whose `operationId` names it or whose path ends with its verb.
   - Nothing is written to such a repository: telemetry and audit go to `~/.gherkin-ai/workspaces/<name>-<hash>/` until it has a configuration, and the semantic-model cache (`.ghe/cache/ir/`) ignores itself in git.
 - `ghk detect --json` reports the detected stack without prompting or writing a configuration.
+- **`coverage.command` and `coverage.report`** tell `ghk quality` how the project measures coverage. The stack default (`mvn -B test jacoco:report`, `npm test -- --coverage`, …) left out integration tests that need a database, so an LMS service measured 27–55% instead of 81–93%. The report format follows the file name (Istanbul summary, JaCoCo CSV, coverage.py / coverlet JSON, `go tool cover` text). `quality --json` reports `coverage.commandSource` and `coverage.warning`.
+- `quality` warns when `npm test` chains commands (`jest && cucumber-js`): npm passes the coverage flags to the last one only.
+- **`ghk generate --contracts-only`** writes only the contracts (OpenAPI, AsyncAPI, gRPC, GraphQL, ADR).
+- A leading slash anchors a `generation.exclude` (and `protect`, and firewall path) pattern at the project root, as in `.gitignore`: `/openapi.json` keeps the service-wide document but still writes `contracts/<feature>/openapi.json`. A pattern without a slash still matches at any depth. It did not work before (it never matched).
 - `ghk firewall check "<command>"` is short for `--exec "<command>"`.
 
 ### Fixed
@@ -25,6 +29,8 @@ All notable changes to this project will be documented in this file. See [commit
 - **Quoted example data became events.** "When the teacher publishes the grade for student "S-1"" made an event channel `…/events/s1`. In a Given or When step without the word "event", only a quoted PascalCase name is an event.
 - **Scenario categories depended on the word form**: "validates", "validated", "authorizes", "forbids", "denied as unauthorized" and "signed in" now count as validation and authorization (LMS limitation 23).
 - **The traceability graph ignored domain names shorter than 6 characters** (`Grade`, `Order`). Their PascalCase type name is matched as a whole identifier.
+- **`risk --base` left out new files** that were not added to git yet; without `--base` they were counted.
+- **The generated Angular app had no `serve` target**, and every Angular frontend depended on `@microsoft/signalr` and shipped a SignalR client, which only the ASP.NET Core backend has a hub for. `ng serve` (`npm start`) works; the SignalR client is generated for .NET backends only (LMS limitation 22).
 
 ### Changed
 - **Node.js 22.19 or later** (was 22.12), the minimum undici 8 supports. CI also tests Node 26.

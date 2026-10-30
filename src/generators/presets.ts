@@ -99,7 +99,8 @@ export function generatePresets(parsed: ParsedFeature, config: GherkinAIConfig, 
     } else if (feFramework === 'react') {
       results.push(...renderReactProject(fm, 'frontend', siblingDomainModels(fm, config, s => `frontend/src/components/${s.pascal}Panel.tsx`)));
     } else if (feFramework === 'angular') {
-      results.push(...renderAngularProject(fm, 'frontend', siblingDomainModels(fm, config, s => `frontend/src/app/${s.kebab}-panel.component.ts`)));
+      results.push(...renderAngularProject(fm, 'frontend', siblingDomainModels(fm, config, s => `frontend/src/app/${s.kebab}-panel.component.ts`),
+        { realtime: ['csharp', 'dotnet'].includes(config.stack.language) }));
     } else if (feFramework === 'nextjs' || feFramework === 'next') {
       results.push(...renderNextProject(fm, 'frontend', siblingDomainModels(fm, config, s => `frontend/components/${s.pascal}Panel.tsx`)));
     } else if (feFramework === 'react-native' || feFramework === 'expo') {

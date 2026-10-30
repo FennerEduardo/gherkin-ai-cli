@@ -1,7 +1,8 @@
 // gherkin-ai-cli - Minimal glob matching for policy paths (no dependency).
 //  - `*` matches within one path segment, `?` one character, `**` any depth
 //    ("dir/**" also matches "dir" itself, "**/x" also matches "x").
-//  - A pattern without a slash matches the basename at any depth (gitignore style).
+//  - A pattern without a slash matches the basename at any depth (gitignore style); a leading
+//    slash anchors it at the root ("/openapi.json").
 //  - Matching is case-insensitive and uses forward slashes.
 
 const cache = new Map<string, RegExp>();
@@ -11,6 +12,8 @@ export function globToRegExp(pattern: string): RegExp {
   if (cached) return cached;
   let p = pattern.replace(/\\/g, '/').replace(/^\.\//, '');
   if (!p.includes('/')) p = `**/${p}`;
+  // A leading slash anchors the pattern at the root, as in .gitignore ("/openapi.json" is not contracts/x/openapi.json).
+  p = p.replace(/^\/+/, '');
   let re = '';
   for (let i = 0; i < p.length; i++) {
     const c = p[i];

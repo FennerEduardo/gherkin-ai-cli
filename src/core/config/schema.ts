@@ -247,6 +247,16 @@ export const configShape = {
   outputDir: z.string(),
   specDir: z.string().optional(),
   testCommand: z.string().optional(),
+  /**
+   * How `ghk quality` measures coverage, when the stack default is not how the project runs its tests (e.g.
+   * integration tests that need a database). `report` is the file the command writes, relative to the project:
+   * coverage-summary.json (Istanbul), jacoco.csv or jacocoTestReport.csv (JaCoCo), coverage.json (coverage.py,
+   * coverlet) or a `go tool cover -func` text file.
+   */
+  coverage: z.object({
+    command: z.string().min(1).optional(),
+    report: z.string().min(1).optional()
+  }).optional(),
   domainProfile: z.string().optional(),
   /** Industry reference standard (BIAN, TM Forum, HL7 FHIR, ...): adds lint rules, IR constraints and LLM guidance. */
   industry: z.object({

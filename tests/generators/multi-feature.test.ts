@@ -111,7 +111,11 @@ describe('multi-feature services', () => {
     expect(fs.existsSync('frontend/src/app/api/orders-client.token.ts')).toBe(true);
     expect(fs.existsSync('frontend/src/app/api/refunds-client.token.ts')).toBe(true);
     expect(fs.readFileSync('frontend/src/main.ts', 'utf8')).toContain('bootstrapApplication(AppComponent');
-    expect(fs.readFileSync('frontend/src/app/realtime/realtime.service.ts', 'utf8')).toContain('Refunds: inject(RefundsStore)');
+    // A NestJS backend has no SignalR hub: no client for it (LMS limitation 22). `ng serve` works.
+    expect(fs.existsSync('frontend/src/app/realtime/realtime.service.ts')).toBe(false);
+    expect(JSON.parse(fs.readFileSync('frontend/package.json', 'utf8')).dependencies).not.toHaveProperty('@microsoft/signalr');
+    const [project] = Object.values<any>(JSON.parse(fs.readFileSync('frontend/angular.json', 'utf8')).projects);
+    expect(Object.keys(project.architect)).toContain('serve');
   });
 
   it('Next.js, React Native and Flutter: the entry mounts every feature', async () => {

@@ -107,6 +107,7 @@ export function registerGenerationCommands(program: Command): void {
     .option('--accept-new', 'With --review: take every generated version')
     .option('--keep-mine', 'With --review: keep every edited file (those generated versions are not offered again)')
     .option('--include-scaffold', 'In a project marked .ghk-implemented, also create controllers, wiring and tests (only the kernel and contracts by default)')
+    .option('--contracts-only', 'Write only the contracts (OpenAPI, AsyncAPI, gRPC, GraphQL, ADR) and skip everything else')
     .option('--json', 'Output the write plan as JSON (with --review: the pending versions)')
     .action(async (options) => {
       const json = options.json || program.opts().json;

@@ -59,6 +59,8 @@ export interface GenerateCommandOptions {
   dryRun?: boolean;
   /** Also create scaffolding (controllers, wiring, tests) in a project marked as implemented. */
   includeScaffold?: boolean;
+  /** Write only the contracts (OpenAPI, AsyncAPI, gRPC, GraphQL, ADR): refresh them after editing a feature. */
+  contractsOnly?: boolean;
   /** Overwrite header-marked files without a checksum even when there is no inventory (`ghk upgrade --apply`). */
   trustHeaders?: boolean;
   json?: boolean;
@@ -309,6 +311,7 @@ Objective: Write detailed Gherkin feature scenarios for ${title}.
     protect: config.generation?.protect,
     exclude: config.generation?.exclude,
     includeScaffold: options.includeScaffold,
+    contractsOnly: options.contractsOnly,
     trustHeaders: options.trustHeaders,
     force: options.force
   });

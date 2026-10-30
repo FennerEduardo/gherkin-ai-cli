@@ -58,6 +58,8 @@ export async function handleQualityCommand(options: QualityOptions = {}): Promis
         target: coverageResult.targetPercentage,
         error: coverageResult.errorMessage ?? null,
         command: coverageResult.command ?? null,
+        commandSource: coverageResult.commandSource ?? null,
+        warning: coverageResult.warning ?? null,
         exitCode: coverageResult.exitCode ?? null,
         reportPath: coverageResult.reportPath || null,
         reportMtime: coverageResult.reportMtime ?? null
@@ -91,6 +93,8 @@ export async function handleQualityCommand(options: QualityOptions = {}): Promis
 
   console.log(chalk.cyan('\n🔍 Running Test Coverage Analysis...'));
   console.log(`- Coverage Tool:        ${coverageResult.toolUsed}`);
+  if (coverageResult.command) console.log(`- Command:              ${coverageResult.command}${coverageResult.commandSource === 'config' ? ' (coverage.command)' : ''}`);
+  if (coverageResult.warning) console.log(chalk.yellow(`- ⚠ ${coverageResult.warning}`));
   if (coverageResult.errorMessage) {
     console.log(chalk.yellow(`- Coverage Report:      ⚠️ Not available (${coverageResult.errorMessage})`));
   } else {
