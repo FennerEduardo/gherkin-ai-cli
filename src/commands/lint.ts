@@ -37,6 +37,48 @@ export interface LintCommandOptions {
   explainIr?: boolean;
   /** No feature files is an empty result instead of a usage error. */
   allowEmpty?: boolean;
+  /** Ask the configured LLM to propose @aggregate/@command/@event tags (patch proposals; the lint result is unchanged). */
+  assist?: boolean;
+}
+
+/**
+ * `ghk lint --assist`: for each feature whose names the deterministic extraction could not find (GHK016, no
+ * tags), the LLM proposes the tags, validated against naming rules and aligned with the code's type names.
+ * Proposals go to .ghe/patches/; nothing else is written and the exit code is the LLM's, not the lint's.
+ */
+async function assistNaming(featureFiles: string[], options: LintCommandOptions): Promise<void> {
+  const { buildIR } = await import('../core/ir-builder');
+  const { codeTypeNames, proposeIrTags } = await import('../core/ir/assist');
+  const { LLMClient, resolveLLMSettings } = await import('../core/llm');
+  const { writeProposal } = await import('../core/governance/agent-changes');
+  const client = new LLMClient(resolveLLMSettings());
+  const codeTypes = codeTypeNames(process.cwd());
+  const results = [];
+  for (const file of featureFiles) {
+    const text = fs.readFileSync(file, 'utf8');
+    const parsed = parseGherkinText(text);
+    const declared = parsed.tags.some(t => /^@(aggregate|command|event):/.test(t));
+    const needsHelp = !declared && lintSpecification(parsed, file).diagnostics.some(d => d.ruleId === 'GHK016');
+    if (!needsHelp) {
+      results.push({ file: path.relative(process.cwd(), file), status: declared ? 'declared' : 'named' });
+      continue;
+    }
+    const assisted = await proposeIrTags(client, parsed, buildIR(parsed, path.basename(file)), text, codeTypes);
+    const changed = assisted.featureText !== text;
+    const patch = changed ? path.relative(process.cwd(), writeProposal(process.cwd(), file, assisted.featureText)) : undefined;
+    results.push({ file: path.relative(process.cwd(), file), status: changed ? 'proposed' : 'no-valid-names', patch, ...assisted, featureText: undefined });
+  }
+  if (options.json) return emitJson(results);
+  for (const r of results as any[]) {
+    if (r.status === 'proposed') {
+      console.log(chalk.green(`  ✓ ${r.file}: ${r.patch}`));
+      console.log(chalk.gray(`    ${[r.proposal.aggregate && `@aggregate:${r.proposal.aggregate}`, ...r.proposal.commands.map((c: string) => `@command:${c}`), ...r.proposal.events.map((e: string) => `@event:${e}`)].filter(Boolean).join(' ')}`));
+      if (r.alignedWithCode.length) console.log(chalk.gray(`    matches code types: ${r.alignedWithCode.join(', ')}`));
+    } else if (r.status === 'no-valid-names') console.log(chalk.yellow(`  ⚠ ${r.file}: the model proposed no name that passes the rules`));
+    else console.log(chalk.gray(`  · ${r.file}: ${r.status === 'declared' ? 'tags already declared' : 'named by the deterministic extraction'}`));
+    for (const x of r.rejected ?? []) console.log(chalk.gray(`    rejected ${x.name}: ${x.reason}`));
+  }
+  if (results.some((r: any) => r.status === 'proposed')) console.log(chalk.cyan('\n  Review and apply with `git apply <patch>`; then `ghk lint --explain-ir`.\n'));
 }
 
 export async function handleLintCommand(options: LintCommandOptions = {}): Promise<void> {
@@ -83,6 +125,8 @@ export async function handleLintCommand(options: LintCommandOptions = {}): Promi
     else console.log(chalk.yellow('\n⚠ No .feature files found to lint (--allow-empty).\n'));
     return;
   }
+
+  if (options.assist) return assistNaming(featureFiles, options);
 
   const industry = projectIndustry(process.cwd());
   console.log(chalk.bold.cyan(`\n🔍 Linting ${featureFiles.length} specification(s)${industry.label ? ` (industry: ${industry.label})` : ''}...\n`));

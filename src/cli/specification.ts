@@ -68,6 +68,7 @@ export function registerSpecificationCommands(program: Command): void {
     .option('--all', 'Lint every feature of every gherkin-ai project under the current directory')
     .option('--explain-ir', 'Show the aggregate, route, commands and events the generator will use, and where each name comes from')
     .option('--allow-empty', 'Succeed when the project has no feature files (default: exit 2)')
+    .option('--assist', 'Ask the configured LLM to propose @aggregate/@command/@event tags where the extraction finds no names (GHK016); writes patch proposals only')
     .option('--json', 'Output report as JSON')
     .action(async (options) => {
       await (await import('../commands/lint')).handleLintCommand(options);
