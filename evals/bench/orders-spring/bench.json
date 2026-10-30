@@ -1,0 +1,11 @@
+{
+  "name": "orders-spring",
+  "agent": "claude -p \"$(cat {prompt_file})\" --permission-mode acceptEdits",
+  "checks": {
+    "build": "mvn -B -q -DskipTests package",
+    "test": "mvn -B test",
+    "acceptance": "node acceptance/http-acceptance.mjs sh -c 'java -jar target/*.jar'"
+  },
+  "timeoutMinutes": 30,
+  "repetitions": 3
+}

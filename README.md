@@ -149,6 +149,9 @@ With `--json`, stdout carries exactly one JSON document and diagnostics go to st
 - [Usage guide](docs/USAGE_GUIDE.md): the delivery flow, from specification to merge
 - [Adopting gherkin-ai in an existing project](docs/ADOPTION.md)
 - [Enterprise guide](docs/ENTERPRISE.md): configuration and policy, providers, network, credentials, firewall, risk, MCP, audit, CI
+- [Golden builds dashboard](https://fennereduardo.github.io/gherkin-ai-cli/goldens.html): every stable stack's build in the last CI run on `main`
+- [Benchmark tasks](evals/bench/README.md): the same task in three stacks, to measure your agent with and without gherkin-ai (`ghk bench`)
+- [Governance](GOVERNANCE.md), [maintainers](MAINTAINERS.md) and [foundation readiness](docs/FOUNDATION-READINESS.md)
 - [Compliance mapping](docs/COMPLIANCE.md): which gherkin-ai controls give evidence for ISO/IEC 42001, SOC 2 and the EU AI Act, and what they do not cover
 - [Industry profiles](docs/INDUSTRIES.md)
 - [Commands](docs/COMMANDS.md)

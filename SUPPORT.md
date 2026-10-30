@@ -43,7 +43,7 @@ gherkin-ai follows [Semantic Versioning](https://semver.org/).
 
 Supported environments:
 
-- **Node.js:** active LTS versions (currently 22 and 24).
+- **Node.js:** 22.19 or later; CI tests 22, 24 and 26.
 - **Operating systems:** Linux, macOS and Windows, all tested in CI.
 - **Toolchains:** the generated stacks follow the toolchain images listed in `docs/ENTERPRISE.md` §11.
 
@@ -52,3 +52,16 @@ Releases are cut from CI with npm provenance and a CycloneDX SBOM. Each release 
 ## Commercial and organizational use
 
 The package is MIT-licensed and published on npm by the [fenner](https://www.npmjs.com/org/fenner) organization. Documentation: <https://fennereduardo.github.io/gherkin-ai-cli/>. For organization-wide rollout (central configuration, policy locks, providers, proxies, audit), see [docs/ENTERPRISE.md](docs/ENTERPRISE.md).
+
+### Commercial support
+
+The CLI stays MIT, complete, with no paid features. For organizations that need more than community support:
+
+| Offering | What it covers |
+|---|---|
+| Support agreement | Response times for issues and security questions, help with upgrades between versions |
+| Adoption and migration | Rolling gherkin-ai out on existing repositories (governance first, [docs/ADOPTION.md](docs/ADOPTION.md)), migrating 2.x projects |
+| Industry profiles | Rules and contract checks for your regulator or standard, built with your team |
+| Training | Spec-driven development with AI coding agents, for platform and product teams |
+
+Contact: _pending_. Terms and prices: _pending_. Organizations that sponsor the project or use it in production and agree to be named are listed in the README.

@@ -70,3 +70,4 @@ deps/
 __pycache__/
 .pytest_cache/
 .next/
+site/

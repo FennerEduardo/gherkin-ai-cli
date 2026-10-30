@@ -1,0 +1,11 @@
+{
+  "name": "orders-fastapi",
+  "agent": "claude -p \"$(cat {prompt_file})\" --permission-mode acceptEdits",
+  "checks": {
+    "build": "python -m pip install -q -r requirements.txt",
+    "test": "python -m pytest -q",
+    "acceptance": "node acceptance/http-acceptance.mjs sh -c 'uvicorn app.main:app --host 127.0.0.1 --port $PORT'"
+  },
+  "timeoutMinutes": 30,
+  "repetitions": 3
+}

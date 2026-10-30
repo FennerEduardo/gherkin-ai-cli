@@ -1,0 +1,11 @@
+{
+  "name": "orders-express",
+  "agent": "claude -p \"$(cat {prompt_file})\" --permission-mode acceptEdits",
+  "checks": {
+    "build": "npm install --no-audit --no-fund && npm run build",
+    "test": "npm test",
+    "acceptance": "node acceptance/http-acceptance.mjs npm start"
+  },
+  "timeoutMinutes": 30,
+  "repetitions": 3
+}

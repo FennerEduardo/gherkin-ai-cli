@@ -41,6 +41,12 @@ All notable changes to this project will be documented in this file. See [commit
 - **`risk --base` left out new files** that were not added to git yet; without `--base` they were counted.
 - **The generated Angular app had no `serve` target**, and every Angular frontend depended on `@microsoft/signalr` and shipped a SignalR client, which only the ASP.NET Core backend has a hub for. `ng serve` (`npm start`) works; the SignalR client is generated for .NET backends only (LMS limitation 22).
 
+### Project
+- **Documentation portal and golden dashboard** on GitHub Pages (`.github/workflows/pages.yml`, `scripts/build-site.js`): the README, the docs and the CHANGELOG as pages, and a page with every golden build and its result in the CI run on `main` (`goldens.json` for machines).
+- **Governance**: `GOVERNANCE.md` (roles, decisions, how to become a maintainer, continuity), `MAINTAINERS.md`, `docs/FOUNDATION-READINESS.md` (OpenSSF Best Practices criteria with their evidence, and what is missing) and an OpenSSF Scorecard workflow.
+- **Benchmark tasks** (`evals/bench/`): one orders service in Express, Spring Boot and FastAPI, with the same black-box HTTP acceptance test (9 checks), ready for `ghk bench run`.
+- `SUPPORT.md` describes commercial support offerings.
+
 ### Changed
 - **Node.js 22.19 or later** (was 22.12), the minimum undici 8 supports. CI also tests Node 26.
 - **Maintenance tiers.** `ghk stacks` (and `maintenance` in `--json`) says whether a stack is *core* (kept current by the maintainers, new runtime features first) or *community* (kept current through contributions). Both run the same golden builds. No new stacks are added in 3.x ([ENTERPRISE.md §11](docs/ENTERPRISE.md#11-stack-support-tiers)).
