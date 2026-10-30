@@ -1,6 +1,6 @@
 {
   "name": "gherkin-ai",
-  "version": "3.2.1",
+  "version": "3.2.2",
   "description": "Spec-driven development governance for AI coding agents: Gherkin specs as executable contracts, deterministic drift gates, an agent firewall and a least-privilege MCP server, on any repository.",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

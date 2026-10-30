@@ -17,6 +17,9 @@ No configuration change is required. Everything new is opt-in; these are the poi
 | `converge` in a repository with no configuration, inventory or constitution | contract coverage 0%, architecture 50% (often exit 7) | both `n/a`, left out of the score | `--openapi <file>` to measure your own contract |
 | Defaults without `gherkin-ai.config.json` | TypeScript + NestJS + Prisma | the stack `ghk detect` finds | – |
 | Telemetry and audit without `gherkin-ai.config.json` | `./.gherkin-ai/` | `~/.gherkin-ai/workspaces/<name>-<hash>/` (set `telemetry.dir` to choose) | – |
+| Features whose When steps use no verb gherkin-ai knew ("places", "grants", "revokes"…) | one `Process<Feature>` command | commands named after the verb (`PlaceOrder`, `GrantAccess`); features that already had commands are unchanged | regenerate; in an implemented service the new kernel arrives as `.ghk-new`. Add `@command:` tags to keep the old name |
+| Events a feature only receives ("Given the "X" event was received") | published channels in its `asyncapi.json`, recorded by its kernel | `info.x-ghk-consumes` in `asyncapi.json`, never published | regenerate the contracts (`ghk generate --contracts-only`) |
+| `generation.exclude: ["/openapi.json"]` | never matched | excludes only the root file | – |
 
 ## From 3.2.0 to 3.2.1
 

@@ -48,11 +48,11 @@ jobs:
 ## 1. Install and pin
 
 ```bash
-npm install --save-dev --save-exact gherkin-ai@3.2.1   # or a pinned global install on the build agents
+npm install --save-dev --save-exact gherkin-ai@3.2.2   # or a pinned global install on the build agents
 npx ghk --version
 ```
 
-- **Pin an exact version** in the repository, in CI (`npx --yes gherkin-ai@3.2.1`) and in MCP clients (`ghk mcp install` pins it). An unpinned install changes generated output and lint scores without a commit.
+- **Pin an exact version** in the repository, in CI (`npx --yes gherkin-ai@3.2.2`) and in MCP clients (`ghk mcp install` pins it). An unpinned install changes generated output and lint scores without a commit.
 - **Requirements:** Node.js 22.19 or later. Docker for `ghk verify --docker`, `--services` and the golden recipes.
 - **Organization settings:** providers, proxies, locked keys and allow-lists belong in the organization configuration layer, not in each repository ([ENTERPRISE.md §1](ENTERPRISE.md#1-configuration-layers-and-organization-policy)). Set it up once, before the first team starts.
 
@@ -125,9 +125,9 @@ jobs:
         with:
           node-version: 24
       - name: Specification quality, convergence and delivery risk on the pull request
-        run: npx --yes gherkin-ai@3.2.1 report --provider github --base origin/${{ github.base_ref }} --threshold 70 --fail-on CRITICAL
+        run: npx --yes gherkin-ai@3.2.2 report --provider github --base origin/${{ github.base_ref }} --threshold 70 --fail-on CRITICAL
       - name: Upgrade check
-        run: npx --yes gherkin-ai@3.2.1 upgrade --check
+        run: npx --yes gherkin-ai@3.2.2 upgrade --check
 ```
 
 `ghk report` writes annotations on the changed `.feature` lines and a job summary, with no token and no extra permission (`--provider gitlab` writes a Code Quality report for merge requests).

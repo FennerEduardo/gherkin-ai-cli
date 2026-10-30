@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
-## [3.2.2] - Unreleased
+## [3.2.2] - 2026-10-30
 
 ### Security
 - **The corporate proxy and CA were ignored on Node.js 26.** Node 26 ships undici 8, whose `fetch` reads the global dispatcher from a new symbol; gherkin-ai's undici 6 only set the old one, so with `HTTPS_PROXY`, `network.proxy` or `network.caFile` the LLM traffic went straight to the provider, with the system CA list and no warning. `undici` moves to 8, which sets both. Plain-HTTP gateways are now reached through the proxy as forwarded requests (undici 6 opened a CONNECT tunnel). `@hono/node-server` (via the MCP SDK) is updated for GHSA-rmxm-3fg6-px4f: `npm audit` reports 0 vulnerabilities.
