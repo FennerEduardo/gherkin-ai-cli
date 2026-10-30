@@ -56,6 +56,14 @@ const CASES: [string, string, string][] = [
   ['GHK802', feature('', ['', 'Brake', 'Given a braking request', 'When it is processed', 'Then the brake responds within 50 microseconds']), feature('', ['', 'Brake', 'Given a braking request', 'When it is processed', 'Then the backend records the brake event'])],
   ['GHK803', feature('@asil:D', BASIC), feature('@asil:B', BASIC)],
 
+  ['GHK901',
+    feature('', ['', 'Invite', 'Given a student who is a minor', 'When the administrator invites the student', 'Then the invitation is sent']),
+    feature('', ['', 'Invite', 'Given a student who is a minor', 'When the administrator invites the student', 'Then the invitation waits for consent'], ['', 'Consent', 'Given a pending invitation of a minor', 'When the legal representative grants consent', 'Then the invitation is sent'])],
+  ['GHK902',
+    feature('', ['', 'Publish', 'Given a graded submission', 'When the teacher publishes the grade', 'Then the learner sees the grade']),
+    feature('', ['', 'Publish', 'Given a graded submission', 'When the teacher publishes the grade', 'Then the learner sees the grade'], ['', 'Other learner', 'Given another learner', 'When they read the grade', 'Then access is denied'])],
+  ['GHK903', feature('', ['', 'Enroll', 'Given a pupil', 'When it is processed', 'Then it is accepted']), feature('', ['', 'Enroll', 'Given a learner', 'When it is processed', 'Then it is accepted'])],
+
   ['GHK090', feature('@capability:a/b/c/d/e', BASIC), feature('@capability:a/b/c/d', BASIC)]
 ];
 
@@ -64,7 +72,7 @@ const ruleById = (id: string) => allRules.find(r => r.id === id)!;
 const diagnostics = (id: string, text: string) => ruleById(id).check(parseGherkinText(text), {}).filter(d => d.ruleId === id);
 
 describe('industry profiles', () => {
-  it('registers the 8 industries plus generic, each valid against the schema', () => {
+  it('registers the 9 industries plus generic, each valid against the schema', () => {
     expect(Object.keys(INDUSTRIES).sort()).toEqual([...INDUSTRY_IDS].sort());
     for (const p of Object.values(INDUSTRIES)) {
       const { lintRules, ...data } = p;

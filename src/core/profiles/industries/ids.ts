@@ -4,7 +4,7 @@
 
 export const INDUSTRY_IDS = [
   'generic', 'banking', 'telecom', 'manufacturing', 'health',
-  'supply-chain', 'insurance', 'aviation', 'automotive'
+  'supply-chain', 'insurance', 'aviation', 'automotive', 'education'
 ] as const;
 
 export type IndustryId = typeof INDUSTRY_IDS[number];

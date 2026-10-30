@@ -22,6 +22,7 @@ import { supplyChain } from './supply-chain';
 import { insurance } from './insurance';
 import { aviation } from './aviation';
 import { automotive } from './automotive';
+import { education } from './education';
 
 export type { IndustryProfile, IndustryProfileData, IndustryStandard, GlossaryEntry } from './types';
 export { INDUSTRY_IDS, industryProfileSchema };
@@ -29,7 +30,7 @@ export type { IndustryId };
 
 export const INDUSTRIES: Record<IndustryId, IndustryProfile> = {
   generic, banking, telecom, manufacturing, health,
-  'supply-chain': supplyChain, insurance, aviation, automotive
+  'supply-chain': supplyChain, insurance, aviation, automotive, education
 };
 
 /** Common to every industry: capability maps stop at L4 (MECE decomposition, BIAN / ACORD practice). */

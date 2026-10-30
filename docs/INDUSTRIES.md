@@ -1,6 +1,6 @@
 # Industry profiles
 
-gherkin-ai ships eight industry profiles. Each one turns the reference standards of its industry into three things:
+gherkin-ai ships nine industry profiles. Each one turns the reference standards of its industry into three things:
 
 - **Lint rules** that `ghk lint` checks on every specification.
 - **Constraints** in the semantic model and the generated contracts.
@@ -22,6 +22,7 @@ A team that writes `@bian:PaymentExecution` on a feature gets a service scoped t
 | Insurance (`insurance`) | [ACORD Reference Architecture](https://www.acord.org/standards-architecture/reference-architecture), [ACORD data standards](https://www.acord.org/standards-architecture/acord-data-standards) | ACORD Capability Model + Information Model | `@acord` | GHK601–GHK603 |
 | Aviation & Travel (`aviation`) | [IATA NDC](https://www.iata.org/en/programs/airline-distribution/retailing/ndc/), [IATA ONE Order](https://www.iata.org/en/programs/airline-distribution/retailing/one-order/) | IATA Offer / Order | `@iata` | GHK701–GHK703 |
 | Automotive & SDV (`automotive`) | [AUTOSAR](https://www.autosar.org/) Classic & Adaptive, [ISO 26262](https://www.iso.org/standard/68383.html), [ISO/SAE 21434](https://www.iso.org/standard/70918.html) | AUTOSAR Adaptive interfaces + vehicle signal catalog (COVESA VSS) | `@autosar`, `@asil` | GHK801–GHK803 |
+| Education (`education`) | [1EdTech OneRoster](https://www.1edtech.org/standards/oneroster) 1.2, [LTI](https://www.1edtech.org/standards/lti) 1.3, [Caliper](https://www.1edtech.org/standards/caliper) 1.2 | OneRoster entities with Caliper / xAPI events | `@oneroster`, `@lti`, `@caliper` | GHK901–GHK903 |
 | Generic (`generic`) | none | Business capability map of the organization | — | GHK090 only |
 
 Every profile also reads `@capability:<L1>/<L2>[/<L3>[/<L4>]]`. **GHK090** (error) stops the capability tree at L4, the MECE decomposition that BIAN and ACORD use; anything deeper is process detail.
@@ -463,6 +464,53 @@ Feature: Remote door unlock
     Given the vehicle is offline
     When the unlock command expires before delivery
     Then the command is reported as expired and is never delivered later
+```
+
+## Education (`education`)
+
+| Standard | What it governs |
+|---|---|
+| 1EdTech OneRoster 1.2 | Rostering: organizations, users, courses, classes, enrollments, line items and results |
+| 1EdTech LTI 1.3 | Launching external tools (OIDC + signed JWT), deep linking, grade passback (Assignment and Grade Services) |
+| 1EdTech Caliper 1.2 / xAPI | Learning activity events |
+
+| Rule | Severity | Checks |
+|---|---|---|
+| GHK901 | **error** | A feature about minors ("minor", "under 18", "child", "menor de edad") has a scenario with the consent of a parent or legal representative |
+| GHK902 | warning | A feature about education records (grades, attendance, transcripts, report cards) has a scenario that says who may not see them |
+| GHK903 | info | Vocabulary: **Learner** (not pupil), **Class** (a course in a term, not "course group") |
+
+- **Architecture:** hexagonal, microservices, event-driven. Patterns: consent ledger, guardian delegation, transactional outbox, audit trail, data minimization.
+- **Compliance reminders:** consent for minors (Colombia Ley 1581 de 2012 art. 7 and Decreto 1377, COPPA, GDPR art. 8, LGPD art. 14); access to education records (FERPA); data minimization and retention; WCAG 2.2 AA for learner-facing interfaces.
+- **Human approval:** `**/minors/**`, `**/consent/**`, `**/guardians/**`, `**/legal-representatives/**`, `**/grades/**`.
+- **Agents are told to:**
+  - name rosters with OneRoster entities and keep `sourcedId` as the external identifier;
+  - never invite, enroll or contact a minor before the legal representative's consent is recorded, and stop when it is withdrawn;
+  - let only the learner, a representative with delegated access and staff with a legitimate interest read grades and records (403 otherwise);
+  - audit consent, delegation and every access to a learner record;
+  - integrate tools through LTI 1.3, never by sharing credentials; use synthetic learner data only.
+
+```gherkin
+@oneroster:Enrollment @capability:Enrollment/MinorConsent
+@aggregate:MinorConsent @command:GrantConsent @event:ConsentGranted
+Feature: Consent for a minor's enrollment
+  As a legal representative of a minor
+  I want to approve or refuse their enrollment
+  So that the school only processes their data with my consent
+
+  Scenario: The representative grants consent and the invitation is released
+    Given an invitation for learner "learner-001" who is a minor
+    And "rep-001" is the verified legal representative of "learner-001"
+    When the legal representative grants consent
+    Then the consent is recorded with its legal basis
+    And the invitation is sent to the learner
+
+  @negative
+  Scenario: Someone who is not the representative cannot grant consent
+    Given an invitation for learner "learner-001" who is a minor
+    When "teacher-001" tries to grant consent
+    Then the request is denied as unauthorized
+    And no consent is recorded
 ```
 
 ## Generic (`generic`)

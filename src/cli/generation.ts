@@ -54,7 +54,7 @@ export function registerGenerationCommands(program: Command): void {
     .option('--enterprise', 'Initialize with enterprise constitution guardrails')
     .option('-p, --projectName <name>', 'Project name')
     .option('-a, --architecture <arch>', 'Primary software architecture')
-    .option('--industry <id>', 'Industry reference standard: banking, telecom, manufacturing, health, supply-chain, insurance, aviation, automotive, generic')
+    .option('--industry <id>', 'Industry reference standard: banking, telecom, manufacturing, health, supply-chain, insurance, aviation, automotive, education, generic')
     .option('-l, --language <lang>', 'Programming language / runtime')
     .option('-f, --framework <framework>', 'Primary framework')
     .option('--frameworkVersion <major>', 'Framework major to generate for (NestJS: 11 default, 12 = ES modules)')
