@@ -188,3 +188,66 @@ export function featureToSpecKit(feature: ParsedFeature, options: { branch?: str
   out.push(`- **SC-001**: Every acceptance scenario passes as an executable test (\`ghk verify\`) and the implementation converges with the specification (\`ghk converge\`).`);
   return out.join('\n') + '\n';
 }
+
+// ---------------------------------------------------------------------------
+// verify: is what Spec Kit planned covered by the executable specification?
+// ---------------------------------------------------------------------------
+
+export interface SpecKitTask {
+  id: string;
+  done: boolean;
+  story?: string;
+  text: string;
+}
+
+/** Tasks of a Spec Kit tasks.md: "- [x] T012 [P] [US1] Create the order model in src/models/order.ts". */
+export function parseSpecKitTasks(markdown: string): SpecKitTask[] {
+  const tasks: SpecKitTask[] = [];
+  for (const line of markdown.split(/\r?\n/)) {
+    const m = line.match(/^\s*[-*]\s*\[([ xX])\]\s*(T\d+)\b(.*)$/);
+    if (!m) continue;
+    const story = m[3].match(/\[(US\d+)\]/i)?.[1].toUpperCase();
+    tasks.push({ id: m[2], done: m[1].toLowerCase() === 'x', ...(story ? { story } : {}), text: m[3].replace(/\[[^\]]*\]/g, '').trim() });
+  }
+  return tasks;
+}
+
+export interface SpecKitFinding {
+  kind: 'not-imported' | 'scenario-missing' | 'requirement-missing' | 'task-unverified' | 'clarification-open';
+  /** Drift fails `ghk speckit verify` (exit 7); the rest are reported. */
+  drift: boolean;
+  message: string;
+}
+
+/**
+ * Compares a Spec Kit feature folder with its .feature file: every acceptance scenario of each user story has a
+ * scenario tagged @US<n>, every FR-### is named in the feature, and every completed task of a story has a
+ * scenario that verifies it. `feature` is undefined when the spec was never imported.
+ */
+export function verifySpecKitFeature(spec: SpecKitSpec, feature: ParsedFeature | undefined, tasks: SpecKitTask[]): SpecKitFinding[] {
+  const findings: SpecKitFinding[] = spec.clarifications.map(c => ({ kind: 'clarification-open' as const, drift: false, message: `Open [NEEDS CLARIFICATION]: ${c}` }));
+  if (!feature) return [...findings, { kind: 'not-imported', drift: true, message: 'No .feature file for this spec: run `ghk speckit import`.' }];
+
+  const byStory = new Map<string, number>();
+  for (const s of feature.scenarios) {
+    const us = s.tags.map(t => t.replace(/^@/, '').toUpperCase()).find(t => /^US\d+$/.test(t));
+    if (us) byStory.set(us, (byStory.get(us) ?? 0) + 1);
+  }
+  for (const story of spec.stories) {
+    const key = `US${story.index}`;
+    const have = byStory.get(key) ?? 0;
+    if (have < story.scenarios.length) {
+      findings.push({ kind: 'scenario-missing', drift: true, message: `User Story ${story.index} "${story.title}" has ${story.scenarios.length} acceptance scenario(s) in spec.md and ${have} @${key} scenario(s) in the feature.` });
+    }
+  }
+
+  const featureText = [...feature.descriptionLines, ...feature.scenarios.flatMap(s => [s.name, ...s.tags, ...s.steps.map(st => st.text)])].join('\n');
+  for (const r of spec.requirements) {
+    if (!new RegExp(`\\b${r.id}\\b`).test(featureText)) findings.push({ kind: 'requirement-missing', drift: true, message: `${r.id} is not in the feature: ${r.text}` });
+  }
+
+  for (const t of tasks.filter(t => t.done && t.story && !byStory.has(t.story))) {
+    findings.push({ kind: 'task-unverified', drift: true, message: `${t.id} [${t.story}] is done, but no scenario tagged @${t.story} verifies it: ${t.text}` });
+  }
+  return findings;
+}

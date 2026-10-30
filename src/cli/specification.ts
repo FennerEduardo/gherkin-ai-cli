@@ -84,10 +84,11 @@ export function registerSpecificationCommands(program: Command): void {
 
   program
     .command('speckit <direction>')
-    .description('GitHub Spec Kit interop: `import` specs/NNN-*/spec.md into .feature files, or `export` .feature files as Spec Kit specs')
-    .option('--dir <dir>', 'import: Spec Kit specs directory (default: specs or .specify/specs)')
-    .option('--out <dir>', 'Output directory (import: features, export: specs)')
+    .description('GitHub Spec Kit interop: `import` specs/NNN-*/spec.md into .feature files, `export` .feature files as Spec Kit specs, or `verify` that every story, requirement and completed task has a scenario and the code converges (exit 7 on drift)')
+    .option('--dir <dir>', 'import, verify: Spec Kit specs directory (default: specs or .specify/specs)')
+    .option('--out <dir>', 'Output directory (import: features, export: specs; verify: where the .feature files are)')
     .option('--force', 'Overwrite existing files')
+    .option('--threshold <score>', 'verify: minimum convergence 0-100 (default: 80)')
     .option('--json', 'Output as JSON')
     .action(async (direction, options) => {
       const { handleSpeckitCommand } = await import('../commands/speckit');

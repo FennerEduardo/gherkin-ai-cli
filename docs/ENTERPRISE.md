@@ -466,6 +466,14 @@ The graph does not need an LLM or a database. It ignores dependency and build di
   - FR-### requirements and edge cases are kept in the feature description.
   - `[NEEDS CLARIFICATION]` markers are reported.
 - **`ghk speckit export`** goes the other way, and round-trips the user stories, priorities and requirements.
+- **`ghk speckit verify`** checks, for each `specs/NNN-name/` folder, that the plan is covered by the executable specification and that the code converges with it. Exit 7 when any of these fails:
+  - the spec was never imported;
+  - a user story has fewer `@US<n>` scenarios than acceptance scenarios in `spec.md` (the spec changed after the import, or a scenario was deleted);
+  - an FR-### is not named in the feature;
+  - a task marked done in `tasks.md` belongs to a story with no scenario: work that nothing verifies;
+  - convergence is below `--threshold` (80).
+
+  It also warns when `AGENTS.md`, `CLAUDE.md`, `.github/copilot-instructions.md` or `.cursor/rules` never mention gherkin-ai: agents following them skip the gates. With `/speckit.implement`, run it in CI after the agent's change.
 
 ## 17. Test sandbox, runtime kernel and observability
 
