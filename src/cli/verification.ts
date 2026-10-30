@@ -83,6 +83,8 @@ export function registerVerificationCommands(program: Command): void {
     .option('--all', 'Evaluate every feature of every gherkin-ai project under the current directory')
     .option('--live <file|url>', 'Compare the contract operations with the OpenAPI document the running service serves (e.g. http://localhost:8080/v3/api-docs); a missing one exits 7')
     .option('--strict-contracts', 'Also exit 7 when the feature names a state that no enum of the contracts lists')
+    .option('--openapi <file>', 'Measure contract coverage against this OpenAPI document (e.g. the repository\'s own) instead of the generated contracts')
+    .option('--allow-empty', 'Succeed when the project has no feature files (default: exit 2)')
     .option('--json', 'Output report as JSON')
     .action(async (options) => {
       await (await import('../commands/converge')).handleConvergeCommand({ ...options, json: options.json || program.opts().json });
@@ -144,7 +146,7 @@ export function registerVerificationCommands(program: Command): void {
     });
 
   program
-    .command('firewall [subcommand]')
+    .command('firewall [subcommand] [command]')
     .description('Agent firewall: check whether an agent may write a path, run a command, reach a host, read a secret or call a tool (check | policy | hook)')
     .option('--write <path>', 'check: a file the agent wants to write')
     .option('--exec <command>', 'check: a command line the agent wants to run')
@@ -154,9 +156,11 @@ export function registerVerificationCommands(program: Command): void {
     .option('-f, --feature <file>', 'Limit writes to the impact scope of this feature')
     .option('--agent <name>', 'Agent name recorded in the audit trail')
     .option('--json', 'Output as JSON')
-    .action(async (subcommand, options) => {
+    .action(async (subcommand, command, options) => {
       const { handleFirewallCommand } = await import('../commands/firewall');
-      await handleFirewallCommand(subcommand, options);
+      // `ghk firewall check "<command line>"` is short for `--exec "<command line>"`.
+      if (command !== undefined && (subcommand ?? 'check') !== 'check') throw new (await import('../core/errors')).UsageError(`firewall ${subcommand} takes no positional argument.`);
+      await handleFirewallCommand(subcommand, command !== undefined && !options.exec ? { ...options, exec: command } : options);
     });
 
   program

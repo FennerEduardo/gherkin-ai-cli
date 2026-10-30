@@ -7,6 +7,8 @@ import path from 'path';
 import { writeFileSync } from '../../utils/file-system';
 import { GherkinAIConfig, PartialGherkinAIConfig, partialConfigSchema } from './schema';
 import { resolveConfig, userConfigPath, LoadOptions, ResolvedConfig } from './loader';
+// Circular (the detector starts from defaultConfig): both sides only use the other inside functions.
+import { detectExistingStack } from '../stack-detector';
 
 export type { GherkinAIConfig, PartialGherkinAIConfig, LLMSettings, LLMProviderName } from './schema';
 export { configSchema, partialConfigSchema, LLM_PROVIDERS, ARCHITECTURES } from './schema';
@@ -47,7 +49,24 @@ export const defaultConfig: GherkinAIConfig = {
 
 /** Loads the fully resolved configuration (all layers) with provenance and warnings. */
 export function loadResolvedConfig(options: LoadOptions = {}): ResolvedConfig {
-  return resolveConfig(defaultConfig, options);
+  return resolveConfig(detectedDefaults(options), options);
+}
+
+/**
+ * Without a project configuration, the defaults describe the repository itself (`ghk detect`), so governance
+ * commands on a repository that never ran `ghk init` judge an Express service as Express, not as NestJS + Prisma.
+ */
+function detectedDefaults(options: LoadOptions): GherkinAIConfig {
+  const cwd = options.cwd ?? process.cwd();
+  if (options.configPath || fs.existsSync(path.join(cwd, 'gherkin-ai.config.json'))) return defaultConfig;
+  let detected: GherkinAIConfig;
+  try {
+    detected = detectExistingStack(cwd);
+  } catch {
+    return defaultConfig; // detection is a convenience: it never stops a command
+  }
+  if (JSON.stringify(detected.stack) === JSON.stringify(defaultConfig.stack)) return defaultConfig;
+  return { ...defaultConfig, projectMode: 'brownfield', stack: detected.stack };
 }
 
 /**

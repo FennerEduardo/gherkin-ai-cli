@@ -6,6 +6,7 @@ import { ExitCode } from '../core/errors';
 import chalk from 'chalk';
 import fs from 'fs';
 import { parseGherkinText } from '../core/gherkin-parser';
+import { resolveFeatureFile } from '../core/workspace-projects';
 
 export interface DiffCommandOptions {
   feature?: string;
@@ -30,11 +31,7 @@ export async function handleDiffCommand(options: DiffCommandOptions = {}): Promi
      return;
   }
 
-  if (!fs.existsSync(options.feature)) {
-     console.log(chalk.red(`Feature file not found: ${options.feature}`));
-     process.exitCode = ExitCode.USAGE;
-     return;
-  }
+  const featureFile = resolveFeatureFile(options.feature);
 
   if (!fs.existsSync(options.target)) {
      console.log(chalk.red(`Target code file not found: ${options.target}`));
@@ -42,7 +39,7 @@ export async function handleDiffCommand(options: DiffCommandOptions = {}): Promi
      return;
   }
 
-  const featureContent = fs.readFileSync(options.feature, 'utf8');
+  const featureContent = fs.readFileSync(featureFile, 'utf8');
   const targetContent = fs.readFileSync(options.target, 'utf8');
 
   const parsed = parseGherkinText(featureContent);

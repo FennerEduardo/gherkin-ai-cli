@@ -10,7 +10,7 @@ import path from 'path';
 import chalk from 'chalk';
 import { parseGherkinText } from '../core/gherkin-parser';
 import { calculateConvergence, ConvergenceReport } from '../core/convergence-engine';
-import { forEachProjectFeature, formatFeatureTable, projectFeatureFiles } from '../core/workspace-projects';
+import { forEachProjectFeature, formatFeatureTable, requireProjectFeatures, resolveFeatureFile } from '../core/workspace-projects';
 
 export interface ConvergeCommandOptions {
   feature?: string;
@@ -22,6 +22,10 @@ export interface ConvergeCommandOptions {
   live?: string;
   /** Fail when the feature names a state that no enum of the contracts lists. */
   strictContracts?: boolean;
+  /** The repository's own OpenAPI document, measured instead of the generated contracts. */
+  openapi?: string;
+  /** No feature files is an empty result instead of a usage error. */
+  allowEmpty?: boolean;
 }
 
 /** Reads the live OpenAPI document from a file or a URL. */
@@ -47,7 +51,12 @@ async function readLiveDocument(source: string): Promise<unknown> {
 export async function handleConvergeCommand(options: ConvergeCommandOptions = {}): Promise<void> {
   const threshold = parseInt(options.threshold || '80', 10);
   if (options.live && options.all) throw new UsageError('--live compares one service with its document: use it with a single project, not --all.');
-  const engineOptions = { live: options.live ? await readLiveDocument(options.live) : undefined, strictContracts: options.strictContracts };
+  if (options.openapi && !fs.existsSync(path.resolve(options.openapi))) throw new UsageError(`OpenAPI document not found: ${options.openapi}`);
+  const engineOptions = {
+    live: options.live ? await readLiveDocument(options.live) : undefined,
+    strictContracts: options.strictContracts,
+    openapi: options.openapi ? path.resolve(options.openapi) : undefined
+  };
 
   if (options.all) {
     // Every feature of every gherkin-ai project under the working directory (monorepos).
@@ -66,22 +75,10 @@ export async function handleConvergeCommand(options: ConvergeCommandOptions = {}
     return;
   }
 
-  // Resolve feature files
-  let featureFiles: string[] = [];
-
-  if (options.feature) {
-    featureFiles = [path.resolve(options.feature)];
-  } else {
-    try {
-      featureFiles = projectFeatureFiles(process.cwd());
-    } catch (e) {
-      console.log(chalk.yellow('\n⚠ No feature files found. Use --feature <file> or ensure a specs/ directory exists.\n'));
-      return;
-    }
-  }
-
+  const featureFiles = options.feature ? [resolveFeatureFile(options.feature)] : requireProjectFeatures(process.cwd(), options.allowEmpty);
   if (featureFiles.length === 0) {
-    console.log(chalk.yellow('\n⚠ No .feature files found to analyze.\n'));
+    if (options.json) emitJson([]);
+    else console.log(chalk.yellow('\n⚠ No .feature files found to analyze (--allow-empty).\n'));
     return;
   }
 

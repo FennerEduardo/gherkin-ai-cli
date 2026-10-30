@@ -10,7 +10,7 @@ import chalk from 'chalk';
 import { parseGherkinText } from '../core/gherkin-parser';
 import { lintSpecification, LintDiagnostic, getAvailableRules } from '../core/specification-linter';
 import { loadConstitution } from '../core/constitution';
-import { forEachProjectFeature, formatFeatureTable, projectFeatureFiles } from '../core/workspace-projects';
+import { forEachProjectFeature, formatFeatureTable, requireProjectFeatures, resolveFeatureFile } from '../core/workspace-projects';
 import { loadResolvedConfig } from '../core/config';
 import { allIndustryLintRules, industryForConfig, industryLintOptions } from '../core/profiles/industries';
 import { explainIr, renderIrExplanation } from '../core/ir-explain';
@@ -35,6 +35,8 @@ export interface LintCommandOptions {
   all?: boolean;
   /** Show the names the generator will use and where each one comes from (tags, steps, defaults). */
   explainIr?: boolean;
+  /** No feature files is an empty result instead of a usage error. */
+  allowEmpty?: boolean;
 }
 
 export async function handleLintCommand(options: LintCommandOptions = {}): Promise<void> {
@@ -73,23 +75,12 @@ export async function handleLintCommand(options: LintCommandOptions = {}): Promi
     return;
   }
 
-  // Resolve feature files
-  let featureFiles: string[] = [];
-
-  if (options.feature) {
-    featureFiles = [path.resolve(options.feature)];
-  } else {
-    // Auto-discover .feature files
-    try {
-      featureFiles = projectFeatureFiles(process.cwd());
-    } catch (e) {
-      console.log(chalk.yellow('\n⚠ No feature files found. Use --feature <file> or ensure a specs/ directory exists.\n'));
-      return;
-    }
-  }
-
+  // A -f that names no feature is linted as a missing file (GHK000, exit 4), as in 3.x.
+  const explicit = (feature: string) => { try { return resolveFeatureFile(feature); } catch { return path.resolve(feature); } };
+  const featureFiles = options.feature ? [explicit(options.feature)] : requireProjectFeatures(process.cwd(), options.allowEmpty);
   if (featureFiles.length === 0) {
-    console.log(chalk.yellow('\n⚠ No .feature files found to lint.\n'));
+    if (options.json) emitJson([]);
+    else console.log(chalk.yellow('\n⚠ No .feature files found to lint (--allow-empty).\n'));
     return;
   }
 

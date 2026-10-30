@@ -67,6 +67,20 @@ export interface TelemetryOptions {
   auditEnabled?: boolean;
 }
 
+/**
+ * Where the CLI keeps telemetry and audit for a workspace when telemetry.dir is not set: <workspace>/.gherkin-ai/
+ * once the project has a configuration, otherwise a per-workspace folder next to the user config, so running
+ * governance commands on a repository that never ran `ghk init` leaves no files in it.
+ */
+export function defaultTelemetryDir(cwd: string, env: NodeJS.ProcessEnv = process.env): string {
+  if (fs.existsSync(path.join(cwd, 'gherkin-ai.config.json')) || fs.existsSync(path.join(cwd, '.gherkin-ai'))) {
+    return path.join(cwd, '.gherkin-ai');
+  }
+  const userDir = env.GHK_USER_CONFIG ? path.dirname(env.GHK_USER_CONFIG) : path.join(os.homedir(), '.gherkin-ai');
+  const id = crypto.createHash('sha256').update(path.resolve(cwd)).digest('hex').slice(0, 16);
+  return path.join(userDir, 'workspaces', `${path.basename(cwd)}-${id}`);
+}
+
 function gitUser(): string | undefined {
   return process.env.GHK_AUTHOR_EMAIL || process.env.GHK_AUTHOR_NAME || undefined;
 }

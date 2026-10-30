@@ -69,6 +69,18 @@ export interface ConvergenceOptions {
   live?: unknown;
   /** States the feature names must be in the contracts' enums (`--strict-contracts`). */
   strictContracts?: boolean;
+  /** The repository's own OpenAPI document (`ghk converge --openapi`), used instead of the generated contracts. */
+  openapi?: string;
+}
+
+/**
+ * True when gherkin-ai has been set up in the project (configuration, inventory or constitution). Without any of
+ * them it is an existing repository that only uses the governance commands: there are no generated contracts or
+ * architecture rules to measure against, so those dimensions are not applicable instead of failing.
+ */
+export function hasGhkArtifacts(projectDir: string): boolean {
+  return ['gherkin-ai.config.json', path.join('.ghe', 'inventory.json'), path.join('.gherkin-ai', 'constitution.yaml'), path.join('.ghe', 'constitution.yaml')]
+    .some(rel => fs.existsSync(path.join(projectDir, rel)));
 }
 
 function configuredOutputDir(projectDir: string): string {
@@ -141,11 +153,18 @@ export function checkConvergence(
   }
 
   // 3. Contract Coverage
-  const contractCoverage = evaluateContractCoverage(ir, projectDir, outputDir);
+  // An explicit output directory points at generated contracts, so they are measured.
+  const managed = options.outputDir !== undefined || hasGhkArtifacts(projectDir);
+  const contractCoverage = options.openapi ? evaluateOwnContractCoverage(ir, options.openapi)
+    : managed ? evaluateContractCoverage(ir, projectDir, outputDir)
+    : notApplicable('Contract Coverage', 'artifacts', 'No gherkin-ai contracts in this repository (not counted in the overall score).',
+      '→ Pass the repository\'s own contract with `--openapi <file>`, or run `ghk generate` to create one from the specification.');
   dimensions.push(contractCoverage);
 
   // 4. Architecture Compliance
-  const archCompliance = evaluateArchitectureCompliance(ir, constitution, projectDir, outputDir);
+  const archCompliance = managed || constitution ? evaluateArchitectureCompliance(ir, constitution, projectDir, outputDir)
+    : notApplicable('Architecture Compliance', 'artifacts', 'No constitution in this repository (not counted in the overall score).',
+      '→ `ghk init` writes one (.gherkin-ai/constitution.yaml) with the architecture rules to check.');
   dimensions.push(archCompliance);
 
   // 5. Security Policy
@@ -357,6 +376,42 @@ function evaluateContractCoverage(
     status: score >= 80 ? 'pass' : score >= 50 ? 'warn' : 'fail',
     basis: 'artifacts'
   };
+}
+
+function notApplicable(name: string, basis: ConvergenceDimension['basis'], ...details: string[]): ConvergenceDimension {
+  return { name, basis, applicable: false, score: 0, maxScore: 100, status: 'warn', details };
+}
+
+const normalizeName = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+
+/**
+ * Contract coverage against an OpenAPI document the repository wrote itself. Its routes follow the service's own
+ * conventions, not the runtime kernel's (`POST /api/v1/<aggregate>/{id}/{command}`), so a command counts as
+ * covered by an operation whose operationId names it (`placeOrder`) or whose path ends with its verb
+ * (`POST /orders/{id}/cancel`).
+ */
+function evaluateOwnContractCoverage(ir: SpecificationIR, openapiFile: string): ConvergenceDimension {
+  const openapi = readJson(openapiFile);
+  if (!openapi) return notApplicable('Contract Coverage', 'artifacts', `Cannot read the OpenAPI document ${openapiFile} as JSON.`);
+  const operations = Object.entries<Record<string, any>>(openapi.paths ?? {}).flatMap(([route, ops]) =>
+    Object.entries(ops).filter(([method]) => /^(get|put|post|patch|delete)$/.test(method)).map(([method, op]) => ({
+      method: method.toUpperCase(), route, id: normalizeName(String(op?.operationId ?? '')),
+      lastSegment: normalizeName(route.split('/').filter(s => s && !s.startsWith('{') && !s.startsWith(':')).pop() ?? '')
+    })));
+  const details: string[] = [];
+  let found = 0;
+  for (const command of ir.commands) {
+    const name = normalizeName(command.name);
+    const verb = normalizeName(command.verb);
+    const match = operations.find(op => (op.id && op.id === name) || (verb && op.lastSegment === verb && op.method !== 'GET'));
+    if (match) found++;
+    else details.push(`No operation in ${path.basename(openapiFile)} for ${command.name} (operationId "${command.name.charAt(0).toLowerCase()}${command.name.slice(1)}" or a path ending in /${command.verb}).`);
+  }
+  const total = ir.commands.length;
+  if (!total) return notApplicable('Contract Coverage', 'artifacts', 'Nothing to check: the specification implies no commands.');
+  details.unshift(`Commands with an operation in ${path.basename(openapiFile)}: ${found}/${total}`);
+  const score = Math.round((found / total) * 100);
+  return { name: 'Contract Coverage', score, maxScore: 100, details, status: score >= 80 ? 'pass' : score >= 50 ? 'warn' : 'fail', basis: 'artifacts' };
 }
 
 function evaluateArchitectureCompliance(

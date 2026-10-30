@@ -42,15 +42,18 @@ describe('IR cache (4.8)', () => {
     const cache = path.join(dir, 'cache');
     fs.writeFileSync(file, FEATURE);
     const first = buildIRFromFile(file, 'orders.feature', { mode: 'deterministic' }, cache);
-    const entries = fs.readdirSync(cache);
+    // The cache ignores itself in git (.gitignore "*"), so a repository without one stays clean.
+    expect(fs.readFileSync(path.join(cache, '.gitignore'), 'utf8')).toBe('*\n');
+    const entries = fs.readdirSync(cache).filter(f => f !== '.gitignore');
     expect(entries).toHaveLength(1);
     expect(buildIRFromFile(file, 'orders.feature', { mode: 'deterministic' }, cache).featureName).toBe(first.featureName);
 
     fs.writeFileSync(file, FEATURE.replace('Orders', 'Invoices'));
     expect(buildIRFromFile(file, 'orders.feature', { mode: 'deterministic' }, cache).featureName).toBe('Invoices');
-    expect(fs.readdirSync(cache)).toHaveLength(2);
+    const irs = () => fs.readdirSync(cache).filter(f => f !== '.gitignore');
+    expect(irs()).toHaveLength(2);
 
-    for (const e of fs.readdirSync(cache)) fs.writeFileSync(path.join(cache, e), '{corrupt');
+    for (const e of irs()) fs.writeFileSync(path.join(cache, e), '{corrupt');
     expect(buildIRFromFile(file, 'orders.feature', { mode: 'deterministic' }, cache).featureName).toBe('Invoices');
   });
 

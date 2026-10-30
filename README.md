@@ -38,6 +38,20 @@ ghk risk --base origin/main --fail-on HIGH      # delivery risk of the change (e
 ghk graph --trace OrderPlaced                   # requirement -> code -> tests
 ```
 
+### On an existing repository, without `ghk init`
+
+The governance commands work on any repository with `.feature` files in `features/` or `specs/`. They use the stack `ghk detect` finds, leave out what they cannot measure without gherkin-ai's own contracts (reported as `n/a`), and write nothing to the repository:
+
+```bash
+npx -y gherkin-ai@3 lint --threshold 80                      # exit 4 below the threshold, exit 2 if there is no feature
+npx -y gherkin-ai@3 converge --openapi docs/openapi.json     # coverage against your own contract (exit 7 below 80)
+npx -y gherkin-ai@3 risk --base origin/main --fail-on HIGH   # risk of the change
+npx -y gherkin-ai@3 graph                                    # which commands the code and the tests name
+npx -y gherkin-ai@3 firewall check "cat .env"                # DENY: exit 5
+```
+
+`tests/golden/brownfield.test.ts` runs exactly these on an Express and a Spring service. [docs/ADOPTION.md](docs/ADOPTION.md#0-no-configuration-the-governance-commands-only) has the CI job.
+
 Connect your coding agent:
 
 ```bash

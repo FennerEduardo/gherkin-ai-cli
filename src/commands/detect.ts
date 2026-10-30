@@ -10,12 +10,18 @@ import { logger } from '../utils/logger';
 import { suggestPatterns } from '../core/patterns-suggester';
 import { ensureGitignore } from '../utils/gitignore-manager';
 import { promptOrFallback } from '../utils/i18n-cli';
+import { emitJson } from '../utils/output';
 
-export async function handleDetectCommand(options?: { yes?: boolean; nonInteractive?: boolean }): Promise<void> {
+export async function handleDetectCommand(options?: { yes?: boolean; nonInteractive?: boolean; json?: boolean }): Promise<void> {
+  const detectedConfig = detectExistingStack(process.cwd());
+  if (options?.json) {
+    // A report only: no prompt, and no configuration is written.
+    emitJson({ projectName: detectedConfig.projectName, projectMode: detectedConfig.projectMode, architecture: detectedConfig.architecture, ...detectedConfig.stack });
+    return;
+  }
+
   logger.banner();
   logger.info('Scanning project directory for existing stack & architecture...');
-
-  const detectedConfig = detectExistingStack(process.cwd());
 
   console.log('\n------------------------------------------------------------');
   console.log('🔍 Existing Project Stack & Architecture Detected:');

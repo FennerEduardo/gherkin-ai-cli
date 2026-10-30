@@ -6,7 +6,7 @@ import { Command, CommanderError } from 'commander';
 import { ExitCode, GhkError, toGhkError } from './core/errors';
 import { getRunContext, isNonInteractive, setRunContext } from './core/run-context';
 import { logger } from './utils/logger';
-import { configureTelemetry, getTelemetry, EXECUTION_ID } from './core/telemetry';
+import { configureTelemetry, defaultTelemetryDir, getTelemetry, EXECUTION_ID } from './core/telemetry';
 import { onLLMUsage } from './core/llm';
 import { emitJson, enterJsonMode, hasEmittedOutput } from './utils/output';
 
@@ -76,7 +76,8 @@ program.hook('preAction', async (_thisCommand, actionCommand) => {
 
   setRunContext({
     command: commandName,
-    nonInteractive: Boolean(globals.yes || globals.nonInteractive),
+    // Without a terminal (CI, a pipe, stdin closed) a prompt cannot be answered: take the defaults.
+    nonInteractive: Boolean(globals.yes || globals.nonInteractive || json || !process.stdin.isTTY),
     json,
     dryRun: Boolean(globals.dryRun),
     stdout: Boolean(globals.stdout),
@@ -125,7 +126,7 @@ program.hook('preAction', async (_thisCommand, actionCommand) => {
     if (config.network?.proxy || config.network?.caFile || process.env.HTTPS_PROXY || process.env.https_proxy || process.env.HTTP_PROXY || process.env.http_proxy) {
       (await import('./core/net')).configureNetwork(config.network);
     }
-    configureTelemetry(process.cwd(), { dir: config.telemetry?.dir, telemetryEnabled: config.telemetry?.enabled, auditEnabled: config.audit?.enabled });
+    configureTelemetry(process.cwd(), { dir: config.telemetry?.dir ?? defaultTelemetryDir(process.cwd()), telemetryEnabled: config.telemetry?.enabled, auditEnabled: config.audit?.enabled });
   } catch (err) {
     // `config` and `upgrade` report invalid configuration themselves.
     if (err instanceof GhkError && err.exitCode === ExitCode.CONFIG && commandName !== 'config' && commandName !== 'upgrade') throw err;

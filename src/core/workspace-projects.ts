@@ -9,6 +9,7 @@
 import fs from 'fs';
 import path from 'path';
 import { resolveSpecDir } from '../utils/spec-dir-resolver';
+import { UsageError } from './errors';
 
 const CONFIG_FILE = 'gherkin-ai.config.json';
 const SKIP = new Set(['node_modules', '.git', 'dist', 'build', 'target', 'bin', 'obj', 'vendor', 'deps', '_build', '.venv', 'coverage', '.next', '.dart_tool', '.gradle']);
@@ -39,6 +40,48 @@ export function projectFeatureFiles(projectDir: string): string[] {
   }
   const dir = resolveSpecDir(specDir, projectDir);
   return fs.readdirSync(dir).filter(f => f.endsWith('.feature')).sort().map(f => path.join(dir, f));
+}
+
+/** The project's feature files, or [] when it has no spec directory. */
+function featureFilesOrNone(projectDir: string): string[] {
+  try {
+    return projectFeatureFiles(projectDir);
+  } catch {
+    return [];
+  }
+}
+
+const slugOf = (s: string) => s.toLowerCase().replace(/\.feature$/, '').replace(/[^a-z0-9]/g, '');
+
+/**
+ * What `-f/--feature` means in every command: a path (relative to the project), or the name of a feature in the
+ * spec directory (`orders`, `orders.feature`, `grade-publication` for grade_publication.feature).
+ * A feature that cannot be found is a usage error (exit 2) that lists the ones there are.
+ */
+export function resolveFeatureFile(feature: string, projectDir: string = process.cwd()): string {
+  const asPath = path.resolve(projectDir, feature);
+  if (fs.existsSync(asPath) && fs.statSync(asPath).isFile()) return asPath;
+  const available = featureFilesOrNone(projectDir);
+  const byName = available.find(f => slugOf(path.basename(f)) === slugOf(path.basename(feature)));
+  if (byName) return byName;
+  const names = available.map(f => path.basename(f, '.feature'));
+  throw new UsageError(`Feature not found: ${feature}`, {
+    hint: names.length ? `Features in this project: ${names.join(', ')}.` : 'This project has no feature files (features/, specs/ or the configured specDir).'
+  });
+}
+
+/**
+ * The features a project-wide `lint`, `validate` or `converge` checks. None is a usage error (exit 2): a
+ * pipeline pointed at the wrong --project must not pass. `allowEmpty` turns it into an empty result.
+ */
+export function requireProjectFeatures(projectDir: string, allowEmpty = false): string[] {
+  const files = featureFilesOrNone(projectDir);
+  if (files.length === 0 && !allowEmpty) {
+    throw new UsageError(`No feature files found in ${projectDir}.`, {
+      hint: 'Put them in features/ or specs/ (or set specDir), pass --feature <file>, or --allow-empty to accept a project without features.'
+    });
+  }
+  return files;
 }
 
 export interface FeatureRow {

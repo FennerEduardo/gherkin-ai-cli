@@ -9,7 +9,7 @@ import { loadConfig } from '../core/config';
 import { parseGherkinText } from '../core/gherkin-parser';
 import { fileExistsSync, readFileSync, writeFileSync } from '../utils/file-system';
 import { logger } from '../utils/logger';
-import { resolveSpecDir } from '../utils/spec-dir-resolver';
+import { requireProjectFeatures, resolveFeatureFile } from '../core/workspace-projects';
 import { getStackDockerDetails } from '../generators/infra';
 import { getAuthorDetails, calculateHash, InventoryManager } from '../core/inventory';
 import { estimateTokens } from '../utils/token-estimator';
@@ -47,25 +47,12 @@ export async function handleImplementCommand(options: {
   const config = loadConfig();
   const isCompact = options.compact || process.argv.includes('--compact');
 
-  let featurePath: string = '';
-
+  let featurePath: string;
   if (options.feature) {
-    featurePath = path.resolve(process.cwd(), options.feature);
+    featurePath = resolveFeatureFile(options.feature);
   } else {
-    try {
-      const specDir = resolveSpecDir(config.specDir, process.cwd());
-      const files = fs.readdirSync(specDir).filter(f => f.endsWith('.feature'));
-      if (files.length > 0) {
-        featurePath = path.join(specDir, files[0]);
-        logger.info(`Auto-selected feature: ${featurePath}`);
-      }
-    } catch {}
-  }
-
-  if (!featurePath || !fileExistsSync(featurePath)) {
-    logger.error('No feature file found to implement.');
-    logger.info('  → Fix: Run "ghk generate --feature ./features/01-customer-management.feature" first.');
-    return;
+    featurePath = requireProjectFeatures(process.cwd())[0];
+    logger.info(`Auto-selected feature: ${featurePath}`);
   }
 
   const gherkinText = readFileSync(featurePath);

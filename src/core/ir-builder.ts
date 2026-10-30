@@ -102,7 +102,11 @@ export function buildIRFromFile(file: string, sourceFile: string, options: IRBui
   }
   const ir = buildIR(parseGherkinText(text), sourceFile, options);
   try {
-    fs.mkdirSync(cacheDir, { recursive: true });
+    if (!fs.existsSync(cacheDir)) {
+      fs.mkdirSync(cacheDir, { recursive: true });
+      // The cache is never versioned, whatever the project's .gitignore says (or if it has none).
+      fs.writeFileSync(path.join(cacheDir, '.gitignore'), '*\n');
+    }
     const tmp = `${cached}.${process.pid}.tmp`;
     fs.writeFileSync(tmp, JSON.stringify(ir));
     fs.renameSync(tmp, cached);

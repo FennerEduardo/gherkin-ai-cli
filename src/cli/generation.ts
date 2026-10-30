@@ -78,9 +78,10 @@ export function registerGenerationCommands(program: Command): void {
   program
     .command('detect')
     .alias('d')
-    .description('Auto-detect tech stack & architecture of an existing project (Brownfield mode)')
-    .action(async () => {
-      await (await import('../commands/detect')).handleDetectCommand();
+    .description('Auto-detect tech stack & architecture of an existing project and save it as gherkin-ai.config.json (Brownfield mode)')
+    .option('--json', 'Report the detected stack as JSON without saving a configuration')
+    .action(async (options) => {
+      await (await import('../commands/detect')).handleDetectCommand(options);
     });
 
   program

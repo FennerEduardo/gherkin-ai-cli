@@ -1,8 +1,8 @@
-import path from 'path';
 import { emitJson } from '../utils/output';
 import { ExitCode, GhkError, UsageError } from '../core/errors';
 import { logger } from '../utils/logger';
 import { analyzeImpact } from '../core/impact-analyzer';
+import { resolveFeatureFile } from '../core/workspace-projects';
 
 export interface ImpactCommandOptions {
   feature?: string;
@@ -19,8 +19,8 @@ export async function handleImpactCommand(options: ImpactCommandOptions): Promis
     throw new UsageError('Feature file is required. Use -f or --feature.');
   }
 
-  const featurePath = path.resolve(process.cwd(), options.feature);
-  
+  const featurePath = resolveFeatureFile(options.feature);
+
   try {
     const report = analyzeImpact(featurePath, process.cwd());
 

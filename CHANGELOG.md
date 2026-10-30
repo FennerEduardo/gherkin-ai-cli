@@ -7,6 +7,20 @@ All notable changes to this project will be documented in this file. See [commit
 ### Security
 - **The corporate proxy and CA were ignored on Node.js 26.** Node 26 ships undici 8, whose `fetch` reads the global dispatcher from a new symbol; gherkin-ai's undici 6 only set the old one, so with `HTTPS_PROXY`, `network.proxy` or `network.caFile` the LLM traffic went straight to the provider, with the system CA list and no warning. `undici` moves to 8, which sets both. Plain-HTTP gateways are now reached through the proxy as forwarded requests (undici 6 opened a CONNECT tunnel). `@hono/node-server` (via the MCP SDK) is updated for GHSA-rmxm-3fg6-px4f: `npm audit` reports 0 vulnerabilities.
 
+### Added
+- **The governance commands work on a repository that never ran `ghk init`** ([ADOPTION.md §0](docs/ADOPTION.md#0-no-configuration-the-governance-commands-only)). A new golden (`tests/golden/brownfield.test.ts`, an Express and a Spring service with their own routes and no gherkin-ai file) runs them with stdin closed; 15 of its 18 checks failed on 3.2.1.
+  - Without a project configuration, the defaults are the stack `ghk detect` finds: `validate` reported an Express service as `typescript + nestjs + prisma`.
+  - `converge` leaves *Contract Coverage* and *Architecture Compliance* out of the score (`n/a`, with the reason) when the repository has no configuration, inventory or constitution. They counted as 0% and 50% and made an existing service exit 7. With gherkin-ai's own artifacts nothing changes.
+  - `converge --openapi <file>` measures contract coverage against the repository's own OpenAPI document: a command is covered by an operation whose `operationId` names it or whose path ends with its verb.
+  - Nothing is written to such a repository: telemetry and audit go to `~/.gherkin-ai/workspaces/<name>-<hash>/` until it has a configuration, and the semantic-model cache (`.ghe/cache/ir/`) ignores itself in git.
+- `ghk detect --json` reports the detected stack without prompting or writing a configuration.
+- `ghk firewall check "<command>"` is short for `--exec "<command>"`.
+
+### Fixed
+- **`ghk detect` crashed without a terminal** (`ERR_USE_AFTER_CLOSE`). With a stdin that is not a TTY, or `--json`, no command prompts: the defaults are taken, as with `--yes`.
+- **`-f/--feature` resolved differently in each command.** It now takes a path or a feature name everywhere (`implement`, `impact`, `diff`, `validate`, `converge`, `lint`). `implement -f <unknown>` printed "No feature file found", exited 0 and suggested a file that does not exist; it is now exit 2 with the list of features, as is `impact` (was exit 1).
+- **`lint` and `converge` passed when there was no feature** (exit 0, also with `--json`), so a CI job pointed at the wrong `--project` was green. They exit 2; `--allow-empty` accepts a project without features.
+
 ### Changed
 - **Node.js 22.19 or later** (was 22.12), the minimum undici 8 supports. CI also tests Node 26.
 

@@ -16,6 +16,35 @@ gherkin-ai does not have to generate code to be useful. Pick the level that fits
 
 Most teams start with level 1 on one service, move the services they build next to level 3, and leave the rest at level 1.
 
+## 0. No configuration: the governance commands only
+
+Before any of the steps below, you can try level 1 on a repository as it is: no `ghk init`, no generated file.
+
+- **What runs:** `lint`, `validate`, `converge`, `risk`, `graph`, `impact`, `diff` and `firewall`, on the `.feature` files in `features/` or `specs/`.
+- **What they assume:** the stack `ghk detect --json` reports (language, framework, test runner), not gherkin-ai's defaults.
+- **What they leave out:** without a configuration, an inventory or a constitution, `converge` reports *Contract Coverage* and *Architecture Compliance* as `n/a` and scores the rest. `--openapi <file>` measures your own contract instead: a command counts as covered by an operation whose `operationId` names it (`placeOrder`) or whose path ends with its verb (`POST /orders/{id}/cancel`).
+- **What they write:** nothing in the repository. Telemetry and audit go to `~/.gherkin-ai/workspaces/`, and the semantic-model cache (`.ghe/cache/`) ignores itself in git.
+- **Failing closed:** a project with no feature files exits 2 in `lint` and `converge` (`--allow-empty` accepts it), so a job pointed at the wrong directory does not pass.
+
+```yaml
+# .github/workflows/specifications.yml: governance only, no gherkin-ai configuration in the repository
+name: specifications
+on: pull_request
+jobs:
+  gherkin-ai:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with: { fetch-depth: 0 }
+      - uses: actions/setup-node@v5
+        with: { node-version: '24' }
+      - run: npx -y gherkin-ai@3.2.2 lint --threshold 80
+      - run: npx -y gherkin-ai@3.2.2 converge --openapi docs/openapi.json --threshold 80
+      - run: npx -y gherkin-ai@3.2.2 risk --base origin/${{ github.base_ref }} --fail-on HIGH
+```
+
+`tests/golden/brownfield.test.ts` runs these commands on an Express and a Spring service in every CI run. When the team wants gherkin-ai's own contracts, architecture rules and industry profile, continue with step 1.
+
 ## 1. Install and pin
 
 ```bash

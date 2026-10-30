@@ -4,6 +4,20 @@
 
 To adopt gherkin-ai in a project it never generated, see [ADOPTION.md](ADOPTION.md) instead.
 
+## From 3.2.1 to 3.2.2
+
+No configuration change is required. Everything new is opt-in; these are the points where a pipeline can behave differently:
+
+| What | 3.2.1 | 3.2.2 | Do |
+|---|---|---|---|
+| Node.js | 22.12 or later | 22.19 or later (undici 8). On Node 26, 3.2.1 ignored `HTTPS_PROXY`, `network.proxy` and `network.caFile` | upgrade build agents still on Node 22.12–22.18 |
+| `lint` / `converge` with no feature files | exit 0 | exit 2 | fix `--project`/`specDir`, or pass `--allow-empty` |
+| `implement` / `impact -f <name that matches nothing>` | exit 0 / exit 1 | exit 2, with the list of features | – |
+| Any command with stdin not a terminal | prompted (and crashed with stdin closed) | takes the defaults, as with `--yes` | pass `--yes` explicitly if a script relied on piping answers |
+| `converge` in a repository with no configuration, inventory or constitution | contract coverage 0%, architecture 50% (often exit 7) | both `n/a`, left out of the score | `--openapi <file>` to measure your own contract |
+| Defaults without `gherkin-ai.config.json` | TypeScript + NestJS + Prisma | the stack `ghk detect` finds | – |
+| Telemetry and audit without `gherkin-ai.config.json` | `./.gherkin-ai/` | `~/.gherkin-ai/workspaces/<name>-<hash>/` (set `telemetry.dir` to choose) | – |
+
 ## From 3.2.0 to 3.2.1
 
 No configuration change is required. The CLI contract (commands, exit codes, `--json` shapes) is unchanged except for the points below, which were wrong in 3.2.0 (found by adopting it in an implemented multi-service project; see the CHANGELOG):
@@ -20,7 +34,7 @@ No configuration change is required. The CLI contract (commands, exit codes, `--
 | Repair loop writes | specs could not be edited; contracts and tests could | specs, contracts and tests need a human | – |
 | Proposals | `.ghe/patches/<basename>.proposed` (full file; equal basenames collided) | `.ghe/patches/<path as a__b>.patch` (unified diff) | `git apply` them |
 | Agent firewall, commands | prefix match on the raw line | parsed like a shell (see ENTERPRISE.md §14); `ghk` only for read-only subcommands | add exact commands to `policy.firewall.allowCommands` if a hook now asks for approval |
-| Node.js older than 22.19 (22.12 in 3.2.1) | ran anyway | exits 2 with the version found | – |
+| Node.js older than 22.12 | ran anyway | exits 2 with the version found | – |
 
 ## Choose your path
 

@@ -18,6 +18,7 @@ import { validateDeploymentReadiness } from '../core/validators/deployment-readi
 import { buildIR } from '../core/ir-builder';
 import { StepIndexer } from '../core/step-indexer';
 import { undefinedSteps } from '../core/step-coverage';
+import { resolveFeatureFile } from '../core/workspace-projects';
 
 /** Dependencies and build output are not the project's code. */
 export const VALIDATE_SKIP_DIRS = new Set(['node_modules', 'dist', 'build', 'target', '.git', 'bin', 'obj', 'coverage', '.gradle', '_build', 'deps', 'vendor', '.venv', '__pycache__', '.next', '.dart_tool']);
@@ -84,7 +85,8 @@ export async function handleValidateCommand(options: { feature?: string; config?
   const arch = getArchRule(config.architecture);
 
   logger.info(`Architecture Rule Target: ${arch.name} (${arch.id})`);
-  logger.info(`Stack: ${config.stack.language} + ${config.stack.framework} + ${config.stack.orm}`);
+  const stackParts = [config.stack.language, config.stack.framework, config.stack.orm].filter(p => p && p !== 'none');
+  logger.info(`Stack: ${stackParts.join(' + ')}${config.projectMode === 'brownfield' && !fs.existsSync(path.join(process.cwd(), options.config ?? 'gherkin-ai.config.json')) ? ' (detected: no gherkin-ai.config.json)' : ''}`);
 
   let errorsCount = 0;
   let warningsCount = 0;
@@ -92,11 +94,8 @@ export async function handleValidateCommand(options: { feature?: string; config?
 
   // 1. Gherkin AST & Step Coverage Analysis
   if (options.feature) {
-    const featurePath = path.resolve(process.cwd(), options.feature);
-    if (!fileExistsSync(featurePath)) {
-      logger.error(`Feature file not found at ${featurePath}`);
-      errorsCount++;
-    } else {
+    const featurePath = resolveFeatureFile(options.feature);
+    {
       const gherkinText = readFileSync(featurePath);
       const parsed = parseGherkinText(gherkinText);
       parsedFeatureIR = buildIR(parsed, featurePath, { domainProfile: config.domainProfile, industry: config.industry?.id });
