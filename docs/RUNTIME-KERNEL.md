@@ -145,9 +145,9 @@ Each feature names the service that owns its commands with `@upstream:<name>` (t
 
 `GET /health` answers without calling the services. The generated tests run each of these cases against a stub upstream; the goldens `express-bff`, `nestjs-bff`, `nestjs-12-bff` and `spring-bff` build and run them on every change. `docker-compose.yml` and `.env.example` hold only the BFF and the upstream URLs. Terraform, Helm and the CI/CD pipeline are not generated for a BFF yet (the cloud targets would provision a database it does not use): deploy its image next to the services.
 
-## MySQL (`stack.database: "mysql"`, NestJS and Express)
+## MySQL (`stack.kernelDatabase: "mysql"`, NestJS and Express)
 
-The TypeScript kernel also runs on MySQL 8.4. Everything above holds, with these differences:
+The TypeScript kernel also runs on MySQL 8.4 when `stack.kernelDatabase` is `"mysql"`. It is a separate key on purpose: until 3.2.1 the kernel ignored `stack.database`, so projects that declare `"mysql"` there run on PostgreSQL, and they keep doing so. Everything above holds, with these differences:
 
 | | PostgreSQL | MySQL |
 |---|---|---|

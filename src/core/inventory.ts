@@ -99,7 +99,10 @@ export function readInventoryFile(file: string): InventoryFile {
 
 export function writeInventoryFile(file: string, inventory: InventoryFile): void {
   fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(file, JSON.stringify(inventory, null, 2) + '\n', 'utf8');
+  // One key order whatever the previous file had, so rewriting the same inventory changes nothing in git.
+  const { version, cliVersion, features, artifacts, executions, ...rest } = inventory;
+  const ordered = { version, ...(cliVersion ? { cliVersion } : {}), ...(features ? { features } : {}), artifacts, executions, ...rest };
+  fs.writeFileSync(file, JSON.stringify(ordered, null, 2) + '\n', 'utf8');
 }
 
 /** Adds or replaces artifact entries by path; entries of other features are kept. */

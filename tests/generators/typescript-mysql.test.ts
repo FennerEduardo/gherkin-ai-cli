@@ -13,7 +13,7 @@ import { buildIR } from '../../src/core/ir-builder';
 const FEATURE = parseGherkinText('Feature: Payment\n  Scenario: Pay\n    When the customer pays the invoice\n    Then the payment is recorded\n');
 const config = (framework: string, database: string, extra: Partial<GherkinAIConfig['stack']> = {}): GherkinAIConfig => ({
   ...defaultConfig, projectName: 'shop', outputDir: './',
-  stack: { ...defaultConfig.stack, language: 'typescript', framework, orm: 'none', database, messaging: 'rabbitmq', ...extra }
+  stack: { ...defaultConfig.stack, language: 'typescript', framework, orm: 'none', database, ...(database === 'mysql' ? { kernelDatabase: 'mysql' as const } : {}), messaging: 'rabbitmq', ...extra }
 });
 const file = (files: { filename: string; content: string }[], name: string) => files.find(f => f.filename === name)!.content;
 
@@ -64,5 +64,10 @@ describe('TypeScript runtime kernel on MySQL', () => {
     const pg = generatePresets(FEATURE, config('express', 'postgresql'));
     expect(pg.some(f => f.filename === 'src/runtime/db.ts')).toBe(false);
     expect(file(pg, 'src/runtime/command-service.ts')).toContain('ON CONFLICT DO NOTHING');
+  });
+
+  it('stack.database "mysql" alone keeps the PostgreSQL kernel, as in 3.2.1 (projects declaring it run on PostgreSQL)', () => {
+    const declared = generatePresets(FEATURE, { ...config('express', 'postgresql'), stack: { ...config('express', 'postgresql').stack, database: 'mysql' } });
+    expect(declared.some(f => f.filename === 'src/runtime/db.ts')).toBe(false);
   });
 });

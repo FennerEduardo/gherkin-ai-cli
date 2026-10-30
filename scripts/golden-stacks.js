@@ -69,7 +69,7 @@ const STACKS = {
   'nestjs-pubsub': { ...nestGolden({ messaging: 'pubsub' }), services: [PUBSUB_EMULATOR] },
   'nestjs-servicebus': { ...nestGolden({ messaging: 'servicebus' }), services: SERVICEBUS_EMULATOR('golden-nestjs-servicebus') },
   // stack.database "mysql" (TypeScript runtime kernel on MySQL 8.4).
-  'nestjs-mysql': { ...nestGolden({ database: 'mysql' }), services: [MYSQL_DATABASE] },
+  'nestjs-mysql': { ...nestGolden({ database: 'mysql', kernelDatabase: 'mysql' }), services: [MYSQL_DATABASE] },
   'grpc-graphql': {
     stack: { ...base, language: 'typescript', framework: 'nestjs', orm: 'prisma', validation: 'zod', testing: 'jest' },
     config: { contracts: { grpc: true, graphql: true } },
@@ -107,7 +107,7 @@ const STACKS = {
     integration: ['npm run test:integration']
   },
   'express-mysql': {
-    stack: { ...base, language: 'typescript', framework: 'express', orm: 'none', database: 'mysql', validation: 'zod', testing: 'jest' },
+    stack: { ...base, language: 'typescript', framework: 'express', orm: 'none', database: 'mysql', kernelDatabase: 'mysql', validation: 'zod', testing: 'jest' },
     image: 'node:24-bookworm',
     caches: [['npm', '/root/.npm']],
     build: ['npm install --no-audit --no-fund --loglevel=error', 'npm run build'],

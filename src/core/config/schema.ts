@@ -30,6 +30,11 @@ const stackSchema = z.object({
   /** Major version of the ORM (Prisma: "6" default, "7"). */
   ormVersion: z.string().optional().describe('ORM major to generate for. Prisma: "6" (default) or "7" (prisma-client generator, prisma.config.ts, driver adapter).'),
   database: z.string(),
+  /**
+   * Database of the runtime kernel: "postgresql" (default) or "mysql" (NestJS and Express only). Separate from
+   * `database`, which the kernel ignored until 3.2.1 (projects that declare "mysql" there run on PostgreSQL).
+   */
+  kernelDatabase: z.enum(['postgresql', 'mysql']).optional().describe('Runtime kernel database: "postgresql" (default) or "mysql" (NestJS and Express).'),
   validation: z.string(),
   auth: z.string(),
   messaging: z.string().optional(),

@@ -247,16 +247,14 @@ async function applyUpgrade(analysis: Analysis, options: UpgradeOptions, cwd: st
     const generated = new Set<string>();
     const pendingKernel: string[] = [];
     const { handleGenerateCommand } = await import('./generate');
-    // The inventory accumulates entries across features: only those written by this run count as regenerated.
-    const runStartedAt = new Date().toISOString();
+    // The inventory accumulates entries across features: only the files this run planned count as regenerated
+    // (from the plan, not from inventory dates: an unchanged file keeps its date).
     for (const feature of analysis.features) {
       logger.info(`Regenerating from ${feature} ...`);
       // On its own branch, a generated header is enough to replace a file without a checksum (2.x projects).
       const result = await handleGenerateCommand({ feature, config: options.config, yes: true, json: false, trustHeaders: true });
       for (const file of result?.kernelPendingMerge ?? []) if (!pendingKernel.includes(file)) pendingKernel.push(file);
-      for (const entry of readInventory(cwd)) {
-        if (entry.generatedAt && entry.generatedAt >= runStartedAt) generated.add(entry.filePath.replace(/\\/g, '/'));
-      }
+      for (const p of result?.plan ?? []) generated.add(p.file.replace(/\\/g, '/'));
       applied.regenerated.push(feature);
     }
 

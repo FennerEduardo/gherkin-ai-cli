@@ -24,7 +24,12 @@ type File = { filename: string; content: string };
 
 export const MYSQL_DRIVER = { mysql2: '^3.15.0' };
 
-export const usesMysql = (config?: Pick<GherkinAIConfig, 'stack'>) => ['mysql', 'mariadb'].includes((config?.stack?.database || '').toLowerCase());
+/**
+ * The kernel runs on MySQL only when asked explicitly (stack.kernelDatabase "mysql"). Until 3.2.1 the kernel
+ * ignored stack.database and always used PostgreSQL, and projects that declare "mysql" there run on PostgreSQL
+ * today: switching their driver in a patch release would break them.
+ */
+export const usesMysql = (config?: Pick<GherkinAIConfig, 'stack'>) => (config?.stack?.kernelDatabase || '').toLowerCase() === 'mysql';
 
 const DB_TS = `// MySQL 8 behind the part of the node-postgres API the runtime kernel uses (stack.database "mysql").
 // Statements keep PostgreSQL-style $1..$n placeholders; they are sent as ? with the values reordered.

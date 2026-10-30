@@ -62,6 +62,14 @@
         "database": {
           "type": "string"
         },
+        "kernelDatabase": {
+          "description": "Runtime kernel database: \"postgresql\" (default) or \"mysql\" (NestJS and Express).",
+          "type": "string",
+          "enum": [
+            "postgresql",
+            "mysql"
+          ]
+        },
         "validation": {
           "type": "string"
         },
