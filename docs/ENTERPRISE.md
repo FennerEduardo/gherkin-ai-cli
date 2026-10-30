@@ -211,9 +211,21 @@ Export for a SIEM:
 ```bash
 ghk audit export --since 7d --format jsonl > ghk-audit.jsonl
 ghk audit export --since 2026-10-01 --format csv -o audit.csv
+ghk audit export --since 24h --format ocsf > ghk-audit.ocsf.jsonl   # OCSF 1.3, for SIEMs that ingest OCSF
 ```
 
 CSV export neutralizes spreadsheet formula injection.
+
+`--format ocsf` writes one [OCSF 1.3](https://schema.ocsf.io) *API Activity* event (`class_uid` 6003) per record, ready for Amazon Security Lake, Splunk, Microsoft Sentinel or Google SecOps without a parser:
+
+| Audit field | OCSF field |
+|---|---|
+| `action` | `api.operation`; `activity_id` from its verb (create, read, update, delete, other) |
+| `status` | `status_id` (1 success, 2 failure); `BLOCKED` and `FAILED` in `status_detail`; a denial has `severity_id` 3 |
+| `timestamp` | `time` (epoch milliseconds) |
+| `executionId` | `metadata.correlation_uid` |
+| `user`, `source`, `host` | `actor.user.name`, `actor.app_name`, `src_endpoint.hostname` |
+| `resource`, `details`, `role` | `resources[0].name`, `message`, `unmapped.role` |
 
 ## 10. Plugins
 

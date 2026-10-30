@@ -19,6 +19,8 @@ All notable changes to this project will be documented in this file. See [commit
 - **`ghk generate --contracts-only`** writes only the contracts (OpenAPI, AsyncAPI, gRPC, GraphQL, ADR).
 - A leading slash anchors a `generation.exclude` (and `protect`, and firewall path) pattern at the project root, as in `.gitignore`: `/openapi.json` keeps the service-wide document but still writes `contracts/<feature>/openapi.json`. A pattern without a slash still matches at any depth. It did not work before (it never matched).
 - `ghk firewall check "<command>"` is short for `--exec "<command>"`.
+- **`ghk audit export --format ocsf`**: one OCSF 1.3 *API Activity* event per audit record, for SIEMs that ingest OCSF without a parser (Amazon Security Lake, Splunk, Sentinel, Google SecOps). The field mapping is in [ENTERPRISE.md §9](docs/ENTERPRISE.md#9-audit-trail-and-telemetry).
+- **[docs/COMPLIANCE.md](docs/COMPLIANCE.md)** maps gherkin-ai's controls (firewall, proposal-first writes, MCP least privilege, organization locks, model pinning, redaction, sandbox, gates, traceability, audit) to ISO/IEC 42001 Annex A, SOC 2 and the EU AI Act, with the code behind each row and what is not covered.
 
 ### Fixed
 - **`ghk detect` crashed without a terminal** (`ERR_USE_AFTER_CLOSE`). With a stdin that is not a TTY, or `--json`, no command prompts: the defaults are taken, as with `--yes`.

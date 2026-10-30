@@ -41,3 +41,27 @@ describe('audit export', () => {
     expect(formatAuditRecords(manager.readAudit(), 'jsonl').trim().split('\n')).toHaveLength(2);
   });
 });
+
+describe('audit export --format ocsf', () => {
+  it('maps a record to an OCSF 1.3 API Activity event', async () => {
+    const { toOcsfEvent, OCSF_VERSION } = await import('../../src/commands/audit-export');
+    const event = toOcsfEvent(entry({ action: 'verify:agent-write', resource: 'src/a.ts', status: 'BLOCKED', details: 'denied by policy', role: 'agent' }));
+    expect(event).toMatchObject({
+      class_uid: 6003, category_uid: 6, activity_id: 1, type_uid: 600301,
+      time: Date.parse('2026-10-01T10:00:00.000Z'),
+      status_id: 2, status: 'Failure', status_detail: 'BLOCKED', severity_id: 3, message: 'denied by policy',
+      metadata: { version: OCSF_VERSION, product: { name: 'gherkin-ai', vendor_name: 'fenner', version: '3.0.0' }, correlation_uid: 'e1' },
+      actor: { user: { name: 'dev' } },
+      api: { operation: 'verify:agent-write' },
+      resources: [{ name: 'src/a.ts' }],
+      src_endpoint: { hostname: 'h' },
+      unmapped: { role: 'agent' }
+    });
+  });
+
+  it('writes one event per line and keeps a success informational', async () => {
+    const lines = formatAuditRecords([entry({}), entry({ action: 'audit:clear-inventory' })], 'ocsf').trim().split('\n').map(l => JSON.parse(l));
+    expect(lines.map(e => [e.activity_id, e.status_id, e.severity_id])).toEqual([[99, 1, 1], [4, 1, 1]]);
+    expect(lines[0]).not.toHaveProperty('status_detail');
+  });
+});

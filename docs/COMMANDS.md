@@ -101,5 +101,5 @@ If the loop ends without passing tests (retry limit, circuit breaker, a stop rul
 | `logout` | Remove stored keys | `--provider <name>` |
 | `auth status` | Provider, model, credential source, endpoint, proxy (never the secret) | `--json` |
 | `audit` (`inventory`) | Feature inventory and history | `-f`, `--json`, `--html`, `--clear` |
-| `audit export` | Security audit trail for a SIEM | `--format jsonl\|csv`, `--since 7d`, `-o` |
+| `audit export` | Security audit trail for a SIEM | `--format jsonl\|csv\|ocsf` (OCSF 1.3 API Activity events), `--since 7d`, `-o` |
 | `sbom` | CycloneDX SBOM of the project | – |
