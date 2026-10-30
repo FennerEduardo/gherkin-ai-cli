@@ -135,7 +135,9 @@ function buildIRUncached(
   const actors = extractActors(parsed, sourceFile);
   const commands = extractCommands(parsed, sourceFile, actors);
   const queries = extractQueries(parsed, sourceFile);
-  const events = extractEvents(parsed, sourceFile, commands);
+  const extractedEvents = extractEvents(parsed, sourceFile, commands);
+  const events = extractedEvents.filter(e => e.direction !== 'consumed');
+  const consumedEvents = extractedEvents.filter(e => e.direction === 'consumed');
   const fields = enrichFields(parsed.domainAnalysis.fields.map(f => ({
     name: f.name,
     type: inferFieldType(f.type, f.name),
@@ -299,6 +301,7 @@ function buildIRUncached(
     commands,
     queries,
     events,
+    ...(consumedEvents.length ? { consumedEvents } : {}),
     fields,
 
     scenarios: enrichedScenarios,

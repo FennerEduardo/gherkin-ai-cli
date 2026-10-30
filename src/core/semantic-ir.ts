@@ -65,6 +65,8 @@ export interface Command extends TraceableElement {
   postconditions: string[];
   triggeredBy: string;        // Actor ID
   emittedEvents: string[];    // Event IDs
+  /** Which verb list named it: the core one, or the extended one that only fills in otherwise unknown verbs. */
+  verbSource?: 'core' | 'extended';
 }
 
 export interface Query extends TraceableElement {
@@ -104,6 +106,8 @@ export interface DomainEvent extends TraceableElement {
   eventType: string;
   payload: FieldSpec[];
   triggeredBy: string[];      // Command IDs
+  /** Set on an event the feature receives from another service (only while extracting; see SpecificationIR.consumedEvents). */
+  direction?: 'consumed';
 }
 
 // ---------------------------------------------------------------------------
@@ -334,7 +338,10 @@ export interface SpecificationIR {
   actors: Actor[];
   commands: Command[];
   queries: Query[];
+  /** Events this feature's commands publish. */
   events: DomainEvent[];
+  /** Events the feature receives from other services ("Given the "X" event was received"): never published here. */
+  consumedEvents?: DomainEvent[];
   fields: FieldSpec[];
   
   // Behavior Model

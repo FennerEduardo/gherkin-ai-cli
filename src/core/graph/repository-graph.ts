@@ -104,10 +104,14 @@ export function resolveFeatureDir(projectDir: string, specDir?: string): string 
   }
 }
 
-/** Naming variants a symbol may take in code. Only distinctive variants (>= 6 chars) are matched. */
+/**
+ * Naming variants a symbol may take in code. Only distinctive variants are matched: 6 characters or more, or the
+ * PascalCase type name of a short domain word (`Grade`, `Order`), which matches as a whole identifier only.
+ */
 export function symbolVariants(name: string): string[] {
-  const variants = new Set([name, toPascal(name), toCamel(name), toSnake(name), toKebab(name), toSnake(name).toUpperCase()]);
-  return [...variants].filter(v => v.length >= 6);
+  const pascal = toPascal(name);
+  const variants = new Set([name, pascal, toCamel(name), toSnake(name), toKebab(name), toSnake(name).toUpperCase()]);
+  return [...variants].filter(v => v.length >= 6 || (v === pascal && v.length >= 3 && /^[A-Z][a-z]/.test(v)));
 }
 
 const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');

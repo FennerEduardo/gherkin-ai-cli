@@ -92,7 +92,11 @@ export function buildDomainModel(input: ParsedFeature, opts: { service?: string 
     .flatMap(st => [...st.text.matchAll(/["'`]([A-Z][A-Za-z0-9]*?)Command(?:Handler)?["'`]/g)].map(m => m[1]));
   // 2) Verb heuristics only understand English; for other dialects they produce noise like "SendElComando".
   const english = !parsed.language || parsed.language === 'en';
-  const inferred = english ? (ir.commands || []).filter(c => c.verb !== 'unknown').map(c => String(c.name)) : [];
+  // Verbs of the extended list only name commands when no core verb does, so they replace the Process<Feature>
+  // default but never add commands to a feature that already had them.
+  const known = (ir.commands || []).filter(c => c.verb !== 'unknown');
+  const core = known.filter(c => c.verbSource !== 'extended');
+  const inferred = english ? (core.length ? core : known).map(c => String(c.name)) : [];
   const commandNames = [...new Set((declaredCommands.length ? declaredCommands : [...explicit, ...inferred]).map(toPascal))].filter(Boolean);
   if (commandNames.length === 0) commandNames.push(`Process${pascal}`);
   const commands: KernelCommand[] = commandNames.map((name, i) => {

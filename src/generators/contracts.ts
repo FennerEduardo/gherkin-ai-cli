@@ -379,7 +379,9 @@ Compliance items are engineering guidance, not certification.
       title: `${parsed.featureName} AsyncAPI Specification`,
       version: '1.0.0',
       description: `Auto-generated AsyncAPI events for ${parsed.featureName} from Gherkin feature spec.`,
-      ...industryExtension
+      ...industryExtension,
+      // Events this service receives belong to their producer's contract: listed, never published here.
+      ...(ir.consumedEvents?.length ? { 'x-ghk-consumes': [...new Set(ir.consumedEvents.map(e => e.name))] } : {})
     },
     defaultContentType: 'application/json',
     channels: ir.events.reduce((acc, ev) => {

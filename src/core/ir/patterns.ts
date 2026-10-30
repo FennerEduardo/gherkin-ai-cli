@@ -41,6 +41,43 @@ export const VERB_PATTERNS: Record<string, RegExp> = {
   download: /\b(downloads?|descarga|baja)\b/i,
 };
 
+/**
+ * Business verbs the core list above does not know. They only name a command whose verb would otherwise be
+ * unknown (an `unknown_*` IR command, or the generator's `Process<Feature>` default), so a feature that already
+ * produces commands does not gain new ones. Many of these words are also nouns ("the request", "a review"), so
+ * they match only as a third-person verb ("the customer places", "submits") or after "I" / "we" ("I place").
+ * Spanish forms are the third person singular ("el docente revoca"), without the ones that are also common nouns.
+ */
+const EXTENDED_VERB_FORMS: Record<string, { en: string; es?: string }> = {
+  place: { en: 'places' }, submit: { en: 'submits' }, book: { en: 'books' }, reserve: { en: 'reserves' },
+  enroll: { en: 'enroll?s', es: 'inscribe|matricula' }, subscribe: { en: 'subscribes', es: 'suscribe' }, unsubscribe: { en: 'unsubscribes' },
+  grant: { en: 'grants', es: 'otorga|concede' }, revoke: { en: 'revokes', es: 'revoca' }, invite: { en: 'invites', es: 'invita' },
+  refund: { en: 'refunds', es: 'reembolsa' }, transfer: { en: 'transfers', es: 'transfiere' }, withdraw: { en: 'withdraws', es: 'retira' },
+  deposit: { en: 'deposits', es: 'deposita' }, schedule: { en: 'schedules' }, reschedule: { en: 'reschedules', es: 'reprograma' },
+  close: { en: 'closes', es: 'cierra' }, open: { en: 'opens', es: 'abre' }, activate: { en: 'activates', es: 'activa' },
+  deactivate: { en: 'deactivates', es: 'desactiva' }, suspend: { en: 'suspends', es: 'suspende' }, resume: { en: 'resumes', es: 'reanuda' },
+  archive: { en: 'archives', es: 'archiva' }, restore: { en: 'restores', es: 'restaura' }, ship: { en: 'ships' }, deliver: { en: 'delivers' },
+  confirm: { en: 'confirms', es: 'confirma' }, complete: { en: 'completes', es: 'completa' }, start: { en: 'starts', es: 'inicia' },
+  finish: { en: 'finishes', es: 'finaliza|termina' }, rate: { en: 'rates', es: 'califica' }, review: { en: 'reviews', es: 'revisa' },
+  share: { en: 'shares', es: 'comparte' }, join: { en: 'joins' }, issue: { en: 'issues' }, renew: { en: 'renews', es: 'renueva' },
+  request: { en: 'requests', es: 'solicita' }, claim: { en: 'claims', es: 'reclama' }, redeem: { en: 'redeems', es: 'redime|canjea' },
+  reset: { en: 'resets', es: 'restablece' }, lock: { en: 'locks', es: 'bloquea' }, unlock: { en: 'unlocks', es: 'desbloquea' },
+  apply: { en: 'applies', es: 'aplica|postula' }, import: { en: 'imports', es: 'importa' }, export: { en: 'exports', es: 'exporta' },
+  grade: { en: 'grades' }, record: { en: 'records' }, return: { en: 'returns', es: 'devuelve' }, accept: { en: 'accepts' }
+};
+
+export const EXTENDED_VERB_PATTERNS: Record<string, RegExp> = Object.fromEntries(
+  Object.entries(EXTENDED_VERB_FORMS).map(([verb, { en, es }]) => [
+    verb,
+    new RegExp(`\\b(?:${en}${es ? `|${es}` : ''})\\b|\\b(?:I|we)\\s+${verb}\\b`, 'i')
+  ])
+);
+
+/** One word of a step that is the extended verb (any of its forms), to find the noun phrase after it. */
+export const EXTENDED_VERB_WORDS: Record<string, RegExp> = Object.fromEntries(
+  Object.entries(EXTENDED_VERB_FORMS).map(([verb, { en, es }]) => [verb, new RegExp(`^(?:${verb}|${en}${es ? `|${es}` : ''})$`, 'i')])
+);
+
 export const STATE_PATTERNS: Record<string, RegExp> = {
   PENDING: /\b(pending|pendiente|awaiting|esperando)\b/i,
   ACTIVE: /\b(active|activo|enabled|habilitado)\b/i,
@@ -66,10 +103,10 @@ export const ACTOR_PATTERNS = [
 ];
 
 export const AUTH_PATTERNS = [
-  /\b(authenticated|authorized|unauthenticated|unauthori[sz]ed|logged.?in|not.?logged|autenticado|autorizado|no.?autorizado|con.?sesión|sin.?sesión)\b/i,
+  /\b(authenticat(?:ed|es|ing)|authori[sz](?:ed|es|ing|ation)|unauthenticated|unauthori[sz]ed|logged.?in|not.?logged|signed.?in|not.?signed.?in|autenticad[oa]|autorizad[oa]|no.?autorizad[oa]|con.?sesión|sin.?sesión)\b/i,
   /\b(permissions?|permisos?|roles?|has.?role|tiene.?rol|is.?admin|es.?admin|privileges?|privilegios?)\b/i,
   /\b(token|jwt|session|sesión|cookie|bearer|login|sign.?in|iniciar.?sesión)\b/i,
-  /\b(access.?denied|acceso.?denegado|forbidden|prohibido)\b/i,
+  /\b(access.?denied|acceso.?denegado|forbid(?:den|s)?|prohibid[oa]|den(?:y|ies|ied)\s+(?:access|the\s+request)|denied\s+as\s+unauthori[sz]ed)\b/i,
   /\b(status|http|code|código|estado)\s*(401|403)\b/i,
 ];
 

@@ -69,7 +69,7 @@ export function categorizeScenarioLabels(sc: Pick<ScenarioModel, 'steps' | 'tags
   const labels: ScenarioCategory[] = [];
   const add = (c: ScenarioCategory, hit: boolean) => { if (hit && !labels.includes(c)) labels.push(c); };
 
-  add('validation', /\b(valid(ation|ate|ar|ación)?|invalid|inválid[oa]?|required|requerid[oa]|obligatori[oa]|malformed|mal.?formad[oa]|too.?(long|short)|demasiado.?(larg|cort)[oa])\b/i.test(combined) ||
+  add('validation', /\b(valid(ation|ates?|ated|ating|ar|a|ación)?|invalid(ated)?|inválid[oa]?|required|requerid[oa]|obligatori[oa]|malformed|mal.?formad[oa]|too.?(long|short)|demasiado.?(larg|cort)[oa])\b/i.test(combined) ||
     /\b(status|http|code|código|estado)\s*(400|422)\b/i.test(combined));
   add('error-handling', ERROR_PATTERNS.some(p => p.test(combined)));
   add('authorization', AUTH_PATTERNS.some(p => p.test(combined)));

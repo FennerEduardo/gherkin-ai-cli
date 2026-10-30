@@ -17,7 +17,7 @@ import {
 import { declaredTagValues, featurePascalName, toKebab, toSnake } from '../../utils/naming';
 import { withoutQuotedText } from '../../utils/quoted-text';
 import path from 'path';
-import { generateId, VERB_PATTERNS, STATE_PATTERNS, ACTOR_PATTERNS, AUTH_PATTERNS } from './patterns';
+import { generateId, VERB_PATTERNS, EXTENDED_VERB_PATTERNS, EXTENDED_VERB_WORDS, STATE_PATTERNS, ACTOR_PATTERNS, AUTH_PATTERNS } from './patterns';
 
 // ---------------------------------------------------------------------------
 // Actor Extraction
@@ -113,6 +113,22 @@ export function extractActors(parsed: ParsedFeature, sourceFile: string): Actor[
 /** Words that end a noun phrase ("the course for spring" -> "course"). */
 export const PHRASE_BOUNDARIES = new Set(['for', 'in', 'on', 'at', 'of', 'by', 'as', 'and', 'or', 'into', 'onto', 'via', 'using', 'without', 'within', 'per', 'para', 'por', 'con', 'sin', 'del', 'de', 'en', 'y', 'o']);
 
+/** Words skipped before, and words that end, the object of an extended-list verb (see extendedVerbObject). */
+const OBJECT_DETERMINERS = new Set(['a', 'an', 'the', 'their', 'his', 'her', 'its', 'our', 'my', 'your', 'this', 'that', 'el', 'la', 'los', 'las', 'un', 'una', 'su', 'sus']);
+const OBJECT_ENDS = new Set([...PHRASE_BOUNDARIES, 'with', 'to', 'from', 'is', 'are', 'out', 'through', 'about', 'that', 'which', 'who', 'whose', 'where', 'when', 'if', 'que', 'cuyo', 'cuya', 'donde', 'cuando', 'si', 'a']);
+
+/**
+ * The object of a verb from the extended list: up to two words after it, past determiners and possessives,
+ * ending at a preposition or a relative clause. Undefined when the object was example data ("submits "asg-1"",
+ * "invites "x@y" as ...") or there is none, so the command takes the feature's name instead.
+ */
+function extendedVerbObject(wordsAfterVerb: string[]): string | undefined {
+  const rest = [...wordsAfterVerb];
+  while (rest.length && OBJECT_DETERMINERS.has(rest[0])) rest.shift();
+  if (!rest.length || OBJECT_ENDS.has(rest[0])) return undefined;
+  return rest.length > 1 && rest[1].length > 2 && !OBJECT_ENDS.has(rest[1]) && !OBJECT_DETERMINERS.has(rest[1]) ? `${rest[0]}_${rest[1]}` : rest[0];
+}
+
 export function extractCommands(
   parsed: ParsedFeature,
   sourceFile: string,
@@ -158,6 +174,15 @@ export function extractCommands(
           break;
         }
       }
+      let verbSource: Command['verbSource'] = verb === 'unknown' ? undefined : 'core';
+      if (verb === 'unknown') {
+        const extended = Object.entries(EXTENDED_VERB_PATTERNS).find(([, pattern]) => pattern.test(step.text));
+        if (extended) {
+          verb = extended[0];
+          verbSource = 'extended';
+        }
+      }
+      const verbWord = verbSource === 'extended' ? EXTENDED_VERB_WORDS[verb] : VERB_PATTERNS[verb];
 
       // Try to extract subject from step text
       // Skip stop words
@@ -167,8 +192,10 @@ export function extractCommands(
       const phrase = withoutQuotedText(step.text.split('\n')[0]).replace(/["'`“”«»]/g, ' ');
       const words = phrase.replace(/[^a-zA-Z0-9\s]/g, '').split(/\s+/).filter(w => w && !/^\d+$/.test(w)).map(w => w.toLowerCase());
 
-      const verbIdx = words.findIndex(w => VERB_PATTERNS[verb]?.test(w));
-      if (verbIdx !== -1 && verbIdx < words.length - 1) {
+      const verbIdx = words.findIndex(w => verbWord?.test(w));
+      if (verbSource === 'extended') {
+        subject = (verbIdx === -1 ? undefined : extendedVerbObject(words.slice(verbIdx + 1))) ?? toSnake(featurePascalName(parsed));
+      } else if (verbIdx !== -1 && verbIdx < words.length - 1) {
         // Try to find the next meaningful noun after the verb
         const nextWords = words.slice(verbIdx + 1).filter(w => !stopWords.has(w));
         if (nextWords.length > 0) {
@@ -206,8 +233,9 @@ export function extractCommands(
         triggeredBy: defaultActorId,
         emittedEvents: emittedEventIds,
         source: { file: sourceFile, line: 0 },
-        confidence: verb === 'unknown' ? 0.5 : 0.9,
+        confidence: verb === 'unknown' ? 0.5 : verbSource === 'extended' ? 0.7 : 0.9,
         inferenceSource: 'deterministic',
+        ...(verbSource ? { verbSource } : {}),
       });
     }
   }
@@ -275,19 +303,28 @@ export function extractEvents(
     }));
   }
 
-  for (const sc of parsed.scenarios) {
+  for (const sc of [...(parsed.background ? [parsed.background] : []), ...parsed.scenarios]) {
+    let keyword = 'Given';
     for (const step of sc.steps) {
+      if (/^(Given|When|Then)$/.test(step.keyword.trim())) keyword = step.keyword.trim();
       if (!/event|publishes|emits|broadcasts|evento|emite/i.test(step.text)) continue;
+      const mentionsEvent = /\b(events?|eventos?)\b/i.test(step.text);
 
-      // Extract PascalCase Event, Quoted Event, or fallback Noun Phrase
+      // An event is a quoted PascalCase name ("GradePublished"), a ...Event identifier, or, in a step that says
+      // "event" or states an outcome (Then), its first quoted value or the noun phrase. In a Given/When step
+      // without the word "event", quoted example data ("S-1", "MATH-101") is never an event.
       let eventName = '';
-      const quoteMatch = step.text.match(/"([^"]+)"/);
+      const quotes = [...step.text.matchAll(/"([^"]+)"/g)].map(m => m[1]);
+      const quoted = quotes.find(q => /^[A-Z][A-Za-z0-9]*[a-z][A-Za-z0-9]*$/.test(q)) ?? (mentionsEvent || keyword === 'Then' ? quotes[0] : undefined);
       const pascalMatch = step.text.match(/\b([A-Z][a-zA-Z0-9]*Event)\b/);
 
-      if (quoteMatch) {
-        eventName = quoteMatch[1].replace(/[^a-zA-Z0-9]/g, '');
+      if (quoted) {
+        eventName = quoted.replace(/[^a-zA-Z0-9]/g, '');
       } else if (pascalMatch) {
         eventName = pascalMatch[1];
+      } else if (!mentionsEvent && keyword !== 'Then') {
+        // "When the teacher publishes the grade": a command, not an event.
+        continue;
       } else {
         // Fallback: capitalize remaining important words
         const words = step.text.replace(/[^a-zA-Z0-9\s]/g, '').split(/\s+/);
@@ -302,21 +339,28 @@ export function extractEvents(
           eventName += 'Event';
         }
       }
+      // Context ("Given the "SubmissionGraded" event was received") is an event another service published.
+      const consumed = keyword !== 'Then' && CONSUMED_EVENT.test(step.text);
+      // The Background only contributes received events (as in 3.2.1, nothing it says is published).
+      if (sc === parsed.background && !consumed) continue;
       events.push({
         id: generateId('EVT'),
         name: eventName,
         eventType: eventName,
         payload: [],
-        triggeredBy: commands.length > 0 ? [commands[0].id] : [],
+        triggeredBy: consumed || commands.length === 0 ? [] : [commands[0].id],
         source: { file: sourceFile, line: 0 },
         confidence: 0.8,
         inferenceSource: 'deterministic',
+        ...(consumed ? { direction: 'consumed' as const } : {}),
       });
     }
   }
 
   return events;
 }
+
+const CONSUMED_EVENT = /\b(?:(?:was|is|were|are|has been|have been|gets?|got)\s+(?:received|consumed|delivered)|receives?|consumes?|arrives?|recib(?:e|ió|ido|ida)|llega|lleg[oó]|consum(?:e|ió|ido|ida))\b/i;
 
 // ---------------------------------------------------------------------------
 // State Machine Extraction
