@@ -144,3 +144,20 @@ Each feature names the service that owns its commands with `@upstream:<name>` (t
 | 504 | No answer within `bff.timeoutMs` |
 
 `GET /health` answers without calling the services. The generated tests run each of these cases against a stub upstream; the goldens `express-bff`, `nestjs-bff`, `nestjs-12-bff` and `spring-bff` build and run them on every change. `docker-compose.yml` and `.env.example` hold only the BFF and the upstream URLs. Terraform, Helm and the CI/CD pipeline are not generated for a BFF yet (the cloud targets would provision a database it does not use): deploy its image next to the services.
+
+## MySQL (`stack.database: "mysql"`, NestJS and Express)
+
+The TypeScript kernel also runs on MySQL 8.4. Everything above holds, with these differences:
+
+| | PostgreSQL | MySQL |
+|---|---|---|
+| Driver | `pg` | `mysql2`, behind `src/runtime/db.ts` (the same `query` / `connect` interface; `$1..$n` placeholders are kept) |
+| Schema | a PostgreSQL schema (default `public`) | a MySQL database (default: the one in `DATABASE_URL`) |
+| Migration lock | `pg_advisory_xact_lock` | `GET_LOCK('ghk_runtime_schema')` |
+| Idempotency, inbox, saga claims | `INSERT ... ON CONFLICT DO NOTHING` | `INSERT IGNORE` |
+| Aggregate save | `ON CONFLICT ... DO UPDATE` | `ON DUPLICATE KEY UPDATE` |
+| Outbox claim | one `UPDATE ... RETURNING` over `FOR UPDATE SKIP LOCKED` | `SELECT ... FOR UPDATE SKIP LOCKED`, `UPDATE`, `SELECT` in one transaction |
+| Tenant isolation | the repository filter, plus optional row-level security | the repository filter only (MySQL has no row-level security) |
+| TLS | `sslmode=require` | `sslmode=require` or `ssl-mode=REQUIRED` in `DATABASE_URL` |
+
+`DATABASE_URL` is `mysql://user:password@host:3306/database`. The service's user needs table privileges in its own database, not global `CREATE`. The goldens `express-mysql` and `nestjs-mysql` run IT1–IT7 against MySQL 8.4. The other runtimes (JVM, Python, .NET, Go, ...) generate contracts and configuration only on MySQL until 3.3.

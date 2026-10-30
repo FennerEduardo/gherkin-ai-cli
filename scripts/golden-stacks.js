@@ -12,7 +12,7 @@
 const base = { database: 'postgresql', auth: 'jwt', messaging: 'none' };
 
 // Broker recipes shared with `ghk verify --services` (src/core/services.ts; run `npm run build` first).
-const { PUBSUB_EMULATOR, KAFKA_BROKER: KAFKA, serviceBusEmulator: SERVICEBUS_EMULATOR } = require('../dist/core/services');
+const { PUBSUB_EMULATOR, KAFKA_BROKER: KAFKA, MYSQL_DATABASE, serviceBusEmulator: SERVICEBUS_EMULATOR } = require('../dist/core/services');
 
 function nestGolden(stack = {}) {
   return {
@@ -68,6 +68,8 @@ const STACKS = {
   // NestJS with the native cloud brokers (TypeScript runtime adapters, verified against the official emulators).
   'nestjs-pubsub': { ...nestGolden({ messaging: 'pubsub' }), services: [PUBSUB_EMULATOR] },
   'nestjs-servicebus': { ...nestGolden({ messaging: 'servicebus' }), services: SERVICEBUS_EMULATOR('golden-nestjs-servicebus') },
+  // stack.database "mysql" (TypeScript runtime kernel on MySQL 8.4).
+  'nestjs-mysql': { ...nestGolden({ database: 'mysql' }), services: [MYSQL_DATABASE] },
   'grpc-graphql': {
     stack: { ...base, language: 'typescript', framework: 'nestjs', orm: 'prisma', validation: 'zod', testing: 'jest' },
     config: { contracts: { grpc: true, graphql: true } },
@@ -103,6 +105,15 @@ const STACKS = {
     build: ['npm install --no-audit --no-fund --loglevel=error', 'npx prisma generate', 'npm run build'],
     test: ['npm test'],
     integration: ['npm run test:integration']
+  },
+  'express-mysql': {
+    stack: { ...base, language: 'typescript', framework: 'express', orm: 'none', database: 'mysql', validation: 'zod', testing: 'jest' },
+    image: 'node:24-bookworm',
+    caches: [['npm', '/root/.npm']],
+    build: ['npm install --no-audit --no-fund --loglevel=error', 'npm run build'],
+    test: ['npm test'],
+    integration: ['npm run test:integration'],
+    services: [MYSQL_DATABASE]
   },
   dotnet: {
     stack: { ...base, language: 'csharp', framework: 'dotnet-aspnetcore', orm: 'efcore', validation: 'fluentvalidation', messaging: 'rabbitmq', testing: 'xunit' },

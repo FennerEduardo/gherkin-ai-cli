@@ -88,6 +88,7 @@ export interface GeneratedContractsOutput {
 }
 
 import { SpecificationIR } from '../core/semantic-ir';
+import { MYSQL_DRIVER, usesMysql } from './kernel/runtime/typescript-mysql';
 
 /*
  * Dependencies the generated Node sources import. NestJS and Prisma majors follow
@@ -133,7 +134,16 @@ function prismaDependencies(profile: NodeProfile): { dependencies: Record<string
   };
 }
 
+/** stack.database "mysql": the runtime kernel talks to MySQL through mysql2 instead of node-postgres. */
 function nodeDependencies(config: GherkinAIConfig): NodePackage {
+  const pkg = postgresNodeDependencies(config);
+  if (!usesMysql(config)) return pkg;
+  const { pg: _pg, ...dependencies } = pkg.dependencies;
+  const { '@types/pg': _types, ...devDependencies } = pkg.devDependencies;
+  return { ...pkg, dependencies: { ...dependencies, ...MYSQL_DRIVER }, devDependencies };
+}
+
+function postgresNodeDependencies(config: GherkinAIConfig): NodePackage {
   const framework = (config.stack.framework || '').toLowerCase();
   const profile = resolveNodeProfile(config);
   const prisma = config.stack.orm === 'prisma' ? prismaDependencies(profile) : { dependencies: {}, devDependencies: {} };

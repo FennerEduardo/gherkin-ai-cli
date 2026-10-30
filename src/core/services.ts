@@ -34,6 +34,19 @@ export interface ExtraService {
 }
 
 /** Google Cloud Pub/Sub emulator, selected in the tests with GHK_BROKER=pubsub. */
+/**
+ * MySQL 8.4 for the stacks generated with stack.database "mysql": its DATABASE_URL replaces PostgreSQL's
+ * (root, so the integration tests can create one database per test). Ready once it accepts TCP connections:
+ * the image's first-start initialization runs without networking.
+ */
+export const MYSQL_DATABASE: ExtraService = {
+  name: 'mysql',
+  image: 'mysql:8.4',
+  environment: { MYSQL_ROOT_PASSWORD: 'ghk', MYSQL_DATABASE: 'ghk' },
+  env: { DATABASE_URL: 'mysql://root:ghk@mysql:3306/ghk' },
+  ready: ['mysql', '-uroot', '-pghk', '-h127.0.0.1', '-e', 'SELECT 1']
+};
+
 export const PUBSUB_EMULATOR: ExtraService = {
   name: 'pubsub',
   image: 'gcr.io/google.com/cloudsdktool/google-cloud-cli:emulators',

@@ -44,6 +44,8 @@ export const STACK_SUPPORT: StackSupport[] = [
   { id: 'typescript/nestjs-prisma7', label: 'TypeScript · NestJS 11 + Prisma 7 (CommonJS)', kind: 'backend', tier: 'stable', golden: 'nestjs-prisma7', notes: 'stack.ormVersion "7".' },
   { id: 'typescript/express', label: 'TypeScript · Express 5', kind: 'backend', tier: 'stable', golden: 'express' },
   { id: 'typescript/express-prisma7', label: 'TypeScript · Express 5 + Prisma 7', kind: 'backend', tier: 'stable', golden: 'express-prisma7', notes: 'stack.ormVersion "7".' },
+  { id: 'typescript/express-mysql', label: 'TypeScript · Express 5 on MySQL 8.4 (stack.database "mysql")', kind: 'backend', tier: 'stable', golden: 'express-mysql', notes: 'Runtime kernel on MySQL: tenant isolation in the queries (no row-level security).' },
+  { id: 'typescript/nestjs-mysql', label: 'TypeScript · NestJS 11 on MySQL 8.4 (stack.database "mysql")', kind: 'backend', tier: 'stable', golden: 'nestjs-mysql' },
   { id: 'csharp/dotnet', label: 'C# · ASP.NET Core 8 + EF Core', kind: 'backend', tier: 'stable', golden: 'dotnet' },
   { id: 'java/spring', label: 'Java 17 · Spring Boot 4 (Maven)', kind: 'backend', tier: 'stable', golden: 'java' },
   { id: 'bff/express', label: 'Backend-for-frontend · Express 5 (stack.role "bff")', kind: 'backend', tier: 'stable', golden: 'express-bff', notes: 'No database or broker: forwards each command to bff.upstreams.' },

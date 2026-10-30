@@ -26,6 +26,8 @@ import { ConfigError } from '../core/errors';
 import { bffFramework, isBff } from './bff/model';
 import { renderTsBff } from './bff/typescript';
 import { renderSpringBff } from './bff/spring';
+import { mysqlizeTsProject, usesMysql } from './kernel/runtime/typescript-mysql';
+import { resolveNodeProfile } from './node-profile';
 import { renderContainerFiles } from './deploy/container';
 import { buildDomainModel } from './kernel/domain-model';
 import { siblingDomainModels } from './kernel/siblings';
@@ -75,9 +77,12 @@ const BACKEND_PRESETS: Record<string, BackendPreset> = {
 export const BACKEND_PRESET_IDS = Object.keys(BACKEND_PRESETS);
 
 function backendPreset(id: string): BackendPreset | undefined {
-  // NestJS / Express variants (framework and ORM majors) share one preset each.
-  if (id.startsWith('typescript/nestjs')) return (p, c) => generateNodeNestJsPreset(p, c);
-  if (id.startsWith('typescript/express')) return (p, c) => generateNodeExpressPreset(p, c);
+  // NestJS / Express variants (framework and ORM majors) share one preset each; stack.database "mysql"
+  // adapts their runtime kernel (kernel/runtime/typescript-mysql.ts).
+  const mysql = (files: { filename: string; content: string }[], c: GherkinAIConfig) =>
+    usesMysql(c) ? mysqlizeTsProject(files, resolveNodeProfile(c).esm) : files;
+  if (id.startsWith('typescript/nestjs')) return (p, c) => mysql(generateNodeNestJsPreset(p, c), c);
+  if (id.startsWith('typescript/express')) return (p, c) => mysql(generateNodeExpressPreset(p, c), c);
   return BACKEND_PRESETS[id];
 }
 
