@@ -16,6 +16,7 @@ import { renderTerraformAws, TerraformFile } from './terraform-aws';
 import { renderTerraformAzure } from './terraform-azure';
 import { renderTerraformGcp } from './terraform-gcp';
 import { renderTerraformVm } from './terraform-vm';
+import { sharedBaseFiles } from './terraform-base';
 
 const CLOUD_LABEL = { aws: 'AWS', gcp: 'Google Cloud', azure: 'Azure' } as const;
 
@@ -28,7 +29,9 @@ export function renderDeploymentTargets(config: GherkinAIConfig): TerraformFile[
     const render = { aws: renderTerraformAws, gcp: renderTerraformGcp, azure: renderTerraformAzure }[deploy.cloud];
     const module = render(spec, deploy);
     // "vm": the same database, broker and secrets, on one virtual machine instead of the managed container service.
-    files.push(...(deploy.compute === 'vm' ? renderTerraformVm(spec, deploy, module) : module));
+    const service = deploy.compute === 'vm' ? renderTerraformVm(spec, deploy, module) : module;
+    // deploy.base: the database and broker come from the repository's shared base stack (written next to it).
+    files.push(...(config.deploy?.base?.dir ? sharedBaseFiles(config, spec, deploy, service) : service));
   }
   if (deploy.compute === 'kubernetes' || deploy.compute === 'both') files.push(...renderHelmChart(spec, deploy, CLI_VERSION));
   files.push({ filename: 'deploy/README.md', content: deployReadme(spec, deploy) });

@@ -730,6 +730,19 @@
             "vm"
           ]
         },
+        "base": {
+          "type": "object",
+          "properties": {
+            "dir": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "dir"
+          ],
+          "additionalProperties": false
+        },
         "environments": {
           "minItems": 1,
           "type": "array",

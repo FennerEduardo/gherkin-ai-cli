@@ -328,6 +328,10 @@ STACKS['terraform-azure-kafka'] = terraform('terraform-azure-kafka', 'azure', 'd
 STACKS['terraform-aws-vm'] = terraform('terraform-aws-vm', 'aws', 'rails', {}, 'vm');
 STACKS['terraform-gcp-vm'] = terraform('terraform-gcp-vm', 'gcp', 'laravel', {}, 'vm');
 STACKS['terraform-azure-vm'] = terraform('terraform-azure-vm', 'azure', 'nestjs', { messaging: 'servicebus' }, 'vm');
+// deploy.base: the service reads the shared base stack (one RDS, one broker); both modules must validate.
+STACKS['terraform-aws-base'] = { ...terraform('terraform-aws-base', 'aws', 'nestjs', {}, 'vm'), config: { deploy: { cloud: 'aws', compute: 'vm', base: { dir: 'infrastructure/base' } } } };
+STACKS['terraform-aws-base'].build = [...STACKS['terraform-aws-base'].build, 'cd ../../../infrastructure/base/aws && terraform init -backend=false -input=false -no-color && terraform validate -no-color && cd - >/dev/null'];
+STACKS['terraform-aws-base'].test = ['terraform fmt -check -recursive -diff -no-color && terraform fmt -check -recursive -diff -no-color ../../../infrastructure/base'];
 STACKS.helm = {
   stack: STACKS.django.stack,
   config: { deploy: { cloud: 'gcp', compute: 'kubernetes' } },

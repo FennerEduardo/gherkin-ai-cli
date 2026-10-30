@@ -196,6 +196,11 @@ const deploySchema = z.object({
   cloud: z.enum(['aws', 'gcp', 'azure']),
   /** containers (default): the managed container service; kubernetes: a Helm chart (EKS / GKE / AKS); both; vm: one virtual machine with Docker (demos, small workloads). */
   compute: z.enum(['containers', 'kubernetes', 'both', 'vm']).optional(),
+  /** Shared base stack (AWS): one database instance and one broker for every service that points at the same directory. */
+  base: z.object({
+    /** Directory of the base Terraform, relative to this project (e.g. ../../infrastructure/base). */
+    dir: z.string().min(1)
+  }).optional(),
   /** One tfvars file (and Helm values file) per environment. Default: dev, staging, prod. */
   environments: z.array(z.string().regex(/^[a-z][a-z0-9-]{0,15}$/)).min(1).optional(),
   /** Default region of the generated tfvars. */

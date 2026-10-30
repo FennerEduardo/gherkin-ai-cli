@@ -132,6 +132,18 @@ The database, broker and secret store are the same as for `containers` (the same
 
 At boot, cloud-init installs Docker, reads each secret from the secret store with the machine's identity into `/opt/app/app.env` (mode 600; the values are never in the user data), and runs the image behind Caddy: with `domain` set, Caddy obtains a Let's Encrypt certificate for it (point the DNS record at the `public_ip` output); without it, the service answers plain HTTP on port 80. Stacks with a separate relay process also run it there. Only ports 80 and 443 are open, to `allowed_cidrs`.
 
+### Shared base stack for a monorepo (`deploy.base`, AWS)
+
+By default every service owns its database instance and broker: nine services, nine RDS instances and nine brokers. With `"base": { "dir": "../../infrastructure/base" }` in `deploy` (the same directory in each service), `ghk generate` writes a base module at `<dir>/aws` for every service that points at it, and changes the service module:
+
+| Base module (`<dir>/aws`) | Service module |
+|---|---|
+| One RDS for PostgreSQL instance; one role and one database per service, created by the idempotent `bootstrap_sql` output (run it with `psql` from inside the VPC, as its README shows) | No `database.tf` or `broker.tf`; `DATABASE_URL` and `AMQP_URL` come from the base's remote state (`base_state_bucket`, `base_state_key`) |
+| One Amazon MQ broker when a service uses RabbitMQ (each service keeps its own exchange and queues) | Its tasks or machine join the base's `clients` security group |
+| A `clients` security group: the only way into the database and the broker | Compute, secrets, IAM and outputs as before |
+
+Apply the base first, run its bootstrap SQL, then apply the services. Each service connects with its own role to its own database. Google Cloud and Azure report a configuration error for `deploy.base` in this version.
+
 A new image changes the boot script, so each deployment replaces the machine: a few minutes without service. Use `containers` when that matters. There is no collector sidecar: set `OTEL_EXPORTER_OTLP_ENDPOINT` in `extra_environment` to export traces.
 
 ## Telemetry
