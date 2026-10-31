@@ -42,6 +42,7 @@ All notable changes to this project will be documented in this file. See [commit
 - **Regenerating an up-to-date project changed `.ghe/inventory.json`**: every entry got a new `generatedAt`, and since 3.2.1 the inventory is versioned. An unchanged file now keeps its date: a second `ghk generate` changes nothing in git (checked on the 16 reference projects).
 - **`risk --base` left out new files** that were not added to git yet; without `--base` they were counted.
 - **The generated Angular app had no `serve` target**, and every Angular frontend depended on `@microsoft/signalr` and shipped a SignalR client, which only the ASP.NET Core backend has a hub for. `ng serve` (`npm start`) works; the SignalR client is generated for .NET backends only (LMS limitation 22).
+- **Generated FastAPI and Django tests failed with pytest 9.2** (`'FixtureManager' object has no attribute '_arg2fixturedefs'`): pytest 9.2 removed an internal that pytest-bdd 9.0, its latest release, still uses. The generated `pyproject.toml` requires `pytest<9.2` until pytest-bdd supports it. Existing projects get the cap with `ghk generate` or by editing `pyproject.toml`.
 
 ### Project
 - **Documentation portal and golden dashboard** on GitHub Pages (`.github/workflows/pages.yml`, `scripts/build-site.js`): the README, the docs and the CHANGELOG as pages, and a page with every golden build and its result in the CI run on `main` (`goldens.json` for machines).

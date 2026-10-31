@@ -120,7 +120,8 @@ if __name__ == "__main__":
       content: renderPyproject(
         toKebab(config?.projectName || m.kebab),
         ['django>=5.0,<6', 'djangorestframework>=3.15', ...pyRuntimeDependencies(config?.stack?.messaging)],
-        ['pytest>=8.3', 'pytest-django>=4.9', 'pytest-bdd>=7.3'],
+        // pytest 9.2 removed the fixture internals pytest-bdd (9.0) still uses.
+        ['pytest>=8.3,<9.2', 'pytest-django>=4.9', 'pytest-bdd>=7.3'],
         ['DJANGO_SETTINGS_MODULE = "config.settings"', PY_INTEGRATION_MARKER]
       )
     }

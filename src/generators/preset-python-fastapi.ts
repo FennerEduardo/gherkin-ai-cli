@@ -49,7 +49,8 @@ export function generatePythonFastApiPreset(parsed: ParsedFeature, config?: Gher
       content: renderPyproject(
         toKebab(config?.projectName || m.kebab),
         ['fastapi>=0.115', 'uvicorn>=0.30', 'sqlalchemy>=2.0', 'pydantic>=2.7', ...pyRuntimeDependencies(config?.stack?.messaging)],
-        ['pytest>=8.3', 'pytest-bdd>=7.3', 'httpx>=0.27'],
+        // pytest 9.2 removed the fixture internals pytest-bdd (9.0) still uses.
+        ['pytest>=8.3,<9.2', 'pytest-bdd>=7.3', 'httpx>=0.27'],
         [PY_INTEGRATION_MARKER]
       )
     }
