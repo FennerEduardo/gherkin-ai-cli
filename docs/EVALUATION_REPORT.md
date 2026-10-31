@@ -1,14 +1,14 @@
-# Verification evidence — gherkin-ai 3.2.1
+# Verification evidence — gherkin-ai 3.2.2
 
 This document lists what is verified for each release, how it is verified, and how to reproduce it. Every result below comes from a command you can run yourself; nothing is scored by hand.
 
-**Run of record:** 2026-10-24/25, gherkin-ai 3.2.1 (branch `fix/3.2.1`). The CLI under test is the packaged tarball (`npm pack`, installed in a clean directory and passed to the goldens as `GHK_CLI`), the file `release.yml` publishes. The 3.2.0 report is in the git history of this file.
+**Run of record:** 2026-10-30, gherkin-ai 3.2.2 (branch `fix/3.2.2`). The CLI under test is the branch's build (`npm run build`, `dist/`). CI runs the same goldens against the packaged tarball (`npm pack`, installed in a clean directory and passed as `GHK_CLI`), the file `release.yml` publishes. The 3.2.1 and earlier reports are in the git history of this file.
 
 **Environment:**
 
-- Ubuntu on WSL 2 with Docker Engine 29.9.2 (Linux, as on the CI runners);
+- Ubuntu on WSL 2 with Docker Engine 29.9.2 (Linux, as on the CI runners), Node.js 26.13;
 - the official toolchain images listed below;
-- PostgreSQL `postgres:17-alpine` and RabbitMQ `rabbitmq:4-alpine` for the integration suites, plus the official emulators or brokers of the broker variants: the Pub/Sub emulator (`google-cloud-cli:emulators`), the Service Bus emulator with Azure SQL Edge, and `apache/kafka:4.1.0` (single-node KRaft).
+- PostgreSQL `postgres:17-alpine` (MySQL `mysql:8.4` for the MySQL kernel) and RabbitMQ `rabbitmq:4-alpine` for the integration suites, plus the official emulators or brokers of the broker variants: the Pub/Sub emulator (`google-cloud-cli:emulators`), the Service Bus emulator with Azure SQL Edge, and `apache/kafka:4.1.0` (single-node KRaft).
 
 ## 1. Golden builds: every stable stack
 
@@ -28,25 +28,42 @@ A stack passes only if every step exits with code 0. Pending BDD steps are allow
 
 | Stack | Image | Build + generated tests | IT1–IT7 + HTTP | Production image + OTLP | Time |
 |---|---|---|---|---|---|
-| NestJS 11 + Prisma 6 | `node:24-bookworm` | pass | pass | pass | 288 s |
-| NestJS 12 + Prisma 7 (ESM) | `node:24-bookworm` | pass | pass | pass | 289 s |
-| NestJS 12 + Prisma 6 (ESM) | `node:24-bookworm` | pass | pass | pass | 282 s |
-| NestJS 11 + Prisma 7 (MySQL adapter) | `node:24-bookworm` | pass | pass | pass | 260 s |
-| Express 5 + Prisma 6 | `node:24-bookworm` | pass | pass | pass | 233 s |
-| Express 5 + Prisma 7 | `node:24-bookworm` | pass | pass | pass | 239 s |
-| ASP.NET Core 8 | `mcr.microsoft.com/dotnet/sdk:8.0` | pass | pass | pass | 76 s |
-| Spring Boot 4.1 (Java, Maven) | `maven:3.9-eclipse-temurin-17` | pass | pass | pass | 226 s |
-| Spring Boot 4.1 (Kotlin, Gradle) | `gradle:8.14-jdk17` | pass | pass | pass | 442 s |
-| Quarkus 3.40 LTS (Java, Maven) | `maven:3.9-eclipse-temurin-21` | pass | pass | pass | 287 s |
-| Quarkus 3.40 LTS (Kotlin, Gradle) | `gradle:8.14-jdk21` | pass | pass | pass | 622 s |
-| FastAPI | `python:3.12-slim` | pass | pass | pass | 83 s |
-| Django + DRF | `python:3.12-slim` | pass | pass | pass | 81 s |
-| Go (chi) | `golang:1.26` | pass | pass | pass | 83 s |
-| Laravel 13 | `composer:2` (+ pdo_pgsql, sockets) | pass | pass | pass | 432 s |
-| Rails 8 | `ruby:3.3` | pass | pass | pass | 71 s |
-| Phoenix | `elixir:1.17` | pass | pass | pass | 117 s |
-| Phoenix LiveView | `elixir:1.17` | pass | pass | pass | 128 s |
-| Axum (Rust) | `rust:1.99` | pass | pass | pass | 985 s |
+| NestJS 11 + Prisma 6 | `node:24-bookworm` | pass | pass | pass | 318 s |
+| NestJS 12 + Prisma 7 (ESM) | `node:24-bookworm` | pass | pass | pass | 326 s |
+| NestJS 12 + Prisma 6 (ESM) | `node:24-bookworm` | pass | pass | pass | 317 s |
+| NestJS 11 + Prisma 7 (MySQL adapter) | `node:24-bookworm` | pass | pass | pass | 277 s |
+| NestJS 11, MySQL kernel (new) | `node:24-bookworm` | pass | pass (MySQL 8.4) | pass | 311 s |
+| Express 5 + Prisma 6 | `node:24-bookworm` | pass | pass | pass | 253 s |
+| Express 5 + Prisma 7 | `node:24-bookworm` | pass | pass | pass | 247 s |
+| Express 5, MySQL kernel (new) | `node:24-bookworm` | pass | pass (MySQL 8.4) | pass | 128 s |
+| ASP.NET Core 8 | `mcr.microsoft.com/dotnet/sdk:8.0` | pass | pass | pass | 94 s |
+| Spring Boot 4.1 (Java, Maven) | `maven:3.9-eclipse-temurin-17` | pass | pass | pass | 241 s |
+| Spring Boot 4.1 (Kotlin, Gradle) | `gradle:8.14-jdk17` | pass | pass | pass | 471 s |
+| Quarkus 3.40 LTS (Java, Maven) | `maven:3.9-eclipse-temurin-21` | pass | pass | pass | 339 s |
+| Quarkus 3.40 LTS (Kotlin, Gradle) | `gradle:8.14-jdk21` | pass | pass | pass | 645 s |
+| FastAPI | `python:3.12-slim` | pass | pass | pass | 90 s |
+| Django + DRF | `python:3.12-slim` | pass | pass | pass | 89 s |
+| Go (chi) | `golang:1.26` | pass | pass | pass | 103 s |
+| Laravel 13 | `composer:2` (+ pdo_pgsql, sockets) | pass | pass | pass | 605 s |
+| Rails 8 | `ruby:3.3` | pass | pass | pass | 199 s |
+| Phoenix | `elixir:1.17` | pass | pass | pass | 155 s |
+| Phoenix LiveView | `elixir:1.17` | pass | pass | pass | 168 s |
+| Axum (Rust) | `rust:1.99` | pass | pass | pass | 916 s |
+
+The MySQL kernel (`stack.kernelDatabase: "mysql"`, TypeScript runtimes only) runs IT1–IT7 against MySQL 8.4, and its production image creates its tables in a fresh MySQL database.
+
+In the full run FastAPI and Django (and the three FastAPI broker variants) failed their BDD tests: pytest 9.2, released after 3.2.1, removed an internal that pytest-bdd 9.0 uses. The generated `pyproject.toml` now requires `pytest<9.2` (commit `5aa629c`); the times above are from the rerun. The two MySQL goldens were rerun on the final build (`29332e0` makes the MySQL kernel opt-in).
+
+### BFF role
+
+`stack.role: "bff"` (new in 3.2.2) generates a backend-for-frontend without a runtime kernel. Its golden builds it, runs its tests, and checks that it has no database seed and no AsyncAPI file and that its routes are under `/bff/v1/`.
+
+| Stack | Image | Result | Time |
+|---|---|---|---|
+| Express 5 | `node:24-bookworm` | pass | 30 s |
+| NestJS 11 | `node:24-bookworm` | pass | 26 s |
+| NestJS 12 | `node:24-bookworm` | pass | 21 s |
+| Spring Boot 4.1 (Java) | `maven:3.9-eclipse-temurin-17` | pass | 18 s |
 
 ### 1.2 Broker adapters
 
@@ -54,25 +71,25 @@ The same backend, build and tests, with the runtime kernel on another broker. IT
 
 | Broker | Stacks (golden) | Broker under test | Result |
 |---|---|---|---|
-| Google Cloud Pub/Sub | NestJS (278 s), Quarkus (347 s), .NET (95 s), FastAPI (73 s), Go (87 s), Rust (900 s), Rails (77 s), Phoenix (146 s), Laravel (319 s) | official emulator | 9 of 9 pass |
-| Azure Service Bus | NestJS (385 s), Quarkus (349 s), .NET (172 s), FastAPI (137 s), Go (136 s) | official emulator + Azure SQL Edge | 5 of 5 pass |
-| Apache Kafka | Spring Java (282 s), Quarkus (365 s), NestJS (312 s), .NET (126 s), FastAPI (86 s), Go (174 s) | `apache/kafka:4.1.0`, single node | 6 of 6 pass |
+| Google Cloud Pub/Sub | NestJS (272 s), Quarkus (311 s), .NET (95 s), FastAPI (93 s), Go (93 s), Rust (362 s), Rails (79 s), Phoenix (145 s), Laravel (317 s) | official emulator | 9 of 9 pass |
+| Azure Service Bus | NestJS (349 s), Quarkus (358 s), .NET (165 s), FastAPI (162 s), Go (152 s) | official emulator + Azure SQL Edge | 5 of 5 pass |
+| Apache Kafka | Spring Java (254 s), Quarkus (332 s), NestJS (304 s), .NET (140 s), FastAPI (104 s), Go (194 s) | `apache/kafka:4.1.0`, single node | 6 of 6 pass |
 
-In the full run the Quarkus Kafka golden failed IT7, and it failed again in one of two reruns: after the partition assignment the JVM subscription reported an empty source before its first fetch completed, so a consumer draining right after a publish could miss the record (an earlier fix, `775a651`, only waited for the assignment). It now keeps reading while the position is behind the end offset (commit `79222c6`); the Quarkus golden then passed 3 of 3 consecutive runs (365 s, 140 s, 120 s) and Spring Java passed too. Their times are from those runs.
+In the full run the .NET Kafka golden failed IT6 once, while the broker logged `Coordinator load in progress`; it passed on the unchanged rerun (140 s). It is recorded here as an intermittent failure, not as fixed.
 
 ### 1.3 Frontends and contracts
 
 | Stack | Image | Check | Time |
 |---|---|---|---|
-| React 19 | `node:24-bookworm` | build and tests, including `traceparent` tests | 42 s |
-| Vue 3 | `node:24-bookworm` | build and tests, including `traceparent` tests | 31 s |
-| Angular 22 | `node:24-bookworm` | build and tests, including `traceparent` tests | 67 s |
-| Next.js 16 | `node:24-bookworm` | build and tests, including `traceparent` tests | 38 s |
-| React Native (Expo 57) | `node:24-bookworm` | build and tests, including `traceparent` tests | 74 s |
-| Flutter (standalone app) | `ghcr.io/cirruslabs/flutter:stable` | build and tests, including `traceparent` tests | 27 s |
-| Flutter (frontend) | `ghcr.io/cirruslabs/flutter:stable` | build and tests, including `traceparent` tests | 25 s |
-| gRPC + GraphQL contracts | `node:24-bookworm` | `buf build`, `buf lint`, graphql-js validation | 99 s |
-| AWS CDK (opt-in, legacy) | `node:24-bookworm` | CDK assertion tests and `cdk synth` | 23 s |
+| React 19 | `node:24-bookworm` | build and tests, including `traceparent` tests | 52 s |
+| Vue 3 | `node:24-bookworm` | build and tests, including `traceparent` tests | 29 s |
+| Angular 22 | `node:24-bookworm` | build and tests, including `traceparent` tests | 47 s |
+| Next.js 16 | `node:24-bookworm` | build and tests, including `traceparent` tests | 53 s |
+| React Native (Expo 57) | `node:24-bookworm` | build and tests, including `traceparent` tests | 86 s |
+| Flutter (standalone app) | `ghcr.io/cirruslabs/flutter:stable` | build and tests, including `traceparent` tests | 32 s |
+| Flutter (frontend) | `ghcr.io/cirruslabs/flutter:stable` | build and tests, including `traceparent` tests | 35 s |
+| gRPC + GraphQL contracts | `node:24-bookworm` | `buf build`, `buf lint`, graphql-js validation | 61 s |
+| AWS CDK (opt-in, legacy) | `node:24-bookworm` | CDK assertion tests and `cdk synth` | 66 s |
 
 ### 1.4 Deployment targets
 
@@ -80,27 +97,29 @@ Nothing is applied. Terraform runs `init -backend=false`, `validate` and `fmt -c
 
 | Golden | Image | Covers | Time |
 |---|---|---|---|
-| `terraform-aws` | `hashicorp/terraform:1.16.6` | ECS Fargate, ALB, RDS, Amazon MQ, Secrets Manager; separate relay (Rails) | 194 s |
+| `terraform-aws` | `hashicorp/terraform:1.16.6` | ECS Fargate, ALB, RDS, Amazon MQ, Secrets Manager; separate relay (Rails) | 178 s |
 | `terraform-gcp` | `hashicorp/terraform:1.16.6` | Cloud Run, Cloud SQL, Pub/Sub, Secret Manager; relay worker pool (Laravel) | 50 s |
-| `terraform-azure` | `hashicorp/terraform:1.16.6` | Container Apps, PostgreSQL Flexible, Service Bus, Key Vault (NestJS) | 80 s |
-| `terraform-azure-rabbitmq` | `hashicorp/terraform:1.16.6` | Azure with an external RabbitMQ (Phoenix) | 78 s |
-| `terraform-aws-kafka`, `terraform-gcp-kafka`, `terraform-azure-kafka` | `hashicorp/terraform:1.16.6` | an existing Kafka cluster on each cloud, no native broker | 250 s, 65 s, 142 s |
-| `helm` | `alpine/helm:3.22.1` | probes, HPA, PDB, relay Deployment (Django) | 2 s |
+| `terraform-azure` | `hashicorp/terraform:1.16.6` | Container Apps, PostgreSQL Flexible, Service Bus, Key Vault (NestJS) | 84 s |
+| `terraform-azure-rabbitmq` | `hashicorp/terraform:1.16.6` | Azure with an external RabbitMQ (Phoenix) | 85 s |
+| `terraform-aws-kafka`, `terraform-gcp-kafka`, `terraform-azure-kafka` | `hashicorp/terraform:1.16.6` | an existing Kafka cluster on each cloud, no native broker | 180 s, 54 s, 87 s |
+| `terraform-aws-vm`, `terraform-gcp-vm`, `terraform-azure-vm` (new) | `hashicorp/terraform:1.16.6` | `deploy.compute: "vm"`: one VM per service with cloud-init and Caddy, the same managed database, broker and secrets (Rails, Laravel, NestJS on Service Bus) | 180 s, 51 s, 82 s |
+| `terraform-aws-base` (new) | `hashicorp/terraform:1.16.6` | `deploy.base`: the shared base stack (one RDS, one broker) and a service that reads it; both modules validate (NestJS) | 362 s |
+| `helm` | `alpine/helm:3.22.1` | probes, HPA, PDB, relay Deployment (Django) | 3 s |
 
 ### 1.5 CI/CD pipelines
 
 | Golden | Image | Check | Time |
 |---|---|---|---|
-| `ci-github` | `rhysd/actionlint:1.7.12` | actionlint with shellcheck; the deployment jobs are present (ECS) | 1 s |
-| `ci-github-kubernetes` | `rhysd/actionlint:1.7.12` | actionlint with shellcheck; the Helm deployment is present | 1 s |
-| `ci-gitlab` | `python:3.12-slim` | the official GitLab CI schema (`check-jsonschema 0.38.2`) | 7 s |
-| `ci-azure-pipelines` | `python:3.12-slim` | the official Azure Pipelines schema | 7 s |
+| `ci-github` | `rhysd/actionlint:1.7.12` | actionlint with shellcheck; the deployment jobs are present (ECS) | 2 s |
+| `ci-github-kubernetes` | `rhysd/actionlint:1.7.12` | actionlint with shellcheck; the Helm deployment is present | 2 s |
+| `ci-gitlab` | `python:3.12-slim` | the official GitLab CI schema (`check-jsonschema 0.38.2`) | 9 s |
+| `ci-azure-pipelines` | `python:3.12-slim` | the official Azure Pipelines schema | 9 s |
 
-**Result: 60 of 60 goldens pass**: 19 backends, 20 broker variants, 9 frontend and contract stacks, 8 deployment and 4 CI goldens. All 39 backend configurations (19 backends and 20 broker variants) pass IT1–IT7, and every backend image creates its tables in a fresh database. CI repeats this on every change against the packaged tarball, with one job per stack (`.github/workflows/ci.yml`, jobs `package` and `golden-builds`), and `release.yml` publishes only what that pipeline verified.
+**Result: 70 of 70 goldens pass**: 21 backends (2 new, on MySQL), 4 BFF stacks (new), 20 broker variants, 9 frontend and contract stacks, 12 deployment (4 new) and 4 CI goldens. All 41 backend configurations (21 backends and 20 broker variants) pass IT1–IT7, and every backend image creates its tables in a fresh database. Eight goldens failed in the full run and passed on the rerun: five Python goldens after the pytest cap, the two MySQL goldens on the final build, and .NET Kafka without changes (sections 1.1 and 1.2). CI repeats this on every change against the packaged tarball, with one job per stack (`.github/workflows/ci.yml`, jobs `package` and `golden-builds`), and `release.yml` publishes only what that pipeline verified.
 
 ### 1.6 Database over TLS
 
-`node scripts/golden-build.js --db-tls` reruns the backends against a PostgreSQL that accepts only TLS connections (self-signed certificate, `hostssl` only), with `DATABASE_URL=...?sslmode=require`, as managed databases enforce. The integration suites and the production image all connect over TLS.
+Not rerun for 3.2.2 (results of the 3.2.1 run). `node scripts/golden-build.js --db-tls` reruns the backends against a PostgreSQL that accepts only TLS connections (self-signed certificate, `hostssl` only), with `DATABASE_URL=...?sslmode=require`, as managed databases enforce. The integration suites and the production image all connect over TLS.
 
 | Stacks | Result |
 |---|---|
@@ -124,36 +143,36 @@ The same seven tests run in every backend and on every broker. The contract is i
 
 ## 2. Reference projects
 
-Sixteen reference projects (`ghk-test-projects`) cover realistic multi-stack combinations: backend plus frontend, contracts, a real broker, an adversarial security harness, and a Quarkus banking service created with `ghk init --enterprise --industry banking`. On 2026-10-24/25 every feature of each was regenerated with the 3.2.1 tarball. Each was then built and tested with the golden-build recipes (`golden-build.js <stack> --project <dir>`, from a clean tree), including the runtime integration suite (IT1–IT7 and the HTTP API) for its backend. Last, its production image had to start against a fresh database, create its tables, answer its liveness and readiness probes with 200 and accept a command.
+Sixteen reference projects (`ghk-test-projects`) cover realistic multi-stack combinations: backend plus frontend, contracts, a real broker, an adversarial security harness, and a Quarkus banking service created with `ghk init --enterprise --industry banking`. On 2026-10-30 every feature of each was regenerated with the 3.2.2 build. Each was then built and tested with the golden-build recipes (`golden-build.js <stack> --project <dir>`, from a clean tree), including the runtime integration suite (IT1–IT7 and the HTTP API) for its backend. Last, its production image had to start against a fresh database, create its tables, answer its liveness and readiness probes with 200 and accept a command.
 
 | Project | Backend check | Production image | Frontend / contracts check | Result |
 |---|---|---|---|---|
-| transactional-system | ASP.NET Core 8 + IT1–IT7 (83 s) | healthy | AWS CDK synth + tests (26 s) | pass |
-| ts01-java-springboot-vue | Spring Boot 4.1 (Java) + IT1–IT7 (213 s) | healthy | Vue 3 (28 s) | pass |
-| ts02-nestjs-react-nextjs | NestJS + IT1–IT7 (306 s) | healthy | Next.js 16 (54 s) | pass |
-| ts03-dotnet-angular | ASP.NET Core 8 + IT1–IT7 (86 s) | healthy | Angular 22 (45 s) | pass |
-| ts04-django-react-auth | Django + IT1–IT7 (81 s) | healthy | React 19 (15 s) | pass |
-| ts05-express-angular-auth | Express 5 + IT1–IT7 (155 s) | healthy | Angular 22 (48 s) | pass |
-| ts06-go-chi-react | Go (chi) + IT1–IT7 (81 s) | healthy | React 19 (16 s) | pass |
-| ts07-kotlin-springboot-vue | Spring Boot 4.1 (Kotlin) + IT1–IT7 (395 s) | healthy | Vue 3 (26 s) | pass |
-| ts08-laravel-inertia-vue | Laravel 13 + IT1–IT7 (308 s) | healthy | Vue 3 (25 s) | pass |
-| ts09-rails-react-auth | Rails 8 + IT1–IT7 (68 s) | healthy | React 19 (16 s) | pass |
-| ts10-elixir-phoenix-liveview | Phoenix LiveView + IT1–IT7 (128 s) | healthy | (LiveView, same project) | pass |
-| ts11-java-springboot-reactnative | Spring Boot 4.1 (Java) + IT1–IT7 (209 s) | healthy | React Native / Expo 57 (85 s) | pass |
-| ts12-grpc-graphql-contracts | NestJS + IT1–IT7 (261 s) | healthy | buf + GraphQL validation (7 s) | pass |
-| ts13-real-broker-saga-outbox | NestJS + IT1–IT7 (150 s) | healthy | – | pass |
-| ts14-adversarial-security-harness | NestJS + IT1–IT7 (261 s) | healthy | – | pass |
-| ts15-quarkus-banking | Quarkus 3.40 LTS on the Pub/Sub emulator + IT1–IT7 (281 s) | healthy | – | pass |
+| transactional-system | ASP.NET Core 8 + IT1–IT7 (134 s) | healthy | AWS CDK synth + tests (229 s) | pass |
+| ts01-java-springboot-vue | Spring Boot 4.1 (Java) + IT1–IT7 (306 s) | healthy | Vue 3 (79 s) | pass |
+| ts02-nestjs-react-nextjs | NestJS + IT1–IT7 (588 s) | healthy | Next.js 16 (324 s) | pass |
+| ts03-dotnet-angular | ASP.NET Core 8 + IT1–IT7 (91 s) | healthy | Angular 22 (259 s) | pass |
+| ts04-django-react-auth | Django + IT1–IT7 (89 s) | healthy | React 19 (91 s) | pass |
+| ts05-express-angular-auth | Express 5 + IT1–IT7 (477 s) | healthy | Angular 22 (249 s) | pass |
+| ts06-go-chi-react | Go (chi) + IT1–IT7 (96 s) | healthy | React 19 (81 s) | pass |
+| ts07-kotlin-springboot-vue | Spring Boot 4.1 (Kotlin) + IT1–IT7 (379 s) | healthy | Vue 3 (84 s) | pass |
+| ts08-laravel-inertia-vue | Laravel 13 + IT1–IT7 (707 s) | healthy | Vue 3 (93 s) | pass |
+| ts09-rails-react-auth | Rails 8 + IT1–IT7 (148 s) | healthy | React 19 (89 s) | pass |
+| ts10-elixir-phoenix-liveview | Phoenix LiveView + IT1–IT7 (458 s) | healthy | (LiveView, same project) | pass |
+| ts11-java-springboot-reactnative | Spring Boot 4.1 (Java) + IT1–IT7 (447 s) | healthy | React Native / Expo 57 (478 s) | pass |
+| ts12-grpc-graphql-contracts | NestJS + IT1–IT7 (772 s) | healthy | buf + GraphQL validation (23 s) | pass |
+| ts13-real-broker-saga-outbox | NestJS + IT1–IT7 (743 s) | healthy | – | pass |
+| ts14-adversarial-security-harness | NestJS + IT1–IT7 (716 s) | healthy | – | pass |
+| ts15-quarkus-banking | Quarkus 3.40 LTS on the Pub/Sub emulator + IT1–IT7 (573 s) | healthy | – | pass |
 
-**Result: 16 of 16 projects pass, with 28 of 28 stack checks.** An earlier pass of the same day, with the 3.2.1 candidate before the startup migration fix, found the defect this release fixes: the regenerated services passed their builds and IT1–IT7 but, started against a database the integration suite had not migrated, answered 500 (`relation "public.ghk_idempotency" does not exist`).
+**Result: 16 of 16 projects pass, with 28 of 28 stack checks.** ts04 (Django) was regenerated once more after the pytest cap (section 1.1) before this run.
 
-A second `ghk generate` over each regenerated project changes no file, and `ghk validate` passes in all 16. `ghk lint` scores are the same as with 3.2.0. `ghk converge` is the same in 14 projects; in ts07 (62% to 54%) and ts15 (97% to 92%) the Code Coverage dimension is now measured, from the JaCoCo report the generated JVM builds produce since 3.2.1, instead of being `n/a`. No project reports contract drift. Each project's README lists its own results.
+A second `ghk generate` over each regenerated project changes no file, `.ghe/inventory.json` included (with 3.2.1 every run rewrote its dates), and `ghk validate` passes in all 16. 14 of the 16 projects declare `stack.database: "mysql"`: they stay on PostgreSQL, because the MySQL kernel is opt-in (`stack.kernelDatabase`). `ghk lint` scores are the same as with 3.2.1. `ghk converge` is the same in 15 projects; in ts08 it goes from 68% to 77%, on the same tree, because Traceability now finds the feature's domain names shorter than 6 characters in the code (50% to 100%). No project reports contract drift. Each project's README lists its own results.
 
-In the 3.2.0 run of record, `ghk verify --services` was also run on a copy of each of the 16 projects, the way a team runs it, and all 16 exited 0 (between 16 s and 438 s). It was not repeated for 3.2.1.
+In the 3.2.0 run of record, `ghk verify --services` was also run on a copy of each of the 16 projects, the way a team runs it, and all 16 exited 0 (between 16 s and 438 s). It was not repeated for 3.2.1 or 3.2.2.
 
 ## 3. Regenerating an implemented service
 
-The goldens above generate new projects. `tests/golden/implemented-service.test.ts` (CI job `golden-implemented`) covers the other case: a service that a team has already implemented on top of generated code. Its fixture is an LMS service as it was before its 3.2 upgrade (`.ghk-implemented`, an edited 3.0 kernel, its own aggregate, step definitions and `application.yml`), with the inventory of its last generation.
+The goldens above generate new projects. `tests/golden/implemented-service.test.ts` (CI job `golden-implemented`) covers the other case: a service that a team has already implemented on top of generated code. Its fixture is an LMS service as it was before its 3.2 upgrade (`.ghk-implemented`, an edited 3.0 kernel, its own aggregate, step definitions and `application.yml`), with the inventory of its last generation. The table is from the 3.2.1 run; the CI job repeats it on every change.
 
 | Check | 3.2.0 | 3.2.1 |
 |---|---|---|
@@ -169,9 +188,11 @@ The same upgrade was repeated on the real service: `mvn clean test` passes right
 
 | Check | Result |
 |---|---|
-| Unit and integration tests (`vitest`) | 954 tests, all passing |
+| Unit and integration tests (`vitest`) | 1070 tests passing, 1 skipped (Maven opt-in) |
 | Type check (`tsc --noEmit`) | clean |
-| CI matrix | Linux, macOS and Windows × Node.js 22 and 24 |
+| CI matrix | Linux, macOS and Windows × Node.js 22, 24 and 26 |
+| Brownfield adoption (`tests/golden/brownfield.test.ts`, new) | an Express and a Spring repository without `ghk init`, without a terminal: `detect`, `validate`, `converge` (also `--openapi`), `risk`, `firewall check`, feature resolution, `lint` and `converge` without features, and no files left behind; 9 checks per repository, 18 of 18 pass |
+| Corporate proxy | `network.proxy` and `network.caFile` apply on Node.js 22, 24 and 26 (with Node 26 and 3.2.1 they were ignored without a warning) |
 | CLI contract tests | the built binary is run with `--json` for each command; exit codes and the JSON envelope are asserted |
 | Agent firewall | 48 command-evasion vectors (`tests/security/firewall-evasion.test.ts`), none allowed; one write verdict for the firewall, the repair-loop guardrails and the MCP governance check (`tests/security/policy-consistency.test.ts`) |
 | Startup migration | 12 concurrent migrations of an empty PostgreSQL 17 database, 3 rounds: 0 of 36 fail with the advisory lock, 17 of 36 without it |
