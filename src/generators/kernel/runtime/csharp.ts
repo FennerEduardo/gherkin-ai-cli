@@ -803,9 +803,23 @@ public sealed class KafkaBroker(ClientConfig config) : IBroker
         public string MessagingSystem => "kafka";
         public string Source => group;
 
+        // Right after a group (re)join the coordinator can answer COORDINATOR_LOAD_IN_PROGRESS, NOT_COORDINATOR or
+        // REBALANCE_IN_PROGRESS: retriable errors, retried with a short backoff instead of failing the delivery.
+        private static T Retry<T>(Func<T> action)
+        {
+            for (var attempt = 1; ; attempt++)
+            {
+                try { return action(); }
+                catch (KafkaException e) when (attempt < 10 && !e.Error.IsFatal && (e is KafkaRetriableException || e.Error.Code is ErrorCode.GroupLoadInProgress or ErrorCode.NotCoordinatorForGroup or ErrorCode.RebalanceInProgress or ErrorCode.GroupCoordinatorNotAvailable))
+                {
+                    System.Threading.Thread.Sleep(100 * attempt);
+                }
+            }
+        }
+
         private void Commit(ConsumeResult<string?, byte[]> r)
         {
-            consumer.Commit([new TopicPartitionOffset(r.TopicPartition, r.Offset + 1)]);
+            Retry(() => { consumer.Commit([new TopicPartitionOffset(r.TopicPartition, r.Offset + 1)]); return true; });
             _pending = null;
         }
 
@@ -813,11 +827,17 @@ public sealed class KafkaBroker(ClientConfig config) : IBroker
         {
             // Neither acked nor dead-lettered: read it again, as RabbitMQ redelivers an unacknowledged message.
             if (_pending is not null) consumer.Seek(_pending.TopicPartitionOffset);
-            var r = consumer.Consume(TimeSpan.FromMilliseconds(200));
+            var r = Retry(() => consumer.Consume(TimeSpan.FromMilliseconds(200)));
             // A new member gets its partitions only after the group rebalance: wait for it (30 s at most) so the
             // first poll does not report an empty source that merely has not been assigned yet.
+            var waited = false;
             for (var joined = DateTime.UtcNow; r is null && consumer.Assignment.Count == 0 && DateTime.UtcNow - joined < TimeSpan.FromSeconds(30);)
-                r = consumer.Consume(TimeSpan.FromMilliseconds(200));
+            {
+                waited = true;
+                r = Retry(() => consumer.Consume(TimeSpan.FromMilliseconds(200)));
+            }
+            // Just assigned: the first fetch from the partitions follows the assignment, give it one longer read.
+            if (r is null && waited && consumer.Assignment.Count > 0) r = Retry(() => consumer.Consume(TimeSpan.FromSeconds(2)));
             if (r is null || r.IsPartitionEOF) return Task.FromResult<Delivery?>(null);
             _pending = r;
             string? Header(string name) => r.Message.Headers.TryGetLastBytes(name, out var bytes) ? Encoding.UTF8.GetString(bytes) : null;
@@ -948,9 +968,13 @@ public sealed class InboxConsumer
     {
         var processed = 0;
         var idleSince = DateTime.UtcNow;
+        var first = true;
         while (DateTime.UtcNow - idleSince < idle)
         {
             var delivery = await _subscription.PollAsync(ct);
+            // The first poll can wait for the source to be ready (a Kafka consumer group joining): idle time counts
+            // from then, or a slow join would use up the whole idle window before anything is read.
+            if (first) { first = false; idleSince = DateTime.UtcNow; }
             if (delivery is null)
             {
                 await Task.Delay(50, ct);

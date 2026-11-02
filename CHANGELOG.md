@@ -72,6 +72,11 @@ All notable changes to this project will be documented in this file. See [commit
   - Until 3.2.2 they followed `stack.database`. A project that declared `"mysql"` without `stack.kernelDatabase` got a MySQL container and a `mysql://` URL for a kernel that speaks PostgreSQL, so `docker compose up` could not start it. 14 of the 16 reference projects were in that state.
   - Now they use PostgreSQL unless `kernelDatabase` is `"mysql"`, which is supported by the NestJS and Express kernels. The same applies to a declared `"mongodb"` until the MongoDB kernel exists.
   - `ghk generate` warns when the declared database is not the one the service runs on, and says which key to set.
+- **.NET + Kafka: an inbox consumer could finish draining before its consumer group was assigned** (the `dotnet-kafka` golden failed IT6 one run in three to five).
+  - The idle window of `DrainAsync` now starts after the first poll. That first poll can wait for a new Kafka consumer group to join, and the join used to consume the whole window.
+  - After its partitions are assigned, the consumer reads once more before reporting an empty source.
+  - Retriable coordinator errors (`COORDINATOR_LOAD_IN_PROGRESS`, `NOT_COORDINATOR`, rebalances) are retried on consume and commit.
+  - The golden now passes 5 runs out of 5; `dotnet` (RabbitMQ) is unchanged.
 - **Generated Python projects no longer cap pytest below 9.2.** pytest-bdd 9.0.1 (2026-10-31) works with pytest 9.2: `pytest>=8.3` and `pytest-bdd>=9.0.1`. Verified by the `fastapi` and `django` goldens.
 
 ## [3.2.2] - 2026-10-30
