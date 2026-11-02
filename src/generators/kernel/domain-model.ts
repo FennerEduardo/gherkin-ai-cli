@@ -13,6 +13,7 @@
 
 import type { ParsedFeature } from '../../core/gherkin-parser';
 import { buildIR } from '../../core/ir-builder';
+import { EXTENDED_VERB_SYNONYMS } from '../../core/ir/patterns';
 
 export interface KernelCommand {
   /** PascalCase, e.g. PayValidCard */
@@ -92,11 +93,18 @@ export function buildDomainModel(input: ParsedFeature, opts: { service?: string 
     .flatMap(st => [...st.text.matchAll(/["'`]([A-Z][A-Za-z0-9]*?)Command(?:Handler)?["'`]/g)].map(m => m[1]));
   // 2) Verb heuristics only understand English; for other dialects they produce noise like "SendElComando".
   const english = !parsed.language || parsed.language === 'en';
-  // Verbs of the extended list only name commands when no core verb does, so they replace the Process<Feature>
-  // default but never add commands to a feature that already had them.
+  // IR-06 (3.3.0): verbs of the extended list name their own commands next to core ones ("places an order" and
+  // "cancels the order" give PlaceOrder and CancelOrder; before 3.3 the extended one was dropped). An extended
+  // verb that is a synonym of a core verb on the same noun ("places an order" + "creates an order") is the same
+  // command: the core name is kept and nothing is repeated.
   const known = (ir.commands || []).filter(c => c.verb !== 'unknown');
   const core = known.filter(c => c.verbSource !== 'extended');
-  const inferred = english ? (core.length ? core : known).map(c => String(c.name)) : [];
+  // Next to core commands, an extended verb is left out when it only repeats its noun ("grades the grade") or
+  // asks for data ("requests the members": a read, not a command).
+  const noise = (c: (typeof known)[number]) => c.verb === 'request' || String(c.subject).split('_')[0].startsWith(c.verb);
+  const kept = known.filter(c => c.verbSource !== 'extended' || !core.length
+    || (!noise(c) && !core.some(k => k.subject === c.subject && (k.verb === c.verb || EXTENDED_VERB_SYNONYMS[c.verb] === k.verb))));
+  const inferred = english ? kept.map(c => String(c.name)) : [];
   const commandNames = [...new Set((declaredCommands.length ? declaredCommands : [...explicit, ...inferred]).map(toPascal))].filter(Boolean);
   if (commandNames.length === 0) commandNames.push(`Process${pascal}`);
   const commands: KernelCommand[] = commandNames.map((name, i) => {

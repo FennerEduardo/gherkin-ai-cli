@@ -148,6 +148,8 @@ export interface AcceptOptions {
 }
 
 export interface AcceptResult {
+  /** Operations the names (or --all) matched, before --merge left out the specified ones. */
+  matched: number;
   written: { file: string; aggregate: string; scenarios: number }[];
   skipped: { file: string; reason: string }[];
   /** With --merge: the comparison with the existing features. */
@@ -175,6 +177,7 @@ export function readCandidates(root: string): BehaviorCandidate[] | undefined {
 export function runAccept(root: string, scan: ScanResult, candidates: BehaviorCandidate[], options: AcceptOptions): AcceptResult {
   const wanted = (options.names ?? []).map(n => n.toLowerCase().replace(/\.feature$/, ''));
   let selected = options.all ? candidates : candidates.filter(c => wanted.includes(c.aggregate.toLowerCase()) || wanted.includes(kebab(c.aggregate)));
+  const matched = selected.length;
   const spec = options.merge ? compareWithSpec(root, selected) : undefined;
   if (spec) {
     const known = new Set(spec.operations.filter(o => o.status !== 'undocumented').map(o => `${o.aggregate}|${o.operation}`));
@@ -182,7 +185,7 @@ export function runAccept(root: string, scan: ScanResult, candidates: BehaviorCa
   }
   const rendered = renderProposals(selected, scan.evidence, { minConfidence: options.minConfidence });
   const destination = path.resolve(root, options.to ?? path.join('features', 'discovered'));
-  const result: AcceptResult = { written: [], skipped: [], spec, drift: Boolean(spec?.specOnly.length) };
+  const result: AcceptResult = { matched, written: [], skipped: [], spec, drift: Boolean(spec?.specOnly.length) };
   for (const p of rendered) {
     const target = path.join(destination, p.file);
     const rel = path.relative(root, target).split(path.sep).join('/');

@@ -217,22 +217,19 @@ describe('ghk reverse accept and coverage (R-14, R-15)', () => {
     expect(similarCommands('SubmitSubmission', 'SubmitFile')).toBe(false);
   });
 
-  it('Express brownfield: compares the code with what the IR derives from orders.feature', async () => {
+  it('Express brownfield: every operation in the code is specified by orders.feature', async () => {
     clearTsProjects();
     dir = copyFixture('golden/brownfield-express');
     const report = runCoverage(dir, await runScan(dir));
-    // Today the IR derives CancelOrder and CancelOrderThat ("cancels an order that does not exist") from the feature,
-    // and no PlaceOrder ("places" is an extended verb, used only when no core verb names a command): PLAN-3.3.0
-    // IR-05/IR-06. Reverse shows both sides of that drift.
-    expect(report.coverage).toMatchObject({ operations: 2, documented: 1, undocumented: 1, percent: 50 });
-    expect(report.operations.find(o => o.operation === 'PlaceOrder')?.status).toBe('undocumented');
-    expect(report.specOnly.map(s => s.command)).toEqual(['CancelOrderThat']);
-    // --merge accepts only what is missing (PlaceOrder) and reports the drift.
+    // Until IR-05/IR-06 (3.3.0) the IR derived CancelOrder and CancelOrderThat from this feature and no PlaceOrder;
+    // reverse exposed it. Now code and feature agree.
+    expect(report.coverage).toMatchObject({ operations: 2, documented: 2, undocumented: 0, percent: 100 });
+    expect(report.specOnly).toEqual([]);
+    // --merge leaves nothing to accept.
     const scan = await runScan(dir);
     const { candidates } = runPropose(dir, scan);
     const merged = runAccept(dir, scan, candidates, { all: true, merge: true, write: false });
-    expect(merged.drift).toBe(true);
-    expect(merged.written).toEqual([{ file: 'features/discovered/order.feature', aggregate: 'Order', scenarios: 3 }]);
+    expect(merged).toMatchObject({ matched: 2, drift: false, written: [] });
   });
 
   it('NestJS: accepts a reviewed proposal into features/discovered, without @needs-review, keeping the evidence', async () => {

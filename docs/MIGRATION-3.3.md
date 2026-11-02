@@ -1,0 +1,32 @@
+# Migrating to 3.3
+
+3.3 adds `ghk reverse` (beta), which reads an existing codebase and proposes specifications from it ([REVERSE.md](REVERSE.md)). It is opt-in: no command changes behaviour unless you run it.
+
+The configuration does not have to change. The CLI contract (commands, flags, exit codes, `--json` shapes) is unchanged, apart from the new `reverse` command and the new optional `reverse` section of the configuration.
+
+## Command names derived from features
+
+Running `ghk reverse` on real projects exposed two naming defects. They date from 3.2.2 or earlier and are fixed in 3.3. They only affect features that do not declare their commands with `@command:` tags.
+
+| Id | 3.2.2 | 3.3 |
+|---|---|---|
+| IR-05 | A relative clause stayed in the command name: "When the customer cancels an order **that** does not exist" gave `CancelOrderThat`, next to the real `CancelOrder` | The noun phrase ends at *that / which / who / whose / where / when* (and *que / cuyo / donde / cuando*). It gives `CancelOrder`. A demonstrative is skipped like an article ("approves that request" → `ApproveRequest`) |
+| IR-06 | A business verb outside the core list ("places", "opens", "reserves", "confirms"…) named a command only when no core verb did. "places an order" next to "cancels the order" gave only `CancelOrder` | It names its own command (`PlaceOrder` and `CancelOrder`). Three rules keep it from adding noise next to core commands: a synonym of a core verb on the same noun is the same command ("places an order" + "creates an order" → `CreateOrder` only); a verb that repeats its noun ("grades the grade") is left out; and so is a read ("requests the members") |
+
+**Measured impact on 39 real features** (16 reference projects and the LMS):
+- The 16 reference projects are unchanged.
+- 4 LMS features gain a command, and their events now pair with the right commands. For example, `workspace_onboarding.feature` goes from `ApproveDataProtection → InstitutionCreated` to `OpenWorkspace → InstitutionCreated` and `ApproveDataProtection → DataControllerTermsAccepted`. The new names (`OpenWorkspace`, `ReserveSeat`, `ConfirmActivationLink`, `InviteMemberInvitation`) match what the services' code already does.
+
+**What to do:**
+- In a generated project, regenerate. The kernel gains the new command and its contracts gain the new operation.
+- In a project marked `.ghk-implemented`, the new kernel and contracts arrive as `.ghk-new` files to merge, as usual.
+- To keep exactly the 3.2 names, declare them with `@command:` tags; declared commands are never re-derived.
+- `ghk lint --explain-ir` shows the names a feature produces before you regenerate.
+
+## From 3.2.2 to 3.3.0
+
+| What | 3.2.2 | 3.3.0 | Do |
+|---|---|---|---|
+| Installed size | 1.9 MB packed, 6.2 MB unpacked | 2.7 MB packed, 15.5 MB unpacked, plus the `web-tree-sitter` dependency (5.7 MB). The tree-sitter grammars used by `ghk reverse` are in `vendor/tree-sitter/` | – |
+| Command names of undeclared features | see IR-05 / IR-06 above | see above | regenerate, or add `@command:` tags |
+| `ghk stacks` (text output) | generation stacks | also lists the `ghk reverse` analyzers and their maturity; the `--json` output is unchanged | – |

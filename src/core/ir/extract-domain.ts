@@ -113,6 +113,9 @@ export function extractActors(parsed: ParsedFeature, sourceFile: string): Actor[
 /** Words that end a noun phrase ("the course for spring" -> "course"). */
 export const PHRASE_BOUNDARIES = new Set(['for', 'in', 'on', 'at', 'of', 'by', 'as', 'and', 'or', 'into', 'onto', 'via', 'using', 'without', 'within', 'per', 'para', 'por', 'con', 'sin', 'del', 'de', 'en', 'y', 'o']);
 
+/** Words that open a relative clause: they end the noun phrase of a command (IR-05). */
+const RELATIVE_WORDS = new Set(['that', 'which', 'who', 'whose', 'whom', 'where', 'when', 'que', 'cuyo', 'cuya', 'cuyos', 'cuyas', 'donde', 'cuando']);
+
 /** Words skipped before, and words that end, the object of an extended-list verb (see extendedVerbObject). */
 const OBJECT_DETERMINERS = new Set(['a', 'an', 'the', 'their', 'his', 'her', 'its', 'our', 'my', 'your', 'this', 'that', 'el', 'la', 'los', 'las', 'un', 'una', 'su', 'sus']);
 const OBJECT_ENDS = new Set([...PHRASE_BOUNDARIES, 'with', 'to', 'from', 'is', 'are', 'out', 'through', 'about', 'that', 'which', 'who', 'whose', 'where', 'when', 'if', 'que', 'cuyo', 'cuya', 'donde', 'cuando', 'si', 'a']);
@@ -186,7 +189,8 @@ export function extractCommands(
 
       // Try to extract subject from step text
       // Skip stop words
-      const stopWords = new Set(['a', 'an', 'the', 'el', 'la', 'un', 'una', 'is', 'to', 'from', 'with']);
+      // Demonstratives are determiners here too ("approves that request" → request).
+      const stopWords = new Set(['a', 'an', 'the', 'el', 'la', 'un', 'una', 'is', 'to', 'from', 'with', 'that', 'this', 'these', 'those', 'ese', 'esa', 'este', 'esta']);
       // The subject is a noun phrase of the step, never example data: quoted values ("ana@example.edu"),
       // numbers, data tables and doc strings are left out, and the phrase ends at a preposition.
       const phrase = withoutQuotedText(step.text.split('\n')[0]).replace(/["'`“”«»]/g, ' ');
@@ -197,7 +201,12 @@ export function extractCommands(
         subject = (verbIdx === -1 ? undefined : extendedVerbObject(words.slice(verbIdx + 1))) ?? toSnake(featurePascalName(parsed));
       } else if (verbIdx !== -1 && verbIdx < words.length - 1) {
         // Try to find the next meaningful noun after the verb
-        const nextWords = words.slice(verbIdx + 1).filter(w => !stopWords.has(w));
+        // IR-05 (3.3.0): the noun phrase ends at a relative clause, so "cancels an order that does not exist"
+        // names cancel_order, not cancel_order_that. The relative pronoun is found before stop words are removed
+        // (it is also a demonstrative).
+        const afterVerb = words.slice(verbIdx + 1);
+        const relative = afterVerb.findIndex((w, i) => i > 0 && RELATIVE_WORDS.has(w) && !OBJECT_DETERMINERS.has(afterVerb[i - 1]));
+        const nextWords = (relative === -1 ? afterVerb : afterVerb.slice(0, relative)).filter(w => !stopWords.has(w));
         if (nextWords.length > 0) {
           subject = nextWords[0];
           if (nextWords.length > 1 && nextWords[1].length > 2 && !PHRASE_BOUNDARIES.has(nextWords[1])) {

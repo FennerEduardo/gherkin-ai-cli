@@ -66,6 +66,18 @@ const EXTENDED_VERB_FORMS: Record<string, { en: string; es?: string }> = {
   grade: { en: 'grades' }, record: { en: 'records' }, return: { en: 'returns', es: 'devuelve' }, accept: { en: 'accepts' }
 };
 
+/**
+ * Extended verbs that mean the same as a core verb (IR-06, 3.3.0). When a feature has both on the same noun
+ * ("places an order" and "creates an order"), they are one command, named by the core verb: no repetition.
+ */
+export const EXTENDED_VERB_SYNONYMS: Record<string, string> = {
+  place: 'create', book: 'create', reserve: 'create', issue: 'create', open: 'create', record: 'create', enroll: 'create', subscribe: 'create',
+  submit: 'send', deliver: 'send', ship: 'send', share: 'send',
+  accept: 'approve', confirm: 'approve', grant: 'approve',
+  withdraw: 'cancel', revoke: 'cancel', unsubscribe: 'cancel', close: 'cancel',
+  archive: 'delete', review: 'verify', rate: 'verify', grade: 'verify', return: 'send', refund: 'pay', redeem: 'pay'
+};
+
 export const EXTENDED_VERB_PATTERNS: Record<string, RegExp> = Object.fromEntries(
   Object.entries(EXTENDED_VERB_FORMS).map(([verb, { en, es }]) => [
     verb,

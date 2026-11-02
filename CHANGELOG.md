@@ -50,6 +50,14 @@ All notable changes to this project will be documented in this file. See [commit
   - Tests that call concrete URLs (`/orders/o-1/cancel`) confirm the matching route template; .NET `HttpClient` calls are recognised. `InvalidOperationException` and `IllegalStateException` are read as 409.
   - The aggregate of an operation is the last collection in its path (`/institutions/{id}/members` → `Member`). The word after an id is the action (`POST /payments/{id}/settle` → `SettlePayment`).
 
+### Changed
+- **Command names of features without `@command:` tags** (found by `ghk reverse` on real projects; [MIGRATION-3.3.md](docs/MIGRATION-3.3.md)).
+  - IR-05: a relative clause ends the command noun. "cancels an order that does not exist" is `CancelOrder`, no longer `CancelOrderThat`.
+  - IR-06: a business verb outside the core list names its own command next to core ones ("places an order" + "cancels the order" → `PlaceOrder`, `CancelOrder`).
+    - A synonym of a core verb on the same noun is one command, named by the core verb, so nothing is repeated.
+    - A verb that repeats its noun, or a read ("requests the members"), is left out.
+  - Measured on 39 real features: the 16 reference projects are unchanged. 4 LMS features gain the command their code already implements, and their events pair correctly.
+
 ## [3.2.2] - 2026-10-30
 
 ### Security

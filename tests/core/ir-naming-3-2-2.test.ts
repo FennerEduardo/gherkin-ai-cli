@@ -64,19 +64,19 @@ describe('IR-01: business verbs outside the core list', () => {
     expect(commandOf('the request is reviewed by nobody')).toEqual(['unknown_request_is']);
   });
 
-  it('core verbs keep their 3.2.1 names', () => {
-    expect(commandOf('the customer cancels an order that does not exist')).toEqual(['cancel_order_that']);
+  it('core verbs keep their 3.2.1 names (a relative clause ends the noun since 3.3.0, IR-05)', () => {
+    expect(commandOf('the customer cancels an order that does not exist')).toEqual(['cancel_order']);
     expect(commandOf('the customer creates an order')).toEqual(['create_order']);
   });
 
-  it('replaces the generator default, but adds no command to a feature that had one', () => {
+  it('replaces the generator default; since 3.3.0 (IR-06) it also names its command next to a core one', () => {
     const only = buildDomainModel(feature('Orders', ['When the customer places an order', 'Then the order is "PENDING"']));
     expect(only.commands.map(c => c.name)).toEqual(['PlaceOrder']);
 
     const mixed = buildDomainModel(feature('Orders',
       ['When the customer places an order', 'Then the order is "PENDING"'],
       ['When the customer cancels the order', 'Then the order is "CANCELLED"']));
-    expect(mixed.commands.map(c => c.name)).toEqual(['CancelOrder']);
+    expect(mixed.commands.map(c => c.name)).toEqual(['PlaceOrder', 'CancelOrder']);
   });
 });
 

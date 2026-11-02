@@ -166,7 +166,7 @@ export async function handleReverseCommand(subcommand: string | undefined, optio
     const candidates = readCandidates(root);
     if (!scan || !candidates) throw new UsageError('There are no proposals to accept.', { hint: 'Run ghk reverse propose first and review .ghe/reverse/proposals/.' });
     const plan = runAccept(root, scan, candidates, { names, all: options.all, to: options.to, merge: options.merge, force: options.force, minConfidence: minConfidence(options), write: false });
-    if (!plan.written.length && !plan.skipped.length) throw new UsageError(`No proposal matches: ${names.join(', ')}`, { hint: `Proposals: ${[...new Set(candidates.map(c => c.aggregate))].join(', ')}` });
+    if (!plan.matched) throw new UsageError(`No proposal matches: ${names.join(', ')}`, { hint: `Proposals: ${[...new Set(candidates.map(c => c.aggregate))].join(', ')}` });
     let result = plan;
     if (plan.written.length && !options.dryRun && await confirmWrite(plan.written.map(w => w.file), options)) {
       result = runAccept(root, scan, candidates, { names, all: options.all, to: options.to, merge: options.merge, force: options.force, minConfidence: minConfidence(options), write: true });
@@ -177,6 +177,7 @@ export async function handleReverseCommand(subcommand: string | undefined, optio
     }
     if (result.drift) process.exitCode = ExitCode.DRIFT;
     if (options.json) { emitJson(result); return; }
+    if (!result.written.length && !result.skipped.length) console.log('  Nothing to accept: the features already specify every selected operation.');
     for (const w of result.written) console.log(`  ✔ ${w.file}  ${w.scenarios} scenario(s)`);
     for (const s of result.skipped) console.log(`  – ${s.file}: ${s.reason}`);
     for (const s of result.spec?.specOnly ?? []) console.log(`  ! ${s.command} in ${s.feature}: declared by the feature, not implemented by the code (exit 7)`);
