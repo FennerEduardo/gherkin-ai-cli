@@ -112,6 +112,6 @@ export function registerSpecificationCommands(program: Command): void {
     .option('--json', 'Output as JSON')
     .action(async (subcommand, options) => {
       const { handleReverseCommand } = await import('../commands/reverse');
-      await handleReverseCommand(subcommand, { ...options, json: options.json || program.opts().json });
+      await handleReverseCommand(subcommand, { ...options, json: options.json || program.opts().json, dryRun: program.opts().dryRun });
     });
 }

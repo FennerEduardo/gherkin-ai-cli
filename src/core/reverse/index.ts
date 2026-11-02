@@ -27,6 +27,8 @@ export interface ScanOptions extends DiscoveryOptions {
   includeTests?: boolean;
   /** Restrict to these analyzer ids. */
   analyzers?: string[];
+  /** false: nothing is written (`--dry-run`, round-trip measurements on repositories that must stay untouched). */
+  write?: boolean;
 }
 
 export interface ScanResult {
@@ -47,6 +49,8 @@ export interface ProposeOptions {
   threshold?: number;
   /** Only the aggregates (or operation names) given, case-insensitive. */
   scope?: string[];
+  /** false: nothing is written (`--dry-run`). */
+  write?: boolean;
 }
 
 export interface ProposeResult {
@@ -111,7 +115,7 @@ export async function runScan(root: string, options: ScanOptions = {}): Promise<
     counts: Object.fromEntries(Object.entries(counts).sort(([a], [b]) => a.localeCompare(b))),
     evidence
   };
-  writeReverseFile(root, 'scan.json', stableJson(result));
+  if (options.write !== false) writeReverseFile(root, 'scan.json', stableJson(result));
   return result;
 }
 
@@ -130,15 +134,17 @@ export function runPropose(root: string, scan: ScanResult, options: ProposeOptio
   const threshold = options.threshold ?? 80;
   const rendered = renderProposals(candidates, scan.evidence, { minConfidence: options.minConfidence, threshold });
 
-  // Proposals of an earlier run that no longer exist are removed, so the directory mirrors this run.
-  const proposalsDir = path.join(root, REVERSE_DIR, 'proposals');
-  if (fs.existsSync(proposalsDir)) {
-    const keep = new Set(rendered.map(p => p.file));
-    for (const f of fs.readdirSync(proposalsDir)) if (f.endsWith('.feature') && !keep.has(f)) fs.rmSync(path.join(proposalsDir, f));
+  if (options.write !== false) {
+    // Proposals of an earlier run that no longer exist are removed, so the directory mirrors this run.
+    const proposalsDir = path.join(root, REVERSE_DIR, 'proposals');
+    if (fs.existsSync(proposalsDir)) {
+      const keep = new Set(rendered.map(p => p.file));
+      for (const f of fs.readdirSync(proposalsDir)) if (f.endsWith('.feature') && !keep.has(f)) fs.rmSync(path.join(proposalsDir, f));
+    }
+    for (const p of rendered) writeReverseFile(root, path.join('proposals', p.file), p.text);
+    writeReverseFile(root, 'candidates.json', stableJson(candidates));
+    writeReverseFile(root, 'unresolved-questions.json', stableJson(unresolved));
   }
-  for (const p of rendered) writeReverseFile(root, path.join('proposals', p.file), p.text);
-  writeReverseFile(root, 'candidates.json', stableJson(candidates));
-  writeReverseFile(root, 'unresolved-questions.json', stableJson(unresolved));
 
   return {
     ghkVersion: CLI_VERSION,

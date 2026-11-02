@@ -14,7 +14,8 @@ import type { ClassDeclaration, Decorator, MethodDeclaration } from 'ts-morph';
 import { joinPaths, makeEvidence, type EndpointMetadata, type SourceEvidence } from '../../evidence';
 import type { SourceAnalyzer } from '../../registry';
 import { analyzeBody, relPath } from './ts-body';
-import { packageDeps, tsProject } from './project';
+import fs from 'fs';
+import { packageDeps, tsProject, tsSources } from './project';
 
 const ID = 'typescript/nestjs';
 const ROUTE_DECORATORS: Record<string, EndpointMetadata['method']> = { Get: 'GET', Post: 'POST', Put: 'PUT', Patch: 'PATCH', Delete: 'DELETE' };
@@ -94,7 +95,11 @@ const nestjs: SourceAnalyzer = {
   frameworks: ['nestjs'],
   maturity: 'beta',
   detect(ctx) {
-    return packageDeps(ctx.root).has('@nestjs/common') || ctx.stack?.framework === 'nestjs';
+    // By its dependency only: `ghk detect` falls back to nestjs when it recognises nothing.
+    if (packageDeps(ctx.root).has('@nestjs/common')) return true;
+    return tsSources(ctx).slice(0, 400).some(f => {
+      try { return /from ['"]@nestjs\/common['"]/.test(fs.readFileSync(f.abs, 'utf8')); } catch { return false; }
+    });
   },
   async analyze(ctx) {
     const project = await tsProject(ctx);

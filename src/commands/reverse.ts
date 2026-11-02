@@ -28,12 +28,14 @@ export interface ReverseCommandOptions {
   threshold?: string;
   rescan?: boolean;
   json?: boolean;
+  /** Global --dry-run: analyse and report, write nothing (not even .ghe/reverse/). */
+  dryRun?: boolean;
 }
 
 const SUBCOMMANDS = ['scan', 'propose'];
 
 function scanOptions(o: ReverseCommandOptions): ScanOptions {
-  return { path: o.path, include: o.include, exclude: o.exclude, openapi: o.openapi, includeTests: o.tests !== false };
+  return { path: o.path, include: o.include, exclude: o.exclude, openapi: o.openapi, includeTests: o.tests !== false, write: !o.dryRun };
 }
 
 function printScan(scan: ScanResult): void {
@@ -68,8 +70,8 @@ export async function handleReverseCommand(subcommand: string | undefined, optio
   const threshold = options.threshold === undefined ? 80 : Number.parseInt(options.threshold, 10);
   if (!Number.isFinite(threshold) || threshold < 0 || threshold > 100) throw new UsageError(`Invalid --threshold: ${options.threshold}`, { hint: 'A score between 0 and 100.' });
 
-  const scan = (!options.rescan && readScan(root)) || await runScan(root, scanOptions(options));
-  const result = runPropose(root, scan, { minConfidence: min, threshold, scope: options.scope });
+  const scan = (!options.rescan && !options.dryRun && readScan(root)) || await runScan(root, scanOptions(options));
+  const result = runPropose(root, scan, { minConfidence: min, threshold, scope: options.scope, write: !options.dryRun });
   const failing = result.proposals.filter(p => !p.lint.passed || !p.roundTrip.ok);
   if (failing.length) process.exitCode = ExitCode.GATE_FAILED;
 

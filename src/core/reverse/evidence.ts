@@ -69,6 +69,10 @@ export type EndpointMetadata = {
   /** The controller or router class, when there is one. */
   owner?: string;
   operationId?: string;
+  /** A command name the code declares outright (gherkin-ai kernel, CQRS command classes): used as is. */
+  command?: string;
+  /** An aggregate name the code declares outright (`ghk:implements Order`). */
+  aggregate?: string;
 };
 
 /** Stable id: the same fact found again gets the same id, so two runs produce identical output. */

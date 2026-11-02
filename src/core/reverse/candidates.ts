@@ -14,6 +14,7 @@
 import type { EndpointMetadata, EvidenceConfidence, SourceEvidence } from './evidence';
 import { CONFIDENCE_ORDER, atLeast } from './evidence';
 import { EXTENDED_VERB_PATTERNS, VERB_PATTERNS } from '../ir/patterns';
+import { toSnake } from '../../utils/naming';
 
 export interface ProposedStep {
   keyword: 'Given' | 'When' | 'Then' | 'And';
@@ -63,7 +64,8 @@ const PLUMBING: Record<string, string> = { post: 'create', put: 'update', patch:
 const IGNORED_SEGMENTS = /^(api|apis|v\d+|rest|public|internal|admin|private|\{[^}]+\})$/i;
 
 const pascal = (s: string) => s.replace(/([a-z0-9])([A-Z])/g, '$1 $2').split(/[^A-Za-z0-9]+/).filter(Boolean).map(w => w[0].toUpperCase() + w.slice(1)).join('');
-const words = (pascalName: string) => pascalName.replace(/([a-z0-9])([A-Z])/g, '$1 $2').toLowerCase().split(' ');
+/** Lower-case words of an identifier, split the way the generator splits them (`YRenderizado` → y, renderizado). */
+const words = (pascalName: string) => toSnake(pascalName).split('_');
 
 export function singular(word: string): string {
   if (/ies$/i.test(word)) return word.slice(0, -3) + 'y';
@@ -101,6 +103,7 @@ export function participle(verb: string): string {
 const article = (noun: string) => (/^[aeiou]/i.test(noun) ? 'an' : 'a');
 
 export function aggregateFromEndpoint(meta: EndpointMetadata): string {
+  if (meta.aggregate) return meta.aggregate;
   if (meta.owner && /Controller$|Resource$|Router$|Routes$|Handler$|Api$/.test(meta.owner)) {
     const base = meta.owner.replace(/(Controller|Resource|Router|Routes|Handler|Api)$/, '');
     if (base) return pascal(singular(pascal(base)));
@@ -111,6 +114,7 @@ export function aggregateFromEndpoint(meta: EndpointMetadata): string {
 
 export function operationName(meta: EndpointMetadata, aggregate: string, operationId?: string): { name: string; type: 'command' | 'query'; verb: string } {
   const type: 'command' | 'query' = meta.method === 'GET' ? 'query' : 'command';
+  if (meta.command) return { name: meta.command, type: 'command', verb: words(meta.command)[0] };
   const fromName = (raw: string) => {
     const leaf = raw.split('.').pop()!;
     const w = words(pascal(leaf));
@@ -148,6 +152,13 @@ export function operationPhrase(name: string, verb: string, onItem: boolean): st
 // ---------------------------------------------------------------------------
 // Building
 // ---------------------------------------------------------------------------
+
+/** Health probes, metrics and API documentation: operations of the platform, not of the business. */
+const INFRASTRUCTURE_SEGMENTS = /^(health|healthz|healthcheck|live|livez|liveness|ready|readyz|readiness|ping|metrics|prometheus|actuator|status|version|info|swagger|swagger-ui|docs|api-docs|openapi|openapi\.json|favicon\.ico|robots\.txt)$/i;
+export function isInfrastructureEndpoint(p: string): boolean {
+  const seg = p.split('/').filter(Boolean).find(s => !IGNORED_SEGMENTS.test(s));
+  return seg !== undefined && INFRASTRUCTURE_SEGMENTS.test(seg);
+}
 
 const endpointKey = (m: { method: string; path: string }) => `${m.method} ${m.path.replace(/\{[^}]+\}/g, '{}')}`;
 
@@ -198,7 +209,7 @@ function failureScenario(f: Failure, ctx: { aggregate: string; noun: string; phr
     if (ctx.auth) steps.push(ctx.auth);
     const field = f.field ? humanField(f.field) : '';
     const be = /s$/.test(field) ? 'are' : 'is';
-    const what = f.field ? (f.rule === 'required' ? `${field} ${be} missing` : `${field} ${be} not ${ruleWords(f.rule, f.message)}`) : (f.message ?? 'the input is invalid');
+    const what = f.field ? (f.rule === 'required' ? `${field} ${be} missing` : `${field} ${be} not ${ruleWords(f.rule, f.message)}`) : (f.message ? lowerFirst(f.message) : 'the input is invalid');
     // The validator names the field and the rule: the outcome says which, so each field's scenario is distinct (GHK004).
     then = quoted ? `the request is rejected because ${quoted}` : f.field ? `the request is rejected because the ${what}` : 'the request is rejected as invalid';
     name = `${capitalise(gerund(ctx.phrase))} is rejected when ${what}`;
@@ -221,8 +232,17 @@ function failureScenario(f: Failure, ctx: { aggregate: string; noun: string; phr
 }
 
 const capitalise = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
-/** "places an order" → "place an order". */
-const baseForm = (phrase: string) => phrase.replace(/^(\w+?)(ies)\b/, '$1y').replace(/^(\w+?(?:ss|x|z|ch|sh|o))es\b/, '$1').replace(/^(\w+?)s\b/, '$1');
+/** "Command id is required" → "command id is required" (an acronym such as "IBAN is invalid" is kept). */
+const lowerFirst = (s: string) => (/^[A-Z][a-z]/.test(s) ? s.charAt(0).toLowerCase() + s.slice(1) : s);
+/** "places an order" → "place an order", "processes" → "process", "applies" → "apply" (one rule only). */
+export function baseForm(phrase: string): string {
+  const [verb, ...rest] = phrase.split(' ');
+  let base = verb;
+  if (/[^aeiou]ies$/.test(verb)) base = verb.slice(0, -3) + 'y';
+  else if (/(ss|x|z|ch|sh|o)es$/.test(verb)) base = verb.slice(0, -2);
+  else if (/[^s]s$/.test(verb)) base = verb.slice(0, -1);
+  return [base, ...rest].join(' ');
+}
 /** "places an order" → "placing an order". */
 function gerund(phrase: string): string {
   const [verb, ...rest] = baseForm(phrase).split(' ');
@@ -267,13 +287,24 @@ export function buildCandidates(evidence: SourceEvidence[]): CandidateResult {
   const byId = new Map(evidence.map(e => [e.id, e]));
   const endpoints = evidence.filter(e => e.kind === 'http-endpoint');
   const groups = new Map<string, SourceEvidence[]>();
+  const candidates: BehaviorCandidate[] = [];
+  const unresolved: UnresolvedQuestion[] = [];
+  // A generic dispatcher (`POST /orders/{id}/{command}`) is not an operation: the commands behind it are
+  // (the gherkin-ai kernel adapter lists them). Without them it is an open question.
+  const isDispatcher = (m: EndpointMetadata) => /\/\{(command|action|operation|op)\}$/.test(m.path);
+  const commandPaths = new Set(endpoints.filter(e => (e.metadata as any)?.command).map(e => (e.metadata as any).path.replace(/\/[^/]+$/, '')));
   for (const e of endpoints) {
-    const key = endpointKey(e.metadata as unknown as EndpointMetadata);
+    const meta = e.metadata as unknown as EndpointMetadata;
+    if (isInfrastructureEndpoint(meta.path)) continue;
+    if (isDispatcher(meta)) {
+      const base = meta.path.replace(/\/\{[^}]+\}$/, '');
+      if (!commandPaths.has(base)) unresolved.push({ endpoint: `${meta.method} ${meta.path}`, question: `${meta.method} ${meta.path} dispatches commands by name; which commands does it accept?`, evidence: [e.id] });
+      continue;
+    }
+    const key = endpointKey(meta);
     groups.set(key, [...(groups.get(key) ?? []), e]);
   }
   const tests = evidence.filter(e => e.kind === 'test-case');
-  const candidates: BehaviorCandidate[] = [];
-  const unresolved: UnresolvedQuestion[] = [];
 
   for (const [key, group] of [...groups.entries()].sort(([a], [b]) => a.localeCompare(b))) {
     // The code adapter names things; the contract confirms. Prefer code metadata, keep the operationId.

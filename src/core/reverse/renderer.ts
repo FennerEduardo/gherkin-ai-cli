@@ -18,6 +18,7 @@ import { buildIR } from '../ir-builder';
 import { lintSpecification } from '../specification-linter';
 import type { BehaviorCandidate, ProposedStep } from './candidates';
 import { atLeast, type EvidenceConfidence, type SourceEvidence } from './evidence';
+import { toKebab } from '../../utils/naming';
 
 export interface RenderOptions {
   /** Scenarios below this confidence are left out (default: inferred, i.e. everything but unknown). */
@@ -41,7 +42,8 @@ export interface RenderedProposal {
   confidence: EvidenceConfidence;
 }
 
-export const kebab = (s: string) => s.replace(/([a-z0-9])([A-Z])/g, '$1-$2').replace(/[^A-Za-z0-9]+/g, '-').replace(/^-|-$/g, '').toLowerCase();
+/** File names follow the generator's own naming (`YRenderizado` → `y-renderizado`). */
+export const kebab = (s: string) => toKebab(s);
 
 const evidenceComment = (ids: string[], byId: Map<string, SourceEvidence>, indent: string) => {
   const parts = [...new Set(ids)].sort().map(id => {
