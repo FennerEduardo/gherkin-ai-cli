@@ -1,0 +1,139 @@
+# Reverse engineering: from existing code to specifications (`ghk reverse`, beta)
+
+`ghk reverse` reads a codebase that already runs in production and proposes Gherkin features that describe what it does today. Each proposed step points to the line of code (or the contract, or the test) that supports it. The proposals are a starting point for review. They let a team adopt gherkin-ai on an existing repository without first writing every specification by hand.
+
+> **Status: beta in 3.3.0.** The command, its output files and its JSON shape may still change in a 3.3.x release. The maturity of each analyzer is listed below and in `reverse scan --json`.
+
+## Contents
+
+1. [The workflow](#1-the-workflow)
+2. [What it reads](#2-what-it-reads)
+3. [How a proposal is built](#3-how-a-proposal-is-built)
+4. [Confidence](#4-confidence)
+5. [Files it writes](#5-files-it-writes)
+6. [Guarantees](#6-guarantees)
+7. [Analyzers and maturity](#7-analyzers-and-maturity)
+8. [Limits](#8-limits)
+
+## 1. The workflow
+
+```bash
+npx gherkin-ai@3 reverse scan          # evidence → .ghe/reverse/scan.json
+npx gherkin-ai@3 reverse propose       # proposals → .ghe/reverse/proposals/*.feature
+# review the proposals, then move the ones you keep into features/ and run the usual gates:
+npx gherkin-ai@3 lint --all
+npx gherkin-ai@3 converge --all
+```
+
+Neither subcommand needs `ghk init`, calls a language model, or writes anything outside `.ghe/reverse/`.
+
+## 2. What it reads
+
+| Source | What becomes evidence |
+|---|---|
+| Routes and controllers | HTTP method and path, the handler, the controller or router it belongs to |
+| Guards and middleware | Authentication (`@UseGuards`, `requireAuth` middleware, `if (!req.user) return 401`) and roles (`@Roles('manager')`) |
+| DTOs and validators | Required fields and rules (class-validator decorators; required properties in an OpenAPI request body) |
+| Handler and service bodies | Guarded failures (`if (…) throw new NotFoundException('Order not found')`, `return res.status(422)…`); status values written (`order.status = 'CANCELLED'`); events published (`emit('order.placed')`, `new OrderApprovedEvent()`); persistence calls; the success status. Service methods are followed through the type checker, three levels deep. |
+| OpenAPI documents | Operations, `operationId`, documented responses and required request fields. Documents are found under any name containing `openapi` or `swagger`; `--openapi` selects them explicitly. gherkin-ai's own `contracts/` and `generated-specs/` are skipped, because they were derived from the features. |
+| Tests | HTTP calls made by tests: supertest, MockMvc, RestAssured, TestClient and httptest. A test that calls an endpoint confirms that endpoint's behaviour. |
+
+Discovery never opens these files:
+- secret files: `.env*`, `*.pem`, `*.key`, `*secrets*`, `*credentials*`;
+- dependencies and build output: `node_modules`, `dist`, `build`, `target`, `vendor`, `bin`, `obj`;
+- gherkin-ai's own state;
+- anything the repository's `.gitignore` ignores.
+
+Comments and strings in the code are treated as data, never as instructions.
+
+## 3. How a proposal is built
+
+```
+analyzers ─► Source Evidence IR ─► behaviour candidates ─► proposal (.feature)
+                                                              │
+                                   parser + IR builder ◄──────┘  (round trip)
+                                   lint                ◄──────┘
+```
+
+1. **Evidence.** Each fact found is stored with its kind, file and line, the analyzer that found it, a confidence level, and the endpoint it belongs to.
+2. **Candidates.** Each endpoint becomes one operation. When several analyzers find the same method and path (for example the code and the OpenAPI document), they are merged into one.
+   - The aggregate comes from the controller (`OrdersController` → `Order`) or from the first business segment of the path.
+   - The operation name comes from the `operationId`, from a handler whose name starts with a verb, or from the method and path: `POST /orders/{id}/cancel` → `CancelOrder`, `GET /orders` → `ListOrders`.
+3. **Scenarios.** Each operation gets one success scenario and one failure scenario per business condition.
+   - The success scenario's outcomes are the success status, the state written and the events published.
+   - Failures are grouped as validation, authorization, not found, conflict and so on.
+   - A precondition on a state (`order.status !== 'PENDING'`) becomes `Given an order with status "PENDING"`, plus a failure scenario for every other state.
+   - Technical conditions (5xx, infrastructure) never become scenarios. They are listed as open questions.
+4. **Proposal.** One feature per aggregate, tagged `@reverse-engineered @characterization @needs-review` and `@aggregate:<Name>`. Each scenario carries `@command:<Name>` (or `@query:<Name>`) and `@confidence:<level>`. Each scenario and step is preceded by `# evidence: <id> <file>:<line>`.
+5. **Verification.** Each proposal is parsed back with the same parser and IR builder that `ghk lint` uses.
+   - The IR must recover every declared command; this is the *round trip*.
+   - The proposal is linted against `--threshold` (80 by default).
+   - Either failure exits 4.
+
+Example, from `tests/fixtures/golden/brownfield-express`:
+
+```gherkin
+  # evidence: ev-413df19c26 docs/openapi.json:6, ev-5447a09463 src/orders.js:7
+  @command:PlaceOrder @confidence:confirmed
+  Scenario: Place an order
+    # evidence: ev-89f5042e76 src/orders.js:8
+    Given a signed-in user
+    # evidence: ev-413df19c26 docs/openapi.json:6, ev-5447a09463 src/orders.js:7
+    When the user places an order
+    # evidence: ev-58c8dc921b src/orders.js:12, ev-9b745a2483 docs/openapi.json:6
+    Then the order is placed
+    # evidence: ev-ae1b8df8c8 src/orders.js:10
+    And the order status is "PENDING"
+```
+
+## 4. Confidence
+
+| Level | Meaning |
+|---|---|
+| `confirmed` | A test exercises the endpoint, or the code and an explicit contract (OpenAPI) agree |
+| `strong` | Read directly from the syntax tree and resolved |
+| `inferred` | Deduced from conventions, for example NestJS returns 201 for a POST without `@HttpCode` |
+| `unknown` | Not enough evidence. It is written to `unresolved-questions.json` and never becomes a step |
+
+These levels are not percentages: no data set has calibrated them yet. `propose --min-confidence strong` leaves out the scenarios below that level and reports how many were dropped.
+
+## 5. Files it writes
+
+Everything goes in `.ghe/reverse/`. That directory contains a `.gitignore` of `*`, so `git status` never shows it.
+
+| File | Content |
+|---|---|
+| `scan.json` | Analyzers that ran, with their maturity and evidence count; counts by kind; every evidence item |
+| `candidates.json` | One behaviour candidate per operation: aggregate, command or query, scenarios, and the evidence of every step |
+| `unresolved-questions.json` | What the code does not answer: endpoints with no observable outcome, technical conditions left out, two endpoints mapped to one name |
+| `proposals/<aggregate>.feature` | The proposals. Proposals that a later run no longer produces are removed |
+
+`reverse scan --json` and `reverse propose --json` print the same data as one JSON document.
+
+## 6. Guarantees
+
+These are tested by `tests/core/reverse.test.ts` and the golden `tests/golden/reverse.test.ts`:
+
+- **Deterministic.** Two runs on the same tree produce byte-identical files. Evidence ids are hashes of what was found and where.
+- **No `Then` without evidence.** Every outcome step is backed by evidence that exists in `scan.json`.
+- **No invented data.** Quoted values in steps come from the code (status values, messages, roles, event names).
+- **Read-only for the repository.** `scan` and `propose` write only to `.ghe/reverse/`; `git status` stays clean.
+- **Secrets are never read.** A `.env` next to the code is counted in `secretsSkipped` and its content never appears in any output.
+
+## 7. Analyzers and maturity
+
+| Analyzer | Stacks | Parser | Maturity 3.3.0 |
+|---|---|---|---|
+| `typescript/express` | Express | ts-morph | beta |
+| `typescript/nestjs` | NestJS | ts-morph | beta |
+| `openapi` | Any stack with an OpenAPI document. This is the path for the community-tier stacks. | JSON / YAML | beta |
+| `tests` | Test HTTP calls (TypeScript, Java, Kotlin, C#, Python, Go) | patterns | beta |
+
+Spring Boot / Quarkus (Java and Kotlin), ASP.NET Core, FastAPI and Go are in progress for 3.3.0 (see the [CHANGELOG](../CHANGELOG.md)). This table is updated as each analyzer passes its golden.
+
+## 8. Limits
+
+- **Code shows structure, not intent.** A proposal describes what the system does today, including its bugs, and the `@characterization` tag says so. Whether that behaviour is correct is a product decision.
+- **Static analysis only.** Reflection, dynamic routing and dependency injection that the type checker cannot resolve are missed. Such endpoints show up with fewer outcomes or as open questions.
+- **Data shapes are not specified.** Request and response bodies appear as fields in the evidence, not as data tables in the scenarios.
+- **No language model.** Wording is template-based. An LLM-assisted wording pass (`--assist`, opt-in, writing patches only) is planned for 3.3.0.

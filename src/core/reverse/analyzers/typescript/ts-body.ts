@@ -1,0 +1,228 @@
+/* ==========================================================================
+   gherkin-ai-cli - Behaviour inside a TypeScript/JavaScript handler
+
+   Shared by the Express and NestJS adapters. Walks a handler body (and the
+   service methods it calls, through the type checker, a few levels deep)
+   and records what is observable from outside:
+   - guarded failures: `if (cond) return res.status(4xx)…` / `throw new XException(…)`;
+   - status values written (`order.status = 'CANCELLED'`, `{ status: 'PENDING' }`);
+   - events published (`emit('order.placed')`, `new OrderPlacedEvent()`);
+   - persistence (`this.orders.save`, `this.prisma.order.create`);
+   - the success response (`res.status(201)`).
+   Conditions that are technical (5xx, infrastructure) are kept but marked,
+   so the candidate builder never turns them into business scenarios.
+   ========================================================================== */
+
+import path from 'path';
+import { Node, SyntaxKind } from 'ts-morph';
+import type { CallExpression, IfStatement } from 'ts-morph';
+import { makeEvidence, type EvidenceKind, type SourceEvidence } from '../../evidence';
+
+export interface BodyContext {
+  root: string;
+  extractor: string;
+  /** The endpoint the behaviour belongs to; every evidence references it. */
+  endpointId: string;
+  depth?: number;
+  visited?: Set<string>;
+}
+
+const MAX_DEPTH = 3;
+
+/** NestJS / common HTTP exception names → status. */
+export const EXCEPTION_STATUS: Record<string, number> = {
+  BadRequestException: 400, ValidationException: 400, ValidationError: 400, UnauthorizedException: 401, AuthenticationError: 401,
+  ForbiddenException: 403, AccessDeniedException: 403, NotFoundException: 404, EntityNotFoundException: 404, NotFoundError: 404,
+  ConflictException: 409, GoneException: 410, PreconditionFailedException: 412, PayloadTooLargeException: 413,
+  UnprocessableEntityException: 422, TooManyRequestsException: 429,
+  InternalServerErrorException: 500, NotImplementedException: 501, BadGatewayException: 502, ServiceUnavailableException: 503, GatewayTimeoutException: 504
+};
+
+export function relPath(root: string, node: Node): string {
+  return path.relative(root, node.getSourceFile().getFilePath()).split(path.sep).join('/');
+}
+
+const loc = (root: string, node: Node) => ({ file: relPath(root, node), startLine: node.getStartLineNumber(), endLine: node.getEndLineNumber() });
+
+/** `"order.placed"`, `order_placed`, `ORDER_PLACED`, `OrderPlacedEvent` → `OrderPlaced`. */
+export function eventName(raw: string): string {
+  const words = raw.replace(/Event$/, '').replace(/([a-z0-9])([A-Z])/g, '$1 $2').split(/[^A-Za-z0-9]+/).filter(Boolean);
+  return words.map(w => w[0].toUpperCase() + w.slice(1).toLowerCase()).join('');
+}
+
+/** What kind of rule a failure is, from its status (or exception). */
+export function failureKind(status: number | undefined): { kind: EvidenceKind; technical: boolean } {
+  if (status === 401 || status === 403) return { kind: 'authorization-rule', technical: false };
+  if (status === 400 || status === 422) return { kind: 'validation-rule', technical: false };
+  return { kind: 'error-condition', technical: status !== undefined && status >= 500 };
+}
+
+const stringValue = (n: Node | undefined): string | undefined =>
+  n && (Node.isStringLiteral(n) || Node.isNoSubstitutionTemplateLiteral(n)) ? n.getLiteralValue() : undefined;
+
+/** The human message of a failure: `.json({ detail|message|error: '…' })`, `.send('…')`, or an exception argument. */
+function messageIn(node: Node): string | undefined {
+  for (const call of [node, ...node.getDescendants()].filter(Node.isCallExpression)) {
+    const name = calleeName(call);
+    const arg = call.getArguments()[0];
+    if ((name === 'json' || name === 'send') && arg) {
+      const direct = stringValue(arg);
+      if (direct) return direct;
+      if (Node.isObjectLiteralExpression(arg)) {
+        for (const key of ['detail', 'message', 'error', 'title', 'reason']) {
+          const prop = arg.getProperty(key);
+          if (prop && Node.isPropertyAssignment(prop)) {
+            const v = stringValue(prop.getInitializer());
+            if (v) return v;
+          }
+        }
+      }
+    }
+  }
+  return undefined;
+}
+
+export function calleeName(call: CallExpression): string {
+  const expr = call.getExpression();
+  if (Node.isPropertyAccessExpression(expr)) return expr.getName();
+  if (Node.isIdentifier(expr)) return expr.getText();
+  return '';
+}
+
+/** `res.status(404)`, `reply.code(404)`, `res.sendStatus(404)` anywhere in the node. */
+function statusIn(node: Node): { status: number; at: Node } | undefined {
+  for (const call of [node, ...node.getDescendants()].filter(Node.isCallExpression)) {
+    const name = calleeName(call);
+    if (name === 'status' || name === 'sendStatus' || name === 'code') {
+      const arg = call.getArguments()[0];
+      if (arg && Node.isNumericLiteral(arg)) {
+        const target = (call.getExpression() as Node).getText();
+        if (/\b(res|response|reply|ctx|c)\b/.test(target) || name === 'sendStatus') return { status: Number(arg.getLiteralValue()), at: call };
+      }
+    }
+  }
+  return undefined;
+}
+
+function throwIn(node: Node): { exception: string; message?: string; at: Node } | undefined {
+  const throwStmt = [node, ...node.getDescendants()].find(Node.isThrowStatement);
+  const expr = throwStmt?.getExpression();
+  if (throwStmt && expr && Node.isNewExpression(expr)) {
+    return { exception: expr.getExpression().getText().split('.').pop()!, message: stringValue(expr.getArguments()[0]), at: throwStmt };
+  }
+  return undefined;
+}
+
+const REPO_TARGET = /(repo|repository|prisma|dao|store|model|db|database|entityManager|em)$/i;
+const REPO_METHOD = /^(save|create|insert|update|upsert|delete|remove|destroy|persist|merge|find\w*|get\w*|count|exists\w*|createMany|updateMany|deleteMany)$/;
+const EVENT_EMIT = /^(emit|emitAsync|publish|publishAll|dispatch|send|produce|enqueue)$/;
+const EVENT_TARGET = /(event|bus|emitter|publisher|producer|queue|broker|outbox|kafka|rabbit|nats|eventBus)/i;
+
+/** Analyses one function-like node and the service methods it reaches. */
+export function analyzeBody(fn: Node, ctx: BodyContext): SourceEvidence[] {
+  const depth = ctx.depth ?? 0;
+  const visited = ctx.visited ?? new Set<string>();
+  const key = `${fn.getSourceFile().getFilePath()}:${fn.getPos()}`;
+  if (visited.has(key) || depth > MAX_DEPTH) return [];
+  visited.add(key);
+
+  const out: SourceEvidence[] = [];
+  const handled = new Set<Node>();
+  const refs = [ctx.endpointId];
+  const base = { extractor: ctx.extractor, references: refs };
+
+  const ifs = fn.getDescendantsOfKind(SyntaxKind.IfStatement) as IfStatement[];
+  for (const ifs_ of ifs) {
+    const then = ifs_.getThenStatement();
+    const status = statusIn(then);
+    const thrown = throwIn(then);
+    if (!status && !thrown) continue;
+    if (status) handled.add(status.at);
+    if (thrown) handled.add(thrown.at);
+    const code = status?.status ?? (thrown ? EXCEPTION_STATUS[thrown.exception] : undefined);
+    if (code !== undefined && code < 400) continue;
+    const message = (status ? messageIn(then) : undefined) ?? thrown?.message;
+    const condition = ifs_.getExpression().getText().replace(/\s+/g, ' ');
+    const { kind, technical } = failureKind(code ?? (thrown && /auth|forbidden|permission/i.test(thrown.exception) ? 403 : undefined));
+    out.push(makeEvidence({
+      ...base, kind, location: loc(ctx.root, ifs_), confidence: code !== undefined ? 'strong' : 'inferred',
+      description: `${message ?? thrown?.exception ?? `status ${code}`} when ${condition}`,
+      symbol: thrown?.exception,
+      metadata: { condition, status: code, message, exception: thrown?.exception, technical },
+      key: `${condition}|${code}|${message ?? ''}`
+    }));
+  }
+
+  // Unconditional throws at the top level of a handler are rare and say nothing about when they happen: skipped.
+
+  for (const node of fn.getDescendants()) {
+    // order.status = 'CANCELLED' / order.state = OrderStatus.Cancelled
+    if (Node.isBinaryExpression(node) && node.getOperatorToken().getKind() === SyntaxKind.EqualsToken) {
+      const left = node.getLeft();
+      if (Node.isPropertyAccessExpression(left) && /^(status|state)$/i.test(left.getName())) {
+        const value = stateValue(node.getRight());
+        if (value) out.push(makeEvidence({ ...base, kind: 'state-value', location: loc(ctx.root, node), confidence: 'strong', symbol: left.getExpression().getText(), description: `${left.getName()} set to ${value}`, metadata: { field: left.getName(), value } }));
+      }
+    }
+    // { status: 'PENDING' } in a created object
+    if (Node.isPropertyAssignment(node) && /^(status|state)$/i.test(node.getName())) {
+      const parentCall = node.getFirstAncestor(a => Node.isCallExpression(a) || Node.isReturnStatement(a) || Node.isVariableDeclaration(a));
+      const value = stateValue(node.getInitializer());
+      // A status inside a response body for an error (`res.status(404).json({ status: 'error' })`) is not a domain state.
+      if (value && parentCall && !(Node.isCallExpression(parentCall) && /^(json|send|status)$/.test(calleeName(parentCall)))) {
+        out.push(makeEvidence({ ...base, kind: 'state-value', location: loc(ctx.root, node), confidence: 'strong', description: `${node.getName()} initialised to ${value}`, metadata: { field: node.getName(), value, initial: true } }));
+      }
+    }
+    if (Node.isNewExpression(node)) {
+      const cls = node.getExpression().getText().split('.').pop()!;
+      if (/[A-Za-z]Event$/.test(cls)) out.push(makeEvidence({ ...base, kind: 'domain-event', location: loc(ctx.root, node), confidence: 'strong', symbol: cls, description: `publishes ${eventName(cls)}`, metadata: { event: eventName(cls) } }));
+    }
+    if (Node.isCallExpression(node)) {
+      if (handled.has(node)) continue;
+      const name = calleeName(node);
+      const expr = node.getExpression();
+      // Success status outside the failure branches.
+      if (name === 'status' || name === 'sendStatus' || name === 'code') {
+        const arg = node.getArguments()[0];
+        if (arg && Node.isNumericLiteral(arg) && Number(arg.getLiteralValue()) < 400 && /\b(res|response|reply|ctx|c)\b/.test(Node.isPropertyAccessExpression(expr) ? expr.getExpression().getText() : '')) {
+          out.push(makeEvidence({ ...base, kind: 'success-response', location: loc(ctx.root, node), confidence: 'strong', description: `responds ${arg.getLiteralValue()}`, metadata: { status: Number(arg.getLiteralValue()) } }));
+        }
+      }
+      if (!Node.isPropertyAccessExpression(expr)) continue;
+      const target = expr.getExpression().getText();
+      // Events: emitter.emit('order.placed', …) / eventBus.publish(new OrderPlacedEvent())
+      if (EVENT_EMIT.test(name) && EVENT_TARGET.test(target)) {
+        const first = node.getArguments()[0];
+        const lit = stringValue(first);
+        if (lit && !/^\//.test(lit)) out.push(makeEvidence({ ...base, kind: 'domain-event', location: loc(ctx.root, node), confidence: 'strong', symbol: lit, description: `publishes ${eventName(lit)}`, metadata: { event: eventName(lit), channel: lit } }));
+        continue;
+      }
+      // Persistence: this.orders.save(…), this.prisma.order.create(…)
+      const lastTarget = target.split('.').pop() ?? '';
+      const prisma = target.match(/\bprisma\.(\w+)$/);
+      if (REPO_METHOD.test(name) && (REPO_TARGET.test(lastTarget) || prisma)) {
+        out.push(makeEvidence({ ...base, kind: 'repository-query', location: loc(ctx.root, node), confidence: 'strong', symbol: `${target}.${name}`, description: `${/^(find|get|count|exists)/.test(name) ? 'reads' : 'writes'} ${prisma?.[1] ?? lastTarget}`, metadata: { target, method: name, entity: prisma?.[1], write: !/^(find|get|count|exists)/.test(name) } }));
+      }
+      // Service calls: follow this.service.method(…) into its declaration.
+      if (/^this\.\w+$/.test(target) || /^\w+(Service|UseCase|Handler|Manager)$/i.test(lastTarget)) {
+        const decl = expr.getNameNode().getSymbol()?.getDeclarations()?.find(d => Node.isMethodDeclaration(d) || Node.isFunctionDeclaration(d) || Node.isPropertyDeclaration(d));
+        const bodyOwner = decl && (Node.isPropertyDeclaration(decl) ? decl.getInitializer() : decl);
+        if (bodyOwner && (Node.isMethodDeclaration(bodyOwner) || Node.isFunctionDeclaration(bodyOwner) || Node.isArrowFunction(bodyOwner) || Node.isFunctionExpression(bodyOwner)) && bodyOwner.getBody()) {
+          const owner = bodyOwner.getFirstAncestorByKind(SyntaxKind.ClassDeclaration)?.getName();
+          out.push(makeEvidence({ ...base, kind: 'service-call', location: loc(ctx.root, node), confidence: 'strong', symbol: `${owner ?? lastTarget}.${name}`, description: `calls ${owner ?? lastTarget}.${name}`, metadata: { target: owner ?? lastTarget, method: name, declaredIn: relPath(ctx.root, bodyOwner) } }));
+          out.push(...analyzeBody(bodyOwner, { ...ctx, depth: depth + 1, visited }));
+        }
+      }
+    }
+  }
+  return out;
+}
+
+function stateValue(n: Node | undefined): string | undefined {
+  if (!n) return undefined;
+  const lit = stringValue(n);
+  if (lit !== undefined) return /^[A-Za-z][\w-]{1,40}$/.test(lit) ? lit : undefined;
+  // OrderStatus.CANCELLED / Status.Cancelled
+  if (Node.isPropertyAccessExpression(n) && /status|state/i.test(n.getExpression().getText())) return n.getName();
+  return undefined;
+}

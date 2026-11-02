@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [Unreleased] - 3.3.0
+
+### Added
+- **`ghk reverse` (beta): from existing code to proposed specifications** ([REVERSE.md](docs/REVERSE.md)).
+  - `reverse scan` reads controllers, routes, guards, DTOs, handler and service bodies, OpenAPI documents and tests into a *Source Evidence IR*. Each fact carries its file and line, the analyzer that found it and a confidence level (`confirmed`, `strong`, `inferred`, `unknown`).
+  - `reverse propose` groups the evidence into operations and writes one candidate `.feature` per aggregate. Each step is preceded by the evidence that supports it, and the features are tagged `@characterization @needs-review` because they describe what the code does today.
+  - Every proposal is parsed back through the IR builder (the declared commands must survive) and linted. Either failure exits 4.
+  - Deterministic, with no language model. Works without `ghk init`, writes only to `.ghe/reverse/` (which ignores itself in git), and never reads `.env` or other secret files.
+  - First analyzers: Express and NestJS (ts-morph, following service calls through the type checker), OpenAPI (any stack) and test HTTP calls.
+  - Verified by `tests/golden/reverse.test.ts`. On the Express brownfield fixture it recovers the `PlaceOrder` and `CancelOrder` commands of the hand-written feature, and the proposal lints 99.
+
 ## [3.2.2] - 2026-10-30
 
 ### Security

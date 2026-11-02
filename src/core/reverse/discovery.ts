@@ -1,0 +1,118 @@
+/* ==========================================================================
+   gherkin-ai-cli - Source discovery for `ghk reverse` (PLAN-3.3.0 R-02)
+
+   Lists the files the analyzers may read. The analysis is local, and some
+   files are never read at all: secrets (.env*, keys, credentials), build
+   output, dependencies, VCS and gherkin-ai state, and whatever the
+   repository's .gitignore ignores.
+   ========================================================================== */
+
+import fs from 'fs';
+import path from 'path';
+import { execFileSync } from 'child_process';
+
+export interface SourceFile {
+  /** Relative to the root, forward slashes. */
+  rel: string;
+  abs: string;
+  ext: string;
+}
+
+export interface DiscoveryOptions {
+  /** Sub-directory to analyse (relative to the root); the whole root by default. */
+  path?: string;
+  include?: string[];
+  exclude?: string[];
+  /** Hard cap; the result says when it was reached. */
+  limit?: number;
+}
+
+export interface DiscoveryResult {
+  root: string;
+  files: SourceFile[];
+  truncated: boolean;
+  /** Files skipped because they may hold secrets (counted, never listed by content). */
+  secretsSkipped: number;
+}
+
+const SKIP_DIRS = new Set(['node_modules', '.git', 'dist', 'build', 'target', 'out', 'vendor', '.ghe', '.gherkin-ai', 'coverage', 'bin', 'obj',
+  '__pycache__', '.venv', 'venv', '.tox', '.mypy_cache', '.pytest_cache', '.gradle', '.idea', '.vscode', '.next', '.nuxt', '.angular', 'generated-specs']);
+
+const SOURCE_EXT = new Set(['.ts', '.tsx', '.js', '.mjs', '.cjs', '.jsx', '.java', '.kt', '.cs', '.py', '.go', '.json', '.yaml', '.yml', '.feature']);
+
+/** Never read: they may hold credentials. */
+export function isSecretPath(rel: string): boolean {
+  const base = path.posix.basename(rel).toLowerCase();
+  return /^\.env(\..*)?$/.test(base) || /\.(pem|key|p12|pfx|jks|keystore)$/.test(base) || /(^|[-_.])(secrets?|credentials?)([-_.]|$)/.test(base)
+    || base === 'id_rsa' || base === 'auth.json';
+}
+
+/** Minimal glob → RegExp (`**`, `*`, `?`), matched against the relative path. */
+export function globToRegExp(glob: string): RegExp {
+  let re = '';
+  for (let i = 0; i < glob.length; i++) {
+    const c = glob[i];
+    if (c === '*') {
+      if (glob[i + 1] === '*') { re += glob[i + 2] === '/' ? '(?:.*/)?' : '.*'; i += glob[i + 2] === '/' ? 2 : 1; } else re += '[^/]*';
+    } else if (c === '?') re += '[^/]';
+    else if (c === '{') {
+      const end = glob.indexOf('}', i);
+      re += `(?:${glob.slice(i + 1, end).split(',').map(s => s.replace(/[.+^$()|[\]\\]/g, '\\$&')).join('|')})`;
+      i = end;
+    } else re += c.replace(/[.+^$()|[\]\\]/g, '\\$&');
+  }
+  return new RegExp(`^${re}$`);
+}
+
+/** Paths git ignores (when the root is in a work tree); empty when git is unavailable. */
+function gitIgnored(root: string, rels: string[]): Set<string> {
+  if (!rels.length) return new Set();
+  try {
+    const out = execFileSync('git', ['check-ignore', '--stdin'], { cwd: root, input: rels.join('\n'), stdio: ['pipe', 'pipe', 'ignore'] }).toString();
+    return new Set(out.split(/\r?\n/).filter(Boolean).map(s => s.replace(/\\/g, '/')));
+  } catch {
+    // Exit 1 = nothing ignored; not a repository or no git: nothing to filter.
+    return new Set();
+  }
+}
+
+export function discoverSources(root: string, options: DiscoveryOptions = {}): DiscoveryResult {
+  const base = path.resolve(root, options.path ?? '.');
+  const limit = options.limit ?? 20_000;
+  const include = (options.include ?? []).map(globToRegExp);
+  const exclude = (options.exclude ?? []).map(globToRegExp);
+  const found: SourceFile[] = [];
+  let truncated = false;
+  let secretsSkipped = 0;
+
+  const walk = (dir: string) => {
+    if (truncated) return;
+    let entries: fs.Dirent[] = [];
+    try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+    entries.sort((a, b) => a.name.localeCompare(b.name));
+    for (const e of entries) {
+      const abs = path.join(dir, e.name);
+      const rel = path.relative(root, abs).split(path.sep).join('/');
+      if (e.isDirectory()) {
+        if (!SKIP_DIRS.has(e.name) && !e.name.startsWith('.')) walk(abs);
+        continue;
+      }
+      if (!e.isFile()) continue;
+      if (isSecretPath(rel)) { secretsSkipped++; continue; }
+      const ext = path.extname(e.name).toLowerCase();
+      if (!SOURCE_EXT.has(ext)) continue;
+      if (include.length && !include.some(r => r.test(rel))) continue;
+      if (exclude.some(r => r.test(rel))) continue;
+      if (found.length >= limit) { truncated = true; return; }
+      found.push({ rel, abs, ext });
+    }
+  };
+  walk(base);
+
+  const ignored = gitIgnored(root, found.map(f => f.rel));
+  const files = found.filter(f => !ignored.has(f.rel)).sort((a, b) => a.rel.localeCompare(b.rel));
+  return { root, files, truncated, secretsSkipped };
+}
+
+export const isTestFile = (rel: string) =>
+  /(^|\/)(tests?|__tests__|spec|specs|e2e|it)\//i.test(rel) || /\.(test|spec|e2e-spec|it)\.[jt]sx?$/.test(rel) || /(Test|Tests|IT)\.(java|kt|cs)$/.test(rel) || /(^|\/)test_[^/]*\.py$|_test\.(py|go)$/.test(rel);

@@ -1,5 +1,5 @@
 /* ==========================================================================
-   gherkin-ai-cli - CLI commands: specification (create, lint, validate, export, lang, industry, speckit)
+   gherkin-ai-cli - CLI commands: specification (create, lint, validate, export, lang, industry, speckit, reverse)
    ========================================================================== */
 
 import type { Command } from 'commander';
@@ -94,5 +94,24 @@ export function registerSpecificationCommands(program: Command): void {
     .action(async (direction, options) => {
       const { handleSpeckitCommand } = await import('../commands/speckit');
       await handleSpeckitCommand(direction, options);
+    });
+
+  const collect = (value: string, previous: string[] = []) => [...previous, value];
+  program
+    .command('reverse [subcommand]')
+    .description('(beta) Reverse engineering: `scan` reads controllers, services, repositories, models, tests and OpenAPI documents into evidence; `propose` turns it into candidate .feature files with source traceability. Deterministic, writes only to .ghe/reverse/, works without ghk init')
+    .option('--path <dir>', 'scan: sub-directory to analyse (default: the whole project)')
+    .option('--include <glob>', 'scan: only files matching this glob (repeatable)', collect)
+    .option('--exclude <glob>', 'scan: skip files matching this glob (repeatable)', collect)
+    .option('--openapi <file>', 'scan: read this OpenAPI document as evidence (repeatable; default: openapi/swagger files found in the repository)', collect)
+    .option('--no-tests', 'scan: do not read tests as evidence')
+    .option('--scope <name>', 'propose: only this aggregate or operation (repeatable)', collect)
+    .option('--min-confidence <level>', 'propose: leave out scenarios below confirmed | strong | inferred (default: inferred)')
+    .option('--threshold <score>', 'propose: minimum lint score of a proposal 0-100 (default: 80); below it exits with code 4')
+    .option('--rescan', 'propose: scan again instead of reading .ghe/reverse/scan.json')
+    .option('--json', 'Output as JSON')
+    .action(async (subcommand, options) => {
+      const { handleReverseCommand } = await import('../commands/reverse');
+      await handleReverseCommand(subcommand, { ...options, json: options.json || program.opts().json });
     });
 }

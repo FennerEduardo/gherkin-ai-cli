@@ -1,0 +1,13 @@
+{
+  "name": "orders-api",
+  "version": "2.3.0",
+  "private": true,
+  "dependencies": {
+    "@nestjs/common": "^11.0.0",
+    "@nestjs/core": "^11.0.0",
+    "@nestjs/event-emitter": "^3.0.0",
+    "@prisma/client": "^6.0.0",
+    "class-validator": "^0.14.0"
+  },
+  "devDependencies": { "supertest": "^7.0.0", "jest": "^30.0.0" }
+}

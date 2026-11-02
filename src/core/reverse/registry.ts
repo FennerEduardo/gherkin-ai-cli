@@ -1,0 +1,70 @@
+/* ==========================================================================
+   gherkin-ai-cli - Analyzer registry for `ghk reverse` (PLAN-3.3.0 R-01)
+
+   A language analyzer understands syntax; a framework adapter knows what the
+   syntax means in one framework. Both produce the same Source Evidence IR,
+   so the coordinator never knows about NestJS, Spring or FastAPI.
+   Every analyzer declares its maturity (beta / experimental), shown by
+   `reverse scan` and `ghk stacks`.
+   ========================================================================== */
+
+import type { GherkinAIConfig } from '../config';
+import type { SourceEvidence } from './evidence';
+import type { SourceFile } from './discovery';
+
+export type AnalyzerMaturity = 'beta' | 'experimental';
+
+export interface AnalysisContext {
+  root: string;
+  files: SourceFile[];
+  /** The stack `ghk detect` found (or the project configuration). */
+  stack?: GherkinAIConfig['stack'];
+  /** Explicit OpenAPI documents to read (`--openapi`), relative to the root. */
+  openapi?: string[];
+  includeTests: boolean;
+}
+
+export interface SourceAnalyzer {
+  id: string;
+  language: string;
+  frameworks: string[];
+  maturity: AnalyzerMaturity;
+  /** Cheap check: does this project contain code this analyzer understands? */
+  detect(ctx: AnalysisContext): boolean;
+  analyze(ctx: AnalysisContext): Promise<SourceEvidence[]>;
+}
+
+const registry: SourceAnalyzer[] = [];
+
+export function registerAnalyzer(analyzer: SourceAnalyzer): void {
+  if (!registry.some(a => a.id === analyzer.id)) registry.push(analyzer);
+}
+
+export function listAnalyzers(): SourceAnalyzer[] {
+  return [...registry].sort((a, b) => a.id.localeCompare(b.id));
+}
+
+let builtinsLoaded = false;
+
+/** Loads the built-in analyzers once (lazily: nothing here runs at CLI start-up). */
+export async function loadBuiltinAnalyzers(): Promise<SourceAnalyzer[]> {
+  if (!builtinsLoaded) {
+    builtinsLoaded = true;
+    const mods = await Promise.all([
+      import('./analyzers/typescript/express'),
+      import('./analyzers/typescript/nestjs'),
+      import('./analyzers/openapi/openapi'),
+      import('./analyzers/tests/test-evidence')
+    ]);
+    for (const m of mods) registerAnalyzer(m.default);
+  }
+  return listAnalyzers();
+}
+
+/** Static description for `ghk stacks` and `reverse scan --json` (no analyzer code is loaded). */
+export const ANALYZER_CATALOG: { id: string; stacks: string; parser: string; maturity: AnalyzerMaturity | 'openapi-only' }[] = [
+  { id: 'typescript/express', stacks: 'Express', parser: 'ts-morph', maturity: 'beta' },
+  { id: 'typescript/nestjs', stacks: 'NestJS', parser: 'ts-morph', maturity: 'beta' },
+  { id: 'openapi', stacks: 'any stack with an OpenAPI document', parser: 'json/yaml', maturity: 'beta' },
+  { id: 'tests', stacks: 'test names and step definitions', parser: 'step indexer', maturity: 'beta' }
+];
