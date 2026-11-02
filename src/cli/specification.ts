@@ -98,8 +98,8 @@ export function registerSpecificationCommands(program: Command): void {
 
   const collect = (value: string, previous: string[] = []) => [...previous, value];
   program
-    .command('reverse [subcommand]')
-    .description('(beta) Reverse engineering: `scan` reads controllers, services, repositories, models, tests and OpenAPI documents into evidence; `propose` turns it into candidate .feature files with source traceability. Deterministic, writes only to .ghe/reverse/, works without ghk init')
+    .command('reverse [subcommand] [names...]')
+    .description('(beta) Reverse engineering: `scan` reads controllers, services, repositories, models, tests and OpenAPI documents into evidence; `propose` turns it into candidate .feature files with source traceability; `accept <aggregate…>` moves reviewed proposals into the specifications; `coverage` reports the share of the code the features specify. Deterministic, works without ghk init')
     .option('--path <dir>', 'scan: sub-directory to analyse (default: the whole project)')
     .option('--include <glob>', 'scan: only files matching this glob (repeatable)', collect)
     .option('--exclude <glob>', 'scan: skip files matching this glob (repeatable)', collect)
@@ -108,10 +108,16 @@ export function registerSpecificationCommands(program: Command): void {
     .option('--scope <name>', 'propose: only this aggregate or operation (repeatable)', collect)
     .option('--min-confidence <level>', 'propose: leave out scenarios below confirmed | strong | inferred (default: inferred)')
     .option('--threshold <score>', 'propose: minimum lint score of a proposal 0-100 (default: 80); below it exits with code 4')
-    .option('--rescan', 'propose: scan again instead of reading .ghe/reverse/scan.json')
+    .option('--rescan', 'propose, coverage: scan again instead of reading .ghe/reverse/scan.json')
+    .option('--all', 'accept: every proposal')
+    .option('--to <dir>', 'accept: destination directory (default: features/discovered)')
+    .option('--merge', 'accept: leave out operations a feature already specifies (same or renamed command); exit 7 when a feature declares commands the code does not implement')
+    .option('--force', 'accept: overwrite existing feature files')
+    .option('--min <pct>', 'coverage: minimum share of operations specified by features; below it exits with code 7')
     .option('--json', 'Output as JSON')
-    .action(async (subcommand, options) => {
+    .action(async (subcommand, names, options) => {
       const { handleReverseCommand } = await import('../commands/reverse');
-      await handleReverseCommand(subcommand, { ...options, json: options.json || program.opts().json, dryRun: program.opts().dryRun });
+      const global = program.opts();
+      await handleReverseCommand(subcommand, { ...options, json: options.json || global.json, dryRun: global.dryRun, yes: options.yes || global.yes }, names ?? []);
     });
 }

@@ -29,6 +29,16 @@ All notable changes to this project will be documented in this file. See [commit
     - FastAPI: router prefixes, `Depends` authentication and roles, Pydantic constraints, `HTTPException` statuses, service modules.
     - Go: chi/gin/echo/`net/http` 1.22 routes and groups, auth middleware, `validate` tags. A sentinel error is linked to the service condition behind it.
     - Each one is verified on a hand-written fixture in the reverse golden, which now covers eight services.
+  - **`reverse accept <aggregate…>` / `--all`** writes reviewed proposals to `features/discovered/`.
+    - The `@needs-review` tag is removed; the evidence comments stay.
+    - It writes only after confirmation or `--yes`; without a terminal and without `--yes` it writes nothing and exits 2. Each accept is audited.
+    - `--merge` leaves out what a feature already specifies and exits 7 when a feature declares commands the code does not implement.
+  - **`reverse coverage`** reports the share of the code's operations that the existing features specify, by status:
+    - documented;
+    - renamed (same verb or a synonym on a related noun: `CreatePeriod` vs `CreateAcademicPeriod`);
+    - undocumented;
+    - spec-only.
+    `--min` gates CI with exit 7. `propose` prints the same summary.
   - Tests that call concrete URLs (`/orders/o-1/cancel`) confirm the matching route template; .NET `HttpClient` calls are recognised. `InvalidOperationException` and `IllegalStateException` are read as 409.
   - The aggregate of an operation is the last collection in its path (`/institutions/{id}/members` → `Member`). The word after an id is the action (`POST /payments/{id}/settle` → `SettlePayment`).
 

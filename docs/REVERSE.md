@@ -18,14 +18,41 @@
 ## 1. The workflow
 
 ```bash
-npx gherkin-ai@3 reverse scan          # evidence → .ghe/reverse/scan.json
-npx gherkin-ai@3 reverse propose       # proposals → .ghe/reverse/proposals/*.feature
-# review the proposals, then move the ones you keep into features/ and run the usual gates:
-npx gherkin-ai@3 lint --all
-npx gherkin-ai@3 converge --all
+npx gherkin-ai@3 reverse scan                      # evidence → .ghe/reverse/scan.json
+npx gherkin-ai@3 reverse propose                   # proposals → .ghe/reverse/proposals/*.feature
+npx gherkin-ai@3 reverse coverage                  # how much of the code the existing features specify
+# review the proposals, then:
+npx gherkin-ai@3 reverse accept order invoice --yes          # → features/discovered/
+npx gherkin-ai@3 reverse accept --all --merge --yes          # only what no feature specifies yet
+npx gherkin-ai@3 lint --all && npx gherkin-ai@3 converge --all
 ```
 
-Neither subcommand needs `ghk init`, calls a language model, or writes anything outside `.ghe/reverse/`.
+None of the subcommands needs `ghk init` or calls a language model. `scan`, `propose` and `coverage` write nothing outside `.ghe/reverse/`. `accept` writes feature files only after you confirm interactively, or with `--yes`. Without a terminal and without `--yes`, it writes nothing and exits 2.
+
+### accept
+
+`reverse accept <aggregate…>` (or `--all`) writes the reviewed proposals to `features/discovered/<aggregate>.feature` (`--to` changes the directory):
+- the `@needs-review` tag is removed;
+- `@reverse-engineered @characterization` and every `# evidence:` comment are kept;
+- an existing file is not overwritten without `--force`;
+- each accept is recorded in the audit log (`reverse:accept`).
+
+With `--merge`, the operations a feature already specifies are left out, and the command exits 7 when a feature declares commands that no operation in the code implements.
+
+### coverage
+
+`reverse coverage` compares every operation in the code with the commands the generator derives from the existing features. Each operation gets one of these statuses:
+
+| Status | Meaning |
+|---|---|
+| documented | A feature declares the same command (or the same `@query`) |
+| renamed | A feature declares the same verb, or a synonym, on a related noun: `CreatePeriod` in the code, `CreateAcademicPeriod` in the feature. The behaviour is specified, but the names drifted |
+| undocumented | No feature declares it |
+| spec-only | A feature declares a command that no operation in the code implements |
+
+*Behaviour coverage* is the share of operations that are documented or renamed. `--min <pct>` exits 7 below it, so it can gate CI. `propose` prints the same summary.
+
+On the LMS (nine services, read-only), coverage goes from 0% to 50% per service. 16 of the 81 operations in the code are specified: 9 with the same name and 7 renamed. Most of the rest are reads (GET), which the LMS features do not specify.
 
 ## 2. What it reads
 

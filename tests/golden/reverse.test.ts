@@ -86,6 +86,19 @@ describe.skipIf(!fs.existsSync(DIST)).each(STACKS)('golden: ghk reverse on $fixt
     expect(second).toBe(first);
   });
 
+  it('accept writes only with --yes; coverage reports the share the features specify', () => {
+    run('reverse', 'propose');
+    const aggregate = (stack.proposal ?? 'order.feature').replace(/\.feature$/, '');
+    expect(run('reverse', 'accept', aggregate).code).toBe(2);
+    expect(git(dir, 'status', '--porcelain', '--untracked-files=all')).toBe('');
+    const before = parseJson(run('reverse', 'coverage', '--json').stdout).coverage.percent;
+    const accepted = run('reverse', 'accept', '--all', '--yes', '--merge');
+    expect([0, 7], accepted.out).toContain(accepted.code);
+    const after = run('reverse', 'coverage', '--json', '--min', '100');
+    expect(after.code, after.out).toBe(0);
+    expect(parseJson(after.stdout).coverage.percent).toBeGreaterThanOrEqual(before);
+  });
+
   it('exits 2 on usage errors and 4 when a proposal is below the threshold', () => {
     expect(run('reverse').code).toBe(2);
     expect(run('reverse', 'propose', '--min-confidence', 'maybe').code).toBe(2);

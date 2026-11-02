@@ -12,7 +12,8 @@ import { execFileSync } from 'child_process';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { runPropose, runScan, REVERSE_DIR } from '../../src/core/reverse';
+import { runAccept, runCoverage, runPropose, runScan, REVERSE_DIR } from '../../src/core/reverse';
+import { similarCommands } from '../../src/core/reverse/dedup';
 import { discoverSources, globToRegExp, isSecretPath } from '../../src/core/reverse/discovery';
 import { normalisePath, joinPaths } from '../../src/core/reverse/evidence';
 import { operationName, participle, thirdPerson, requiredState, aggregateFromEndpoint, singular } from '../../src/core/reverse/candidates';
@@ -202,6 +203,83 @@ describe('ghk reverse on the NestJS service', () => {
     const files = discoverSources(dir).files.map(f => f.rel);
     expect(files).toContain('src/orders/orders.controller.ts');
     expect(files.some(f => f.startsWith('dist/') || f.startsWith('tmp/') || f === '.env')).toBe(false);
+  });
+});
+
+describe('ghk reverse accept and coverage (R-14, R-15)', () => {
+  let dir: string | undefined;
+  afterEach(() => { if (dir) fs.rmSync(dir, { recursive: true, force: true }); dir = undefined; });
+
+  it('names that drifted still count as specified', () => {
+    expect(similarCommands('CreateAcademicPeriod', 'CreatePeriod')).toBe(true);
+    expect(similarCommands('PlaceOrder', 'CreateOrder')).toBe(true);
+    expect(similarCommands('CancelOrder', 'ApproveOrder')).toBe(false);
+    expect(similarCommands('SubmitSubmission', 'SubmitFile')).toBe(false);
+  });
+
+  it('Express brownfield: compares the code with what the IR derives from orders.feature', async () => {
+    clearTsProjects();
+    dir = copyFixture('golden/brownfield-express');
+    const report = runCoverage(dir, await runScan(dir));
+    // Today the IR derives CancelOrder and CancelOrderThat ("cancels an order that does not exist") from the feature,
+    // and no PlaceOrder ("places" is an extended verb, used only when no core verb names a command): PLAN-3.3.0
+    // IR-05/IR-06. Reverse shows both sides of that drift.
+    expect(report.coverage).toMatchObject({ operations: 2, documented: 1, undocumented: 1, percent: 50 });
+    expect(report.operations.find(o => o.operation === 'PlaceOrder')?.status).toBe('undocumented');
+    expect(report.specOnly.map(s => s.command)).toEqual(['CancelOrderThat']);
+    // --merge accepts only what is missing (PlaceOrder) and reports the drift.
+    const scan = await runScan(dir);
+    const { candidates } = runPropose(dir, scan);
+    const merged = runAccept(dir, scan, candidates, { all: true, merge: true, write: false });
+    expect(merged.drift).toBe(true);
+    expect(merged.written).toEqual([{ file: 'features/discovered/order.feature', aggregate: 'Order', scenarios: 3 }]);
+  });
+
+  it('NestJS: accepts a reviewed proposal into features/discovered, without @needs-review, keeping the evidence', async () => {
+    clearTsProjects();
+    dir = copyFixture('reverse/nestjs-orders');
+    const scan = await runScan(dir);
+    const { candidates } = runPropose(dir, scan);
+    expect(runCoverage(dir, scan).coverage.percent).toBe(0);
+
+    const result = runAccept(dir, scan, candidates, { names: ['order'], write: true });
+    expect(result.written).toEqual([{ file: 'features/discovered/order.feature', aggregate: 'Order', scenarios: expect.any(Number) }]);
+    const text = read(dir, 'features/discovered/order.feature');
+    expect(text).toMatch(/^@reverse-engineered @characterization$/m);
+    expect(text).not.toContain('@needs-review');
+    expect(text).toMatch(/# evidence: ev-[0-9a-f]{10} src\/orders\/orders\.controller\.ts:\d+/);
+    // Accepted, the operations are now specified; a second accept does not overwrite.
+    expect(runCoverage(dir, scan).coverage.percent).toBe(100);
+    expect(runAccept(dir, scan, candidates, { names: ['order'], write: true }).skipped).toEqual([{ file: 'features/discovered/order.feature', reason: 'exists (use --force to overwrite)' }]);
+  });
+
+  it('--merge reports commands a feature declares and the code does not implement', async () => {
+    clearTsProjects();
+    dir = copyFixture('reverse/nestjs-orders');
+    fs.mkdirSync(path.join(dir, 'features'), { recursive: true });
+    fs.writeFileSync(path.join(dir, 'features', 'refunds.feature'), '@aggregate:Order @command:RefundOrder @command:PlaceOrder\nFeature: Order refunds\n  As a customer\n  Scenario: Refund an order\n    When the customer refunds the order\n    Then the order is refunded\n');
+    const scan = await runScan(dir);
+    const { candidates } = runPropose(dir, scan);
+    const result = runAccept(dir, scan, candidates, { all: true, merge: true, write: false });
+    expect(result.drift).toBe(true);
+    expect(result.spec?.specOnly.map(s => s.command)).toEqual(['RefundOrder']);
+    // PlaceOrder is specified: the accepted feature only carries what was missing.
+    expect(result.spec?.operations.find(o => o.operation === 'PlaceOrder')?.status).toBe('documented');
+  });
+
+  it('the command refuses to write without --yes when nobody can confirm', async () => {
+    clearTsProjects();
+    dir = copyFixture('reverse/nestjs-orders');
+    runPropose(dir, await runScan(dir));
+    const cwd = process.cwd();
+    process.chdir(dir);
+    try {
+      await expect(handleReverseCommand('accept', {}, ['order'])).rejects.toThrow(/--yes/);
+      expect(fs.existsSync(path.join(dir, 'features'))).toBe(false);
+      await expect(handleReverseCommand('accept', {}, [])).rejects.toBeInstanceOf(UsageError);
+    } finally {
+      process.chdir(cwd);
+    }
   });
 });
 

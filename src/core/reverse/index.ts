@@ -18,7 +18,8 @@ import { discoverSources, type DiscoveryOptions } from './discovery';
 import { dedupeEvidence, type EvidenceConfidence, type SourceEvidence } from './evidence';
 import { loadBuiltinAnalyzers, type AnalysisContext, type AnalyzerMaturity } from './registry';
 import { buildCandidates, type BehaviorCandidate, type UnresolvedQuestion } from './candidates';
-import { renderProposals, type RenderedProposal } from './renderer';
+import { kebab, renderProposals, type RenderedProposal } from './renderer';
+import { compareWithSpec, type DedupReport } from './dedup';
 
 export const REVERSE_DIR = path.join('.ghe', 'reverse');
 
@@ -61,6 +62,8 @@ export interface ProposeResult {
   unresolved: UnresolvedQuestion[];
   /** Lint threshold the proposals were measured against. */
   threshold: number;
+  /** How the proposed operations compare with the features that already exist. */
+  spec: DedupReport;
 }
 
 const rel = (root: string, p: string) => path.relative(root, p).split(path.sep).join('/');
@@ -127,6 +130,83 @@ export function readScan(root: string): ScanResult | undefined {
   }
 }
 
+// ---------------------------------------------------------------------------
+// accept and coverage (PLAN-3.3.0 R-14, R-15)
+// ---------------------------------------------------------------------------
+
+export interface AcceptOptions {
+  /** Aggregates or proposal file names to accept (case-insensitive); empty with `all`. */
+  names?: string[];
+  all?: boolean;
+  /** Destination directory, relative to the root (default features/discovered). */
+  to?: string;
+  /** Leave out the operations a feature already documents (same or renamed command). */
+  merge?: boolean;
+  force?: boolean;
+  write?: boolean;
+  minConfidence?: EvidenceConfidence;
+}
+
+export interface AcceptResult {
+  written: { file: string; aggregate: string; scenarios: number }[];
+  skipped: { file: string; reason: string }[];
+  /** With --merge: the comparison with the existing features. */
+  spec?: DedupReport;
+  /** With --merge: a feature declares commands the code does not implement. */
+  drift: boolean;
+}
+
+/** The accepted text: reviewed, so no longer @needs-review; the evidence comments stay (traceability). */
+export function acceptedText(text: string): string {
+  return text
+    .replace(/^# Proposed by `ghk reverse` \(beta\) from the source code\.\n/m, '# Accepted from `ghk reverse` (beta). The `# evidence:` comments point to the code as it was when the proposal was made.\n')
+    .replace(/^# Review every scenario, then run `ghk reverse accept` to move it into the specifications\.\n/m, '')
+    .replace(/^@reverse-engineered @characterization @needs-review$/m, '@reverse-engineered @characterization');
+}
+
+export function readCandidates(root: string): BehaviorCandidate[] | undefined {
+  try {
+    return JSON.parse(fs.readFileSync(path.join(root, REVERSE_DIR, 'candidates.json'), 'utf8')) as BehaviorCandidate[];
+  } catch {
+    return undefined;
+  }
+}
+
+export function runAccept(root: string, scan: ScanResult, candidates: BehaviorCandidate[], options: AcceptOptions): AcceptResult {
+  const wanted = (options.names ?? []).map(n => n.toLowerCase().replace(/\.feature$/, ''));
+  let selected = options.all ? candidates : candidates.filter(c => wanted.includes(c.aggregate.toLowerCase()) || wanted.includes(kebab(c.aggregate)));
+  const spec = options.merge ? compareWithSpec(root, selected) : undefined;
+  if (spec) {
+    const known = new Set(spec.operations.filter(o => o.status !== 'undocumented').map(o => `${o.aggregate}|${o.operation}`));
+    selected = selected.filter(c => !known.has(`${c.aggregate}|${c.operation.name}`));
+  }
+  const rendered = renderProposals(selected, scan.evidence, { minConfidence: options.minConfidence });
+  const destination = path.resolve(root, options.to ?? path.join('features', 'discovered'));
+  const result: AcceptResult = { written: [], skipped: [], spec, drift: Boolean(spec?.specOnly.length) };
+  for (const p of rendered) {
+    const target = path.join(destination, p.file);
+    const rel = path.relative(root, target).split(path.sep).join('/');
+    if (fs.existsSync(target) && !options.force) { result.skipped.push({ file: rel, reason: 'exists (use --force to overwrite)' }); continue; }
+    if (options.write !== false) {
+      fs.mkdirSync(path.dirname(target), { recursive: true });
+      fs.writeFileSync(target, acceptedText(p.text));
+    }
+    result.written.push({ file: rel, aggregate: p.aggregate, scenarios: p.scenarios });
+  }
+  return result;
+}
+
+export interface CoverageResult extends DedupReport {
+  ghkVersion: string;
+  status: 'beta';
+}
+
+/** Behaviour coverage: the share of operations in the code that the existing features specify. */
+export function runCoverage(root: string, scan: ScanResult): CoverageResult {
+  const { candidates } = buildCandidates(scan.evidence);
+  return { ghkVersion: CLI_VERSION, status: 'beta', ...compareWithSpec(root, candidates) };
+}
+
 export function runPropose(root: string, scan: ScanResult, options: ProposeOptions = {}): ProposeResult {
   const { candidates: all, unresolved } = buildCandidates(scan.evidence);
   const scope = (options.scope ?? []).map(s => s.toLowerCase());
@@ -152,6 +232,7 @@ export function runPropose(root: string, scan: ScanResult, options: ProposeOptio
     proposals: rendered.map(({ text: _text, ...p }) => ({ ...p, path: `${REVERSE_DIR.split(path.sep).join('/')}/proposals/${p.file}` })),
     candidates,
     unresolved,
-    threshold
+    threshold,
+    spec: compareWithSpec(root, candidates)
   };
 }
