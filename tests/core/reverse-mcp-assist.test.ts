@@ -11,7 +11,7 @@ import { ALL_TOOLS, invokeTool } from '../../src/mcp/mcp-server';
 import { classifyOperation } from '../../src/mcp/mcp-operation-safety';
 import { configureTelemetry } from '../../src/core/telemetry';
 import { clearTsProjects } from '../../src/core/reverse/analyzers/typescript/project';
-import { applyNarrative, proposeNarrative, scenarioNames, validateNarrative } from '../../src/core/reverse/assist';
+import { applyNarrative, proposeNarrative, scenarioNames, storyLines, validateNarrative } from '../../src/core/reverse/assist';
 import { buildConfigJsonSchema } from '../../src/core/config/json-schema';
 import Ajv from 'ajv';
 
@@ -110,6 +110,12 @@ describe('reverse propose --assist (R-17)', () => {
     expect(accepted.story).toBeUndefined();
     expect(accepted.renamed).toEqual([{ from: 'Placing an order is rejected when items are missing', to: 'Placing an order without items is rejected' }]);
     expect(rejected.map(r => r.reason)).toEqual(expect.arrayContaining(['quotes, line breaks or symbols are not allowed', 'adds a number the code does not show', 'no scenario has this name', 'keeps no content word of "Place an order"']));
+  });
+
+  it('the user story always reads as English, whatever form the model used', () => {
+    expect(storyLines({ role: 'signed-in user', goal: 'create, view, and approve orders', benefit: 'process customer purchases securely' }))
+      .toEqual(['As a signed-in user', 'I want to create, view, and approve orders', 'So that I can process customer purchases securely']);
+    expect(storyLines({ role: 'accountant', goal: 'to pay invoices', benefit: 'suppliers are paid on time' })[0]).toBe('As an accountant');
   });
 
   it('an answer that is not JSON changes nothing', async () => {
