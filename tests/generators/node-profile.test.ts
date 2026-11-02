@@ -86,9 +86,14 @@ describe('NestJS / Prisma version profile', () => {
     expect(pg.get([...pg.keys()].find(k => k.startsWith('src/persistence/'))!)).toContain("from '../generated/prisma/client'");
     expect(pkg(pg).dependencies).toMatchObject({ '@prisma/client': '^7.10.0', '@prisma/adapter-pg': '^7.10.0' });
 
-    const mysql = project(cfg({ ormVersion: '7', database: 'mysql' }));
+    const mysql = project(cfg({ ormVersion: '7', database: 'mysql', kernelDatabase: 'mysql' }));
     expect(pkg(mysql).dependencies['@prisma/adapter-mariadb']).toBe('^7.10.0');
     expect(mysql.get('src/prisma/prisma.service.ts')).toContain('new PrismaMariaDb(');
+
+    // M-04 (3.3.0): "mysql" declared without kernelDatabase runs on PostgreSQL, and Prisma shares its DATABASE_URL.
+    const declaredOnly = project(cfg({ ormVersion: '7', database: 'mysql' }));
+    expect(pkg(declaredOnly).dependencies['@prisma/adapter-pg']).toBe('^7.10.0');
+    expect(declaredOnly.get('src/prisma/prisma.service.ts')).toContain('new PrismaPg(');
 
     const esm = project(cfg({ frameworkVersion: '12', ormVersion: '7' }));
     expect(esm.get('prisma/schema.prisma')).toContain('moduleFormat = "esm"');

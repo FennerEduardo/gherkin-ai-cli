@@ -15,6 +15,7 @@
 import path from 'path';
 import type { GherkinAIConfig } from '../core/config';
 import { ConfigError } from '../core/errors';
+import { kernelDatabase } from './kernel/runtime/typescript-mysql';
 
 export const NEST_MAJORS = ['11', '12'] as const;
 export const PRISMA_MAJORS = ['6', '7'] as const;
@@ -81,7 +82,10 @@ export function resolveNodeProfile(config: Pick<GherkinAIConfig, 'stack'>): Node
   }
 
   const esm = nestProject && nest === '12';
-  return { nest: nest as NestMajor, prisma: prisma as PrismaMajor, esm, ext: esm ? '.js' : '', database: prismaDatabase(config.stack.database) };
+  // M-04 (3.3.0): a declared MySQL follows the kernel's database, which shares DATABASE_URL with Prisma.
+  const declared = lower(config.stack.database);
+  const datasource = declared === 'mysql' || declared === 'mariadb' ? kernelDatabase(config) : config.stack.database;
+  return { nest: nest as NestMajor, prisma: prisma as PrismaMajor, esm, ext: esm ? '.js' : '', database: prismaDatabase(datasource) };
 }
 
 /** Dependency ranges per major (newest minor verified by the golden builds). */

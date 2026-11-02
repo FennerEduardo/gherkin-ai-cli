@@ -31,6 +31,27 @@ export const MYSQL_DRIVER = { mysql2: '^3.15.0' };
  */
 export const usesMysql = (config?: Pick<GherkinAIConfig, 'stack'>) => (config?.stack?.kernelDatabase || '').toLowerCase() === 'mysql';
 
+/**
+ * M-04 (3.3.0): the database the service really runs on: the runtime kernel's (stack.kernelDatabase, PostgreSQL
+ * by default). The developer compose file, .env.example and the Prisma datasource share the kernel's DATABASE_URL,
+ * so they follow it. Until 3.2.2 they followed stack.database: a project declaring "mysql" without
+ * kernelDatabase got a MySQL container and a mysql:// URL for a kernel that speaks PostgreSQL.
+ */
+export const kernelDatabase = (config?: Pick<GherkinAIConfig, 'stack'>): 'postgresql' | 'mysql' =>
+  usesMysql(config) && MYSQL_KERNEL_LANGUAGES.has((config?.stack?.language || '').toLowerCase()) ? 'mysql' : 'postgresql';
+
+/** Runtimes whose kernel has a MySQL implementation (PLAN-3.3.0 X-01b extends it to the JVM, Python, .NET and Go). */
+export const MYSQL_KERNEL_LANGUAGES = new Set(['typescript', 'javascript']);
+
+/** The declared database differs from the one the kernel runs on (a hint for `generate`). */
+export function databaseMismatch(config?: Pick<GherkinAIConfig, 'stack'>): string | undefined {
+  const declared = (config?.stack?.database || 'postgresql').toLowerCase();
+  const runs = kernelDatabase(config);
+  if (declared.startsWith('postgres') || declared === runs || declared === 'none' || declared === 'sqlite') return undefined;
+  return `stack.database is "${declared}" but the runtime kernel runs on ${runs === 'postgresql' ? 'PostgreSQL' : 'MySQL'}: the compose file, .env.example and the Prisma datasource use ${runs === 'postgresql' ? 'PostgreSQL' : 'MySQL'} too.` +
+    (declared === 'mysql' ? ' Set stack.kernelDatabase "mysql" to run the service on MySQL, or stack.database "postgresql" to say what it runs on.' : ` Set stack.database "postgresql" to say what it runs on.`);
+}
+
 const DB_TS = `// MySQL 8 behind the part of the node-postgres API the runtime kernel uses (stack.database "mysql").
 // Statements keep PostgreSQL-style $1..$n placeholders; they are sent as ? with the values reordered.
 import mysql from 'mysql2/promise';

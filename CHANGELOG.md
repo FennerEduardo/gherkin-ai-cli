@@ -62,6 +62,11 @@ All notable changes to this project will be documented in this file. See [commit
   - Now, when every step definition of the feature is still the generated pending stub, *Code Coverage* scores 0 and says why. The stubs are recognised in every generated stack.
   - With a coverage report the report remains the measure, and the pending stubs are listed as a warning.
   - On the reference projects, which are generated scaffolds, the 10 without a coverage report now converge lower. The LMS, which implements its steps, is unchanged.
+- **The developer compose file, `.env.example` and the Prisma datasource follow the database the runtime kernel runs on** (M-04).
+  - Until 3.2.2 they followed `stack.database`. A project that declared `"mysql"` without `stack.kernelDatabase` got a MySQL container and a `mysql://` URL for a kernel that speaks PostgreSQL, so `docker compose up` could not start it. 14 of the 16 reference projects were in that state.
+  - Now they use PostgreSQL unless `kernelDatabase` is `"mysql"`, which is supported by the NestJS and Express kernels. The same applies to a declared `"mongodb"` until the MongoDB kernel exists.
+  - `ghk generate` warns when the declared database is not the one the service runs on, and says which key to set.
+- **Generated Python projects no longer cap pytest below 9.2.** pytest-bdd 9.0.1 (2026-10-31) works with pytest 9.2: `pytest>=8.3` and `pytest-bdd>=9.0.1`. Verified by the `fastapi` and `django` goldens.
 
 ## [3.2.2] - 2026-10-30
 

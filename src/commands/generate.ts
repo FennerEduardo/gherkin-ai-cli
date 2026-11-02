@@ -82,6 +82,8 @@ export async function handleGenerateCommand(options: GenerateCommandOptions): Pr
   const config = loadConfig(options.config);
   const tierWarning = supportWarning(getStackSupport(config));
   if (tierWarning) logger.warn(tierWarning);
+  const dbMismatch = (await import('../generators/kernel/runtime/typescript-mysql')).databaseMismatch(config);
+  if (dbMismatch) logger.warn(dbMismatch);
   let gherkinText = buildDynamicFeatureTemplate('sample-feature.feature');
   const nonInteractive = isNonInteractive(options);
 

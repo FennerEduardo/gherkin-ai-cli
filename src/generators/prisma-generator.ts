@@ -8,10 +8,12 @@ import { execSync } from 'child_process';
 import { SpecificationIR } from '../core/semantic-ir';
 import { GherkinAIConfig } from '../core/config';
 import { renderPrismaHeader, resolveNodeProfile } from './node-profile';
+import { kernelDatabase } from './kernel/runtime/typescript-mysql';
 import { aggregateTagName, featurePascalName } from '../utils/naming';
 
 export function generatePrismaSchema(ir: SpecificationIR, config: GherkinAIConfig): string {
-  const dbProvider = config.stack.database === 'mysql' ? 'mysql' :
+  // M-04 (3.3.0): a declared MySQL follows the kernel's database (shared DATABASE_URL).
+  const dbProvider = config.stack.database === 'mysql' ? kernelDatabase(config) :
                      config.stack.database === 'mongodb' ? 'mongodb' :
                      config.stack.database === 'sqlite' ? 'sqlite' : 'postgresql';
 

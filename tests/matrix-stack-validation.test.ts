@@ -261,7 +261,8 @@ Feature: Customer Management
       database: 'mysql',
       expectedImage: 'composer:2',
       expectedTestCmd: 'vendor/bin/phpunit',
-      expectedDbImage: 'mysql:8.0'
+      // M-04 (3.3.0): compose follows the kernel's database; the PHP kernel runs on PostgreSQL.
+      expectedDbImage: 'postgres:16-alpine'
     },
     {
       lang: 'csharp',
@@ -293,7 +294,8 @@ Feature: Customer Management
       database: 'mongodb',
       expectedImage: 'golang:1.26',
       expectedTestCmd: 'go test ./...',
-      expectedDbImage: 'mongo:7.0'
+      // M-04 (3.3.0): the Go kernel runs on PostgreSQL until the MongoDB kernel (X-02).
+      expectedDbImage: 'postgres:16-alpine'
     },
     {
       lang: 'ruby',

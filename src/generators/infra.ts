@@ -6,6 +6,7 @@ import { GherkinAIConfig } from '../core/config';
 import { resolveAppRuntimeEnv, resolveToolchain } from './toolchains';
 import { brokerEnvExample, KAFKA_IMAGE, runtimeBroker } from './deploy/broker-env';
 import { frameworkVariables } from './deploy/context';
+import { kernelDatabase } from './kernel/runtime/typescript-mysql';
 
 const FRAMEWORK_EXAMPLES: Record<string, string> = {
   APP_KEY: '<base64:32-random-bytes, php artisan key:generate --show>',
@@ -28,7 +29,8 @@ export function getStackDockerDetails(config: GherkinAIConfig): StackDockerDetai
 }
 
 export function generateInfra(config: GherkinAIConfig): { dockerComposeYaml: string; serverlessYml: string; envExample: string } {
-  const db = config.stack.database || 'postgresql';
+  // The kernel's database, not the declared one (M-04): the app and its compose service must agree.
+  const db = kernelDatabase(config);
   const messaging = config.stack.messaging || 'rabbitmq';
   const dockerDetails = getStackDockerDetails(config);
 

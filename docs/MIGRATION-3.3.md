@@ -29,5 +29,7 @@ Running `ghk reverse` on real projects exposed two naming defects. They date fro
 |---|---|---|---|
 | Installed size | 1.9 MB packed, 6.2 MB unpacked | 2.7 MB packed, 15.5 MB unpacked, plus the `web-tree-sitter` dependency (5.7 MB). The tree-sitter grammars used by `ghk reverse` are in `vendor/tree-sitter/` | – |
 | Command names of undeclared features | see IR-05 / IR-06 above | see above | regenerate, or add `@command:` tags |
+| `stack.database: "mysql"` without `stack.kernelDatabase` | the kernel ran on PostgreSQL, but the compose file, `.env.example` and Prisma used MySQL | all use PostgreSQL, and `generate` warns | to run on MySQL, set `stack.kernelDatabase: "mysql"` (NestJS and Express in 3.3.0); otherwise set `stack.database: "postgresql"` to say what the service runs on |
+| Generated Python `pyproject.toml` | `pytest>=8.3,<9.2`, `pytest-bdd>=7.3` | `pytest>=8.3`, `pytest-bdd>=9.0.1` | regenerate, or edit the two lines |
 | `converge` on a generated feature whose step definitions are all still the pending stubs, with no coverage report | Code Coverage "n/a", left out of the score: the scaffold could converge | Code Coverage 0, with the reason; the overall score drops and may exit 7 | implement the steps (or run the tests with coverage). In CI for a fresh scaffold, expect exit 7 until the behaviour exists |
 | `ghk stacks` (text output) | generation stacks | also lists the `ghk reverse` analyzers and their maturity; the `--json` output is unchanged | – |
