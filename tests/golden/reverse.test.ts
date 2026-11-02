@@ -22,7 +22,10 @@ const FIXTURES = path.join(__dirname, '..', 'fixtures');
 
 const STACKS = [
   { fixture: 'golden/brownfield-express', analyzer: 'typescript/express', commands: ['@command:CancelOrder', '@command:PlaceOrder'] },
-  { fixture: 'reverse/nestjs-orders', analyzer: 'typescript/nestjs', commands: ['@command:ApproveOrder', '@command:PlaceOrder'] }
+  { fixture: 'reverse/nestjs-orders', analyzer: 'typescript/nestjs', commands: ['@command:ApproveOrder', '@command:PlaceOrder'] },
+  { fixture: 'golden/brownfield-spring', analyzer: 'jvm/spring-quarkus', commands: ['@command:CancelOrder', '@command:PlaceOrder'] },
+  { fixture: 'reverse/spring-kotlin-invoices', analyzer: 'jvm/spring-quarkus', commands: ['@command:IssueInvoice', '@command:PayInvoice'], proposal: 'invoice.feature' },
+  { fixture: 'reverse/quarkus-payments', analyzer: 'jvm/spring-quarkus', commands: ['@command:InitiatePayment', '@command:SettlePayment'], proposal: 'payment.feature' }
 ];
 
 const git = (cwd: string, ...args: string[]) => execFileSync('git', args, { cwd, stdio: ['ignore', 'pipe', 'pipe'] }).toString().trim();
@@ -61,7 +64,7 @@ describe.skipIf(!fs.existsSync(DIST)).each(STACKS)('golden: ghk reverse on $fixt
 
     const propose = run('reverse', 'propose');
     expect(propose.code, propose.out).toBe(0);
-    const proposal = path.join('.ghe', 'reverse', 'proposals', 'order.feature');
+    const proposal = path.join('.ghe', 'reverse', 'proposals', stack.proposal ?? 'order.feature');
     const text = fs.readFileSync(path.join(dir, proposal), 'utf8');
     for (const tag of stack.commands) expect(text).toContain(tag);
 
@@ -74,9 +77,9 @@ describe.skipIf(!fs.existsSync(DIST)).each(STACKS)('golden: ghk reverse on $fixt
   it('is deterministic across runs', () => {
     run('reverse', 'scan');
     run('reverse', 'propose');
-    const first = fs.readFileSync(path.join(dir, '.ghe', 'reverse', 'proposals', 'order.feature'), 'utf8') + fs.readFileSync(path.join(dir, '.ghe', 'reverse', 'scan.json'), 'utf8');
+    const first = fs.readFileSync(path.join(dir, '.ghe', 'reverse', 'proposals', stack.proposal ?? 'order.feature'), 'utf8') + fs.readFileSync(path.join(dir, '.ghe', 'reverse', 'scan.json'), 'utf8');
     run('reverse', 'propose', '--rescan');
-    const second = fs.readFileSync(path.join(dir, '.ghe', 'reverse', 'proposals', 'order.feature'), 'utf8') + fs.readFileSync(path.join(dir, '.ghe', 'reverse', 'scan.json'), 'utf8');
+    const second = fs.readFileSync(path.join(dir, '.ghe', 'reverse', 'proposals', stack.proposal ?? 'order.feature'), 'utf8') + fs.readFileSync(path.join(dir, '.ghe', 'reverse', 'scan.json'), 'utf8');
     expect(second).toBe(first);
   });
 

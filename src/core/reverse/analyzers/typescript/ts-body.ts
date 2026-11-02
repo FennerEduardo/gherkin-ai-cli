@@ -113,7 +113,10 @@ function throwIn(node: Node): { exception: string; message?: string; at: Node } 
   return undefined;
 }
 
-const REPO_TARGET = /(repo|repository|prisma|dao|store|model|db|database|entityManager|em)$/i;
+/** Event classes that carry the event name as data, or that are not domain events. */
+export const GENERIC_EVENT = /^(Domain|Integration|Outbox|Base|Abstract|Incoming|Outgoing|Application|Cloud|Message|Generic|Custom)?Event$|DomainEvent$|IntegrationEvent$/;
+
+const REPO_TARGET =/(repo|repository|prisma|dao|store|model|db|database|entityManager|em)$/i;
 const REPO_METHOD = /^(save|create|insert|update|upsert|delete|remove|destroy|persist|merge|find\w*|get\w*|count|exists\w*|createMany|updateMany|deleteMany)$/;
 const EVENT_EMIT = /^(emit|emitAsync|publish|publishAll|dispatch|send|produce|enqueue)$/;
 const EVENT_TARGET = /(event|bus|emitter|publisher|producer|queue|broker|outbox|kafka|rabbit|nats|eventBus)/i;
@@ -175,7 +178,10 @@ export function analyzeBody(fn: Node, ctx: BodyContext): SourceEvidence[] {
     }
     if (Node.isNewExpression(node)) {
       const cls = node.getExpression().getText().split('.').pop()!;
-      if (/[A-Za-z]Event$/.test(cls)) out.push(makeEvidence({ ...base, kind: 'domain-event', location: loc(ctx.root, node), confidence: 'strong', symbol: cls, description: `publishes ${eventName(cls)}`, metadata: { event: eventName(cls) } }));
+      const named = stringValue(node.getArguments()[0]);
+      // new DomainEvent('OrderPlaced', …): a generic class named by its first argument.
+      if (/Event$/.test(cls) && named && /^[A-Z][A-Za-z0-9]+$/.test(named)) out.push(makeEvidence({ ...base, kind: 'domain-event', location: loc(ctx.root, node), confidence: 'strong', symbol: named, description: `publishes ${named}`, metadata: { event: named } }));
+      else if (/[A-Za-z]Event$/.test(cls) && !GENERIC_EVENT.test(cls)) out.push(makeEvidence({ ...base, kind: 'domain-event', location: loc(ctx.root, node), confidence: 'strong', symbol: cls, description: `publishes ${eventName(cls)}`, metadata: { event: eventName(cls) } }));
     }
     if (Node.isCallExpression(node)) {
       if (handled.has(node)) continue;

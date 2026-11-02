@@ -1,0 +1,2 @@
+<project><modelVersion>4.0.0</modelVersion><groupId>com.acme</groupId><artifactId>payments</artifactId><version>1.0.0</version>
+<dependencies><dependency><groupId>io.quarkus</groupId><artifactId>quarkus-rest</artifactId></dependency><dependency><groupId>io.quarkus</groupId><artifactId>quarkus-hibernate-validator</artifactId></dependency></dependencies></project>

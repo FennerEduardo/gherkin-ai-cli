@@ -70,7 +70,8 @@ const words = (pascalName: string) => toSnake(pascalName).split('_');
 export function singular(word: string): string {
   if (/ies$/i.test(word)) return word.slice(0, -3) + 'y';
   if (/(ss|us|is)$/i.test(word)) return word;
-  if (/(ches|shes|xes|ses)$/i.test(word)) return word.slice(0, -2);
+  // addresses → address, statuses → status, boxes → box, matches → match; courses → course, cases → case.
+  if (/(sses|uses|xes|zes|ches|shes)$/i.test(word)) return word.slice(0, -2);
   if (/s$/i.test(word)) return word.slice(0, -1);
   return word;
 }
@@ -102,8 +103,28 @@ export function participle(verb: string): string {
 
 const article = (noun: string) => (/^[aeiou]/i.test(noun) ? 'an' : 'a');
 
+/** Plural words that are not collections. */
+const NOT_COLLECTIONS = /^(status|address|access|process|class|alias|news|series|canvas|bus|campus|terms|settings|details|options|analytics|metrics)$/i;
+
+/**
+ * The resource a nested path acts on: the last collection (a plural segment) of `/institutions/{id}/members`,
+ * `/courses/{id}/assignments`, `/orders/{id}/cancel`. Undefined when the path has no plural segment.
+ */
+export function resourceFromPath(p: string): string | undefined {
+  const literals = p.split('/').filter(s => s && !IGNORED_SEGMENTS.test(s));
+  for (let i = literals.length - 1; i >= 0; i--) {
+    const seg = literals[i].replace(/[^A-Za-z0-9-]+/g, '');
+    const last = seg.split('-').pop() ?? seg;
+    if (/[a-z]s$/i.test(last) && !/ss$/i.test(last) && !NOT_COLLECTIONS.test(last)) return pascal(seg.split('-').slice(0, -1).concat(singular(last)).join(' '));
+  }
+  return undefined;
+}
+
 export function aggregateFromEndpoint(meta: EndpointMetadata): string {
   if (meta.aggregate) return meta.aggregate;
+  // The path names the resource (`LearningController` serves /courses/{id}/assignments and /assignments/{id}/submissions).
+  const resource = resourceFromPath(meta.path);
+  if (resource) return resource;
   if (meta.owner && /Controller$|Resource$|Router$|Routes$|Handler$|Api$/.test(meta.owner)) {
     const base = meta.owner.replace(/(Controller|Resource|Router|Routes|Handler|Api)$/, '');
     if (base) return pascal(singular(pascal(base)));
@@ -132,9 +153,12 @@ export function operationName(meta: EndpointMetadata, aggregate: string, operati
   if (meta.method === 'GET') return onItem ? { name: `Get${aggregate}`, type, verb: 'get' } : { name: `List${plural(aggregate)}`, type, verb: 'list' };
   if (meta.method === 'DELETE') return { name: `Delete${aggregate}`, type, verb: 'delete' };
   if (meta.method === 'PUT' || meta.method === 'PATCH') return { name: `Update${aggregate}`, type, verb: 'update' };
-  // POST /orders/{id}/cancel → CancelOrder; POST /orders → CreateOrder
-  const action = !onItem && segs.length > 1 && /^\{/.test(segs[segs.length - 2] ?? '') ? last.toLowerCase().replace(/[^a-z]/g, '') : '';
-  if (action && VERBS.has(action)) return { name: pascal(action) + aggregate, type, verb: action };
+  // POST /orders/{id}/cancel → CancelOrder; POST /payments/{id}/settle → SettlePayment (the word after the id is
+  // the action by REST convention, known verb or not); POST /orders → CreateOrder.
+  // A plural or hyphenated segment is a sub-collection (POST /institutions/{id}/members → create), not an action.
+  const action = !onItem && segs.length > 1 && /^\{/.test(segs[segs.length - 2] ?? '') && /^[a-z]{3,}$/i.test(last) ? last.toLowerCase() : '';
+  const isCollection = /[a-z]s$/.test(action) && !/ss$/.test(action) && !NOT_COLLECTIONS.test(action);
+  if (action && !isCollection && !/^(item|line|detail|status|history|event|children|configuration|settings|profile)$/.test(action)) return { name: pascal(action) + aggregate, type, verb: action };
   return { name: `Create${aggregate}`, type, verb: 'create' };
 }
 
