@@ -143,7 +143,13 @@ Each feature names the service that owns its commands with `@upstream:<name>` (t
 | 502 | The service answered 5xx (its body is not passed on) or could not be reached |
 | 504 | No answer within `bff.timeoutMs` |
 
-`GET /health` answers without calling the services. The generated tests run each of these cases against a stub upstream; the goldens `express-bff`, `nestjs-bff`, `nestjs-12-bff` and `spring-bff` build and run them on every change. `docker-compose.yml` and `.env.example` hold only the BFF and the upstream URLs. Terraform, Helm and the CI/CD pipeline are not generated for a BFF yet (the cloud targets would provision a database it does not use): deploy its image next to the services.
+`GET /health` answers without calling the services. The generated tests run each of these cases against a stub upstream; the goldens `express-bff`, `nestjs-bff`, `nestjs-12-bff` and `spring-bff` build and run them on every change. `docker-compose.yml` and `.env.example` hold only the BFF and the upstream URLs.
+
+Since 3.3.0, `deploy` and `ci` work for a BFF as for any service, but without data:
+- The Terraform module (every cloud, `containers` or `vm`) and the Helm chart have no database, no broker and no outbox relay.
+- The URL of each upstream (`bff.upstreams`) is an input per environment (`payments_url` in `environments/<env>.tfvars`), stored in the cloud secret manager.
+- The CI pipeline builds, tests and scans the image, without starting PostgreSQL or RabbitMQ and without an integration suite. A BFF has no runtime kernel, and its tests run against a stub upstream.
+- The goldens `terraform-aws-bff` (ECS), `terraform-gcp-bff` (a VM), `terraform-azure-bff` (Container Apps) and `helm-bff` validate the output, and check that no database or broker resource is left.
 
 ## MySQL (`stack.kernelDatabase: "mysql"`, NestJS and Express)
 

@@ -26,10 +26,10 @@ import { cloudBroker, type DeployConfig, type ServiceSpec } from './service-spec
 import type { TerraformFile } from './terraform-aws';
 import { PROVIDERS, TERRAFORM_REQUIRED } from './terraform-versions';
 
-const block = (kind: string, a: string, b?: string) => new RegExp(`${kind} "${a}"${b ? ` "${b}"` : ''} \\{[\\s\\S]*?\\n\\}\\n\\n?`, 'g');
+export const block = (kind: string, a: string, b?: string) => new RegExp(`${kind} "${a}"${b ? ` "${b}"` : ''} \\{[\\s\\S]*?\\n\\}\\n\\n?`, 'g');
 
 /** Re-renders `key = value` lines (a tfvars file) without some keys and with others added, aligned as terraform fmt does. */
-function retfvars(content: string, drop: RegExp, add: [string, string][]): string {
+export function retfvars(content: string, drop: RegExp, add: [string, string][]): string {
   const comments = content.split('\n').filter(l => l.startsWith('#'));
   const entries = content.split('\n').map(l => l.match(/^([a-z_]+)\s+= (.*)$/)).filter((m): m is RegExpMatchArray => Boolean(m))
     .filter(m => !drop.test(m[1])).map(m => [m[1], m[2]] as [string, string]);
@@ -488,7 +488,7 @@ export function sharedBaseFiles(config: GherkinAIConfig, spec: ServiceSpec, depl
 // ---------------------------------------------------------------------------
 
 /** Drops `variable "<name>"` blocks. */
-const withoutVariables = (content: string, names: RegExp) =>
+export const withoutVariables = (content: string, names: RegExp) =>
   content.replace(/variable "([a-z_]+)" \{[\s\S]*?\n\}\n/g, (b, name: string) => (names.test(name) ? '' : b)).replace(/\n{3,}/g, '\n\n');
 
 /** The service module (Cloud Run or Compute Engine), reading its DATABASE_URL from the base stack. */

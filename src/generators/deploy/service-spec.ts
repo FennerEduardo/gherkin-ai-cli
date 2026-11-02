@@ -69,6 +69,8 @@ export interface ServiceSpec {
   secrets: ServiceSecret[];
   /** Command of a separate outbox relay process (stacks whose relay is not in-process). */
   relayCommand?: string[];
+  /** No database and no broker (stack.role "bff"): deploy/stateless.ts trims the cloud modules. */
+  stateless?: boolean;
 }
 
 export function deployConfig(config: GherkinAIConfig): DeployConfig | undefined {
@@ -96,6 +98,29 @@ export function cloudBroker(config: Pick<GherkinAIConfig, 'stack'>, cloud: Deplo
   return 'rabbitmq';
 }
 
+/**
+ * A backend-for-frontend (X-06b): no database, broker or relay. The broker is reported as "kafka" because that is
+ * the path on which no cloud module creates broker resources; no Kafka input or variable is emitted. The URL of
+ * each upstream service (bff.upstreams) is an input per environment.
+ */
+function bffServiceSpec(config: GherkinAIConfig): ServiceSpec {
+  const name = toKebab(config.projectName || 'bff');
+  const entries = Object.entries(config.bff?.upstreams ?? {});
+  const upstreams = (entries.length ? entries : [['domain-service', {}]] as [string, { urlEnv?: string }][])
+    .map(([upstream, u]) => ({ upstream, envVar: (u as { urlEnv?: string }).urlEnv ?? `${upstream.toUpperCase().replace(/-/g, '_')}_URL` }));
+  return {
+    name,
+    stackLabel: `${getStackSupport(config).label} (backend-for-frontend)`,
+    port: resolveAppRuntimeEnv(config).port,
+    health: resolveHealth(config),
+    broker: 'kafka',
+    topology: { exchange: `${name}.events`, queue: `${name}.consumer`, dlx: `${name}.dlx`, dlq: `${name}.dlq` },
+    env: { OTEL_SERVICE_NAME: name },
+    secrets: upstreams.map(u => ({ name: u.envVar, source: 'input', variable: u.envVar.toLowerCase(), description: `Base URL of the ${u.upstream} service this backend-for-frontend calls (https://…).` }) as ServiceSecret),
+    stateless: true
+  };
+}
+
 const RELAY_COMMANDS: Record<string, string[]> = {
   'python/django': ['python', 'manage.py', 'outbox_relay'],
   'php/laravel': ['php', 'artisan', 'outbox:relay'],
@@ -103,6 +128,7 @@ const RELAY_COMMANDS: Record<string, string[]> = {
 };
 
 export function serviceSpec(config: GherkinAIConfig, cloud: DeployCloud): ServiceSpec {
+  if (config.stack.role === 'bff') return bffServiceSpec(config);
   const name = toKebab(config.projectName || 'service');
   const support = getStackSupport(config);
   const { port } = resolveAppRuntimeEnv(config);

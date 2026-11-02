@@ -56,6 +56,12 @@ All notable changes to this project will be documented in this file. See [commit
   - Service modules read the base through `terraform_remote_state` (`gcs` / `azurerm` backends).
   - Verified by the goldens `terraform-gcp-base` (Cloud Run) and `terraform-azure-base` (VM, Service Bus): `init`, `validate` and `fmt` on both modules.
 
+- **Deployment and CI for a backend-for-frontend** (`stack.role: "bff"`; [RUNTIME-KERNEL.md](docs/RUNTIME-KERNEL.md#backend-for-frontend-stackrole-bff)).
+  - Terraform (AWS, Google Cloud and Azure, `containers` or `vm`), the Helm chart and the CI pipeline are now generated for a BFF, without database, broker or relay.
+  - The upstream URLs are inputs per environment.
+  - CI runs no integration suite and starts no database or broker.
+  - Verified by the goldens `terraform-{aws,gcp,azure}-bff` and `helm-bff`.
+
 ### Changed
 - **Command names of features without `@command:` tags** (found by `ghk reverse` on real projects; [MIGRATION-3.3.md](docs/MIGRATION-3.3.md)).
   - IR-05: a relative clause ends the command noun. "cancels an order that does not exist" is `CancelOrder`, no longer `CancelOrderThat`.

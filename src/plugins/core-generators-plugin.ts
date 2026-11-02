@@ -213,10 +213,15 @@ export class CoreInfraPlugin implements GherkinAIPlugin {
     if (isBff(config)) {
       // No database, broker or cloud data plane: the BFF image and the URLs of the services it calls.
       const bff = renderBffInfra(config);
-      return [
+      const artifacts: GeneratedArtifact[] = [
         { filePath: 'docker-compose.yml', content: bff.compose, type: 'config' },
         { filePath: '.env.example', content: bff.env, type: 'config' }
       ];
+      // X-06b (3.3.0): Terraform / Helm without database or broker, and the CI pipeline, as for any service.
+      for (const file of renderDeploymentTargets(config)) artifacts.push({ filePath: file.filename, content: file.content, type: 'config' });
+      const toRoot = path.relative(path.resolve(config.outputDir || '.'), process.cwd()).split(path.sep).join('/');
+      for (const file of renderCiPipelines(config)) artifacts.push({ filePath: toRoot ? `${toRoot}/${file.filename}` : file.filename, content: file.content, type: 'config' });
+      return artifacts;
     }
     const result = generateInfra(config);
     const artifacts: GeneratedArtifact[] = [];

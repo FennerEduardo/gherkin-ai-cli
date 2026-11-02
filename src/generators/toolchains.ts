@@ -210,6 +210,13 @@ export function resolveAppRuntimeEnv(config: Pick<GherkinAIConfig, 'stack'>): Ap
 
 /** Toolchain for a project config (NestJS / Express variants share the Node toolchain). */
 export function resolveToolchain(config: Pick<GherkinAIConfig, 'stack'>): Toolchain | undefined {
+  const toolchain = resolveServiceToolchain(config);
+  // A backend-for-frontend has no runtime kernel, so no integration suite (its tests use a simulated upstream;
+  // X-06b, 3.3.0): CI must not start PostgreSQL and RabbitMQ for it nor run a missing script.
+  return toolchain && config.stack.role === 'bff' ? { ...toolchain, integration: undefined } : toolchain;
+}
+
+function resolveServiceToolchain(config: Pick<GherkinAIConfig, 'stack'>): Toolchain | undefined {
   const id = getStackSupport(config).id;
   if (id.startsWith('typescript/nestjs')) return withCaches(id, TOOLCHAINS['typescript/nestjs']);
   if (id.startsWith('typescript/express')) return withCaches(id, TOOLCHAINS['typescript/express']);
