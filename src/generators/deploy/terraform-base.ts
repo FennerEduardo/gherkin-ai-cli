@@ -11,7 +11,8 @@
    DATABASE_URL and AMQP_URL from the base's remote state and joins the
    clients group, instead of creating its own database and broker.
 
-   AWS only in this version; the other clouds report a configuration error.
+   AWS since 3.2.2; Google Cloud (Cloud SQL) and Azure (Flexible Server and
+   a shared Service Bus namespace) since 3.3.0 (X-09b).
    ========================================================================== */
 
 import fs from 'fs';
@@ -37,7 +38,10 @@ function retfvars(content: string, drop: RegExp, add: [string, string][]): strin
 
 export interface BaseService {
   name: string;
+  /** AWS: the service uses RabbitMQ (Amazon MQ). */
   rabbitmq: boolean;
+  /** Azure: the service uses Service Bus. */
+  servicebus?: boolean;
 }
 
 /** The service module, reading its database and broker from the base stack. */
@@ -103,9 +107,9 @@ export function baseServices(config: GherkinAIConfig, cwd = process.cwd()): Base
   for (const project of [cwd, ...findGhkProjects(root)]) {
     let c: GherkinAIConfig;
     try { c = JSON.parse(fs.readFileSync(path.join(project, 'gherkin-ai.config.json'), 'utf8')); } catch { continue; }
-    if (!c.deploy?.base?.dir || path.resolve(project, c.deploy.base.dir) !== baseDir || c.deploy.cloud !== 'aws') continue;
+    if (!c.deploy?.base?.dir || path.resolve(project, c.deploy.base.dir) !== baseDir || c.deploy.cloud !== config.deploy?.cloud) continue;
     const name = toKebab(c.projectName || path.basename(project));
-    services.set(name, { name, rabbitmq: cloudBroker(c, 'aws') === 'rabbitmq' });
+    services.set(name, { name, rabbitmq: cloudBroker(c, 'aws') === 'rabbitmq', servicebus: cloudBroker(c, 'azure') === 'servicebus' });
   }
   return [...services.values()].sort((a, b) => a.name.localeCompare(b.name));
 }
@@ -466,11 +470,628 @@ Each service has its own role and database on the shared instance (no access to 
 
 /** deploy.base: the service module reads the base stack, and the base module is (re)written for every sharing service. */
 export function sharedBaseFiles(config: GherkinAIConfig, spec: ServiceSpec, deploy: DeployConfig, serviceFiles: TerraformFile[]): TerraformFile[] {
-  if (deploy.cloud !== 'aws') {
-    throw new ConfigError(`deploy.base is generated for AWS only in this version (deploy.cloud is "${deploy.cloud}").`, { hint: 'Remove deploy.base to give the service its own database and broker.' });
+  if (!['aws', 'gcp', 'azure'].includes(deploy.cloud)) {
+    throw new ConfigError(`deploy.base is not generated for deploy.cloud "${deploy.cloud}".`, { hint: 'Use aws, gcp or azure, or remove deploy.base to give the service its own database and broker.' });
   }
   const cwd = process.cwd();
   const outDir = path.resolve(cwd, config.outputDir || '.');
-  const baseDir = path.relative(outDir, path.resolve(cwd, config.deploy!.base!.dir, 'aws')).split(path.sep).join('/');
-  return [...applySharedBaseAws(serviceFiles, spec, deploy), ...renderBaseAws(baseServices(config, cwd), deploy, baseDir)];
+  const baseDir = path.relative(outDir, path.resolve(cwd, config.deploy!.base!.dir, deploy.cloud)).split(path.sep).join('/');
+  const services = baseServices(config, cwd);
+  if (deploy.cloud === 'gcp') return [...applySharedBaseGcp(serviceFiles, spec, deploy), ...renderBaseGcp(services, deploy, baseDir)];
+  if (deploy.cloud === 'azure') return [...applySharedBaseAzure(serviceFiles, spec, deploy), ...renderBaseAzure(services, deploy, baseDir)];
+  return [...applySharedBaseAws(serviceFiles, spec, deploy), ...renderBaseAws(services, deploy, baseDir)];
+}
+
+// ---------------------------------------------------------------------------
+// Google Cloud (X-09b, 3.3.0): one Cloud SQL instance with a user and a database per service. Pub/Sub has no
+// instance to share (each service keeps its topics and subscriptions in its own module).
+// ---------------------------------------------------------------------------
+
+/** Drops `variable "<name>"` blocks. */
+const withoutVariables = (content: string, names: RegExp) =>
+  content.replace(/variable "([a-z_]+)" \{[\s\S]*?\n\}\n/g, (b, name: string) => (names.test(name) ? '' : b)).replace(/\n{3,}/g, '\n\n');
+
+/** The service module (Cloud Run or Compute Engine), reading its DATABASE_URL from the base stack. */
+export function applySharedBaseGcp(files: TerraformFile[], spec: ServiceSpec, deploy: DeployConfig): TerraformFile[] {
+  const dir = 'deploy/terraform/gcp';
+  const remote = 'data.terraform_remote_state.base.outputs';
+  const dbVars = /^(db_tier|db_version|db_require_tls|create_private_service_access)$/;
+  return files.filter(f => f.filename !== `${dir}/database.tf`).map(f => {
+    if (!f.filename.startsWith(`${dir}/`)) return f;
+    const rel = f.filename.slice(dir.length + 1);
+    let content = f.content
+      .replace(/"postgres:\/\/\$\{google_sql_user\.app\.name\}[^"]*"/g, `${remote}.database_urls[${hstr(spec.name)}]`)
+      .replace(/google_sql_database_instance\.this\.connection_name/g, `${remote}.database_connection_name`)
+      .replace(/,?\s*google_service_networking_connection\.private_services/g, '');
+    if (rel === 'variables.tf') {
+      content = withoutVariables(content, dbVars) + `
+variable "base_state_bucket" {
+  description = "GCS bucket of the shared base stack's Terraform state (deploy.base)."
+  type        = string
+}
+
+variable "base_state_prefix" {
+  description = "Prefix of the base stack's state for this environment (for example base/dev)."
+  type        = string
+}
+`;
+    } else if (/^environments\/.+\.tfvars$/.test(rel)) {
+      const env = path.basename(rel, '.tfvars');
+      content = retfvars(content, /^(db_|create_private_service_access)/, [['base_state_bucket', hstr('<base-state-bucket>')], ['base_state_prefix', hstr(`base/${env}`)]]);
+    }
+    return { ...f, content };
+  }).concat({
+    filename: `${dir}/base.tf`,
+    content: `# The shared base stack (deploy.base): the database of every service of the repository.
+data "terraform_remote_state" "base" {
+  backend = "gcs"
+
+  config = {
+    bucket = var.base_state_bucket
+    prefix = var.base_state_prefix
+  }
+}
+`
+  });
+}
+
+/** One idempotent statement list per service: its database is only reachable with its own login. */
+const isolationSql = (dialect: 'gcp' | 'azure') => `join("\\n", flatten([for service, id in local.services : [${dialect === 'azure' ? `
+    format("DO $$BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '%s') THEN CREATE ROLE %s LOGIN PASSWORD '%s'; ELSE ALTER ROLE %s PASSWORD '%s'; END IF; END$$;", id, id, random_password.service[service].result, id, random_password.service[service].result),` : ''}
+    format("REVOKE ALL ON DATABASE %s FROM PUBLIC;", id),
+    format("GRANT ALL ON DATABASE %s TO %s;", id, id)
+  ]]))`;
+
+/** The base module (Google Cloud): Cloud SQL for PostgreSQL on a private IP, a user and a database per service. */
+export function renderBaseGcp(services: BaseService[], deploy: DeployConfig, dir: string): TerraformFile[] {
+  const ids = Object.fromEntries(services.map(s => [s.name, dbIdentifier(s.name)]));
+  const versions = `terraform {
+  required_version = ${hstr(TERRAFORM_REQUIRED)}
+
+  required_providers {
+    google = {
+      source  = "hashicorp/google"
+      version = ${hstr(PROVIDERS.google)}
+    }
+    random = {
+      source  = "hashicorp/random"
+      version = ${hstr(PROVIDERS.random)}
+    }
+  }
+
+  # One state per environment: terraform init -backend-config=environments/<env>.gcs.tfbackend
+  backend "gcs" {}
+}
+
+provider "google" {
+  project = var.project_id
+  region  = var.region
+}
+`;
+  const variables = `variable "name" {
+  description = "Prefix of the base resources."
+  type        = string
+  default     = "platform"
+}
+
+variable "environment" {
+  description = "Environment name (${deploy.environments.join(', ')})."
+  type        = string
+}
+
+variable "project_id" {
+  description = "Google Cloud project."
+  type        = string
+}
+
+variable "region" {
+  description = "Region of the database."
+  type        = string
+  default     = ${hstr(deploy.region)}
+}
+
+variable "network" {
+  description = "VPC network id (projects/<project>/global/networks/<name>) the services reach the database on."
+  type        = string
+}
+
+variable "create_private_service_access" {
+  description = "Create the private services access range and peering of the network (needed once per network for Cloud SQL private IP)."
+  type        = bool
+  default     = true
+}
+
+variable "db_tier" {
+  description = "Cloud SQL machine tier shared by every service."
+  type        = string
+  default     = "db-custom-1-3840"
+}
+
+variable "db_version" {
+  description = "PostgreSQL major version."
+  type        = string
+  default     = "17"
+}
+
+variable "db_require_tls" {
+  description = "Reject unencrypted database connections (ENCRYPTED_ONLY)."
+  type        = bool
+  default     = true
+}
+
+variable "labels" {
+  description = "Labels added to every resource."
+  type        = map(string)
+  default     = {}
+}
+`;
+  const main = `locals {
+  name   = "\${var.name}-\${var.environment}"
+  prod   = var.environment == "prod"
+  labels = merge({ stack = "base", environment = var.environment, managed-by = "terraform" }, var.labels)
+
+  # Service (kebab-case name) -> database and user name.
+  services = ${Object.keys(ids).length ? `{\n${hattrs(Object.entries(ids).map(([k, v]) => [hstr(k), hstr(v)]), 4)}\n  }` : '{}'}
+}
+
+resource "google_project_service" "this" {
+  for_each = toset(["sqladmin.googleapis.com", "servicenetworking.googleapis.com", "compute.googleapis.com"])
+
+  service            = each.key
+  disable_on_destroy = false
+}
+`;
+  const database = `resource "google_compute_global_address" "private_services" {
+  count = var.create_private_service_access ? 1 : 0
+
+  name          = "\${local.name}-private-services"
+  purpose       = "VPC_PEERING"
+  address_type  = "INTERNAL"
+  prefix_length = 16
+  network       = var.network
+}
+
+resource "google_service_networking_connection" "private_services" {
+  count = var.create_private_service_access ? 1 : 0
+
+  network                 = var.network
+  service                 = "servicenetworking.googleapis.com"
+  reserved_peering_ranges = [google_compute_global_address.private_services[0].name]
+}
+
+resource "google_sql_database_instance" "this" {
+  name                = local.name
+  database_version    = "POSTGRES_\${var.db_version}"
+  region              = var.region
+  deletion_protection = local.prod
+  depends_on          = [google_project_service.this, google_service_networking_connection.private_services]
+
+  settings {
+    tier              = var.db_tier
+    edition           = "ENTERPRISE"
+    availability_type = local.prod ? "REGIONAL" : "ZONAL"
+    disk_autoresize   = true
+    user_labels       = local.labels
+
+    ip_configuration {
+      ipv4_enabled    = false
+      private_network = var.network
+      ssl_mode        = var.db_require_tls ? "ENCRYPTED_ONLY" : "ALLOW_UNENCRYPTED_AND_ENCRYPTED"
+    }
+
+    backup_configuration {
+      enabled                        = true
+      point_in_time_recovery_enabled = local.prod
+    }
+  }
+}
+
+# One user and one database per service.
+resource "random_password" "service" {
+  for_each = local.services
+
+  length  = 32
+  special = false
+}
+
+resource "google_sql_database" "service" {
+  for_each = local.services
+
+  name     = each.value
+  instance = google_sql_database_instance.this.name
+}
+
+resource "google_sql_user" "service" {
+  for_each = local.services
+
+  name     = each.value
+  instance = google_sql_database_instance.this.name
+  password = random_password.service[each.key].result
+}
+`;
+  const outputs = `output "database_urls" {
+  description = "DATABASE_URL of each service: its own user and database on the shared instance."
+  sensitive   = true
+  value = { for service, id in local.services :
+    service => "postgres://\${id}:\${random_password.service[service].result}@\${google_sql_database_instance.this.private_ip_address}:5432/\${id}?sslmode=require"
+  }
+}
+
+output "database_connection_name" {
+  value = google_sql_database_instance.this.connection_name
+}
+
+# Cloud SQL users created by Terraform can connect to any database of the instance; run once after apply (and
+# after adding a service) to keep each database to its own user:
+#   terraform output -raw isolation_sql | psql "<postgres user connection>"
+output "isolation_sql" {
+  description = "Idempotent SQL that restricts each service's database to its own user."
+  value = ${isolationSql('gcp')}
+}
+`;
+  const tfvars = deploy.environments.flatMap(env => {
+    const prod = env === 'prod';
+    return [
+      { filename: `${dir}/environments/${env}.tfvars`, content: `${hattrs([
+        ['environment', hstr(env)],
+        ['project_id', hstr('<project>')],
+        ['region', hstr(deploy.region)],
+        ['network', hstr('projects/<project>/global/networks/<network>')],
+        ['db_tier', hstr(prod ? 'db-custom-2-7680' : 'db-custom-1-3840')]
+      ], 0)}\n` },
+      { filename: `${dir}/environments/${env}.gcs.tfbackend`, content: `${hattrs([['bucket', hstr('<base-state-bucket>')], ['prefix', hstr(`base/${env}`)]], 0)}\n` }
+    ];
+  });
+  const readme = `# Shared base stack (Google Cloud)
+
+Generated by gherkin-ai for the services whose \`gherkin-ai.config.json\` sets \`deploy.base.dir\` to this directory: ${services.map(s => `\`${s.name}\``).join(', ') || '(none yet)'}. It is rewritten by \`ghk generate\` in any of them.
+
+1. Apply this stack first, once per environment:
+
+   \`\`\`bash
+   terraform init -backend-config=environments/dev.gcs.tfbackend
+   terraform apply -var-file=environments/dev.tfvars
+   \`\`\`
+
+2. Keep each database to its own user (idempotent; rerun after adding a service), from a host on the VPC:
+
+   \`\`\`bash
+   terraform output -raw isolation_sql | psql "<connection as the postgres user>"
+   \`\`\`
+
+3. Apply each service module with \`base_state_bucket\` and \`base_state_prefix\` pointing at this stack's state.
+
+Each service has its own user and database on the shared Cloud SQL instance, and keeps its own Pub/Sub topics and subscriptions.
+`;
+  return [
+    { filename: `${dir}/versions.tf`, content: versions },
+    { filename: `${dir}/variables.tf`, content: variables },
+    { filename: `${dir}/main.tf`, content: main },
+    { filename: `${dir}/database.tf`, content: database },
+    { filename: `${dir}/outputs.tf`, content: outputs },
+    ...tfvars,
+    { filename: `${dir}/README.md`, content: readme }
+  ];
+}
+
+// ---------------------------------------------------------------------------
+// Azure (X-09b, 3.3.0): one PostgreSQL Flexible Server with a role and a database per service, and one Service Bus
+// namespace when a service uses it (each service keeps its own topics and subscriptions in it).
+// ---------------------------------------------------------------------------
+
+/** The service module (Container Apps or a Linux VM), reading its database and Service Bus namespace from the base. */
+export function applySharedBaseAzure(files: TerraformFile[], spec: ServiceSpec, deploy: DeployConfig): TerraformFile[] {
+  const dir = 'deploy/terraform/azure';
+  const remote = 'data.terraform_remote_state.base.outputs';
+  const baseVars = /^(postgres_subnet_id|postgres_private_dns_zone_id|postgres_sku|postgres_version|postgres_storage_mb|db_require_tls|servicebus_sku)$/;
+  return files.filter(f => f.filename !== `${dir}/database.tf`).map(f => {
+    if (!f.filename.startsWith(`${dir}/`)) return f;
+    const rel = f.filename.slice(dir.length + 1);
+    let content = f.content
+      .replace(/"postgres:\/\/\$\{azurerm_postgresql_flexible_server\.this\.administrator_login\}[^"]*"/g, `${remote}.database_urls[${hstr(spec.name)}]`)
+      .replace(/azurerm_postgresql_flexible_server\.this\.fqdn/g, `${remote}.database_fqdn`);
+    if (rel === 'servicebus.tf') content = content.replace(block('resource', 'azurerm_servicebus_namespace', 'this'), '');
+    content = content
+      .replace(/\$\{azurerm_servicebus_namespace\.this\.name\}/g, `\${${remote}.servicebus_namespace_name}`)
+      .replace(/azurerm_servicebus_namespace\.this\.id/g, `${remote}.servicebus_namespace_id`);
+    if (rel === 'variables.tf') {
+      content = withoutVariables(content, baseVars) + `
+variable "base_state_resource_group" {
+  description = "Resource group of the storage account holding the shared base stack's Terraform state (deploy.base)."
+  type        = string
+}
+
+variable "base_state_storage_account" {
+  description = "Storage account of the base stack's state."
+  type        = string
+}
+
+variable "base_state_container" {
+  description = "Blob container of the base stack's state."
+  type        = string
+  default     = "tfstate"
+}
+
+variable "base_state_key" {
+  description = "Key of the base stack's state for this environment (for example base/dev.tfstate)."
+  type        = string
+}
+`;
+    } else if (/^environments\/.+\.tfvars$/.test(rel)) {
+      const env = path.basename(rel, '.tfvars');
+      content = retfvars(content, /^(postgres_|db_require_tls|servicebus_sku)/, [
+        ['base_state_resource_group', hstr('<state-resource-group>')], ['base_state_storage_account', hstr('<state-storage-account>')], ['base_state_key', hstr(`base/${env}.tfstate`)]
+      ]);
+    }
+    return { ...f, content: content.replace(/\n{3,}/g, '\n\n') };
+  }).concat({
+    filename: `${dir}/base.tf`,
+    content: `# The shared base stack (deploy.base): the database and Service Bus namespace of every service of the repository.
+data "terraform_remote_state" "base" {
+  backend = "azurerm"
+
+  config = {
+    resource_group_name  = var.base_state_resource_group
+    storage_account_name = var.base_state_storage_account
+    container_name       = var.base_state_container
+    key                  = var.base_state_key
+  }
+}
+`
+  });
+}
+
+/** The base module (Azure): a Flexible Server in a delegated subnet, a role and a database per service, Service Bus. */
+export function renderBaseAzure(services: BaseService[], deploy: DeployConfig, dir: string): TerraformFile[] {
+  const sb = services.some(s => s.servicebus);
+  const ids = Object.fromEntries(services.map(s => [s.name, dbIdentifier(s.name)]));
+  const versions = `terraform {
+  required_version = ${hstr(TERRAFORM_REQUIRED)}
+
+  required_providers {
+    azurerm = {
+      source  = "hashicorp/azurerm"
+      version = ${hstr(PROVIDERS.azurerm)}
+    }
+    random = {
+      source  = "hashicorp/random"
+      version = ${hstr(PROVIDERS.random)}
+    }
+  }
+
+  # One state per environment: terraform init -backend-config=environments/<env>.azurerm.tfbackend
+  backend "azurerm" {}
+}
+
+provider "azurerm" {
+  features {}
+  subscription_id = var.subscription_id
+}
+`;
+  const variables = `variable "subscription_id" {
+  description = "Azure subscription."
+  type        = string
+}
+
+variable "name" {
+  description = "Prefix of the base resources."
+  type        = string
+  default     = "platform"
+}
+
+variable "environment" {
+  description = "Environment name (${deploy.environments.join(', ')})."
+  type        = string
+}
+
+variable "location" {
+  description = "Azure region."
+  type        = string
+  default     = ${hstr(deploy.region)}
+}
+
+variable "postgres_subnet_id" {
+  description = "Subnet delegated to Microsoft.DBforPostgreSQL/flexibleServers."
+  type        = string
+}
+
+variable "postgres_private_dns_zone_id" {
+  description = "Private DNS zone (<name>.postgres.database.azure.com) linked to the services' VNet."
+  type        = string
+}
+
+variable "postgres_sku" {
+  description = "Flexible Server SKU shared by every service."
+  type        = string
+  default     = "B_Standard_B1ms"
+}
+
+variable "postgres_version" {
+  description = "PostgreSQL major version."
+  type        = string
+  default     = "17"
+}
+
+variable "postgres_storage_mb" {
+  description = "Storage of the server (MB)."
+  type        = number
+  default     = 32768
+}
+
+variable "db_require_tls" {
+  description = "Reject unencrypted database connections (require_secure_transport)."
+  type        = bool
+  default     = true
+}
+${sb ? `
+variable "servicebus_sku" {
+  description = "Service Bus namespace SKU (Standard or Premium; topics need Standard or higher)."
+  type        = string
+  default     = "Standard"
+}
+` : ''}
+variable "tags" {
+  description = "Tags added to every resource."
+  type        = map(string)
+  default     = {}
+}
+`;
+  const main = `locals {
+  name    = "\${var.name}-\${var.environment}"
+  compact = replace(local.name, "-", "")
+  prod    = var.environment == "prod"
+  tags    = merge({ stack = "base", environment = var.environment, managed-by = "terraform" }, var.tags)
+
+  # Service (kebab-case name) -> database and role name.
+  services = ${Object.keys(ids).length ? `{\n${hattrs(Object.entries(ids).map(([k, v]) => [hstr(k), hstr(v)]), 4)}\n  }` : '{}'}
+}
+
+resource "azurerm_resource_group" "this" {
+  name     = "rg-\${local.name}"
+  location = var.location
+  tags     = local.tags
+}
+`;
+  const database = `resource "random_password" "admin" {
+  length  = 32
+  special = false
+}
+
+resource "random_password" "service" {
+  for_each = local.services
+
+  length  = 32
+  special = false
+}
+
+resource "azurerm_postgresql_flexible_server" "this" {
+  name                          = "psql-\${local.name}"
+  resource_group_name           = azurerm_resource_group.this.name
+  location                      = azurerm_resource_group.this.location
+  version                       = var.postgres_version
+  sku_name                      = var.postgres_sku
+  storage_mb                    = var.postgres_storage_mb
+  delegated_subnet_id           = var.postgres_subnet_id
+  private_dns_zone_id           = var.postgres_private_dns_zone_id
+  public_network_access_enabled = false
+  administrator_login           = "platform_admin"
+  administrator_password        = random_password.admin.result
+  backup_retention_days         = local.prod ? 35 : 7
+  tags                          = local.tags
+
+  dynamic "high_availability" {
+    for_each = local.prod ? [1] : []
+    content {
+      mode = "ZoneRedundant"
+    }
+  }
+
+  lifecycle {
+    ignore_changes = [zone, high_availability[0].standby_availability_zone]
+  }
+}
+
+resource "azurerm_postgresql_flexible_server_configuration" "require_tls" {
+  name      = "require_secure_transport"
+  server_id = azurerm_postgresql_flexible_server.this.id
+  value     = var.db_require_tls ? "on" : "off"
+}
+
+resource "azurerm_postgresql_flexible_server_database" "service" {
+  for_each = local.services
+
+  name      = each.value
+  server_id = azurerm_postgresql_flexible_server.this.id
+  charset   = "UTF8"
+  collation = "en_US.utf8"
+}
+`;
+  const broker = `resource "azurerm_servicebus_namespace" "this" {
+  name                = "sb-\${local.compact}"
+  location            = azurerm_resource_group.this.location
+  resource_group_name = azurerm_resource_group.this.name
+  sku                 = var.servicebus_sku
+  local_auth_enabled  = false
+  tags                = local.tags
+}
+`;
+  const outputs = `output "database_urls" {
+  description = "DATABASE_URL of each service: its own role and database on the shared server."
+  sensitive   = true
+  value = { for service, id in local.services :
+    service => "postgres://\${id}:\${random_password.service[service].result}@\${azurerm_postgresql_flexible_server.this.fqdn}:5432/\${id}?sslmode=require"
+  }
+}
+
+output "database_fqdn" {
+  value = azurerm_postgresql_flexible_server.this.fqdn
+}
+
+output "master_url" {
+  description = "Administrator connection, for the bootstrap only."
+  sensitive   = true
+  value       = "postgres://platform_admin:\${random_password.admin.result}@\${azurerm_postgresql_flexible_server.this.fqdn}:5432/postgres?sslmode=require"
+}
+
+output "servicebus_namespace_id" {
+  value = ${sb ? 'azurerm_servicebus_namespace.this.id' : 'null'}
+}
+
+output "servicebus_namespace_name" {
+  value = ${sb ? 'azurerm_servicebus_namespace.this.name' : 'null'}
+}
+
+# Run once after apply, and again after adding a service, from a host on the VNet (psql):
+#   terraform output -raw bootstrap_sql | psql "$(terraform output -raw master_url)"
+output "bootstrap_sql" {
+  description = "Idempotent SQL that creates each service's role and keeps its database to it (rerun to rotate passwords)."
+  sensitive   = true
+  value = ${isolationSql('azure')}
+}
+`;
+  const tfvars = deploy.environments.flatMap(env => {
+    const prod = env === 'prod';
+    return [
+      { filename: `${dir}/environments/${env}.tfvars`, content: `${hattrs([
+        ['subscription_id', hstr('<subscription-id>')],
+        ['environment', hstr(env)],
+        ['location', hstr(deploy.region)],
+        ['postgres_subnet_id', hstr('/subscriptions/<id>/resourceGroups/<rg>/providers/Microsoft.Network/virtualNetworks/<vnet>/subnets/<postgres>')],
+        ['postgres_private_dns_zone_id', hstr('/subscriptions/<id>/resourceGroups/<rg>/providers/Microsoft.Network/privateDnsZones/<name>.postgres.database.azure.com')],
+        ['postgres_sku', hstr(prod ? 'GP_Standard_D2ds_v5' : 'B_Standard_B1ms')]
+      ], 0)}\n` },
+      { filename: `${dir}/environments/${env}.azurerm.tfbackend`, content: `${hattrs([['resource_group_name', hstr('<state-resource-group>')], ['storage_account_name', hstr('<state-storage-account>')], ['container_name', hstr('tfstate')], ['key', hstr(`base/${env}.tfstate`)]], 0)}\n` }
+    ];
+  });
+  const readme = `# Shared base stack (Azure)
+
+Generated by gherkin-ai for the services whose \`gherkin-ai.config.json\` sets \`deploy.base.dir\` to this directory: ${services.map(s => `\`${s.name}\``).join(', ') || '(none yet)'}. It is rewritten by \`ghk generate\` in any of them.
+
+1. Apply this stack first, once per environment:
+
+   \`\`\`bash
+   terraform init -backend-config=environments/dev.azurerm.tfbackend
+   terraform apply -var-file=environments/dev.tfvars
+   \`\`\`
+
+2. Create the roles of the services and keep each database to its own role (idempotent; rerun after adding a service), from a host on the VNet:
+
+   \`\`\`bash
+   terraform output -raw bootstrap_sql | psql "$(terraform output -raw master_url)"
+   \`\`\`
+
+3. Apply each service module with the \`base_state_*\` variables pointing at this stack's state.
+
+Each service has its own role and database on the shared Flexible Server${sb ? ', and its own topics and subscriptions in the shared Service Bus namespace' : ''}.
+`;
+  return [
+    { filename: `${dir}/versions.tf`, content: versions },
+    { filename: `${dir}/variables.tf`, content: variables },
+    { filename: `${dir}/main.tf`, content: main },
+    { filename: `${dir}/database.tf`, content: database },
+    ...(sb ? [{ filename: `${dir}/servicebus.tf`, content: broker }] : []),
+    { filename: `${dir}/outputs.tf`, content: outputs },
+    ...tfvars,
+    { filename: `${dir}/README.md`, content: readme }
+  ];
 }

@@ -132,9 +132,11 @@ The database, broker and secret store are the same as for `containers` (the same
 
 At boot, cloud-init installs Docker, reads each secret from the secret store with the machine's identity into `/opt/app/app.env` (mode 600; the values are never in the user data), and runs the image behind Caddy: with `domain` set, Caddy obtains a Let's Encrypt certificate for it (point the DNS record at the `public_ip` output); without it, the service answers plain HTTP on port 80. Stacks with a separate relay process also run it there. Only ports 80 and 443 are open, to `allowed_cidrs`.
 
-### Shared base stack for a monorepo (`deploy.base`, AWS)
+### Shared base stack for a monorepo (`deploy.base`)
 
-By default every service owns its database instance and broker: nine services, nine RDS instances and nine brokers. With `"base": { "dir": "../../infrastructure/base" }` in `deploy` (the same directory in each service), `ghk generate` writes a base module at `<dir>/aws` for every service that points at it, and changes the service module:
+By default every service owns its database instance and broker: nine services, nine RDS instances and nine brokers. With `"base": { "dir": "../../infrastructure/base" }` in `deploy` (the same directory in each service), `ghk generate` writes a base module at `<dir>/<cloud>` for every service of that cloud that points at it, and changes the service module. This works for AWS, and since 3.3.0 for Google Cloud and Azure, with both `compute` modes.
+
+**AWS:**
 
 | Base module (`<dir>/aws`) | Service module |
 |---|---|
@@ -142,7 +144,21 @@ By default every service owns its database instance and broker: nine services, n
 | One Amazon MQ broker when a service uses RabbitMQ (each service keeps its own exchange and queues) | Its tasks or machine join the base's `clients` security group |
 | A `clients` security group: the only way into the database and the broker | Compute, secrets, IAM and outputs as before |
 
-Apply the base first, run its bootstrap SQL, then apply the services. Each service connects with its own role to its own database. Google Cloud and Azure report a configuration error for `deploy.base` in this version.
+**Google Cloud:**
+
+| Base module (`<dir>/gcp`) | Service module |
+|---|---|
+| One Cloud SQL for PostgreSQL instance on a private IP (with the private services access of the network), and one user and one database per service | No `database.tf`; `DATABASE_URL` comes from the base's remote state (`gcs` backend: `base_state_bucket`, `base_state_prefix`) |
+| `isolation_sql` output: Cloud SQL users created through the API can connect to any database of the instance, so run it once (and after adding a service) to keep each database to its own user | Pub/Sub topics, subscriptions, compute and secrets as before (Pub/Sub has no instance to share) |
+
+**Azure:**
+
+| Base module (`<dir>/azure`) | Service module |
+|---|---|
+| One PostgreSQL Flexible Server in the delegated subnet; one role and one database per service (`bootstrap_sql` output) | No `database.tf`; `DATABASE_URL` from the base's remote state (`azurerm` backend: `base_state_resource_group`, `base_state_storage_account`, `base_state_container`, `base_state_key`) |
+| One Service Bus namespace when a service uses Service Bus | Its own topics and subscriptions, in the base's namespace; its identity's roles are scoped to that namespace |
+
+Apply the base first, run its SQL output, then apply the services. Each service connects with its own role or user to its own database. The goldens `terraform-aws-base`, `terraform-gcp-base` (Cloud Run) and `terraform-azure-base` (a VM, with Service Bus) run `terraform init`, `validate` and `fmt` on both modules.
 
 A new image changes the boot script, so each deployment replaces the machine: a few minutes without service. Use `containers` when that matters. There is no collector sidecar: set `OTEL_EXPORTER_OTLP_ENDPOINT` in `extra_environment` to export traces.
 

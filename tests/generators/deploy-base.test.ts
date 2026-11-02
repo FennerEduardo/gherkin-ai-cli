@@ -63,7 +63,50 @@ describe('deploy.base (AWS)', () => {
     expect(f['../../infrastructure/base/aws/outputs.tf']).toContain('output "bootstrap_sql"');
   });
 
-  it('other clouds are a configuration error, not a half-generated stack', () => {
-    expect(() => renderDeploymentTargets({ ...serviceConfig('enrollment-service'), deploy: { cloud: 'gcp', base: { dir: '../../infrastructure/base' } } })).toThrow(ConfigError);
+  it('an unknown cloud is a configuration error, not a half-generated stack', () => {
+    expect(() => renderDeploymentTargets({ ...serviceConfig('enrollment-service'), deploy: { cloud: 'oci' as any, base: { dir: '../../infrastructure/base' } } })).toThrow();
+  });
+});
+
+describe('deploy.base on Google Cloud and Azure (PLAN-3.3.0 X-09b)', () => {
+  const cwd = process.cwd();
+  let root: string;
+  const cloudConfig = (name: string, cloud: 'gcp' | 'azure', compute: 'containers' | 'vm', messaging = 'rabbitmq'): GherkinAIConfig => ({
+    ...serviceConfig(name, { messaging }), deploy: { cloud, compute, base: { dir: '../../infrastructure/base' } }
+  });
+  const setup = (cloud: 'gcp' | 'azure', compute: 'containers' | 'vm', messaging?: string) => {
+    root = fs.mkdtempSync(path.join(os.tmpdir(), 'ghk-base-'));
+    for (const name of ['enrollment-service', 'identity-service']) {
+      fs.mkdirSync(path.join(root, 'backend', name), { recursive: true });
+      fs.writeFileSync(path.join(root, 'backend', name, 'gherkin-ai.config.json'), JSON.stringify(cloudConfig(name, cloud, compute, messaging)));
+    }
+    process.chdir(path.join(root, 'backend', 'enrollment-service'));
+    return Object.fromEntries(renderDeploymentTargets(cloudConfig('enrollment-service', cloud, compute, messaging)).map(f => [f.filename, f.content]));
+  };
+  afterEach(() => { process.chdir(cwd); fs.rmSync(root, { recursive: true, force: true }); });
+
+  it.each(['containers', 'vm'] as const)('Google Cloud (%s): the service reads its DATABASE_URL from the base; the base owns one Cloud SQL instance', compute => {
+    const f = setup('gcp', compute);
+    expect(f['deploy/terraform/gcp/database.tf']).toBeUndefined();
+    expect(f['deploy/terraform/gcp/base.tf']).toContain('backend = "gcs"');
+    expect(f['deploy/terraform/gcp/secrets.tf']).toContain('data.terraform_remote_state.base.outputs.database_urls["enrollment-service"]');
+    const service = Object.entries(f).filter(([n]) => n.startsWith('deploy/terraform/gcp/')).map(([, c]) => c).join('\n');
+    expect(service).not.toMatch(/google_sql_|private_services|var\.db_tier|var\.db_version/);
+    expect(f['deploy/terraform/gcp/environments/dev.tfvars']).toContain('base_state_prefix');
+    expect(f['../../infrastructure/base/gcp/database.tf']).toContain('resource "google_sql_database_instance" "this"');
+    expect(f['../../infrastructure/base/gcp/main.tf']).toContain('"identity-service"   = "identity_service"');
+    expect(f['../../infrastructure/base/gcp/outputs.tf']).toContain('output "isolation_sql"');
+  });
+
+  it.each(['containers', 'vm'] as const)('Azure (%s): database and Service Bus namespace from the base; topics stay in the service', compute => {
+    const f = setup('azure', compute, 'servicebus');
+    expect(f['deploy/terraform/azure/database.tf']).toBeUndefined();
+    expect(f['deploy/terraform/azure/base.tf']).toContain('backend = "azurerm"');
+    const service = Object.entries(f).filter(([n]) => n.startsWith('deploy/terraform/azure/')).map(([, c]) => c).join('\n');
+    expect(service).not.toMatch(/azurerm_postgresql_flexible_server|resource "azurerm_servicebus_namespace"|azurerm_servicebus_namespace\.this|var\.postgres_/);
+    expect(f['deploy/terraform/azure/servicebus.tf']).toContain('data.terraform_remote_state.base.outputs.servicebus_namespace_id');
+    expect(f['deploy/terraform/azure/servicebus.tf']).toContain('resource "azurerm_servicebus_topic" "events"');
+    expect(f['../../infrastructure/base/azure/servicebus.tf']).toContain('resource "azurerm_servicebus_namespace" "this"');
+    expect(f['../../infrastructure/base/azure/outputs.tf']).toMatch(/CREATE ROLE[\s\S]*REVOKE ALL ON DATABASE[\s\S]*GRANT ALL ON DATABASE/);
   });
 });

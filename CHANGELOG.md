@@ -50,6 +50,12 @@ All notable changes to this project will be documented in this file. See [commit
   - Tests that call concrete URLs (`/orders/o-1/cancel`) confirm the matching route template; .NET `HttpClient` calls are recognised. `InvalidOperationException` and `IllegalStateException` are read as 409.
   - The aggregate of an operation is the last collection in its path (`/institutions/{id}/members` → `Member`). The word after an id is the action (`POST /payments/{id}/settle` → `SettlePayment`).
 
+- **`deploy.base` on Google Cloud and Azure** (it was AWS only), for both compute modes ([DEPLOYMENT.md](docs/DEPLOYMENT.md#shared-base-stack-for-a-monorepo-deploybase)).
+  - Google Cloud: one Cloud SQL instance on a private IP, with a user and a database per service and an `isolation_sql` output that keeps each database to its user. Pub/Sub stays per service.
+  - Azure: one PostgreSQL Flexible Server, with a role and a database per service (`bootstrap_sql`), and one Service Bus namespace in which each service keeps its own topics and subscriptions.
+  - Service modules read the base through `terraform_remote_state` (`gcs` / `azurerm` backends).
+  - Verified by the goldens `terraform-gcp-base` (Cloud Run) and `terraform-azure-base` (VM, Service Bus): `init`, `validate` and `fmt` on both modules.
+
 ### Changed
 - **Command names of features without `@command:` tags** (found by `ghk reverse` on real projects; [MIGRATION-3.3.md](docs/MIGRATION-3.3.md)).
   - IR-05: a relative clause ends the command noun. "cancels an order that does not exist" is `CancelOrder`, no longer `CancelOrderThat`.

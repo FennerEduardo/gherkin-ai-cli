@@ -343,6 +343,13 @@ STACKS['terraform-azure-vm'] = terraform('terraform-azure-vm', 'azure', 'nestjs'
 STACKS['terraform-aws-base'] = { ...terraform('terraform-aws-base', 'aws', 'nestjs', {}, 'vm'), config: { deploy: { cloud: 'aws', compute: 'vm', base: { dir: 'infrastructure/base' } } } };
 STACKS['terraform-aws-base'].build = [...STACKS['terraform-aws-base'].build, 'cd ../../../infrastructure/base/aws && terraform init -backend=false -input=false -no-color && terraform validate -no-color && cd - >/dev/null'];
 STACKS['terraform-aws-base'].test = ['terraform fmt -check -recursive -diff -no-color && terraform fmt -check -recursive -diff -no-color ../../../infrastructure/base'];
+// 3.3.0 (X-09b): the same on Google Cloud (Cloud Run, one Cloud SQL instance) and Azure (VM, Flexible Server and a
+// shared Service Bus namespace), so both compute modes are covered.
+for (const [name, cloud, backend, extra, compute] of [['terraform-gcp-base', 'gcp', 'laravel', {}, 'containers'], ['terraform-azure-base', 'azure', 'nestjs', { messaging: 'servicebus' }, 'vm']]) {
+  STACKS[name] = { ...terraform(name, cloud, backend, extra, compute), config: { deploy: { cloud, compute, base: { dir: 'infrastructure/base' } } } };
+  STACKS[name].build = [...STACKS[name].build, `cd ../../../infrastructure/base/${cloud} && terraform init -backend=false -input=false -no-color && terraform validate -no-color && cd - >/dev/null`];
+  STACKS[name].test = ['terraform fmt -check -recursive -diff -no-color && terraform fmt -check -recursive -diff -no-color ../../../infrastructure/base'];
+}
 STACKS.helm = {
   stack: STACKS.django.stack,
   config: { deploy: { cloud: 'gcp', compute: 'kubernetes' } },
