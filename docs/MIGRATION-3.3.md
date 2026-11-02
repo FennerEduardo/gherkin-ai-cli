@@ -29,4 +29,5 @@ Running `ghk reverse` on real projects exposed two naming defects. They date fro
 |---|---|---|---|
 | Installed size | 1.9 MB packed, 6.2 MB unpacked | 2.7 MB packed, 15.5 MB unpacked, plus the `web-tree-sitter` dependency (5.7 MB). The tree-sitter grammars used by `ghk reverse` are in `vendor/tree-sitter/` | – |
 | Command names of undeclared features | see IR-05 / IR-06 above | see above | regenerate, or add `@command:` tags |
+| `converge` on a generated feature whose step definitions are all still the pending stubs, with no coverage report | Code Coverage "n/a", left out of the score: the scaffold could converge | Code Coverage 0, with the reason; the overall score drops and may exit 7 | implement the steps (or run the tests with coverage). In CI for a fresh scaffold, expect exit 7 until the behaviour exists |
 | `ghk stacks` (text output) | generation stacks | also lists the `ghk reverse` analyzers and their maturity; the `--json` output is unchanged | – |

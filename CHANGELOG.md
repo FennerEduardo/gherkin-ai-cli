@@ -57,6 +57,11 @@ All notable changes to this project will be documented in this file. See [commit
     - A synonym of a core verb on the same noun is one command, named by the core verb, so nothing is repeated.
     - A verb that repeats its noun, or a read ("requests the members"), is left out.
   - Measured on 39 real features: the 16 reference projects are unchanged. 4 LMS features gain the command their code already implements, and their events pair correctly.
+- **`ghk converge` no longer passes an unimplemented scaffold** (LMS #21).
+  - A generated project's kernel tests pass, so with no coverage report *Code Coverage* used to be "n/a" and was left out of the score. A feature whose behaviour was never written could converge.
+  - Now, when every step definition of the feature is still the generated pending stub, *Code Coverage* scores 0 and says why. The stubs are recognised in every generated stack.
+  - With a coverage report the report remains the measure, and the pending stubs are listed as a warning.
+  - On the reference projects, which are generated scaffolds, the 10 without a coverage report now converge lower. The LMS, which implements its steps, is unchanged.
 
 ## [3.2.2] - 2026-10-30
 
