@@ -22,6 +22,8 @@ const CALLS: RegExp[] = [
   /\.(get|post|put|patch|delete)\(\s*[`'"](\/[^`'"\s]*)[`'"]/gi,
   // MockMvc: perform(post("/orders")) ; RestAssured: .post("/orders")
   /\b(get|post|put|patch|delete)\(\s*"(\/[^"\s]*)"/gi,
+  // .NET HttpClient: _client.PostAsync("/orders", …), GetFromJsonAsync("/orders/1"), PostAsJsonAsync(…)
+  /\.(Get|Post|Put|Patch|Delete)(?:Async|AsJsonAsync|FromJsonAsync|StringAsync)\(\s*\$?"(\/[^"\s]*)"/g,
   // Go httptest / .NET HttpRequestMessage: ("POST", "/orders") / (HttpMethod.Post, "/orders")
   /(?:"|HttpMethod\.)(GET|POST|PUT|PATCH|DELETE|Get|Post|Put|Patch|Delete)"?\s*,\s*"(\/[^"\s]*)"/g
 ];

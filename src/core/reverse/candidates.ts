@@ -15,6 +15,7 @@ import type { EndpointMetadata, EvidenceConfidence, SourceEvidence } from './evi
 import { CONFIDENCE_ORDER, atLeast } from './evidence';
 import { EXTENDED_VERB_PATTERNS, VERB_PATTERNS } from '../ir/patterns';
 import { toSnake } from '../../utils/naming';
+import { pathMatchesTemplate } from './analyzers/shared/body-text';
 
 export interface ProposedStep {
   keyword: 'Given' | 'When' | 'Then' | 'And';
@@ -337,7 +338,8 @@ export function buildCandidates(evidence: SourceEvidence[]): CandidateResult {
     const operationId = group.map(e => (e.metadata as any)?.operationId).find(Boolean) as string | undefined;
     const ids = new Set(group.map(e => e.id));
     const related = evidence.filter(e => e.references.some(r => ids.has(r)));
-    const testHits = tests.filter(t => endpointKey(t.metadata as any) === key);
+    // A test calls a concrete URL (`/orders/o-1/cancel`) or the template itself.
+    const testHits = tests.filter(t => (t.metadata as any)?.method === meta.method && pathMatchesTemplate(meta.path, String((t.metadata as any)?.path ?? '')));
     const aggregate = aggregateFromEndpoint(meta);
     const op = operationName(meta, aggregate, operationId);
     const onItem = /\{[^}]+\}/.test(meta.path);

@@ -69,7 +69,8 @@ export function throwFromText(text: string): { exception: string; message?: stri
 export function exceptionStatusByName(name: string): number | undefined {
   if (JAXRS_EXCEPTIONS[name]) return JAXRS_EXCEPTIONS[name];
   if (/NotFound|NoSuch|Missing(?!Param)/.test(name)) return 404;
-  if (/Conflict|AlreadyExists|Duplicate|Already[A-Z]|Concurrent|OptimisticLock|StateConflict/.test(name)) return 409;
+  // A state violation (InvalidOperationException in .NET, IllegalStateException in Java) is a conflict, not bad input.
+  if (/Conflict|AlreadyExists|Duplicate|Already[A-Z]|Concurrent|OptimisticLock|StateConflict|InvalidOperation|IllegalState|InvalidState/.test(name)) return 409;
   if (/Forbidden|AccessDenied|NotAllowed|Permission/.test(name)) return 403;
   if (/Unauthori[sz]ed|Unauthenticated|Authentication/.test(name)) return 401;
   if (/Invalid|BadRequest|Validation|Constraint|IllegalArgument|MethodArgumentNotValid/.test(name)) return 400;

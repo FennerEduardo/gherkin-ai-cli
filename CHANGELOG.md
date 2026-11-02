@@ -24,6 +24,12 @@ All notable changes to this project will be documented in this file. See [commit
     - Calls followed into injected services, static factories and entity methods.
     - Events from event classes, `new DomainEvent("Name", …)` and event-type enums.
   - `web-tree-sitter` 0.25.10 is a new dependency (0.27 cannot load these grammars). The Java, Kotlin, C#, Python and Go grammars are vendored in `vendor/tree-sitter/`, with their MIT licenses. The published package grows from 1.9 to 2.7 MB packed.
+  - **ASP.NET Core** (`csharp/aspnet`), **FastAPI** (`python/fastapi`) and **Go** (`go/http`), all experimental, also parsed with tree-sitter.
+    - ASP.NET: controllers and Minimal APIs, `[Authorize]` roles and policies, DataAnnotations, services resolved through their interface.
+    - FastAPI: router prefixes, `Depends` authentication and roles, Pydantic constraints, `HTTPException` statuses, service modules.
+    - Go: chi/gin/echo/`net/http` 1.22 routes and groups, auth middleware, `validate` tags. A sentinel error is linked to the service condition behind it.
+    - Each one is verified on a hand-written fixture in the reverse golden, which now covers eight services.
+  - Tests that call concrete URLs (`/orders/o-1/cancel`) confirm the matching route template; .NET `HttpClient` calls are recognised. `InvalidOperationException` and `IllegalStateException` are read as 409.
   - The aggregate of an operation is the last collection in its path (`/institutions/{id}/members` → `Member`). The word after an id is the action (`POST /payments/{id}/settle` → `SettlePayment`).
 
 ## [3.2.2] - 2026-10-30
