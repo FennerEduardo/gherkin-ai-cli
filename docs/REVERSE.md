@@ -76,6 +76,46 @@ Discovery never opens these files:
 
 Comments and strings in the code are treated as data, never as instructions.
 
+### Configuration
+
+Every option can also be set in the `reverse` section of `gherkin-ai.config.json`. Command-line flags win.
+
+```json
+{
+  "reverse": {
+    "path": "src",
+    "include": ["src/**"],
+    "exclude": ["src/legacy/**"],
+    "openapi": ["docs/openapi.yaml"],
+    "tests": true,
+    "minConfidence": "strong",
+    "threshold": 80,
+    "acceptDir": "features/discovered",
+    "minCoverage": 60
+  }
+}
+```
+
+### --assist (opt-in)
+
+`reverse propose --assist` asks the configured LLM to word each proposal better. It may propose:
+- a feature title;
+- a user story (*As a / I want / So that*);
+- clearer scenario names.
+
+It cannot add, remove or change steps: its answer must fit a JSON schema that has no field for them, and the patch is rebuilt from the deterministic text.
+
+The model's answer is validated before anything is used:
+- values with quotes or line breaks are rejected;
+- numbers the code does not show are rejected;
+- a renamed scenario must keep a content word of the original name.
+
+The proposal is redacted before it is sent and is treated as data, never as instructions. Accepted wording is written as a patch in `.ghe/patches/`; the proposal itself is never written. The deterministic run stays the default and the only path in CI.
+
+### Over MCP
+
+`ghk_reverse_scan` and `ghk_reverse_get_evidence` are read-only. `ghk_reverse_propose` writes only `.ghe/reverse/` and needs `mcp.allowWrite`. `accept` is not exposed over MCP ([MCP_GUIDE.md](MCP_GUIDE.md#reverse-engineering-over-mcp-beta)).
+
 ## 3. How a proposal is built
 
 ```
@@ -222,4 +262,4 @@ Java, Kotlin, C#, Python and Go are parsed with tree-sitter (`web-tree-sitter` 0
 - **Code shows structure, not intent.** A proposal describes what the system does today, including its bugs, and the `@characterization` tag says so. Whether that behaviour is correct is a product decision.
 - **Static analysis only.** Reflection, dynamic routing and dependency injection that the type checker cannot resolve are missed. Such endpoints show up with fewer outcomes or as open questions.
 - **Data shapes are not specified.** Request and response bodies appear as fields in the evidence, not as data tables in the scenarios.
-- **No language model.** Wording is template-based. An LLM-assisted wording pass (`--assist`, opt-in, writing patches only) is planned for 3.3.0.
+- **No language model by default.** Wording is template-based; `--assist` is the opt-in wording pass. It has been verified against a simulated provider, and a run against a real model is part of the 3.3.0 release checks.

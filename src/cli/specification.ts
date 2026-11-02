@@ -109,6 +109,7 @@ export function registerSpecificationCommands(program: Command): void {
     .option('--min-confidence <level>', 'propose: leave out scenarios below confirmed | strong | inferred (default: inferred)')
     .option('--threshold <score>', 'propose: minimum lint score of a proposal 0-100 (default: 80); below it exits with code 4')
     .option('--rescan', 'propose, coverage: scan again instead of reading .ghe/reverse/scan.json')
+    .option('--assist', 'propose: ask the configured LLM for a title, user story and clearer scenario names (never steps); validated and written as patch proposals in .ghe/patches/')
     .option('--all', 'accept: every proposal')
     .option('--to <dir>', 'accept: destination directory (default: features/discovered)')
     .option('--merge', 'accept: leave out operations a feature already specifies (same or renamed command); exit 7 when a feature declares commands the code does not implement')

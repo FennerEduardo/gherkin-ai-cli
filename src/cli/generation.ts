@@ -44,6 +44,11 @@ export function registerGenerationCommands(program: Command): void {
         return;
       }
       for (const s of STACK_SUPPORT) logger.info(`${s.kind.padEnd(10)} ${s.tier.padEnd(13)} ${(s.maintenance ?? 'core').padEnd(10)} ${s.label}${s.notes ? `  — ${s.notes}` : ''}`);
+      // Reading existing code is a separate axis from generating it (the JSON shape above stays an array).
+      const { ANALYZER_CATALOG } = await import('../core/reverse/registry');
+      logger.info('');
+      logger.info('ghk reverse (beta): analyzers that read existing code');
+      for (const a of ANALYZER_CATALOG) logger.info(`reverse    ${a.maturity.padEnd(13)} ${a.parser.padEnd(10)} ${a.stacks}`);
     });
 
   program

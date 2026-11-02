@@ -27,9 +27,10 @@ import { installStdoutGuard, StdoutGuard } from './stdout-guard';
 import { analysisTools } from './tools/analysis';
 import { projectTools } from './tools/project';
 import { executionTools } from './tools/execution';
+import { reverseTools } from './tools/reverse';
 import type { ToolSpec } from './tools/types';
 
-export const ALL_TOOLS: ToolSpec[] = [...analysisTools, ...projectTools, ...executionTools];
+export const ALL_TOOLS: ToolSpec[] = [...analysisTools, ...reverseTools, ...projectTools, ...executionTools];
 
 export interface McpServerOptions {
   workspace?: string;

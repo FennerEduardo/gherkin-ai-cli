@@ -14,6 +14,7 @@
    feature declares and the code does not implement. PLAN-3.3.0 §3.A.
    ========================================================================== */
 
+import fs from 'fs';
 import path from 'path';
 import { ExitCode, UsageError } from '../core/errors';
 import { CONFIDENCE_ORDER, type EvidenceConfidence } from '../core/reverse/evidence';
@@ -42,6 +43,8 @@ export interface ReverseCommandOptions {
   yes?: boolean;
   /** coverage */
   min?: string;
+  /** propose: LLM wording as a patch (opt-in). */
+  assist?: boolean;
 }
 
 const SUBCOMMANDS = ['scan', 'propose', 'accept', 'coverage'];
@@ -84,11 +87,54 @@ async function confirmWrite(files: string[], options: ReverseCommandOptions): Pr
   return Boolean(ok);
 }
 
+/** The `reverse` section of gherkin-ai.config.json as defaults; flags on the command line win. */
+function withConfigDefaults(root: string, options: ReverseCommandOptions): ReverseCommandOptions {
+  let section: Record<string, any> | undefined;
+  try {
+    const file = path.join(root, 'gherkin-ai.config.json');
+    if (fs.existsSync(file)) section = JSON.parse(fs.readFileSync(file, 'utf8'))?.reverse;
+  } catch { /* an invalid configuration is reported by ghk validate */ }
+  if (!section) return options;
+  return {
+    ...options,
+    path: options.path ?? section.path,
+    include: options.include ?? section.include,
+    exclude: options.exclude ?? section.exclude,
+    openapi: options.openapi ?? section.openapi,
+    tests: options.tests === false ? false : section.tests ?? options.tests,
+    minConfidence: options.minConfidence ?? section.minConfidence,
+    threshold: options.threshold ?? (section.threshold !== undefined ? String(section.threshold) : undefined),
+    to: options.to ?? section.acceptDir,
+    min: options.min ?? (section.minCoverage !== undefined ? String(section.minCoverage) : undefined)
+  };
+}
+
+/**
+ * `propose --assist`: the configured LLM words each proposal (title, user story, scenario names). Validated,
+ * written as a patch in .ghe/patches/; the proposal and its steps are never changed by the model.
+ */
+async function assistProposals(root: string, proposals: string[]) {
+  const { LLMClient, resolveLLMSettings } = await import('../core/llm');
+  const { proposeNarrative } = await import('../core/reverse/assist');
+  const { writeProposal } = await import('../core/governance/agent-changes');
+  const client = new LLMClient(resolveLLMSettings());
+  const out: { proposal: string; patch?: string; accepted: unknown; rejected: { field: string; value: string; reason: string }[] }[] = [];
+  for (const rel of proposals) {
+    const file = path.join(root, rel);
+    const text = fs.readFileSync(file, 'utf8');
+    const result = await proposeNarrative(client, text);
+    const patch = result.featureText !== text ? path.relative(root, writeProposal(root, file, result.featureText)).split(path.sep).join('/') : undefined;
+    out.push({ proposal: rel, patch, accepted: result.accepted, rejected: result.rejected });
+  }
+  return out;
+}
+
 export async function handleReverseCommand(subcommand: string | undefined, options: ReverseCommandOptions, names: string[] = []): Promise<void> {
   if (!subcommand || !SUBCOMMANDS.includes(subcommand)) {
     throw new UsageError(subcommand ? `Unknown reverse subcommand: ${subcommand}` : 'Missing reverse subcommand.', { hint: `Use one of: ${SUBCOMMANDS.join(', ')} (ghk reverse scan, then propose, then accept).` });
   }
   const root = process.cwd();
+  options = withConfigDefaults(root, options);
 
   if (subcommand === 'scan') {
     const scan = await runScan(root, scanOptions(options));
@@ -145,7 +191,11 @@ export async function handleReverseCommand(subcommand: string | undefined, optio
   const failing = result.proposals.filter(p => !p.lint.passed || !p.roundTrip.ok);
   if (failing.length) process.exitCode = ExitCode.GATE_FAILED;
 
-  if (options.json) { emitJson(result); return; }
+  const assisted = options.assist && !options.dryRun ? await assistProposals(root, result.proposals.map(p => p.path)) : undefined;
+  if (options.json) { emitJson(assisted ? { ...result, assist: assisted } : result); return; }
+  for (const a of assisted ?? []) {
+    console.log(`  ✎ ${a.proposal}: ${a.patch ? `wording proposed in ${a.patch}` : 'no valid wording'}${a.rejected.length ? ` (${a.rejected.length} value(s) rejected)` : ''}`);
+  }
   logger.info(`ghk reverse propose (beta): ${result.proposals.length} proposal(s) from ${result.candidates.length} operation(s)`);
   for (const p of result.proposals) {
     const mark = p.lint.passed && p.roundTrip.ok ? '✔' : '✖';

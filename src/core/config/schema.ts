@@ -286,6 +286,23 @@ export const configShape = {
     report: z.string().min(1).optional()
   }).optional(),
   bff: bffSchema.optional(),
+  /**
+   * Defaults for `ghk reverse` (beta): what to analyse and how strict the proposals are. Command-line flags win.
+   * Paths are relative to the project.
+   */
+  reverse: z.object({
+    path: z.string().min(1).optional(),
+    include: z.array(z.string().min(1)).optional(),
+    exclude: z.array(z.string().min(1)).optional(),
+    openapi: z.array(z.string().min(1)).optional(),
+    tests: z.boolean().optional(),
+    minConfidence: z.enum(['confirmed', 'strong', 'inferred']).optional(),
+    threshold: z.number().int().min(0).max(100).optional(),
+    /** Where `reverse accept` writes (default features/discovered). */
+    acceptDir: z.string().min(1).optional(),
+    /** `reverse coverage` exits 7 below this share (0–100). */
+    minCoverage: z.number().int().min(0).max(100).optional()
+  }).optional(),
   domainProfile: z.string().optional(),
   /** Industry reference standard (BIAN, TM Forum, HL7 FHIR, ...): adds lint rules, IR constraints and LLM guidance. */
   industry: z.object({

@@ -39,6 +39,14 @@ All notable changes to this project will be documented in this file. See [commit
     - undocumented;
     - spec-only.
     `--min` gates CI with exit 7. `propose` prints the same summary.
+  - **`reverse propose --assist`** (opt-in): the configured LLM proposes a feature title, a user story and clearer scenario names.
+    - It never proposes steps: the JSON schema has no field for them.
+    - Values are validated: no quotes, no invented numbers, and a renamed scenario keeps a content word of the original.
+    - The text is redacted before it is sent and treated as data.
+    - The result is a patch in `.ghe/patches/`.
+  - **MCP:** `ghk_reverse_scan` and `ghk_reverse_get_evidence` (read-only) and `ghk_reverse_propose` (writes `.ghe/reverse/` only; needs `mcp.allowWrite`). `accept` stays a human CLI step.
+  - **`reverse` section in `gherkin-ai.config.json`** (and the published schema): `path`, `include`, `exclude`, `openapi`, `tests`, `minConfidence`, `threshold`, `acceptDir`, `minCoverage`. Command-line flags win.
+  - `ghk stacks` lists the reverse analyzers and their maturity after the generation stacks. Its JSON output is unchanged.
   - Tests that call concrete URLs (`/orders/o-1/cancel`) confirm the matching route template; .NET `HttpClient` calls are recognised. `InvalidOperationException` and `IllegalStateException` are read as 409.
   - The aggregate of an operation is the last collection in its path (`/institutions/{id}/members` → `Member`). The word after an id is the action (`POST /payments/{id}/settle` → `SettlePayment`).
 

@@ -240,6 +240,62 @@
       },
       "additionalProperties": false
     },
+    "reverse": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "include": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "exclude": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "openapi": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "tests": {
+          "type": "boolean"
+        },
+        "minConfidence": {
+          "type": "string",
+          "enum": [
+            "confirmed",
+            "strong",
+            "inferred"
+          ]
+        },
+        "threshold": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "acceptDir": {
+          "type": "string",
+          "minLength": 1
+        },
+        "minCoverage": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100
+        }
+      },
+      "additionalProperties": false
+    },
     "domainProfile": {
       "type": "string"
     },
