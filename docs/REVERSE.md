@@ -255,6 +255,8 @@ npm run build && node scripts/reverse-oss.js --json reverse-oss.json   # exit 1 
 | `python/fastapi` | nsidnev/fastapi-realworld-example-app | 19/19 | 1.00 | 1.00 | 1.00 | Article, Comment, Profile, Tag, User | 79 |
 | `go/http` | gothinkster/golang-gin-realworld-example-app | 19/19 | 1.00 | 1.00 | 1.00 | Article, Comment, Profile, Tag, User | 69 |
 
+The [golden-build dashboard](https://fennereduardo.github.io/gherkin-ai-cli/goldens.html#reverse) shows these scores. The Pages workflow reruns this validation on every build. The round trips on the reference projects and the LMS need repositories CI does not have, so they come from the release snapshot `docs/reverse-scores.json` (`scripts/reverse-scores.js`).
+
 The table measures route extraction, not the quality of the proposals. Their lint scores (69–79) are below the default threshold of 80: they are drafts to review, as the `@needs-review` tag says. The Go app registers its routes on gin groups that `main` hands to registration functions in other packages. Before 3.3.0 the analyzer lost those prefixes, and the run above found the problem.
 
 ### ASP.NET Core, FastAPI and Go

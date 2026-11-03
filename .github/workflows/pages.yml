@@ -38,10 +38,17 @@ jobs:
 
       - run: npm run build
 
+      # ghk reverse on open-source RealWorld apps pinned by commit (tests/fixtures/reverse/oss/realworld.json): the
+      # dashboard shows this run's scores. A score below beta is shown in red, not a failed deploy.
+      - name: Validate the reverse analyzers on open-source code
+        continue-on-error: true
+        run: node scripts/reverse-oss.js --cache "$RUNNER_TEMP/reverse-oss" --json "$RUNNER_TEMP/reverse-oss.json"
+
       - name: Build the site
         env:
           GOLDEN_RUN_ID: ${{ github.event.workflow_run.id }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REVERSE_OSS_JSON: ${{ runner.temp }}/reverse-oss.json
         run: node scripts/build-site.js site
 
       - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
