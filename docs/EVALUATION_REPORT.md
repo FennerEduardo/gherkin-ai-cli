@@ -199,7 +199,7 @@ This code was written by gherkin-ai, so the round trip is necessary but not suff
 
 The Go analyzer first scored below the threshold on this corpus. The gin route groups are passed to registration functions in other packages, so the routes lost their prefix, and `""` and `"/"` counted as two routes. Both cases are fixed and have their own fixture (`tests/fixtures/reverse/go-gin-groups/`).
 
-The proposals for these three apps score 69 to 79 on `ghk lint`, below the threshold of 80 that `propose` reports. They need review before `accept`, which is what `@needs-review` says. The golden-build dashboard shows the round-trip and open-source scores. The Pages workflow reruns the open-source validation on every build.
+The proposals for these three apps score 94 to 99 on `ghk lint`. Before the fix for duplicated scenarios (GHK004) they scored 69 to 79. They still need review before `accept`, which is what `@needs-review` says. The golden-build dashboard shows the round-trip and open-source scores. The Pages workflow reruns the open-source validation on every build.
 
 ### 2.3 The LMS (hand-written services)
 

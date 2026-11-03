@@ -9,6 +9,13 @@ All notable changes to this project will be documented in this file. See [commit
   - `reverse scan` reads controllers, routes, guards, DTOs, handler and service bodies, OpenAPI documents and tests into a *Source Evidence IR*. Each fact carries its file and line, the analyzer that found it and a confidence level (`confirmed`, `strong`, `inferred`, `unknown`).
   - `reverse propose` groups the evidence into operations and writes one candidate `.feature` per aggregate. Each step is preceded by the evidence that supports it, and the features are tagged `@characterization @needs-review` because they describe what the code does today.
   - Every proposal is parsed back through the IR builder (the declared commands must survive) and linted. Either failure exits 4.
+  - Proposals do not repeat scenarios. On the open-source RealWorld apps their lowest lint score goes from 69 to 94; all of it came from GHK004 (duplicated scenario). The fixes:
+    - two endpoints of one aggregate never share an operation name: `DELETE /articles/{slug}/favorite` is `DeleteArticleFavorite` next to `DeleteArticle`, and `GET /articles/feed` is `ListFeedArticles`;
+    - a handler called just `Get` on a collection lists it;
+    - a trailing verb is the action (`POST /users/login` → `LoginUser`);
+    - failures that read the same are one scenario that carries the evidence of both;
+    - code is never quoted as an error message;
+    - "a user", not "an user"; a leading preposition of a handler name is dropped (`unsubscribeFromUser`).
   - Deterministic, with no language model. Works without `ghk init`, writes only to `.ghe/reverse/` (which ignores itself in git), and never reads `.env` or other secret files.
   - First analyzers: Express and NestJS (ts-morph, following service calls through the type checker), OpenAPI (any stack) and test HTTP calls.
   - Verified by `tests/golden/reverse.test.ts`. On the Express brownfield fixture it recovers the `PlaceOrder` and `CancelOrder` commands of the hand-written feature, and the proposal lints 99.

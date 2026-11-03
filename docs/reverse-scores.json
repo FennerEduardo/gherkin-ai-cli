@@ -90,7 +90,7 @@
           "Tag",
           "User"
         ],
-        "lintMin": 74,
+        "lintMin": 94,
         "beta": true
       },
       {
@@ -112,7 +112,7 @@
           "Tag",
           "User"
         ],
-        "lintMin": 79,
+        "lintMin": 94,
         "beta": true
       },
       {
@@ -134,14 +134,14 @@
           "Tag",
           "User"
         ],
-        "lintMin": 69,
+        "lintMin": 99,
         "beta": true
       }
     ]
   },
   "lms": {
     "description": "LMS (Spring services written by hand over the kernel), against its own features: a low F1 mostly measures how far the code drifted from the features.",
-    "meanF1": 0.38,
+    "meanF1": 0.377,
     "services": [
       {
         "service": "academic-service",
@@ -157,7 +157,7 @@
       },
       {
         "service": "identity-service",
-        "f1": 0.41
+        "f1": 0.39
       },
       {
         "service": "institution-service",

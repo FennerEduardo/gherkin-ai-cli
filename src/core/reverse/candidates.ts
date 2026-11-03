@@ -102,7 +102,14 @@ export function participle(verb: string): string {
   return verb + 'ed';
 }
 
-const article = (noun: string) => (/^[aeiou]/i.test(noun) ? 'an' : 'a');
+/** "an order", "a user", "a unique id", "an hour" is not handled (no silent h in business nouns seen so far). */
+const article = (noun: string) => (/^(u[sn]i|use|usu|uti|ura|ure|eu|one\b)/i.test(noun) ? 'a' : /^[aeiou]/i.test(noun) ? 'an' : 'a');
+/** Leading prepositions of a handler name are not part of the object: `unsubscribeFromUser` → user. */
+const PREPOSITIONS = /^(from|to|by|for|of|on|in|into|with|at)$/;
+/** A message taken from code that is really code (`&& errors.Is(err, …) {`), not prose, is not quoted or used in a name. */
+export function isProse(message: string | undefined): message is string {
+  return Boolean(message) && !/[{}();=&|<>]|=>|\b(err|nil|null|undefined|return|if)\b\s*[!=.(]/.test(message!) && message!.length <= 120;
+}
 
 /** Plural words that are not collections. */
 const NOT_COLLECTIONS = /^(status|address|access|process|class|alias|news|series|canvas|bus|campus|terms|settings|details|options|analytics|metrics)$/i;
@@ -143,12 +150,15 @@ export function operationName(meta: EndpointMetadata, aggregate: string, operati
     const verb = PLUMBING[leaf] ?? PLUMBING[w[0]] ?? w[0];
     if (!VERBS.has(verb) && !PLUMBING[leaf]) return undefined;
     const rest = PLUMBING[leaf] ? [] : w.slice(1);
+    while (rest.length && PREPOSITIONS.test(rest[0])) rest.shift();
     const noun = rest.length ? pascal(rest.join(' ')) : (verb === 'list' ? plural(aggregate) : aggregate);
     return { name: pascal(verb) + noun, type: (verb === 'get' || verb === 'list' || verb === 'search' || verb === 'find' || verb === 'count') ? 'query' as const : type, verb };
   };
   const named = (operationId && fromName(operationId)) || (meta.handler && fromName(meta.handler));
-  if (named) return named;
   const segs = meta.path.split('/').filter(Boolean);
+  // A handler called just `Get` on a collection (`GET /articles`, ASP.NET) lists it; on an item it gets one.
+  if (named && named.verb === 'get' && named.name === `Get${aggregate}` && meta.method === 'GET' && !/^\{/.test(segs[segs.length - 1] ?? '')) return { name: `List${plural(aggregate)}`, type: 'query', verb: 'list' };
+  if (named) return named;
   const last = segs[segs.length - 1] ?? '';
   const onItem = /^\{/.test(last);
   if (meta.method === 'GET') return onItem ? { name: `Get${aggregate}`, type, verb: 'get' } : { name: `List${plural(aggregate)}`, type, verb: 'list' };
@@ -160,6 +170,9 @@ export function operationName(meta: EndpointMetadata, aggregate: string, operati
   const action = !onItem && segs.length > 1 && /^\{/.test(segs[segs.length - 2] ?? '') && /^[a-z]{3,}$/i.test(last) ? last.toLowerCase() : '';
   const isCollection = /[a-z]s$/.test(action) && !/ss$/.test(action) && !NOT_COLLECTIONS.test(action);
   if (action && !isCollection && !/^(item|line|detail|status|history|event|children|configuration|settings|profile)$/.test(action)) return { name: pascal(action) + aggregate, type, verb: action };
+  // POST /users/login, POST /orders/validate: a trailing known verb is the action, with or without an id before it.
+  const trailing = last.toLowerCase();
+  if (!onItem && segs.length > 1 && VERBS.has(trailing) && !PLUMBING[trailing] && !['get', 'list', 'find', 'count'].includes(trailing)) return { name: pascal(trailing) + aggregate, type, verb: trailing };
   return { name: `Create${aggregate}`, type, verb: 'create' };
 }
 
@@ -216,7 +229,8 @@ function failureScenario(f: Failure, ctx: { aggregate: string; noun: string; phr
   const ids = f.evidence.map(e => e.id);
   const conf = maxConfidence(f.evidence.map(e => e.confidence));
   const steps: ProposedStep[] = [];
-  const quoted = f.message && f.message.length <= 80 ? `"${f.message.replace(/"/g, "'")}"` : undefined;
+  const message = isProse(f.message) ? f.message : undefined;
+  const quoted = message && message.length <= 80 ? `"${message.replace(/"/g, "'")}"` : undefined;
   let name: string;
   let category: ScenarioKind;
   let then: string;
@@ -234,7 +248,7 @@ function failureScenario(f: Failure, ctx: { aggregate: string; noun: string; phr
     if (ctx.auth) steps.push(ctx.auth);
     const field = f.field ? humanField(f.field) : '';
     const be = /s$/.test(field) ? 'are' : 'is';
-    const what = f.field ? (f.rule === 'required' ? `${field} ${be} missing` : `${field} ${be} not ${ruleWords(f.rule, f.message)}`) : (f.message ? lowerFirst(f.message) : 'the input is invalid');
+    const what = f.field ? (f.rule === 'required' ? `${field} ${be} missing` : `${field} ${be} not ${ruleWords(f.rule, message)}`) : (message ? lowerFirst(message) : 'the input is invalid');
     // The validator names the field and the rule: the outcome says which, so each field's scenario is distinct (GHK004).
     then = quoted ? `the request is rejected because ${quoted}` : f.field ? `the request is rejected because the ${what}` : 'the request is rejected as invalid';
     name = `${capitalise(gerund(ctx.phrase))} is rejected when ${what}`;
@@ -249,7 +263,7 @@ function failureScenario(f: Failure, ctx: { aggregate: string; noun: string; phr
     then = quoted ? `the request fails because ${quoted}` : `the request fails as ${as}`;
     name = f.status === 404 ? `${capitalise(gerund(ctx.phrase))} fails when the ${ctx.noun} does not exist`
       : state ? `${capitalise(gerund(ctx.phrase))} fails when the ${ctx.noun} is not ${state.toLowerCase()}`
-      : `${capitalise(gerund(ctx.phrase))} fails when ${f.message ? f.message.toLowerCase() : `the result is ${as}`}`;
+      : `${capitalise(gerund(ctx.phrase))} fails when ${message ? message.toLowerCase() : `the result is ${as}`}`;
   }
   steps.push({ ...ctx.when, keyword: 'When' });
   steps.push({ keyword: 'Then', text: then, evidence: ids });
@@ -331,17 +345,37 @@ export function buildCandidates(evidence: SourceEvidence[]): CandidateResult {
   }
   const tests = evidence.filter(e => e.kind === 'test-case');
 
-  for (const [key, group] of [...groups.entries()].sort(([a], [b]) => a.localeCompare(b))) {
+  // Names first, for every endpoint, so two endpoints of one aggregate never share an operation name
+  // (`DELETE /articles/{slug}` and `DELETE /articles/{slug}/favorite`, `GET /articles` and `GET /articles/feed`):
+  // the longer path is told apart by the literal segments the shorter one does not have.
+  const entries = [...groups.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([key, group]) => {
     // The code adapter names things; the contract confirms. Prefer code metadata, keep the operationId.
     const code = group.find(e => e.extractor !== 'openapi') ?? group[0];
     const meta = { ...(code.metadata as unknown as EndpointMetadata) };
     const operationId = group.map(e => (e.metadata as any)?.operationId).find(Boolean) as string | undefined;
+    const aggregate = aggregateFromEndpoint(meta);
+    return { key, group, meta, operationId, aggregate, op: operationName(meta, aggregate, operationId) };
+  });
+  const byName = new Map<string, typeof entries>();
+  for (const x of entries) byName.set(`${x.aggregate}|${x.op.name}`, [...(byName.get(`${x.aggregate}|${x.op.name}`) ?? []), x]);
+  for (const same of byName.values()) {
+    if (same.length < 2 || same.some(x => x.meta.command)) continue;
+    const literals = (p: string) => p.split('/').filter(s => s && !IGNORED_SEGMENTS.test(s));
+    const [first, ...rest] = [...same].sort((a, b) => a.meta.path.length - b.meta.path.length || a.meta.path.localeCompare(b.meta.path));
+    const base = new Set(literals(first.meta.path).map(s => s.toLowerCase()));
+    for (const x of rest) {
+      const extra = pascal(literals(x.meta.path).filter(s => !base.has(s.toLowerCase())).join(' '));
+      if (!extra) continue;
+      const verbWord = pascal(x.op.verb);
+      x.op = { ...x.op, name: x.op.verb === 'list' ? verbWord + extra + x.op.name.slice(verbWord.length) : x.op.name + extra };
+    }
+  }
+
+  for (const { group, meta, aggregate, op } of entries) {
     const ids = new Set(group.map(e => e.id));
     const related = evidence.filter(e => e.references.some(r => ids.has(r)));
     // A test calls a concrete URL (`/orders/o-1/cancel`) or the template itself.
     const testHits = tests.filter(t => (t.metadata as any)?.method === meta.method && pathMatchesTemplate(meta.path, String((t.metadata as any)?.path ?? '')));
-    const aggregate = aggregateFromEndpoint(meta);
-    const op = operationName(meta, aggregate, operationId);
     const onItem = /\{[^}]+\}/.test(meta.path);
     const nounWords = words(op.name).slice(1).join(' ') || aggregate.toLowerCase();
     const noun = op.verb === 'list' ? singular(nounWords) : nounWords;
@@ -424,6 +458,17 @@ export function buildCandidates(evidence: SourceEvidence[]): CandidateResult {
     for (const f of [...failures.values()].sort((a, b) => (a.status ?? 0) - (b.status ?? 0) || (a.field ?? '').localeCompare(b.field ?? ''))) {
       const sc = failureScenario(f, { aggregate, noun, phrase, when, givenItem, auth: f.kind === 'authorization-rule' ? undefined : authStep });
       if (sc) scenarios.push(sc);
+    }
+    // Failures that read the same (two validation errors without a field or a message) are one scenario with
+    // the evidence of both, not two identical scenarios (GHK004).
+    const bySteps = new Map<string, ScenarioCandidate>();
+    for (const sc of [...scenarios]) {
+      const k = sc.steps.map(s => `${s.keyword}:${s.text}`).join('|');
+      const prev = bySteps.get(k);
+      if (!prev) { bySteps.set(k, sc); continue; }
+      prev.steps = prev.steps.map((s, i) => ({ ...s, evidence: [...new Set([...s.evidence, ...sc.steps[i].evidence])].sort() }));
+      prev.confidence = maxConfidence([prev.confidence, sc.confidence]);
+      scenarios.splice(scenarios.indexOf(sc), 1);
     }
     // Two scenarios must never share a name (GHK004).
     const seen = new Map<string, number>();

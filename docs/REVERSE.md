@@ -243,6 +243,8 @@ Common to both:
 
 GHK007 (implementation leakage) flags some business words that are also code words. One example is the GDPR *data controller*: a proposal about "the controller terms" scores lower even though its wording is correct. The rule is unchanged, so reword the proposal or disable GHK007 for that feature.
 
+A proposal inherits the names in the code. In `ts05-express-angular-auth` the generated aggregate is named after the title of its feature ("Autenticación con JWT middleware en Express JS…"), so the proposal repeats those technical words and lints 70. Renaming the feature, or adding `@aggregate:<Name>` to it, fixes both.
+
 ### Validation on open-source code
 
 Every beta analyzer has been run on code gherkin-ai did not write. Spring was checked against the LMS. ASP.NET Core, FastAPI and Go were checked against open-source implementations of the [RealWorld (Conduit) API](https://realworld-docs.netlify.app/specifications/backend/endpoints/), whose specification fixes the 19 expected endpoints. The repositories and their pinned commits are in `tests/fixtures/reverse/oss/realworld.json`. `scripts/reverse-oss.js` fetches them into a cache outside the repository and compares the endpoints `reverse` finds with the specification. The comparison ignores the `/api` prefix, normalises parameter names and leaves out infrastructure endpoints, as the proposals do.
@@ -259,7 +261,7 @@ npm run build && node scripts/reverse-oss.js --json reverse-oss.json   # exit 1 
 
 The [golden-build dashboard](https://fennereduardo.github.io/gherkin-ai-cli/goldens.html#reverse) shows these scores. The Pages workflow reruns this validation on every build. The round trips on the reference projects and the LMS need repositories CI does not have, so they come from the release snapshot `docs/reverse-scores.json` (`scripts/reverse-scores.js`).
 
-The table measures route extraction, not the quality of the proposals. Their lint scores (69–79) are below the default threshold of 80: they are drafts to review, as the `@needs-review` tag says. The Go app registers its routes on gin groups that `main` hands to registration functions in other packages. Before 3.3.0 the analyzer lost those prefixes, and the run above found the problem.
+The table measures route extraction. The proposals for these apps lint between 94 and 99 (69 to 79 before the duplicated-scenario fixes of 3.3.0), and they are still drafts to review, as the `@needs-review` tag says. The Go app registers its routes on gin groups that `main` hands to registration functions in other packages. Before 3.3.0 the analyzer lost those prefixes, and the run above found the problem.
 
 ### ASP.NET Core, FastAPI and Go
 
