@@ -56,6 +56,12 @@ All notable changes to this project will be documented in this file. See [commit
   - **Data shapes, without invented values.**
     - The success `When` carries a data table of the request's fields and rules, read from NestJS DTOs, Java/Kotlin classes and records, and C# classes and records.
     - Validation of two or more fields is one `Scenario Outline`, with an `Examples` row per field and rule, each preceded by its evidence. A limit is quoted only when the code states it.
+  - **Django and Django REST framework** (`python/django`, beta).
+    - Routes: `path()`, `re_path()`/`url()` regexes through every `include()`, and DRF routers with ViewSets, mixins, `@action` and `lookup_field`.
+    - Views: generic views, `APIView` methods and `@api_view` functions.
+    - `permission_classes`, serializer fields and rules, and DRF responses.
+    - F1 0.95 on the Django RealWorld app; its one missing endpoint is missing in its code too.
+    - `PUT` and `PATCH` on one path are `Update…` and `Patch…`.
   - **Every beta analyzer is validated on open-source code.** The RealWorld corpus grows from 3 to 8 apps pinned by commit, adding NestJS (F1 0.95), Express (0.97), Spring Boot in Java (1.00), Quarkus (1.00) and Spring Boot in Kotlin (1.00). The extra endpoints in the NestJS and Express apps are real. The run found that `@RequestMapping(method = POST)` with a static import was read as `GET`; it is fixed. The dashboard shows each analyzer's lowest F1 across its apps.
   - **Domain glossary** (`reverse.glossary`: YAML, JSON or Markdown, plus `Glossary:` lines in features).
     - An aggregate that is not a term becomes an open question.

@@ -37,27 +37,30 @@ export function pythonStatus(text: string): number | undefined {
   return named ? ({ OK: 200, CREATED: 201, ACCEPTED: 202, NO_CONTENT: 204, BAD_REQUEST: 400, UNAUTHORIZED: 401, FORBIDDEN: 403, NOT_FOUND: 404, CONFLICT: 409, UNPROCESSABLE_ENTITY: 422 } as Record<string, number>)[named] : undefined;
 }
 
-interface PyFunction { name: string; module: string; file: string; node: TSNode; body?: TSNode; decorators: TSNode[]; params: TSNode | null }
+export interface PyFunction { name: string; module: string; file: string; node: TSNode; body?: TSNode; decorators: TSNode[]; params: TSNode | null }
 
 const stringOf = (n: TSNode | undefined | null) => (n?.type === 'string' ? unquote(n.text) : undefined);
 const kwarg = (args: TSNode | null | undefined, name: string) => childrenOfType(args, 'keyword_argument').find(k => k.childForFieldName('name')?.text === name)?.childForFieldName('value');
 
-function failure(fn: PyFunction, endpointId: string, node: TSNode, condition: string, branch: string): SourceEvidence | undefined {
+function failure(fn: PyFunction, endpointId: string, node: TSNode, condition: string, branch: string, extractor: string = ID): SourceEvidence | undefined {
   const raised = branch.match(/\braise\s+([A-Z]\w*)\s*(?:\(([\s\S]*)\))?/);
-  const returned = /\breturn\s+JSONResponse/.test(branch) ? branch : undefined;
+  // FastAPI `return JSONResponse(…, status_code=404)`; Django REST framework `return Response(…, status=status.HTTP_404_NOT_FOUND)`.
+  const returned = /\breturn\s+(JSONResponse|Response)\s*\(/.test(branch) && pythonStatus(branch) !== undefined ? branch : undefined;
   if (!raised && !returned) return undefined;
   const status = raised ? pythonStatus(raised[0]) ?? exceptionStatusByName(raised[1]) : pythonStatus(returned!);
   if (status !== undefined && status < 400) return undefined;
-  const message = branch.match(/detail\s*=\s*["']([^"']{4,})["']/)?.[1] ?? branch.match(/["']([^"']{4,})["']/)?.[1];
+  // detail="…" (HTTPException), {"detail": "…"} / {"error": "…"} (a Response body), else the first long string literal.
+  const message = branch.match(/detail\s*=\s*["']([^"']{4,})["']/)?.[1] ?? branch.match(/["'](?:detail|message|error|errors)["']\s*:\s*["']([^"']{4,})["']/)?.[1] ?? branch.match(/["']([^"']{4,})["'](?!\s*:)/)?.[1];
   const { kind, technical } = failureKind(status);
   return makeEvidence({
-    kind, extractor: ID, confidence: status !== undefined ? 'strong' : 'inferred', references: [endpointId], location: { file: fn.file, ...lineRange(node) },
+    kind, extractor, confidence: status !== undefined ? 'strong' : 'inferred', references: [endpointId], location: { file: fn.file, ...lineRange(node) },
     symbol: raised?.[1], description: `${message ?? raised?.[1] ?? `status ${status}`} when ${condition}`,
     metadata: { condition, status, message, exception: raised?.[1], technical }, key: `${condition}|${status}|${message ?? ''}`
   });
 }
 
-function analyzeBody(fn: PyFunction, endpointId: string, functions: PyFunction[], depth: number, visited: Set<string>): SourceEvidence[] {
+/** Body of a Python handler (FastAPI, Django, Celery): guarded failures, states, events, integrations, calls followed. */
+export function analyzeBody(fn: PyFunction, endpointId: string, functions: PyFunction[], depth: number, visited: Set<string>, extractor: string = ID): SourceEvidence[] {
   const key = `${fn.file}:${fn.node.startIndex}`;
   if (!fn.body || visited.has(key) || depth > MAX_DEPTH) return [];
   visited.add(key);
@@ -66,10 +69,10 @@ function analyzeBody(fn: PyFunction, endpointId: string, functions: PyFunction[]
     const cond = ifNode.childForFieldName('condition');
     const then = ifNode.childForFieldName('consequence');
     if (!cond || !then) continue;
-    const e = failure(fn, endpointId, ifNode, cond.text.replace(/\s+/g, ' '), then.text);
+    const e = failure(fn, endpointId, ifNode, cond.text.replace(/\s+/g, ' '), then.text, extractor);
     if (e) out.push(e);
   }
-  const scope = { text: fn.body.text, startLine: fn.body.startPosition.row + 1, file: fn.file, extractor: ID, endpointId };
+  const scope = { text: fn.body.text, startLine: fn.body.startPosition.row + 1, file: fn.file, extractor, endpointId };
   out.push(...statesInText(scope), ...eventsInText(scope));
   for (const call of ofType(fn.body, 'call')) {
     const callee = call.childForFieldName('function');
@@ -80,19 +83,19 @@ function analyzeBody(fn: PyFunction, endpointId: string, functions: PyFunction[]
     const root = receiver?.replace(/^self\./, '').split('.')[0] ?? '';
     if ((/^(httpx|requests|aiohttp|session|client|http_client|api_client)$/.test(root) && /^(get|post|put|patch|delete|request|send|head)$/.test(name)) || /^(stripe|twilio|sendgrid|boto3|ses|sns|s3)$/.test(root)) {
       const url = call.text.match(/["']((?:https?:)?\/\/[^"'?#]+)["']/)?.[1];
-      out.push(makeEvidence({ kind: 'external-integration', extractor: ID, confidence: /^(httpx|requests|aiohttp|stripe|twilio|sendgrid|boto3)$/.test(root) ? 'strong' : 'inferred', references: [endpointId], location: { file: fn.file, ...lineRange(call) }, symbol: `${receiver}.${name}`, description: `${receiver}.${name}${url ? ` ${url}` : ''}`, metadata: { client: root, method: name, url } }));
+      out.push(makeEvidence({ kind: 'external-integration', extractor, confidence: /^(httpx|requests|aiohttp|stripe|twilio|sendgrid|boto3)$/.test(root) ? 'strong' : 'inferred', references: [endpointId], location: { file: fn.file, ...lineRange(call) }, symbol: `${receiver}.${name}`, description: `${receiver}.${name}${url ? ` ${url}` : ''}`, metadata: { client: root, method: name, url } }));
       continue;
     }
     // Repository-like calls: orders.save(order), session.add(x), db.commit().
     if (receiver && /^(save|add|delete|remove|update|insert|get|find\w*|filter|query|execute|merge|commit)$/.test(name) && /(repo|repository|session|db|orders?|store|\w+s)$/i.test(receiver) && !functions.some(f => f.name === name && f.module === receiver)) {
-      out.push(makeEvidence({ kind: 'repository-query', extractor: ID, confidence: 'inferred', references: [endpointId], location: { file: fn.file, ...lineRange(call) }, symbol: `${receiver}.${name}`, description: `${/^(get|find|filter|query)/.test(name) ? 'reads' : 'writes'} ${receiver}`, metadata: { target: receiver, method: name } }));
+      out.push(makeEvidence({ kind: 'repository-query', extractor, confidence: 'inferred', references: [endpointId], location: { file: fn.file, ...lineRange(call) }, symbol: `${receiver}.${name}`, description: `${/^(get|find|filter|query)/.test(name) ? 'reads' : 'writes'} ${receiver}`, metadata: { target: receiver, method: name } }));
       continue;
     }
     // Project functions: services.cancel_order(…) (module services.py) or a function imported by name.
     const target = functions.find(f => f.name === name && f !== fn && (receiver ? f.module === receiver.split('.').pop() : true));
     if (!target || (!receiver && functions.filter(f => f.name === name).length > 1)) continue;
-    out.push(makeEvidence({ kind: 'service-call', extractor: ID, confidence: 'strong', references: [endpointId], location: { file: fn.file, ...lineRange(call) }, symbol: `${target.module}.${name}`, description: `calls ${target.module}.${name}`, metadata: { target: target.module, method: name, declaredIn: target.file } }));
-    out.push(...analyzeBody(target, endpointId, functions, depth + 1, visited));
+    out.push(makeEvidence({ kind: 'service-call', extractor, confidence: 'strong', references: [endpointId], location: { file: fn.file, ...lineRange(call) }, symbol: `${target.module}.${name}`, description: `calls ${target.module}.${name}`, metadata: { target: target.module, method: name, declaredIn: target.file } }));
+    out.push(...analyzeBody(target, endpointId, functions, depth + 1, visited, extractor));
   }
   return out;
 }

@@ -267,6 +267,7 @@ These are tested by `tests/core/reverse.test.ts` and the golden `tests/golden/re
 | `jvm/spring-quarkus` | Spring Boot and Quarkus (JAX-RS), in Java and Kotlin | tree-sitter | beta |
 | `csharp/aspnet` | ASP.NET Core controllers and Minimal APIs | tree-sitter | beta |
 | `python/fastapi` | FastAPI | tree-sitter | beta |
+| `python/django` | Django, Django REST framework | tree-sitter | beta |
 | `go/http` | Go: chi, gin, echo, `net/http` (Go 1.22 method patterns) | tree-sitter | beta |
 | `openapi` | Any stack with an OpenAPI document. This is the path for the community-tier stacks. | JSON / YAML | beta |
 | `tests` | Test HTTP calls (TypeScript, Java, Kotlin, C#, Python, Go) | patterns | beta |
@@ -314,7 +315,7 @@ A proposal inherits the names in the code. In `ts05-express-angular-auth` the ge
 
 ### Validation on open-source code
 
-Every beta analyzer has been run on code gherkin-ai did not write: eight open-source implementations of the [RealWorld (Conduit) API](https://realworld-docs.netlify.app/specifications/backend/endpoints/), whose specification fixes the 19 expected endpoints, one or more per analyzer, and the LMS for Spring. The repositories and their pinned commits are in `tests/fixtures/reverse/oss/realworld.json`. `scripts/reverse-oss.js` fetches them into a cache outside the repository and compares the endpoints `reverse` finds with the specification. The comparison ignores the `/api` prefix, normalises parameter names and leaves out infrastructure endpoints, as the proposals do.
+Every beta analyzer has been run on code gherkin-ai did not write: nine open-source implementations of the [RealWorld (Conduit) API](https://realworld-docs.netlify.app/specifications/backend/endpoints/), whose specification fixes the 19 expected endpoints, one or more per analyzer, and the LMS for Spring. The repositories and their pinned commits are in `tests/fixtures/reverse/oss/realworld.json`. `scripts/reverse-oss.js` fetches them into a cache outside the repository and compares the endpoints `reverse` finds with the specification. The comparison ignores the `/api` prefix, normalises parameter names and leaves out infrastructure endpoints, as the proposals do.
 
 ```bash
 npm run build && node scripts/reverse-oss.js --json reverse-oss.json   # exit 1 when an analyzer is below F1 0.80
@@ -329,9 +330,10 @@ npm run build && node scripts/reverse-oss.js --json reverse-oss.json   # exit 1 
 | `jvm/spring-quarkus` | gothinkster/kotlin-spring-realworld-example-app (Kotlin, Spring) | 19/19 | 1.00 | 1.00 | 1.00 | Article, Comment, Profile, Tag, User | 94 |
 | `csharp/aspnet` | gothinkster/aspnetcore-realworld-example-app | 19/19 | 1.00 | 1.00 | 1.00 | Article, Comment, Profile, Tag, User | 94 |
 | `python/fastapi` | nsidnev/fastapi-realworld-example-app | 19/19 | 1.00 | 1.00 | 1.00 | Article, Comment, Profile, Tag, User | 94 |
+| `python/django` | gothinkster/django-realworld-example-app | 19/19 (18 matched) | 0.95 | 0.95 | 0.95 | Article, Comment, Profile, Tag, User | 94 |
 | `go/http` | gothinkster/golang-gin-realworld-example-app | 19/19 | 1.00 | 1.00 | 1.00 | Article, Comment, Profile, Tag, User | 99 |
 
-The endpoints outside the specification are in the code: the NestJS app also exposes `DELETE /users/{id}` and a `GET /` greeting, and the Express app a `GET /`. Precision counts them against the analyzer, so 0.90 and 0.95 are what the specification allows, not misreadings. The Kotlin repository declares no license; like the others it is cloned at test time and never copied.
+The endpoints outside the specification are in the code: the NestJS app also exposes `DELETE /users/{id}` and a `GET /` greeting, the Express app a `GET /`, and the Django app a `PATCH /user` (its `RetrieveUpdateAPIView` serves it). The Django app has no article deletion (its ViewSet has no `DestroyModelMixin`), so the one missing endpoint is missing in the code too. Precision counts them against the analyzer, so 0.90 and 0.95 are what the specification allows, not misreadings. The Kotlin repository declares no license; like the others it is cloned at test time and never copied.
 
 The Spring app maps its users with `@RequestMapping(path = "/users", method = POST)` and a static import of `RequestMethod.POST`. Before this run the analyzer read those two endpoints as `GET` (F1 0.89); it reads the method with or without the prefix now.
 

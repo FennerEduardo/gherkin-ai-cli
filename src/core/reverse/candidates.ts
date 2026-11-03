@@ -406,10 +406,19 @@ export function buildCandidates(evidence: SourceEvidence[]): CandidateResult {
   for (const same of byName.values()) {
     if (same.length < 2 || same.some(x => x.meta.command)) continue;
     const literals = (p: string) => p.split('/').filter(s => s && !IGNORED_SEGMENTS.test(s));
-    const [first, ...rest] = [...same].sort((a, b) => a.meta.path.length - b.meta.path.length || a.meta.path.localeCompare(b.meta.path));
+    // The shortest path keeps the name; on the same path, PUT before PATCH (PATCH is the partial one).
+    const rank = (m: string) => ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'].indexOf(m);
+    const [first, ...rest] = [...same].sort((a, b) => a.meta.path.length - b.meta.path.length || a.meta.path.localeCompare(b.meta.path) || rank(a.meta.method) - rank(b.meta.method));
     const base = new Set(literals(first.meta.path).map(s => s.toLowerCase()));
     for (const x of rest) {
       const extra = pascal(literals(x.meta.path).filter(s => !base.has(s.toLowerCase())).join(' '));
+      // Same path, another method (PUT and PATCH /user, as Django REST framework serves them): PATCH is Patch…, PUT Replace….
+      if (!extra && x.meta.method !== first.meta.method) {
+        const verbWord = pascal(x.op.verb);
+        const other = x.meta.method === 'PATCH' ? 'Patch' : x.meta.method === 'PUT' ? 'Replace' : pascal(x.meta.method.toLowerCase());
+        if (x.op.name.startsWith(verbWord)) x.op = { ...x.op, name: other + x.op.name.slice(verbWord.length), verb: other.toLowerCase() };
+        continue;
+      }
       if (!extra) continue;
       const verbWord = pascal(x.op.verb);
       x.op = { ...x.op, name: x.op.verb === 'list' ? verbWord + extra + x.op.name.slice(verbWord.length) : x.op.name + extra };

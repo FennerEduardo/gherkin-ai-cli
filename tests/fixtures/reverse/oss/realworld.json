@@ -70,6 +70,12 @@
       "repository": "https://github.com/gothinkster/kotlin-spring-realworld-example-app",
       "commit": "848c29e3abfe1bd72001cc7d7a3227aebec96e9b",
       "license": "none declared: cloned at test time, never copied"
+    },
+    {
+      "analyzer": "python/django",
+      "repository": "https://github.com/gothinkster/django-realworld-example-app",
+      "commit": "29c9d42831fa0cfc5a4aa7561f674396eacf20a2",
+      "license": "none declared: cloned at test time, never copied"
     }
   ]
 }
