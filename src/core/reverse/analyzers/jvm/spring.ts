@@ -323,7 +323,8 @@ function endpointsOf(cls: JvmClass): { method: JvmMethod; verb: EndpointMetadata
     const jaxrs = m.annotations.find(a => JAXRS_VERBS[a.name]);
     if (spring) out.push({ method: m, verb: SPRING_VERBS[spring.name], path: joinPaths(springPrefix, pathArg(spring)), jaxrs: false });
     else if (request) {
-      const verb = (request.pairs.method ?? request.raw).match(/RequestMethod\.(GET|POST|PUT|PATCH|DELETE)/)?.[1] as EndpointMetadata['method'] | undefined;
+      // `method = RequestMethod.POST`, or `method = POST` with a static import (the Spring RealWorld app).
+      const verb = (request.pairs.method?.match(/(?:RequestMethod\.)?\b(GET|POST|PUT|PATCH|DELETE)\b/) ?? request.raw.match(/RequestMethod\.(GET|POST|PUT|PATCH|DELETE)/))?.[1] as EndpointMetadata['method'] | undefined;
       out.push({ method: m, verb: verb ?? 'GET', path: joinPaths(springPrefix, pathArg(request)), jaxrs: false });
     } else if (jaxrs) out.push({ method: m, verb: JAXRS_VERBS[jaxrs.name], path: joinPaths(jaxrsPrefix, pathArg(annotation(m.annotations, 'Path'))), jaxrs: true });
   }

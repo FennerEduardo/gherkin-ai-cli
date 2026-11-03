@@ -23,8 +23,53 @@
     "GET /tags"
   ],
   "repositories": [
-    { "analyzer": "csharp/aspnet", "repository": "https://github.com/gothinkster/aspnetcore-realworld-example-app", "commit": "da51ad182f7a7eb6cf642109c8f0e00aa4531dd0", "license": "MIT" },
-    { "analyzer": "python/fastapi", "repository": "https://github.com/nsidnev/fastapi-realworld-example-app", "commit": "029eb7781c60d5f563ee8990a0cbfb79b244538c", "license": "MIT" },
-    { "analyzer": "go/http", "repository": "https://github.com/gothinkster/golang-gin-realworld-example-app", "commit": "a41289b2a4951e7cc09066f86742a27f85121c9b", "license": "MIT" }
+    {
+      "analyzer": "csharp/aspnet",
+      "repository": "https://github.com/gothinkster/aspnetcore-realworld-example-app",
+      "commit": "da51ad182f7a7eb6cf642109c8f0e00aa4531dd0",
+      "license": "MIT"
+    },
+    {
+      "analyzer": "python/fastapi",
+      "repository": "https://github.com/nsidnev/fastapi-realworld-example-app",
+      "commit": "029eb7781c60d5f563ee8990a0cbfb79b244538c",
+      "license": "MIT"
+    },
+    {
+      "analyzer": "go/http",
+      "repository": "https://github.com/gothinkster/golang-gin-realworld-example-app",
+      "commit": "a41289b2a4951e7cc09066f86742a27f85121c9b",
+      "license": "MIT"
+    },
+    {
+      "analyzer": "typescript/nestjs",
+      "repository": "https://github.com/lujakob/nestjs-realworld-example-app",
+      "commit": "c1c2cc4e448b279ff083272df1ac50d20c3304fa",
+      "license": "ISC (package.json)"
+    },
+    {
+      "analyzer": "typescript/express",
+      "repository": "https://github.com/gothinkster/node-express-realworld-example-app",
+      "commit": "30b68e1e881462b2f4164ea09ab4c4f5699c7b0b",
+      "license": "MIT (package.json)"
+    },
+    {
+      "analyzer": "jvm/spring-quarkus",
+      "repository": "https://github.com/gothinkster/spring-boot-realworld-example-app",
+      "commit": "ee17e31aafe733d98c4853c8b9a74d7f2f6c924a",
+      "license": "MIT"
+    },
+    {
+      "analyzer": "jvm/spring-quarkus",
+      "repository": "https://github.com/diegocamara/realworld-api-quarkus",
+      "commit": "d4fe769be924805923764ea59f8ea72ad7b7fe89",
+      "license": "MIT"
+    },
+    {
+      "analyzer": "jvm/spring-quarkus",
+      "repository": "https://github.com/gothinkster/kotlin-spring-realworld-example-app",
+      "commit": "848c29e3abfe1bd72001cc7d7a3227aebec96e9b",
+      "license": "none declared: cloned at test time, never copied"
+    }
   ]
 }

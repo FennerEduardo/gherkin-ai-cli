@@ -196,10 +196,17 @@ This code was written by gherkin-ai, so the round trip is necessary but not suff
 | ASP.NET Core | `gothinkster/aspnetcore-realworld-example-app` (`da51ad1`) | 19 / 19 | 1.00 | 1.00 | 1.00 |
 | FastAPI | `nsidnev/fastapi-realworld-example-app` (`029eb77`) | 19 / 19 | 1.00 | 1.00 | 1.00 |
 | Go (gin) | `gothinkster/golang-gin-realworld-example-app` (`a41289b`) | 19 / 19 | 1.00 | 1.00 | 1.00 |
+| NestJS | `lujakob/nestjs-realworld-example-app` (`c1c2cc4`) | 19 / 19 (21 found) | 0.90 | 1.00 | 0.95 |
+| Express | `gothinkster/node-express-realworld-example-app` (`30b68e1`) | 19 / 19 (20 found) | 0.95 | 1.00 | 0.97 |
+| Spring Boot (Java) | `gothinkster/spring-boot-realworld-example-app` (`ee17e31`) | 19 / 19 | 1.00 | 1.00 | 1.00 |
+| Quarkus (Java) | `diegocamara/realworld-api-quarkus` (`d4fe769`) | 19 / 19 | 1.00 | 1.00 | 1.00 |
+| Spring Boot (Kotlin) | `gothinkster/kotlin-spring-realworld-example-app` (`848c29e`) | 19 / 19 | 1.00 | 1.00 | 1.00 |
 
 The Go analyzer first scored below the threshold on this corpus. The gin route groups are passed to registration functions in other packages, so the routes lost their prefix, and `""` and `"/"` counted as two routes. Both cases are fixed and have their own fixture (`tests/fixtures/reverse/go-gin-groups/`).
 
-The proposals for these three apps score 94 to 99 on `ghk lint`. Before the fix for duplicated scenarios (GHK004) they scored 69 to 79. They still need review before `accept`, which is what `@needs-review` says. The golden-build dashboard shows the round-trip and open-source scores. The Pages workflow reruns the open-source validation on every build.
+Every beta analyzer now has at least one app. The NestJS and Express apps expose endpoints the specification does not list (`DELETE /users/{id}`, `GET /`); precision counts them, so 0.90 and 0.95 are not misreadings. The Spring app declares `method = POST` with a static import, which the analyzer first read as `GET` (F1 0.89); it is fixed.
+
+The proposals for these eight apps score 94 to 99 on `ghk lint`. Before the fix for duplicated scenarios (GHK004) they scored 69 to 79. They still need review before `accept`, which is what `@needs-review` says. The golden-build dashboard shows the round-trip and open-source scores. The Pages workflow reruns the open-source validation on every build.
 
 ### 2.3 The LMS (hand-written services)
 

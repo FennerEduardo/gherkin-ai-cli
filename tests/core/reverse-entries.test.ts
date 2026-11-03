@@ -85,6 +85,30 @@ describe('reverse: message handlers and scheduled jobs', () => {
   });
 });
 
+describe('reverse: Spring @RequestMapping with a statically imported method (RV-11)', () => {
+  it('reads `method = POST` as POST, as the Spring RealWorld app writes it', async () => {
+    const fs = await import('fs');
+    const os = await import('os');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ghk-rv11-'));
+    try {
+      fs.mkdirSync(path.join(dir, 'src', 'main', 'java', 'shop'), { recursive: true });
+      fs.writeFileSync(path.join(dir, 'src', 'main', 'java', 'shop', 'UsersApi.java'), [
+        'package shop;',
+        'import static org.springframework.web.bind.annotation.RequestMethod.POST;',
+        'import org.springframework.web.bind.annotation.*;',
+        '@RestController',
+        'public class UsersApi {',
+        '  @RequestMapping(path = "/users/login", method = POST)',
+        '  public String login() { return "ok"; }',
+        '}'
+      ].join('\n'));
+      const scan = await runScan(dir, { write: false });
+      const endpoints = scan.evidence.filter(e => e.kind === 'http-endpoint').map(e => e.description);
+      expect(endpoints).toEqual(['POST /users/login']);
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  }, 60000);
+});
+
 describe('reverse: database constraints and other systems', () => {
   it('a unique constraint confirms the conflict scenario of its aggregate', async () => {
     const { candidates } = await candidatesOf('nestjs');

@@ -62,10 +62,13 @@ function reverseScores() {
 const f1Cell = f1 => (typeof f1 === 'number' ? `<span class="${f1 >= 0.8 ? 'ok' : 'bad'}">${f1.toFixed(2)}</span>` : '<span class="muted">–</span>');
 
 function reverseSection(data) {
-  const ossBy = new Map((data.oss?.results ?? []).map(r => [r.analyzer, r]));
+  // An analyzer may be validated on several apps (Spring, Quarkus and Kotlin for jvm/spring-quarkus): its lowest F1 is shown.
+  const ossBy = new Map();
+  for (const r of data.oss?.results ?? []) ossBy.set(r.analyzer, [...(ossBy.get(r.analyzer) ?? []), r]);
   const catalog = data.catalog.map(a => {
-    const v = ossBy.get(a.id);
-    return `<tr><td><code>${escape(a.id)}</code></td><td>${escape(a.stacks)}</td><td>${escape(a.parser)}</td><td>${escape(a.maturity)}</td><td>${v ? `${f1Cell(v.f1)} <span class="muted">${v.matched}/${v.expected} endpoints</span>` : '<span class="muted">–</span>'}</td></tr>`;
+    const runs = ossBy.get(a.id) ?? [];
+    const worst = runs.reduce((w, r) => (!w || r.f1 < w.f1 ? r : w), undefined);
+    return `<tr><td><code>${escape(a.id)}</code></td><td>${escape(a.stacks)}</td><td>${escape(a.parser)}</td><td>${escape(a.maturity)}</td><td>${worst ? `${f1Cell(worst.f1)} <span class="muted">${runs.length > 1 ? `lowest of ${runs.length} apps` : `${worst.matched}/${worst.expected} endpoints`}</span>` : '<span class="muted">–</span>'}</td></tr>`;
   }).join('\n');
   const oss = (data.oss?.results ?? []).map(r => `<tr><td><code>${escape(r.analyzer)}</code></td><td><a href="${escape(r.repository)}/tree/${escape(r.commit)}">${escape(r.repository.replace('https://github.com/', ''))}</a> <span class="muted">${escape(r.commit.slice(0, 7))}</span></td><td>${r.matched}/${r.expected}</td><td>${r.precision.toFixed(2)}</td><td>${r.recall.toFixed(2)}</td><td>${f1Cell(r.f1)}</td><td>${escape(r.aggregates.join(', '))}</td><td>${r.lintMin ?? '–'}</td></tr>`).join('\n');
   const s = data.snapshot;

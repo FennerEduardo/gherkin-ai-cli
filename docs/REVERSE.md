@@ -314,7 +314,7 @@ A proposal inherits the names in the code. In `ts05-express-angular-auth` the ge
 
 ### Validation on open-source code
 
-Every beta analyzer has been run on code gherkin-ai did not write. Spring was checked against the LMS. ASP.NET Core, FastAPI and Go were checked against open-source implementations of the [RealWorld (Conduit) API](https://realworld-docs.netlify.app/specifications/backend/endpoints/), whose specification fixes the 19 expected endpoints. The repositories and their pinned commits are in `tests/fixtures/reverse/oss/realworld.json`. `scripts/reverse-oss.js` fetches them into a cache outside the repository and compares the endpoints `reverse` finds with the specification. The comparison ignores the `/api` prefix, normalises parameter names and leaves out infrastructure endpoints, as the proposals do.
+Every beta analyzer has been run on code gherkin-ai did not write: eight open-source implementations of the [RealWorld (Conduit) API](https://realworld-docs.netlify.app/specifications/backend/endpoints/), whose specification fixes the 19 expected endpoints, one or more per analyzer, and the LMS for Spring. The repositories and their pinned commits are in `tests/fixtures/reverse/oss/realworld.json`. `scripts/reverse-oss.js` fetches them into a cache outside the repository and compares the endpoints `reverse` finds with the specification. The comparison ignores the `/api` prefix, normalises parameter names and leaves out infrastructure endpoints, as the proposals do.
 
 ```bash
 npm run build && node scripts/reverse-oss.js --json reverse-oss.json   # exit 1 when an analyzer is below F1 0.80
@@ -322,9 +322,18 @@ npm run build && node scripts/reverse-oss.js --json reverse-oss.json   # exit 1 
 
 | Analyzer | Repository | Endpoints found | Precision | Recall | F1 | Aggregates proposed | Lowest lint score of the proposals |
 |---|---|---|---|---|---|---|---|
-| `csharp/aspnet` | gothinkster/aspnetcore-realworld-example-app | 19/19 | 1.00 | 1.00 | 1.00 | Article, Comment, Profile, Tag, User | 74 |
-| `python/fastapi` | nsidnev/fastapi-realworld-example-app | 19/19 | 1.00 | 1.00 | 1.00 | Article, Comment, Profile, Tag, User | 79 |
-| `go/http` | gothinkster/golang-gin-realworld-example-app | 19/19 | 1.00 | 1.00 | 1.00 | Article, Comment, Profile, Tag, User | 69 |
+| `typescript/nestjs` | lujakob/nestjs-realworld-example-app | 19/19 (21 in all) | 0.90 | 1.00 | 0.95 | App, Article, Comment, Profile, Tag, User | 94 |
+| `typescript/express` | gothinkster/node-express-realworld-example-app | 19/19 (20 in all) | 0.95 | 1.00 | 0.97 | Api, Article, Comment, Profile, Tag, User | 94 |
+| `jvm/spring-quarkus` | gothinkster/spring-boot-realworld-example-app (Java, Spring) | 19/19 | 1.00 | 1.00 | 1.00 | Article, Comment, CurrentUser, Profile, Tag, User | 94 |
+| `jvm/spring-quarkus` | diegocamara/realworld-api-quarkus (Java, Quarkus) | 19/19 | 1.00 | 1.00 | 1.00 | Article, Comment, Profile, Tag, User | 94 |
+| `jvm/spring-quarkus` | gothinkster/kotlin-spring-realworld-example-app (Kotlin, Spring) | 19/19 | 1.00 | 1.00 | 1.00 | Article, Comment, Profile, Tag, User | 94 |
+| `csharp/aspnet` | gothinkster/aspnetcore-realworld-example-app | 19/19 | 1.00 | 1.00 | 1.00 | Article, Comment, Profile, Tag, User | 94 |
+| `python/fastapi` | nsidnev/fastapi-realworld-example-app | 19/19 | 1.00 | 1.00 | 1.00 | Article, Comment, Profile, Tag, User | 94 |
+| `go/http` | gothinkster/golang-gin-realworld-example-app | 19/19 | 1.00 | 1.00 | 1.00 | Article, Comment, Profile, Tag, User | 99 |
+
+The endpoints outside the specification are in the code: the NestJS app also exposes `DELETE /users/{id}` and a `GET /` greeting, and the Express app a `GET /`. Precision counts them against the analyzer, so 0.90 and 0.95 are what the specification allows, not misreadings. The Kotlin repository declares no license; like the others it is cloned at test time and never copied.
+
+The Spring app maps its users with `@RequestMapping(path = "/users", method = POST)` and a static import of `RequestMethod.POST`. Before this run the analyzer read those two endpoints as `GET` (F1 0.89); it reads the method with or without the prefix now.
 
 The [golden-build dashboard](https://fennereduardo.github.io/gherkin-ai-cli/goldens.html#reverse) shows these scores. The Pages workflow reruns this validation on every build. The round trips on the reference projects and the LMS need repositories CI does not have, so they come from the release snapshot `docs/reverse-scores.json` (`scripts/reverse-scores.js`).
 
