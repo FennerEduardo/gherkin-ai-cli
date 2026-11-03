@@ -350,8 +350,8 @@ for (const [name, cloud, backend, extra, compute] of [['terraform-gcp-base', 'gc
   STACKS[name].build = [...STACKS[name].build, `cd ../../../infrastructure/base/${cloud} && terraform init -backend=false -input=false -no-color && terraform validate -no-color && cd - >/dev/null`];
   STACKS[name].test = ['terraform fmt -check -recursive -diff -no-color && terraform fmt -check -recursive -diff -no-color ../../../infrastructure/base'];
 }
-// 3.3.0 (X-01b): the JVM and Python runtime kernels on MySQL 8.4 (Spring Boot and Quarkus, Java and Kotlin; FastAPI, Django): IT1-IT7 against MySQL.
-for (const key of ['java', 'kotlin', 'quarkus', 'kotlin-quarkus', 'fastapi', 'django']) {
+// 3.3.0 (X-01b): the JVM, Python and .NET runtime kernels on MySQL 8.4 (Spring Boot and Quarkus, Java and Kotlin; FastAPI, Django; ASP.NET Core): IT1-IT7 against MySQL.
+for (const key of ['java', 'kotlin', 'quarkus', 'kotlin-quarkus', 'fastapi', 'django', 'dotnet']) {
   STACKS[`${key}-mysql`] = { ...STACKS[key], stack: { ...STACKS[key].stack, database: 'mysql', kernelDatabase: 'mysql' }, services: [...(STACKS[key].services || []), MYSQL_DATABASE] };
 }
 // 3.3.0 (X-06b): a backend-for-frontend deploys without database or broker; every cloud, both compute modes, and

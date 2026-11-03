@@ -90,6 +90,7 @@ export interface GeneratedContractsOutput {
 import { SpecificationIR } from '../core/semantic-ir';
 import { MYSQL_DRIVER, kernelDatabase, usesMysql } from './kernel/runtime/typescript-mysql';
 import { mysqlizeJvmProject } from './kernel/runtime/jvm-mysql';
+import { mysqlizeCsProject } from './kernel/runtime/csharp-mysql';
 
 /*
  * Dependencies the generated Node sources import. NestJS and Prisma majors follow
@@ -581,6 +582,11 @@ docker run --rm -v "$(pwd)":/app -w /app -e DOTNET_CLI_TELEMETRY_OPTOUT=1 -e DOT
   // JVM kernel on MySQL (X-01b): the build file gets the MySQL driver (kernel/runtime/jvm-mysql.ts).
   if (projectRootFile && ['java', 'kotlin'].includes(config.stack.language) && kernelDatabase(config) === 'mysql') {
     const adapted = mysqlizeJvmProject(Array.isArray(projectRootFile) ? projectRootFile : [projectRootFile]);
+    projectRootFile = Array.isArray(projectRootFile) ? adapted : adapted[0];
+  }
+  // .NET kernel on MySQL (X-01b): MySqlConnector instead of Npgsql in the csproj (kernel/runtime/csharp-mysql.ts).
+  if (projectRootFile && ['csharp', '.net', 'dotnet'].includes(config.stack.language) && kernelDatabase(config) === 'mysql') {
+    const adapted = mysqlizeCsProject(Array.isArray(projectRootFile) ? projectRootFile : [projectRootFile]);
     projectRootFile = Array.isArray(projectRootFile) ? adapted : adapted[0];
   }
 
