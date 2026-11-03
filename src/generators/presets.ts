@@ -28,6 +28,7 @@ import { renderTsBff } from './bff/typescript';
 import { renderSpringBff } from './bff/spring';
 import { kernelDatabase, mysqlizeTsProject, usesMysql } from './kernel/runtime/typescript-mysql';
 import { mysqlizeJvmProject } from './kernel/runtime/jvm-mysql';
+import { mysqlizePyProject } from './kernel/runtime/python-mysql';
 import { resolveNodeProfile } from './node-profile';
 import { renderContainerFiles } from './deploy/container';
 import { buildDomainModel } from './kernel/domain-model';
@@ -87,6 +88,8 @@ function backendPreset(id: string): BackendPreset | undefined {
   // Spring Boot and Quarkus, Java and Kotlin (X-01b, 3.3.0): the JVM kernel on MySQL (kernel/runtime/jvm-mysql.ts).
   const preset = BACKEND_PRESETS[id];
   if (preset && /^(java|kotlin)\/(spring|quarkus)$/.test(id)) return (p, c, f) => (kernelDatabase(c) === 'mysql' ? mysqlizeJvmProject(preset(p, c, f)) : preset(p, c, f));
+  // FastAPI and Django (X-01b): the Python kernel on MySQL (kernel/runtime/python-mysql.ts).
+  if (preset && /^python\//.test(id)) return (p, c, f) => (kernelDatabase(c) === 'mysql' ? mysqlizePyProject(preset(p, c, f)) : preset(p, c, f));
   return preset;
 }
 

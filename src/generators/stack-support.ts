@@ -61,6 +61,8 @@ export const STACK_SUPPORT: StackSupport[] = [
   { id: 'kotlin/quarkus-mysql', label: 'Kotlin · Quarkus 3.40 LTS on MySQL 8.4 (stack.kernelDatabase "mysql")', kind: 'backend', tier: 'stable', golden: 'kotlin-quarkus-mysql' },
   { id: 'python/fastapi', label: 'Python · FastAPI + SQLAlchemy', kind: 'backend', tier: 'stable', golden: 'fastapi' },
   { id: 'python/django', label: 'Python · Django + DRF', kind: 'backend', tier: 'stable', golden: 'django' },
+  { id: 'python/fastapi-mysql', label: 'Python · FastAPI on MySQL 8.4 (stack.kernelDatabase "mysql")', kind: 'backend', tier: 'stable', golden: 'fastapi-mysql', notes: 'PyMySQL behind the psycopg call shape of the kernel (runtime/db.py).' },
+  { id: 'python/django-mysql', label: 'Python · Django + DRF on MySQL 8.4 (stack.kernelDatabase "mysql")', kind: 'backend', tier: 'stable', golden: 'django-mysql' },
   { id: 'go/chi', label: 'Go · chi', kind: 'backend', tier: 'stable', golden: 'go' },
   { id: 'php/laravel', label: 'PHP · Laravel 13', kind: 'backend', tier: 'stable', golden: 'laravel' },
   { id: 'ruby/rails', label: 'Ruby · Rails 8 (API)', kind: 'backend', tier: 'stable', golden: 'rails' },

@@ -153,12 +153,13 @@ Since 3.3.0, `deploy` and `ci` work for a BFF as for any service, but without da
 
 ## MySQL (`stack.kernelDatabase: "mysql"`)
 
-The TypeScript kernel (NestJS, Express) and, since 3.3.0, the JVM kernel (Spring Boot and Quarkus, Java and Kotlin) also run on MySQL 8.4 when `stack.kernelDatabase` is `"mysql"`. It is a separate key on purpose: until 3.2.1 the kernel ignored `stack.database`, so projects that declare `"mysql"` there run on PostgreSQL, and they keep doing so. Everything above holds, with these differences:
+The TypeScript kernel (NestJS, Express) and, since 3.3.0, the JVM kernel (Spring Boot and Quarkus, Java and Kotlin) and the Python kernel (FastAPI, Django) also run on MySQL 8.4 when `stack.kernelDatabase` is `"mysql"`. It is a separate key on purpose: until 3.2.1 the kernel ignored `stack.database`, so projects that declare `"mysql"` there run on PostgreSQL, and they keep doing so. Everything above holds, with these differences:
 
 | | PostgreSQL | MySQL |
 |---|---|---|
 | Driver (TypeScript) | `pg` | `mysql2`, behind `src/runtime/db.ts` (the same `query` / `connect` interface; `$1..$n` placeholders are kept) |
 | Driver (JVM) | `org.postgresql:postgresql`, `quarkus-jdbc-postgresql` | `com.mysql:mysql-connector-j`, `quarkus-jdbc-mysql` (Quarkus `db-kind=mysql`); `ConnectionFactory` turns `mysql://` into a `jdbc:mysql://` URL |
+| Driver (Python) | `psycopg` 3 | `PyMySQL` (+ `cryptography` for MySQL 8's `caching_sha2_password`), behind `runtime/db.py`: the psycopg call shape the kernel uses (`connect(dsn, autocommit)`, `conn.execute(sql, params)`, commit on a clean `with` exit). The SQLAlchemy engine of FastAPI uses `mysql+pymysql://` |
 | Schema | a PostgreSQL schema (default `public`) | a MySQL database (default: the one in `DATABASE_URL`) |
 | Migration lock | `pg_advisory_xact_lock` | `GET_LOCK('ghk_runtime_schema')` |
 | Idempotency, inbox, saga claims | `INSERT ... ON CONFLICT DO NOTHING` | `INSERT IGNORE` |
@@ -171,4 +172,4 @@ The TypeScript kernel (NestJS, Express) and, since 3.3.0, the JVM kernel (Spring
 
 On the JVM, the JDBC URL sets `openTelemetry=DISABLED`. Connector/J's own OpenTelemetry hook reads `GlobalOpenTelemetry` when the first connection opens, which is before Spring registers the service's SDK, and that left the service with a no-op tracer: no span reached the collector. The kernel's spans already cover each command, the outbox publish and the inbox.
 
-The goldens `express-mysql`, `nestjs-mysql`, `java-mysql`, `kotlin-mysql`, `quarkus-mysql` and `kotlin-quarkus-mysql` run IT1–IT7 and the HTTP suite against MySQL 8.4, then start the production image on a database nothing has touched, send one command and check that its spans reach an OTLP collector. The Python, .NET and Go kernels run on PostgreSQL: there, `kernelDatabase: "mysql"` is not supported yet, and the compose file uses PostgreSQL (M-04).
+The goldens `express-mysql`, `nestjs-mysql`, `java-mysql`, `kotlin-mysql`, `quarkus-mysql`, `kotlin-quarkus-mysql`, `fastapi-mysql` and `django-mysql` run IT1–IT7 and the HTTP suite against MySQL 8.4, then start the production image on a database nothing has touched, send one command and check that its spans reach an OTLP collector. The .NET and Go kernels run on PostgreSQL: there, `kernelDatabase: "mysql"` is not supported yet, and the compose file uses PostgreSQL (M-04).

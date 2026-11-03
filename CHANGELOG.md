@@ -62,11 +62,11 @@ All notable changes to this project will be documented in this file. See [commit
   - CI runs no integration suite and starts no database or broker.
   - Verified by the goldens `terraform-{aws,gcp,azure}-bff` and `helm-bff`.
 
-- **MySQL 8 for the Spring Boot and Quarkus runtime kernel**, Java and Kotlin (`stack.kernelDatabase: "mysql"`; [RUNTIME-KERNEL.md](docs/RUNTIME-KERNEL.md#mysql-stackkerneldatabase-mysql)).
+- **MySQL 8 for more runtime kernels** (`stack.kernelDatabase: "mysql"`; [RUNTIME-KERNEL.md](docs/RUNTIME-KERNEL.md#mysql-stackkerneldatabase-mysql)): Spring Boot and Quarkus in Java and Kotlin, FastAPI and Django.
   - The same command service, outbox relay, inbox, sagas and IT1–IT7 suite as on PostgreSQL. The SQL is the one of the TypeScript kernel on MySQL: `INSERT IGNORE`, `ON DUPLICATE KEY UPDATE`, the outbox claim in one transaction with `FOR UPDATE SKIP LOCKED`, and `GET_LOCK` around migrations.
-  - The build file uses `mysql-connector-j` (Spring) or `quarkus-jdbc-mysql` (Quarkus, `db-kind=mysql`).
-  - Connector/J's own OpenTelemetry hook is turned off in the JDBC URL. It took the global OpenTelemetry before the service registered its SDK, and the service's spans were lost.
-  - Verified by the goldens `java-mysql`, `kotlin-mysql`, `quarkus-mysql` and `kotlin-quarkus-mysql`: the suites against MySQL 8.4, and the production image with its spans over OTLP.
+  - JVM: the build file uses `mysql-connector-j` (Spring) or `quarkus-jdbc-mysql` (Quarkus, `db-kind=mysql`). Connector/J's own OpenTelemetry hook is turned off in the JDBC URL: it took the global OpenTelemetry before the service registered its SDK, and the service's spans were lost.
+  - Python: `PyMySQL` replaces `psycopg`, behind `runtime/db.py`, which keeps the psycopg call shape the kernel uses. The FastAPI SQLAlchemy engine uses `mysql+pymysql://`.
+  - Verified by the goldens `java-mysql`, `kotlin-mysql`, `quarkus-mysql`, `kotlin-quarkus-mysql`, `fastapi-mysql` and `django-mysql`: the suites against MySQL 8.4, and the production image with its spans over OTLP.
 
 ### Changed
 - **Command names of features without `@command:` tags** (found by `ghk reverse` on real projects; [MIGRATION-3.3.md](docs/MIGRATION-3.3.md)).
@@ -82,7 +82,7 @@ All notable changes to this project will be documented in this file. See [commit
   - On the reference projects, which are generated scaffolds, the 10 without a coverage report now converge lower. The LMS, which implements its steps, is unchanged.
 - **The developer compose file, `.env.example` and the Prisma datasource follow the database the runtime kernel runs on** (M-04).
   - Until 3.2.2 they followed `stack.database`. A project that declared `"mysql"` without `stack.kernelDatabase` got a MySQL container and a `mysql://` URL for a kernel that speaks PostgreSQL, so `docker compose up` could not start it. 14 of the 16 reference projects were in that state.
-  - Now they use PostgreSQL unless `kernelDatabase` is `"mysql"`, which is supported by the NestJS, Express, Spring Boot and Quarkus kernels. The same applies to a declared `"mongodb"` until the MongoDB kernel exists.
+  - Now they use PostgreSQL unless `kernelDatabase` is `"mysql"`, which is supported by the NestJS, Express, Spring Boot, Quarkus, FastAPI and Django kernels. The same applies to a declared `"mongodb"` until the MongoDB kernel exists.
   - `ghk generate` warns when the declared database is not the one the service runs on, and says which key to set.
 - **.NET + Kafka: an inbox consumer could finish draining before its consumer group was assigned** (the `dotnet-kafka` golden failed IT6 one run in three to five).
   - The idle window of `DrainAsync` now starts after the first poll. That first poll can wait for a new Kafka consumer group to join, and the join used to consume the whole window.
