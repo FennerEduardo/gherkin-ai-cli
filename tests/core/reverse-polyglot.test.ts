@@ -1,6 +1,6 @@
 /* ==========================================================================
    `ghk reverse` on ASP.NET Core, FastAPI and Go (PLAN-3.3.0 R-08..R-10,
-   experimental). Hand-written services through tree-sitter:
+   beta since 3.3.0, validated on RealWorld apps by scripts/reverse-oss.js). Hand-written services through tree-sitter:
    - aspnet-orders: controller → service through an interface, [Authorize]
      roles, a validated record, a state guard, an event, a Minimal API route
      and an HttpClient test;
@@ -102,5 +102,19 @@ describe('ghk reverse on Go', () => {
     expect(steps(r, 'PlaceOrder')).toEqual(expect.arrayContaining(['And the "OrderPlaced" event is published']));
     expect(names(r, 'PlaceOrder')).toEqual(expect.arrayContaining(['Placing an order is rejected when customer email is not a valid email']));
     expect(r.proposals.every(p => p.lint.passed && p.roundTrip.ok)).toBe(true);
+  });
+});
+
+describe('Go: gin groups handed to registration functions (3.3.0, found on the RealWorld gin app)', () => {
+  it('routes take the prefix of the group each caller passes, and a route registered twice is one endpoint', async () => {
+    const scan = await runScan(path.join(FIXTURES, 'go-gin-groups'), { write: false });
+    const endpoints = scan.evidence.filter(e => e.kind === 'http-endpoint').map(e => `${(e.metadata as any).method} ${(e.metadata as any).path}`).sort();
+    expect(endpoints).toEqual([
+      'GET /api/articles/{slug}',
+      'GET /api/ping',
+      'POST /api/users',
+      'POST /api/users/login',
+      'PUT /api/articles/{slug}'
+    ]);
   });
 });

@@ -24,7 +24,7 @@ All notable changes to this project will be documented in this file. See [commit
     - Calls followed into injected services, static factories and entity methods.
     - Events from event classes, `new DomainEvent("Name", …)` and event-type enums.
   - `web-tree-sitter` 0.25.10 is a new dependency (0.27 cannot load these grammars). The Java, Kotlin, C#, Python and Go grammars are vendored in `vendor/tree-sitter/`, with their MIT licenses. The published package grows from 1.9 to 2.7 MB packed.
-  - **ASP.NET Core** (`csharp/aspnet`), **FastAPI** (`python/fastapi`) and **Go** (`go/http`), all experimental, also parsed with tree-sitter.
+  - **ASP.NET Core** (`csharp/aspnet`), **FastAPI** (`python/fastapi`) and **Go** (`go/http`), beta, also parsed with tree-sitter. Validated on open-source RealWorld (Conduit) apps pinned by commit (`scripts/reverse-oss.js`): 19/19 endpoints and F1 1.00 in each. The run found that gin groups handed to registration functions in other packages lost their prefix; fixed.
     - ASP.NET: controllers and Minimal APIs, `[Authorize]` roles and policies, DataAnnotations, services resolved through their interface.
     - FastAPI: router prefixes, `Depends` authentication and roles, Pydantic constraints, `HTTPException` statuses, service modules.
     - Go: chi/gin/echo/`net/http` 1.22 routes and groups, auth middleware, `validate` tags. A sentinel error is linked to the service condition behind it.

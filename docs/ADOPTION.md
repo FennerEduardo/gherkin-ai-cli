@@ -122,7 +122,7 @@ ghk reverse coverage --min 60             # share of the code's operations the f
 - **Read the proposals as a draft.** They describe what the code does today (`@characterization`), including what it should not do. Rename commands to the business's words, delete what is technical, and add what the code cannot show (why a rule exists). Then accept.
 - **Deterministic by default.** `scan` and `propose` give the same output on every run, call no LLM and write only to `.ghe/reverse/`. Secret files (`.env`, keys) are never read.
 - **Keep the features and the code together.** With features already in the repository, `accept --merge` leaves out what they already specify and exits 7 when a feature names a command the code does not implement. `coverage` lists each operation as documented, renamed or undocumented.
-- **Maturity by stack.** TypeScript (Express, NestJS), Spring and Quarkus, OpenAPI documents and tests are beta. ASP.NET Core, FastAPI and Go are experimental. Any other stack is read through its OpenAPI document (`--openapi`). `ghk stacks` lists the analyzers.
+- **Maturity by stack.** TypeScript (Express, NestJS), Spring and Quarkus, ASP.NET Core, FastAPI, Go, OpenAPI documents and tests are beta (validated on code gherkin-ai did not write; [REVERSE.md](REVERSE.md#validation-on-open-source-code)). Any other stack is read through its OpenAPI document (`--openapi`). `ghk stacks` lists the analyzers.
 
 ## 4. Gate pull requests, then tighten
 

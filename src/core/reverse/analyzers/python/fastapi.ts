@@ -94,7 +94,7 @@ const fastapi: SourceAnalyzer = {
   id: ID,
   language: 'python',
   frameworks: ['fastapi'],
-  maturity: 'experimental',
+  maturity: 'beta',
   detect(ctx) {
     return ctx.files.some(f => f.ext === '.py' && !isTestFile(f.rel) && (() => {
       try { return /from fastapi import|import fastapi/.test(fs.readFileSync(f.abs, 'utf8')); } catch { return false; }

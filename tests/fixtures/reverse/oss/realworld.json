@@ -1,0 +1,30 @@
+{
+  "description": "Validation corpus for the reverse analyzers on code gherkin-ai did not write (PLAN-3.3.0 §4.2). Each repository implements the RealWorld (Conduit) API, whose specification fixes the expected endpoints. The repositories are cloned at the pinned commit by scripts/reverse-oss.js; their code is not copied into this repository.",
+  "specification": "https://realworld-docs.netlify.app/specifications/backend/endpoints/",
+  "endpoints": [
+    "POST /users/login",
+    "POST /users",
+    "GET /user",
+    "PUT /user",
+    "GET /profiles/{}",
+    "POST /profiles/{}/follow",
+    "DELETE /profiles/{}/follow",
+    "GET /articles",
+    "GET /articles/feed",
+    "GET /articles/{}",
+    "POST /articles",
+    "PUT /articles/{}",
+    "DELETE /articles/{}",
+    "POST /articles/{}/comments",
+    "GET /articles/{}/comments",
+    "DELETE /articles/{}/comments/{}",
+    "POST /articles/{}/favorite",
+    "DELETE /articles/{}/favorite",
+    "GET /tags"
+  ],
+  "repositories": [
+    { "analyzer": "csharp/aspnet", "repository": "https://github.com/gothinkster/aspnetcore-realworld-example-app", "commit": "da51ad182f7a7eb6cf642109c8f0e00aa4531dd0", "license": "MIT" },
+    { "analyzer": "python/fastapi", "repository": "https://github.com/nsidnev/fastapi-realworld-example-app", "commit": "029eb7781c60d5f563ee8990a0cbfb79b244538c", "license": "MIT" },
+    { "analyzer": "go/http", "repository": "https://github.com/gothinkster/golang-gin-realworld-example-app", "commit": "a41289b2a4951e7cc09066f86742a27f85121c9b", "license": "MIT" }
+  ]
+}

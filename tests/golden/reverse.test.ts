@@ -26,9 +26,9 @@ const STACKS = [
   { fixture: 'golden/brownfield-spring', analyzer: 'jvm/spring-quarkus', commands: ['@command:CancelOrder', '@command:PlaceOrder'] },
   { fixture: 'reverse/spring-kotlin-invoices', analyzer: 'jvm/spring-quarkus', commands: ['@command:IssueInvoice', '@command:PayInvoice'], proposal: 'invoice.feature' },
   { fixture: 'reverse/quarkus-payments', analyzer: 'jvm/spring-quarkus', commands: ['@command:InitiatePayment', '@command:SettlePayment'], proposal: 'payment.feature' },
-  { fixture: 'reverse/aspnet-orders', analyzer: 'csharp/aspnet', maturity: 'experimental', commands: ['@command:CancelOrder', '@command:PlaceOrder'] },
-  { fixture: 'reverse/fastapi-orders', analyzer: 'python/fastapi', maturity: 'experimental', commands: ['@command:CancelOrder', '@command:PlaceOrder'] },
-  { fixture: 'reverse/go-orders', analyzer: 'go/http', maturity: 'experimental', commands: ['@command:CancelOrder', '@command:PlaceOrder'] }
+  { fixture: 'reverse/aspnet-orders', analyzer: 'csharp/aspnet', maturity: 'beta', commands: ['@command:CancelOrder', '@command:PlaceOrder'] },
+  { fixture: 'reverse/fastapi-orders', analyzer: 'python/fastapi', maturity: 'beta', commands: ['@command:CancelOrder', '@command:PlaceOrder'] },
+  { fixture: 'reverse/go-orders', analyzer: 'go/http', maturity: 'beta', commands: ['@command:CancelOrder', '@command:PlaceOrder'] }
 ];
 
 const git = (cwd: string, ...args: string[]) => execFileSync('git', args, { cwd, stdio: ['ignore', 'pipe', 'pipe'] }).toString().trim();

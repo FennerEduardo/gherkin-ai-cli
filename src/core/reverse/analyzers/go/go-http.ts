@@ -111,7 +111,7 @@ const goHttp: SourceAnalyzer = {
   id: ID,
   language: 'go',
   frameworks: ['chi', 'gin', 'echo', 'net/http'],
-  maturity: 'experimental',
+  maturity: 'beta',
   detect(ctx) {
     return ctx.files.some(f => f.ext === '.go' && !isTestFile(f.rel) && (() => {
       try { return /go-chi\/chi|gin-gonic\/gin|labstack\/echo|\.HandleFunc\(\s*"(GET|POST|PUT|PATCH|DELETE) /.test(fs.readFileSync(f.abs, 'utf8')); } catch { return false; }
@@ -141,11 +141,47 @@ const goHttp: SourceAnalyzer = {
       }
     }
 
-    const out: SourceEvidence[] = [];
+    // gin/echo groups per file: v1 := r.Group("/v1"); a group of a group adds both prefixes.
+    const groupsOf = new Map<string, Map<string, string>>();
     for (const { rel, root } of roots) {
-      // gin/echo groups: v1 := r.Group("/v1"); a group of a group adds both prefixes.
       const groups = new Map<string, string>();
       for (const m of root.text.matchAll(/(\w+)\s*:?=\s*(\w+)\.Group\(\s*"([^"]*)"/g)) groups.set(m[1], joinPaths(groups.get(m[2]) ?? '', m[3]));
+      groupsOf.set(rel, groups);
+    }
+    // A group handed to a registration function, often in another package: users.Register(v1.Group("/users")) or
+    // users.Register(v1). The routes that function registers on its group parameter take each caller's prefix.
+    const passedPrefixes = new Map<string, Set<string>>();
+    for (const { rel, root } of roots) {
+      const groups = groupsOf.get(rel)!;
+      for (const call of ofType(root, 'call_expression')) {
+        const f = call.childForFieldName('function');
+        const callee = f?.type === 'selector_expression' ? f.childForFieldName('field')?.text : f?.type === 'identifier' ? f.text : undefined;
+        if (!callee || VERBS[callee] || /^(Group|Route|Use|With|Handle(Func)?)$/.test(callee)) continue;
+        for (const arg of call.childForFieldName('arguments')?.namedChildren ?? []) {
+          if (!arg) continue;
+          const inline = arg.text.match(/^(\w+)\.Group\(\s*"([^"]*)"\s*\)$/);
+          const prefix = inline ? joinPaths(groups.get(inline[1]) ?? '', inline[2]) : arg.type === 'identifier' ? groups.get(arg.text) : undefined;
+          if (prefix === undefined) continue;
+          if (!passedPrefixes.has(callee)) passedPrefixes.set(callee, new Set());
+          passedPrefixes.get(callee)!.add(prefix);
+        }
+      }
+    }
+    /** The prefixes a route registered on `operand` inherits from the callers of its enclosing function. */
+    const inherited = (call: TSNode, operand: string): string[] => {
+      let fn: TSNode | null = call.parent;
+      while (fn && fn.type !== 'function_declaration' && fn.type !== 'method_declaration') fn = fn.parent;
+      if (!fn) return [];
+      const params = fn.childForFieldName('parameters')?.text ?? '';
+      if (!new RegExp(`[(,]\\s*${operand}\\s+[\\w.*]`).test(params)) return [];
+      return [...(passedPrefixes.get(fn.childForFieldName('name')?.text ?? '') ?? [])].sort();
+    };
+
+    const out: SourceEvidence[] = [];
+    // The same method and path registered twice (gin: "" and "/" for one handler) is one endpoint.
+    const seen = new Set<string>();
+    for (const { rel, root } of roots) {
+      const groups = groupsOf.get(rel)!;
       for (const call of ofType(root, 'call_expression')) {
         const f = call.childForFieldName('function');
         if (f?.type !== 'selector_expression') continue;
@@ -179,31 +215,36 @@ const goHttp: SourceAnalyzer = {
         const chained = operand?.text.match(/\.With\(([^)]*)\)/)?.[1];
         if (chained && AUTH.test(chained)) auth.push(chained);
         for (const use of root.text.matchAll(new RegExp(`\\b${groupVar.replace(/\W/g, '')}\\.Use\\(([^)]*)\\)`, 'g'))) if (AUTH.test(use[1])) auth.push(use[1]);
-        const p = joinPaths(joinPaths(groups.get(groupVar), prefixes.join('/')), route).replace(/:(\w+)/g, '{$1}');
+        const bases = inherited(call, groupVar);
         const handler = args[args.length - 1];
-        const handlerName = handler.type === 'selector_expression' ? handler.childForFieldName('field')?.text : handler.type === 'identifier' ? handler.text : undefined;
-        const endpoint = makeEvidence({ kind: 'http-endpoint', extractor: ID, confidence: 'strong', location: { file: rel, ...lineRange(call) }, symbol: handlerName, description: `${verb} ${p}`, key: `${verb} ${p}`, metadata: { method: verb, path: p, handler: handlerName } satisfies EndpointMetadata });
-        out.push(endpoint);
-        for (const a of [...new Set(auth)]) out.push(makeEvidence({ kind: 'authorization-rule', extractor: ID, confidence: 'strong', references: [endpoint.id], location: { file: rel, ...lineRange(call) }, description: `requires ${a.trim()}`, metadata: { middleware: a.trim(), status: 401 } }));
-        const target = handler.type === 'func_literal' ? { name: 'handler', file: rel, node: handler, body: handler.childForFieldName('body') ?? undefined } as GoFunc
-          : funcs.filter(g => g.name === handlerName).length === 1 ? funcs.find(g => g.name === handlerName) : undefined;
-        if (!target) continue;
-        // Decoded input: var req T / Decode(&req) / ShouldBindJSON(&req) → T's validate tags.
-        const bodyText = target.body?.text ?? '';
-        const varName = bodyText.match(/(?:Decode|Bind\w*|ShouldBind\w*)\(\s*&(\w+)\s*\)/)?.[1];
-        const type = varName ? bodyText.match(new RegExp(`var\\s+${varName}\\s+(\\w+)|${varName}\\s*:=\\s*&?(\\w+)\\{`))?.slice(1).find(Boolean) : undefined;
-        const st = type ? structs.get(type) : undefined;
-        if (st) {
-          for (const fm of st.node.text.matchAll(/^\s*(\w+)\s+[\w.*[\]]+\s+`[^`]*validate:"([^"]+)"[^`]*`/gm)) {
-            for (const tag of fm[2].split(',')) {
-              const rule = TAG_RULES[tag.split('=')[0]];
-              if (rule) out.push(makeEvidence({ kind: 'validation-rule', extractor: ID, confidence: 'strong', references: [endpoint.id], location: { file: st.file, ...lineRange(st.node) }, symbol: `${type}.${fm[1]}`, description: `${fm[1]} ${rule}`, metadata: { field: fm[1], rule, status: 400, dto: type }, key: `${type}.${fm[1]}.${tag}` }));
+        for (const base of bases.length ? bases : [groups.get(groupVar)]) {
+          const p = joinPaths(joinPaths(base, prefixes.join('/')), route).replace(/:(\w+)/g, '{$1}');
+          if (seen.has(`${verb} ${p}`)) continue;
+          seen.add(`${verb} ${p}`);
+          const handlerName = handler.type === 'selector_expression' ? handler.childForFieldName('field')?.text : handler.type === 'identifier' ? handler.text : undefined;
+          const endpoint = makeEvidence({ kind: 'http-endpoint', extractor: ID, confidence: 'strong', location: { file: rel, ...lineRange(call) }, symbol: handlerName, description: `${verb} ${p}`, key: `${verb} ${p}`, metadata: { method: verb, path: p, handler: handlerName } satisfies EndpointMetadata });
+          out.push(endpoint);
+          for (const a of [...new Set(auth)]) out.push(makeEvidence({ kind: 'authorization-rule', extractor: ID, confidence: 'strong', references: [endpoint.id], location: { file: rel, ...lineRange(call) }, description: `requires ${a.trim()}`, metadata: { middleware: a.trim(), status: 401 } }));
+          const target = handler.type === 'func_literal' ? { name: 'handler', file: rel, node: handler, body: handler.childForFieldName('body') ?? undefined } as GoFunc
+            : funcs.filter(g => g.name === handlerName).length === 1 ? funcs.find(g => g.name === handlerName) : undefined;
+          if (!target) continue;
+          // Decoded input: var req T / Decode(&req) / ShouldBindJSON(&req) → T's validate tags.
+          const bodyText = target.body?.text ?? '';
+          const varName = bodyText.match(/(?:Decode|Bind\w*|ShouldBind\w*)\(\s*&(\w+)\s*\)/)?.[1];
+          const type = varName ? bodyText.match(new RegExp(`var\\s+${varName}\\s+(\\w+)|${varName}\\s*:=\\s*&?(\\w+)\\{`))?.slice(1).find(Boolean) : undefined;
+          const st = type ? structs.get(type) : undefined;
+          if (st) {
+            for (const fm of st.node.text.matchAll(/^\s*(\w+)\s+[\w.*[\]]+\s+`[^`]*validate:"([^"]+)"[^`]*`/gm)) {
+              for (const tag of fm[2].split(',')) {
+                const rule = TAG_RULES[tag.split('=')[0]];
+                if (rule) out.push(makeEvidence({ kind: 'validation-rule', extractor: ID, confidence: 'strong', references: [endpoint.id], location: { file: st.file, ...lineRange(st.node) }, symbol: `${type}.${fm[1]}`, description: `${fm[1]} ${rule}`, metadata: { field: fm[1], rule, status: 400, dto: type }, key: `${type}.${fm[1]}.${tag}` }));
+              }
             }
           }
+          const body = analyzeBody(target, endpoint.id, funcs, sentinels, 0, new Set());
+          out.push(...body);
+          if (!body.some(e => e.kind === 'success-response')) out.push(makeEvidence({ kind: 'success-response', extractor: ID, confidence: 'inferred', references: [endpoint.id], location: endpoint.location, description: 'responds 200', metadata: { status: 200 } }));
         }
-        const body = analyzeBody(target, endpoint.id, funcs, sentinels, 0, new Set());
-        out.push(...body);
-        if (!body.some(e => e.kind === 'success-response')) out.push(makeEvidence({ kind: 'success-response', extractor: ID, confidence: 'inferred', references: [endpoint.id], location: endpoint.location, description: 'responds 200', metadata: { status: 200 } }));
       }
     }
     return out;

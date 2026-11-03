@@ -218,7 +218,7 @@ const aspnet: SourceAnalyzer = {
   id: ID,
   language: 'csharp',
   frameworks: ['aspnet-core'],
-  maturity: 'experimental',
+  maturity: 'beta',
   detect(ctx) {
     return ctx.files.some(f => f.ext === '.cs' && !isTestFile(f.rel) && (() => {
       try { return /\[(ApiController|Http(Get|Post|Put|Patch|Delete))|\.Map(Get|Post|Put|Patch|Delete)\(/.test(fs.readFileSync(f.abs, 'utf8')); } catch { return false; }
