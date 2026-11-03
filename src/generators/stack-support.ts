@@ -71,6 +71,7 @@ export const STACK_SUPPORT: StackSupport[] = [
   { id: 'python/fastapi-mongo', label: 'Python · FastAPI on MongoDB 8 (stack.kernelDatabase "mongodb")', kind: 'backend', tier: 'stable', golden: 'fastapi-mongo', notes: 'pymongo; SQLAlchemy keeps a local SQLite for the generated models (no MongoDB dialect).' },
   { id: 'go/chi', label: 'Go · chi', kind: 'backend', tier: 'stable', golden: 'go' },
   { id: 'go/chi-mysql', label: 'Go · chi on MySQL 8.4 (stack.kernelDatabase "mysql")', kind: 'backend', tier: 'stable', golden: 'go-mysql', notes: 'database/sql + go-sql-driver/mysql behind the pgx calls of the kernel (internal/runtime/db.go).' },
+  { id: 'go/chi-mongo', label: 'Go · chi on MongoDB 8 (stack.kernelDatabase "mongodb")', kind: 'backend', tier: 'stable', golden: 'go-mongo', notes: 'mongo-driver v2 behind runtime.Pool (internal/runtime/db.go).' },
   { id: 'php/laravel', label: 'PHP · Laravel 13', kind: 'backend', tier: 'stable', golden: 'laravel' },
   { id: 'ruby/rails', label: 'Ruby · Rails 8 (API)', kind: 'backend', tier: 'stable', golden: 'rails' },
   { id: 'elixir/phoenix', label: 'Elixir · Phoenix', kind: 'backend', tier: 'stable', golden: 'phoenix' },

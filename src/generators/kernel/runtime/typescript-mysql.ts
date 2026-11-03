@@ -51,7 +51,7 @@ export const usesMongo = (config?: Pick<GherkinAIConfig, 'stack'>) => (config?.s
 export const MYSQL_KERNEL_LANGUAGES = new Set(['typescript', 'javascript', 'node', 'java', 'kotlin', 'python', 'csharp', 'dotnet', '.net', 'go']);
 
 /** Runtimes whose kernel has a MongoDB implementation (PLAN-3.3.0 X-02). */
-export const MONGO_KERNEL_LANGUAGES = new Set(['typescript', 'javascript', 'node', 'java', 'python', 'csharp', 'dotnet', '.net']);
+export const MONGO_KERNEL_LANGUAGES = new Set(['typescript', 'javascript', 'node', 'java', 'python', 'csharp', 'dotnet', '.net', 'go']);
 
 /** The scope of X-02: Java on MongoDB is Spring Boot (Quarkus and Kotlin keep PostgreSQL or MySQL); Python is FastAPI. */
 const mongoKernel = (language: string, framework: string) =>

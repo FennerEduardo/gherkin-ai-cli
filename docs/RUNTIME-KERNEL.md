@@ -178,7 +178,7 @@ The goldens `express-mysql`, `nestjs-mysql`, `java-mysql`, `kotlin-mysql`, `quar
 
 ## MongoDB (`stack.kernelDatabase: "mongodb"`)
 
-Since 3.3.0 the TypeScript kernel (NestJS, Express), the Spring Boot kernel (Java), the FastAPI kernel and the .NET kernel also run on MongoDB 8. The command service, outbox relay, inbox, sagas and the IT1–IT7 suite are the same; the guarantees are kept with MongoDB's own tools:
+Since 3.3.0 the TypeScript kernel (NestJS, Express), the Spring Boot kernel (Java), the FastAPI kernel, the .NET kernel and the Go kernel also run on MongoDB 8. Quarkus, Kotlin and Django keep PostgreSQL or MySQL: there, `kernelDatabase: "mongodb"` is ignored and `generate` warns. The command service, outbox relay, inbox, sagas and the IT1–IT7 suite are the same; the guarantees are kept with MongoDB's own tools:
 
 | | PostgreSQL | MongoDB |
 |---|---|---|
@@ -186,6 +186,7 @@ Since 3.3.0 the TypeScript kernel (NestJS, Express), the Spring Boot kernel (Jav
 | Driver (Spring Boot) | JDBC (`org.postgresql`), a `DataSource` shared with JPA | `mongodb-driver-sync` (version managed by Spring Boot), behind `runtime/ConnectionFactory` (same name and `fromUrl`, now one `MongoClient`; `inTransaction`, `ping`). No `DataSource` or JPA: the pom drops `spring-boot-starter-data-jpa`, and `/health/ready` pings MongoDB. The public methods keep `throws SQLException`, so callers compile unchanged |
 | Driver (FastAPI) | `psycopg` 3 | `pymongo`, behind `runtime/db.py` (one `MongoClient` per URL, `in_transaction`). The kernel keeps its signatures (`CommandService(dsn, schema)`, `migrate(dsn)`); the inbox handler's `meta` carries `session` and `database`. SQLAlchemy has no MongoDB dialect: `app/database.py` keeps a local SQLite for the generated models |
 | Driver (.NET) | `Npgsql` (`NpgsqlDataSource`) | `MongoDB.Driver`: `Connections.FromUrl` returns a `KernelDatabase` (one `MongoClient`, `InTransactionAsync`, `PingAsync`, `Collection`), which the application layer registers where it registered the `NpgsqlDataSource`. The inbox handler's `Meta` carries `Session` and `Database` |
+| Driver (Go) | `pgx` (`pgxpool.Pool`) | `go.mongodb.org/mongo-driver/v2`, behind `internal/runtime/db.go`: `runtime.Pool` (`NewPool`, `InTransaction`, `Ping`, `Database`) replaces `pgxpool.Pool` in the server and the tests. The inbox handler's `Meta` carries `Tx` (the transaction's context) and `Database` |
 | Schema | a PostgreSQL schema (default `public`) | a database (default: the one in `DATABASE_URL`) |
 | Tables | `ghk_aggregates`, `ghk_outbox`, `ghk_idempotency`, `ghk_inbox`, `ghk_sagas` | collections with the same names and fields; unique indexes for the keys |
 | Command | one transaction; `FOR UPDATE` on the aggregate | one transaction (snapshot reads, majority writes). A concurrent writer causes a write conflict, and the transaction runs again on the committed data |
@@ -200,4 +201,4 @@ A transaction can run more than once, so an inbox handler should keep its effect
 
 With `stack.orm: "prisma"` (NestJS), the Prisma datasource is MongoDB too, which needs Prisma 6: Prisma 7 does not support MongoDB.
 
-The goldens `express-mongo`, `nestjs-mongo`, `java-mongo`, `fastapi-mongo` and `dotnet-mongo` run IT1–IT7 and the HTTP suite against a MongoDB 8 replica set. They then start the production image on an empty database and check that the spans of one command reach an OTLP collector.
+The goldens `express-mongo`, `nestjs-mongo`, `java-mongo`, `fastapi-mongo`, `dotnet-mongo` and `go-mongo` run IT1–IT7 and the HTTP suite against a MongoDB 8 replica set. They then start the production image on an empty database and check that the spans of one command reach an OTLP collector.

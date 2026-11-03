@@ -35,6 +35,7 @@ import { mongoizeTsProject } from './kernel/runtime/typescript-mongo';
 import { mongoizeJvmProject } from './kernel/runtime/jvm-mongo';
 import { mongoizePyProject } from './kernel/runtime/python-mongo';
 import { mongoizeCsProject } from './kernel/runtime/csharp-mongo';
+import { mongoizeGoProject } from './kernel/runtime/go-mongo';
 import { resolveNodeProfile } from './node-profile';
 import { renderContainerFiles } from './deploy/container';
 import { buildDomainModel } from './kernel/domain-model';
@@ -119,7 +120,13 @@ function backendPreset(id: string): BackendPreset | undefined {
     };
   }
   // Go (X-01b): the Go kernel on MySQL through database/sql + go-sql-driver/mysql (kernel/runtime/go-mysql.ts).
-  if (preset && id === 'go/chi') return (p, c, f) => (kernelDatabase(c) === 'mysql' ? mysqlizeGoProject(preset(p, c, f)) : preset(p, c, f));
+  // ... and on MongoDB (X-02): kernel/runtime/go-mongo.ts.
+  if (preset && id === 'go/chi') {
+    return (p, c, f) => {
+      const db = kernelDatabase(c);
+      return db === 'mysql' ? mysqlizeGoProject(preset(p, c, f)) : db === 'mongodb' ? mongoizeGoProject(preset(p, c, f)) : preset(p, c, f);
+    };
+  }
   return preset;
 }
 
