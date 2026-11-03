@@ -151,13 +151,14 @@ Since 3.3.0, `deploy` and `ci` work for a BFF as for any service, but without da
 - The CI pipeline builds, tests and scans the image, without starting PostgreSQL or RabbitMQ and without an integration suite. A BFF has no runtime kernel, and its tests run against a stub upstream.
 - The goldens `terraform-aws-bff` (ECS), `terraform-gcp-bff` (a VM), `terraform-azure-bff` (Container Apps) and `helm-bff` validate the output, and check that no database or broker resource is left.
 
-## MySQL (`stack.kernelDatabase: "mysql"`, NestJS and Express)
+## MySQL (`stack.kernelDatabase: "mysql"`)
 
-The TypeScript kernel also runs on MySQL 8.4 when `stack.kernelDatabase` is `"mysql"`. It is a separate key on purpose: until 3.2.1 the kernel ignored `stack.database`, so projects that declare `"mysql"` there run on PostgreSQL, and they keep doing so. Everything above holds, with these differences:
+The TypeScript kernel (NestJS, Express) and, since 3.3.0, the JVM kernel (Spring Boot and Quarkus, Java and Kotlin) also run on MySQL 8.4 when `stack.kernelDatabase` is `"mysql"`. It is a separate key on purpose: until 3.2.1 the kernel ignored `stack.database`, so projects that declare `"mysql"` there run on PostgreSQL, and they keep doing so. Everything above holds, with these differences:
 
 | | PostgreSQL | MySQL |
 |---|---|---|
-| Driver | `pg` | `mysql2`, behind `src/runtime/db.ts` (the same `query` / `connect` interface; `$1..$n` placeholders are kept) |
+| Driver (TypeScript) | `pg` | `mysql2`, behind `src/runtime/db.ts` (the same `query` / `connect` interface; `$1..$n` placeholders are kept) |
+| Driver (JVM) | `org.postgresql:postgresql`, `quarkus-jdbc-postgresql` | `com.mysql:mysql-connector-j`, `quarkus-jdbc-mysql` (Quarkus `db-kind=mysql`); `ConnectionFactory` turns `mysql://` into a `jdbc:mysql://` URL |
 | Schema | a PostgreSQL schema (default `public`) | a MySQL database (default: the one in `DATABASE_URL`) |
 | Migration lock | `pg_advisory_xact_lock` | `GET_LOCK('ghk_runtime_schema')` |
 | Idempotency, inbox, saga claims | `INSERT ... ON CONFLICT DO NOTHING` | `INSERT IGNORE` |
@@ -166,4 +167,8 @@ The TypeScript kernel also runs on MySQL 8.4 when `stack.kernelDatabase` is `"my
 | Tenant isolation | the repository filter, plus optional row-level security | the repository filter only (MySQL has no row-level security) |
 | TLS | `sslmode=require` | `sslmode=require` or `ssl-mode=REQUIRED` in `DATABASE_URL` |
 
-`DATABASE_URL` is `mysql://user:password@host:3306/database`. The service's user needs table privileges in its own database, not global `CREATE`. The goldens `express-mysql` and `nestjs-mysql` run IT1–IT7 against MySQL 8.4. The other runtimes (JVM, Python, .NET, Go, ...) generate contracts and configuration only on MySQL until 3.3.
+`DATABASE_URL` is `mysql://user:password@host:3306/database`. The service's user needs table privileges in its own database, not global `CREATE`.
+
+On the JVM, the JDBC URL sets `openTelemetry=DISABLED`. Connector/J's own OpenTelemetry hook reads `GlobalOpenTelemetry` when the first connection opens, which is before Spring registers the service's SDK, and that left the service with a no-op tracer: no span reached the collector. The kernel's spans already cover each command, the outbox publish and the inbox.
+
+The goldens `express-mysql`, `nestjs-mysql`, `java-mysql`, `kotlin-mysql`, `quarkus-mysql` and `kotlin-quarkus-mysql` run IT1–IT7 and the HTTP suite against MySQL 8.4, then start the production image on a database nothing has touched, send one command and check that its spans reach an OTLP collector. The Python, .NET and Go kernels run on PostgreSQL: there, `kernelDatabase: "mysql"` is not supported yet, and the compose file uses PostgreSQL (M-04).

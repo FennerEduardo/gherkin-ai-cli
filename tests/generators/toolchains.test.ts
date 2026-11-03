@@ -11,8 +11,8 @@ const { STACKS } = require(path.resolve(__dirname, '../../scripts/golden-stacks.
 describe('toolchain registry', () => {
   it('uses the same image as the golden build of every stable backend', () => {
     for (const s of STACK_SUPPORT.filter(x => x.kind === 'backend')) {
-      // A BFF (stack.role "bff") builds with the toolchain of its framework.
-      const id = /^(typescript|bff)\/nestjs/.test(s.id) ? 'typescript/nestjs' : /^(typescript|bff)\/express/.test(s.id) ? 'typescript/express' : s.id === 'bff/spring' ? 'java/spring' : s.id;
+      // A BFF (stack.role "bff") builds with the toolchain of its framework; so does a JVM kernel on MySQL.
+      const id = /^(typescript|bff)\/nestjs/.test(s.id) ? 'typescript/nestjs' : /^(typescript|bff)\/express/.test(s.id) ? 'typescript/express' : s.id === 'bff/spring' ? 'java/spring' : s.id.replace(/-mysql$/, '');
       expect(TOOLCHAINS[id], s.id).toBeDefined();
       expect(TOOLCHAINS[id].image, s.id).toBe(STACKS[s.golden!].image);
     }

@@ -42,8 +42,9 @@ describe('JVM framework routing', () => {
 
 describe('backend preset registry', () => {
   it('every generated backend in the support matrix has a preset', () => {
-    // bff/* are stack.role variants of existing stacks, routed by the role (generators/bff/), not by preset id.
-    const backends = STACK_SUPPORT.filter(s => s.kind === 'backend' && !s.id.startsWith('typescript/') && !s.id.startsWith('bff/'));
+    // bff/* are stack.role variants of existing stacks, routed by the role (generators/bff/), not by preset id;
+    // *-mysql are stack.kernelDatabase variants of the preset without the suffix (kernel/runtime/jvm-mysql.ts).
+    const backends = STACK_SUPPORT.filter(s => s.kind === 'backend' && !s.id.startsWith('typescript/') && !s.id.startsWith('bff/') && !s.id.endsWith('-mysql'));
     for (const s of backends) expect(BACKEND_PRESET_IDS, s.id).toContain(s.id);
   });
 });

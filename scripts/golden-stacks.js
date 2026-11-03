@@ -350,6 +350,10 @@ for (const [name, cloud, backend, extra, compute] of [['terraform-gcp-base', 'gc
   STACKS[name].build = [...STACKS[name].build, `cd ../../../infrastructure/base/${cloud} && terraform init -backend=false -input=false -no-color && terraform validate -no-color && cd - >/dev/null`];
   STACKS[name].test = ['terraform fmt -check -recursive -diff -no-color && terraform fmt -check -recursive -diff -no-color ../../../infrastructure/base'];
 }
+// 3.3.0 (X-01b): the JVM runtime kernel on MySQL 8.4 (Spring Boot and Quarkus, Java and Kotlin): IT1-IT7 against MySQL.
+for (const key of ['java', 'kotlin', 'quarkus', 'kotlin-quarkus']) {
+  STACKS[`${key}-mysql`] = { ...STACKS[key], stack: { ...STACKS[key].stack, database: 'mysql', kernelDatabase: 'mysql' }, services: [...(STACKS[key].services || []), MYSQL_DATABASE] };
+}
 // 3.3.0 (X-06b): a backend-for-frontend deploys without database or broker; every cloud, both compute modes, and
 // a check that no database or broker resource is left.
 const NO_DATA = 'grep -rqE "aws_db_instance|aws_mq_broker|google_sql_|google_pubsub_|azurerm_postgresql|azurerm_servicebus" . && exit 1 || true';

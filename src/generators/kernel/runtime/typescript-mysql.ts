@@ -41,7 +41,7 @@ export const kernelDatabase = (config?: Pick<GherkinAIConfig, 'stack'>): 'postgr
   usesMysql(config) && MYSQL_KERNEL_LANGUAGES.has((config?.stack?.language || '').toLowerCase()) ? 'mysql' : 'postgresql';
 
 /** Runtimes whose kernel has a MySQL implementation (PLAN-3.3.0 X-01b extends it to the JVM, Python, .NET and Go). */
-export const MYSQL_KERNEL_LANGUAGES = new Set(['typescript', 'javascript']);
+export const MYSQL_KERNEL_LANGUAGES = new Set(['typescript', 'javascript', 'java', 'kotlin']);
 
 /** The declared database differs from the one the kernel runs on (a hint for `generate`). */
 export function databaseMismatch(config?: Pick<GherkinAIConfig, 'stack'>): string | undefined {
@@ -132,7 +132,9 @@ export class Pool {
 `;
 
 const TOKEN = '__SCHEMA__';
-const MYSQL_TABLES = [
+/** Shared with the JVM kernel on MySQL (jvm-mysql.ts). */
+export const MYSQL_SCHEMA_TOKEN = TOKEN;
+export const MYSQL_RUNTIME_TABLES = [
   `CREATE TABLE IF NOT EXISTS ${TOKEN}.ghk_aggregates (tenant_id VARCHAR(191) NOT NULL, aggregate_type VARCHAR(191) NOT NULL, id VARCHAR(191) NOT NULL, state TEXT NOT NULL, version INT NOT NULL, updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6), PRIMARY KEY (tenant_id, aggregate_type, id))`,
   `CREATE TABLE IF NOT EXISTS ${TOKEN}.ghk_outbox (id VARCHAR(64) NOT NULL PRIMARY KEY, tenant_id VARCHAR(191) NOT NULL, aggregate_id VARCHAR(191) NOT NULL, event_type VARCHAR(191) NOT NULL, payload LONGTEXT NOT NULL, traceparent VARCHAR(255), created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6), claimed_by VARCHAR(191), claimed_until DATETIME(6), published_at DATETIME(6), attempts INT NOT NULL DEFAULT 0, last_error TEXT, failed_at DATETIME(6), INDEX ghk_outbox_pending (published_at, failed_at, created_at))`,
   `CREATE TABLE IF NOT EXISTS ${TOKEN}.ghk_idempotency (tenant_id VARCHAR(191) NOT NULL, \`key\` VARCHAR(191) NOT NULL, status VARCHAR(32) NOT NULL, response LONGTEXT, created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6), PRIMARY KEY (tenant_id, \`key\`))`,
@@ -142,7 +144,7 @@ const MYSQL_TABLES = [
 
 const SCHEMA_TS = (ext: string) => `import { Pool } from './db${ext}';
 
-const TABLES: string[] = ${JSON.stringify(MYSQL_TABLES, null, 2)};
+const TABLES: string[] = ${JSON.stringify(MYSQL_RUNTIME_TABLES, null, 2)};
 
 /** The kernel's schema is a MySQL database: by default the one in DATABASE_URL. */
 export function defaultSchema(url = process.env.DATABASE_URL): string {

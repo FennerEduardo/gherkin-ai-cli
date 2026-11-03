@@ -70,8 +70,20 @@ public interface ConnectionFactory {
         return () -> DriverManager.getConnection(jdbc, user, password);
     }
 
-    /** JDBC URL without credentials; query parameters such as sslmode (libpq semantics in pgjdbc) are kept. */
+    /**
+     * JDBC URL without credentials. PostgreSQL keeps the query parameters (libpq semantics in pgjdbc, such as
+     * sslmode). MySQL (stack.kernelDatabase "mysql", mysql://...) maps sslmode=require to sslMode=REQUIRED and
+     * turns off Connector/J's own OpenTelemetry hook: it reads GlobalOpenTelemetry on the first connection, before
+     * the application registers its SDK, which would leave the service with a no-op tracer (the kernel's spans
+     * already cover every command).
+     */
     static String jdbcUrl(URI uri) {
+        if (uri.getScheme() != null && uri.getScheme().startsWith("mysql")) {
+            String query = uri.getRawQuery() == null ? "" : uri.getRawQuery();
+            boolean tls = query.matches("(?i).*(^|&)ssl-?mode=(require|required|verify[-_a-z]*)(&|$).*");
+            return "jdbc:mysql://" + uri.getHost() + ":" + (uri.getPort() > 0 ? uri.getPort() : 3306) + uri.getRawPath()
+                + "?sslMode=" + (tls ? "REQUIRED" : "PREFERRED") + "&allowPublicKeyRetrieval=true&openTelemetry=DISABLED";
+        }
         return "jdbc:postgresql://" + uri.getHost() + ":" + (uri.getPort() > 0 ? uri.getPort() : 5432) + uri.getRawPath()
             + (uri.getRawQuery() == null ? "" : "?" + uri.getRawQuery());
     }

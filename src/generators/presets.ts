@@ -26,7 +26,8 @@ import { ConfigError } from '../core/errors';
 import { bffFramework, isBff } from './bff/model';
 import { renderTsBff } from './bff/typescript';
 import { renderSpringBff } from './bff/spring';
-import { mysqlizeTsProject, usesMysql } from './kernel/runtime/typescript-mysql';
+import { kernelDatabase, mysqlizeTsProject, usesMysql } from './kernel/runtime/typescript-mysql';
+import { mysqlizeJvmProject } from './kernel/runtime/jvm-mysql';
 import { resolveNodeProfile } from './node-profile';
 import { renderContainerFiles } from './deploy/container';
 import { buildDomainModel } from './kernel/domain-model';
@@ -83,7 +84,10 @@ function backendPreset(id: string): BackendPreset | undefined {
     usesMysql(c) ? mysqlizeTsProject(files, resolveNodeProfile(c).esm) : files;
   if (id.startsWith('typescript/nestjs')) return (p, c) => mysql(generateNodeNestJsPreset(p, c), c);
   if (id.startsWith('typescript/express')) return (p, c) => mysql(generateNodeExpressPreset(p, c), c);
-  return BACKEND_PRESETS[id];
+  // Spring Boot and Quarkus, Java and Kotlin (X-01b, 3.3.0): the JVM kernel on MySQL (kernel/runtime/jvm-mysql.ts).
+  const preset = BACKEND_PRESETS[id];
+  if (preset && /^(java|kotlin)\/(spring|quarkus)$/.test(id)) return (p, c, f) => (kernelDatabase(c) === 'mysql' ? mysqlizeJvmProject(preset(p, c, f)) : preset(p, c, f));
+  return preset;
 }
 
 /** stack.role "bff": a stateless gateway instead of a command service (bff/model.ts). */
