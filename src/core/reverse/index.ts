@@ -19,7 +19,9 @@ import { dedupeEvidence, type EvidenceConfidence, type SourceEvidence } from './
 import { loadBuiltinAnalyzers, type AnalysisContext, type AnalyzerMaturity } from './registry';
 import { buildCandidates, type BehaviorCandidate, type UnresolvedQuestion } from './candidates';
 import { kebab, renderProposals, type RenderedProposal } from './renderer';
-import { compareWithSpec, type DedupReport } from './dedup';
+import { compareWithSpec, existingFeatures, type DedupReport } from './dedup';
+import { knownTerm, loadGlossary } from './glossary';
+import { applyLineCoverage, readCoverageReport } from './coverage-lines';
 import { approvedOnly, readReview, type ScenarioStatus } from './review';
 import { acceptedFeatureText } from './sync';
 import { applyConflicts, findConflicts, type Conflict } from './conflicts';
@@ -31,6 +33,8 @@ export interface ScanOptions extends DiscoveryOptions {
   includeTests?: boolean;
   /** Restrict to these analyzer ids. */
   analyzers?: string[];
+  /** Line-coverage reports (lcov, JaCoCo, Cobertura) a test run wrote: executed and tested evidence is confirmed (RV-15). */
+  coverage?: string[];
   /** false: nothing is written (`--dry-run`, round-trip measurements on repositories that must stay untouched). */
   write?: boolean;
 }
@@ -44,6 +48,8 @@ export interface ScanResult {
   truncated: boolean;
   secretsSkipped: number;
   analyzers: { id: string; maturity: AnalyzerMaturity; evidence: number }[];
+  /** With --coverage: the reports read and how many evidence items they confirmed. */
+  coverage?: { reports: { file: string; format: string; files: number }[]; confirmed: number };
   counts: Record<string, number>;
   evidence: SourceEvidence[];
 }
@@ -109,6 +115,18 @@ export async function runScan(root: string, options: ScanOptions = {}): Promise<
     evidence.push(...found);
   }
   evidence = dedupeEvidence(evidence);
+  // Executed and tested lines confirm their evidence (RV-15). Without --coverage nothing changes, byte for byte.
+  let coverage: ScanResult['coverage'];
+  if (options.coverage?.length) {
+    const cov = new Map<string, Set<number>>();
+    const reports: { file: string; format: string; files: number }[] = [];
+    for (const r of options.coverage) {
+      const before = cov.size;
+      const { format } = readCoverageReport(path.resolve(root, r), cov);
+      reports.push({ file: rel(root, path.resolve(root, r)), format, files: cov.size - before });
+    }
+    coverage = { reports, confirmed: applyLineCoverage(evidence, cov) };
+  }
   const counts: Record<string, number> = {};
   for (const e of evidence) counts[e.kind] = (counts[e.kind] ?? 0) + 1;
   const result: ScanResult = {
@@ -120,6 +138,7 @@ export async function runScan(root: string, options: ScanOptions = {}): Promise<
     truncated: discovery.truncated,
     secretsSkipped: discovery.secretsSkipped,
     analyzers: perAnalyzer,
+    ...(coverage ? { coverage } : {}),
     counts: Object.fromEntries(Object.entries(counts).sort(([a], [b]) => a.localeCompare(b))),
     evidence
   };
@@ -249,7 +268,14 @@ export function runPropose(root: string, scan: ScanResult, options: ProposeOptio
   const scope = (options.scope ?? []).map(s => s.toLowerCase());
   const candidates = scope.length ? all.filter(c => scope.includes(c.aggregate.toLowerCase()) || scope.includes(c.operation.name.toLowerCase())) : all;
   const threshold = options.threshold ?? 80;
-  const rendered = renderProposals(candidates, scan.evidence, { minConfidence: options.minConfidence, threshold });
+  // The domain glossary (RV-10): terms the lint reads as business words; an aggregate that is not a term is a question.
+  const glossary = loadGlossary(root, existingFeatures(root).map(f => { try { return fs.readFileSync(path.join(root, f), 'utf8'); } catch { return ''; } }));
+  if (glossary.file) {
+    for (const agg of [...new Set(candidates.map(c => c.aggregate))].sort()) {
+      if (!knownTerm(glossary, agg)) unresolved.push({ question: `${agg} is not a term of the glossary (${glossary.file}). Is it one of its terms under another name, or a new term?`, evidence: candidates.filter(c => c.aggregate === agg).flatMap(c => c.endpointEvidence).slice(0, 3) });
+    }
+  }
+  const rendered = renderProposals(candidates, scan.evidence, { minConfidence: options.minConfidence, threshold, glossary: glossary.terms });
 
   if (options.write !== false) {
     // Proposals of an earlier run that no longer exist are removed, so the directory mirrors this run.

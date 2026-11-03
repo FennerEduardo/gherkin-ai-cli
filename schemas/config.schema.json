@@ -293,6 +293,10 @@
           "type": "integer",
           "minimum": 0,
           "maximum": 100
+        },
+        "glossary": {
+          "type": "string",
+          "minLength": 1
         }
       },
       "additionalProperties": false

@@ -42,6 +42,11 @@ export interface LintOptions {
   disabledRules?: string[];
   /** Extra rules run after the built-in ones (e.g. contributed by an industry profile). */
   rules?: LintRule[];
+  /**
+   * Domain terms (`reverse.glossary` and `Glossary:` lines): business vocabulary that GHK007 does not read as code,
+   * such as the GDPR "data controller" (PLAN-3.3.0-reverse-plus RV-10).
+   */
+  glossary?: string[];
 }
 
 export { withoutQuotedText };
@@ -282,8 +287,12 @@ const LINT_RULES: LintRule[] = [
     id: 'GHK007',
     name: 'Implementation leakage',
     severity: 'warning',
-    check: (parsed) => {
+    check: (parsed, opts) => {
       const diags: LintDiagnostic[] = [];
+      // Glossary terms are business words even when one of their words is also a code word ("data controller").
+      // Single code words alone ("controller") are never exempted, only longer terms that contain them.
+      const terms = (opts?.glossary ?? []).filter(t => /\s/.test(t.trim())).sort((a, b) => b.length - a.length);
+      const withoutTerms = (s: string) => terms.reduce((acc, t) => acc.replace(new RegExp(`\\b${t.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+')}\\b`, 'gi'), ' '), s);
       const techLeaks = [
         { pattern: /\b(database|tabla|table|column)\b/i, term: 'database terminology' },
         { pattern: /\b(sql|nosql|mongodb|redis|kafka)\b/i, term: 'database technology' },
@@ -297,7 +306,7 @@ const LINT_RULES: LintRule[] = [
 
       for (const sc of parsed.scenarios) {
         for (const step of sc.steps) {
-          const text = withoutQuotedText(step.text);
+          const text = withoutTerms(withoutQuotedText(step.text));
           for (const leak of techLeaks) {
             if (leak.pattern.test(text)) {
               diags.push({

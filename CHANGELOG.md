@@ -56,6 +56,12 @@ All notable changes to this project will be documented in this file. See [commit
   - **Data shapes, without invented values.**
     - The success `When` carries a data table of the request's fields and rules, read from NestJS DTOs, Java/Kotlin classes and records, and C# classes and records.
     - Validation of two or more fields is one `Scenario Outline`, with an `Examples` row per field and rule, each preceded by its evidence. A limit is quoted only when the code states it.
+  - **Domain glossary** (`reverse.glossary`: YAML, JSON or Markdown, plus `Glossary:` lines in features).
+    - An aggregate that is not a term becomes an open question.
+    - Synonyms count as `renamed` in `coverage`, `accept --merge` and `sync`.
+    - `--assist` is told to use the terms.
+    - Lint (in `reverse propose` and `ghk lint`) reads a term of two or more words as business vocabulary, so "the controller terms" of the GDPR is no longer GHK007 implementation leakage when the glossary names it. A single code word is never exempted.
+  - **`reverse scan --coverage-report <file>`** reads an lcov, JaCoCo or Cobertura report. Evidence whose line ran **and** whose endpoint a test calls becomes `confirmed`. Nothing is executed, and without a report nothing changes.
   - **Tests that contradict the code** are written to `.ghe/reverse/conflicts.json`, and the operations they touch drop to `inferred`. Three kinds:
     - a success status the test expects and the code never declares;
     - an endpoint the test calls that the code does not expose;

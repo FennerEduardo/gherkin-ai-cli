@@ -301,7 +301,12 @@ export const configShape = {
     /** Where `reverse accept` writes (default features/discovered). */
     acceptDir: z.string().min(1).optional(),
     /** `reverse coverage` exits 7 below this share (0–100). */
-    minCoverage: z.number().int().min(0).max(100).optional()
+    minCoverage: z.number().int().min(0).max(100).optional(),
+    /**
+     * The domain glossary (YAML, JSON or Markdown): terms and synonyms. Unknown aggregates become open questions,
+     * synonyms count as renamed in coverage, merge and sync, and lint reads the terms as business vocabulary.
+     */
+    glossary: z.string().min(1).optional()
   }).optional(),
   domainProfile: z.string().optional(),
   /** Industry reference standard (BIAN, TM Forum, HL7 FHIR, ...): adds lint rules, IR constraints and LLM guidance. */

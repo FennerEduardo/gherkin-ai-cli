@@ -105,6 +105,7 @@ export function registerSpecificationCommands(program: Command): void {
     .option('--exclude <glob>', 'scan: skip files matching this glob (repeatable)', collect)
     .option('--openapi <file>', 'scan: read this OpenAPI document as evidence (repeatable; default: openapi/swagger files found in the repository)', collect)
     .option('--no-tests', 'scan: do not read tests as evidence')
+    .option('--coverage-report <file>', 'scan: an lcov, JaCoCo or Cobertura report from a test run; evidence whose line ran and whose endpoint a test calls becomes confirmed (repeatable)', collect)
     .option('--scope <name>', 'propose: only this aggregate or operation (repeatable)', collect)
     .option('--min-confidence <level>', 'propose: leave out scenarios below confirmed | strong | inferred (default: inferred)')
     .option('--threshold <score>', 'propose: minimum lint score of a proposal 0-100 (default: 80); below it exits with code 4')

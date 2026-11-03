@@ -21,6 +21,7 @@ import { parseGherkinText } from '../gherkin-parser';
 import { buildDomainModel } from '../../generators/kernel/domain-model';
 import { toSnake } from '../../utils/naming';
 import type { BehaviorCandidate } from './candidates';
+import { canonicalWord, loadGlossary, type Glossary } from './glossary';
 
 export type MatchStatus = 'documented' | 'renamed' | 'undocumented';
 
@@ -85,10 +86,11 @@ const words = (name: string) => toSnake(name).split('_');
 const VERB_SYNONYMS: Record<string, string> = { add: 'create', register: 'create', new: 'create', place: 'create', submit: 'create', remove: 'delete', edit: 'update', modify: 'update', change: 'update', fetch: 'get', retrieve: 'get', find: 'get', list: 'get' };
 const canonicalVerb = (v: string) => VERB_SYNONYMS[v] ?? v;
 
-/** Same verb (or a synonym) and one noun phrase contained in the other. */
-export function similarCommands(a: string, b: string): boolean {
-  const [va, ...na] = words(a);
-  const [vb, ...nb] = words(b);
+/** Same verb (or a synonym) and one noun phrase contained in the other; glossary synonyms are the same noun (RV-10). */
+export function similarCommands(a: string, b: string, glossary?: Glossary): boolean {
+  const canon = (w: string[]) => (glossary ? w.map(x => canonicalWord(glossary, x)) : w);
+  const [va, ...na] = canon(words(a));
+  const [vb, ...nb] = canon(words(b));
   if (canonicalVerb(va) !== canonicalVerb(vb) || !na.length || !nb.length) return false;
   const contains = (x: string[], y: string[]) => y.every(w => x.includes(w) || x.includes(w.replace(/s$/, '')));
   return contains(na, nb) || contains(nb, na);
@@ -97,6 +99,7 @@ export function similarCommands(a: string, b: string): boolean {
 export function compareWithSpec(root: string, candidates: BehaviorCandidate[]): DedupReport {
   const features = existingFeatures(root);
   const spec = specCommands(root, features);
+  const glossary = loadGlossary(root);
   const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
   const used = new Set<SpecCommand>();
   const operations: OperationMatch[] = candidates.map(c => {
@@ -104,7 +107,7 @@ export function compareWithSpec(root: string, candidates: BehaviorCandidate[]): 
     const exact = spec.find(s => norm(s.command) === norm(c.operation.name));
     if (exact) { used.add(exact); return { ...base, status: 'documented' as const, feature: exact.feature, specName: exact.command }; }
     // Prefer a similar command in a feature about the same aggregate.
-    const similar = spec.filter(s => similarCommands(s.command, c.operation.name)).sort((x, y) => Number(norm(y.aggregate).includes(norm(c.aggregate))) - Number(norm(x.aggregate).includes(norm(c.aggregate))))[0];
+    const similar = spec.filter(s => similarCommands(s.command, c.operation.name, glossary)).sort((x, y) => Number(norm(y.aggregate).includes(norm(c.aggregate))) - Number(norm(x.aggregate).includes(norm(c.aggregate))))[0];
     if (similar) { used.add(similar); return { ...base, status: 'renamed' as const, feature: similar.feature, specName: similar.command }; }
     return { ...base, status: 'undocumented' as const };
   });

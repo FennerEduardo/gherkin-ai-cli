@@ -25,6 +25,8 @@ export interface RenderOptions {
   minConfidence?: EvidenceConfidence;
   /** Lint threshold the proposal is measured against (default 80). */
   threshold?: number;
+  /** Domain terms the lint reads as business vocabulary (RV-10). */
+  glossary?: string[];
 }
 
 export interface RenderedProposal {
@@ -110,7 +112,7 @@ export function renderAggregate(aggregate: string, candidates: BehaviorCandidate
   const declared = [...new Set(ordered.filter(c => c.operation.type === 'command' && c.scenarios.some(s => atLeast(s.confidence, min))).map(c => c.operation.name))];
   const missingCommands = declared.filter(n => !irCommands.has(n.toLowerCase()));
   const threshold = options.threshold ?? 80;
-  const lint = lintSpecification(parsed, file, { threshold });
+  const lint = lintSpecification(parsed, file, { threshold, glossary: options.glossary });
   const confidence = kept.reduce<EvidenceConfidence>((worst, c) => (atLeast(worst, c) ? c : worst), 'confirmed');
 
   return {

@@ -61,12 +61,14 @@ export interface ReverseCommandOptions {
   ignoreReview?: boolean;
   /** sync: compare every feature, not only the accepted characterizations. */
   allFeatures?: boolean;
+  /** scan: line-coverage reports (lcov, JaCoCo, Cobertura) that confirm executed, tested evidence (RV-15). */
+  coverageReport?: string[];
 }
 
 const SUBCOMMANDS = ['scan', 'propose', 'accept', 'coverage', 'explain', 'review', 'sync'];
 
 function scanOptions(o: ReverseCommandOptions): ScanOptions {
-  return { path: o.path, include: o.include, exclude: o.exclude, openapi: o.openapi, includeTests: o.tests !== false, write: !o.dryRun };
+  return { path: o.path, include: o.include, exclude: o.exclude, openapi: o.openapi, includeTests: o.tests !== false, coverage: o.coverageReport, write: !o.dryRun };
 }
 
 function printScan(scan: ScanResult): void {
@@ -78,6 +80,7 @@ function printScan(scan: ScanResult): void {
   const counts = Object.entries(scan.counts).map(([k, v]) => `${k} ${v}`).join(', ');
   if (counts) console.log(`  ${counts}`);
   if (scan.secretsSkipped) console.log(`  ${scan.secretsSkipped} file(s) skipped because they may hold secrets`);
+  if (scan.coverage) console.log(`  Coverage: ${scan.coverage.reports.map(r => `${r.file} (${r.format}, ${r.files} file(s))`).join(', ')}; ${scan.coverage.confirmed} evidence item(s) confirmed by lines that ran under a test`);
   console.log('  Evidence written to .ghe/reverse/scan.json. Next: ghk reverse propose');
 }
 
@@ -134,11 +137,13 @@ async function assistProposals(root: string, proposals: string[]) {
   const { proposeNarrative } = await import('../core/reverse/assist');
   const { writeProposal } = await import('../core/governance/agent-changes');
   const client = new LLMClient(resolveLLMSettings());
+  const { loadGlossary } = await import('../core/reverse/glossary');
+  const glossaryTerms = loadGlossary(root).terms;
   const out: { proposal: string; patch?: string; accepted: unknown; rejected: { field: string; value: string; reason: string }[] }[] = [];
   for (const rel of proposals) {
     const file = path.join(root, rel);
     const text = fs.readFileSync(file, 'utf8');
-    const result = await proposeNarrative(client, text);
+    const result = await proposeNarrative(client, text, glossaryTerms);
     const patch = result.featureText !== text ? path.relative(root, writeProposal(root, file, result.featureText)).split(path.sep).join('/') : undefined;
     out.push({ proposal: rel, patch, accepted: result.accepted, rejected: result.rejected });
   }

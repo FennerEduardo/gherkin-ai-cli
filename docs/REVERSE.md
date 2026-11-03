@@ -138,10 +138,25 @@ Every option can also be set in the `reverse` section of `gherkin-ai.config.json
     "minConfidence": "strong",
     "threshold": 80,
     "acceptDir": "features/discovered",
-    "minCoverage": 60
+    "minCoverage": 60,
+    "glossary": "docs/glossary.md"
   }
 }
 ```
+
+### Glossary
+
+`reverse.glossary` names the domain glossary: YAML or JSON (`terms: [{ term: Customer, synonyms: [Account, Client] }]`, or a map `Customer: [Account]`), or Markdown with one term per line (`- **Data controller** (also: controller): who decides…`, `Course: …`, `Enrollment — …`). Features add terms with a `Glossary:` line in their description, the line `ghk lint` already reads for acronyms. With a glossary:
+- an aggregate that is not a term (or a synonym of one) becomes an open question: is it one of the terms under another name, or a new term?
+- `coverage`, `accept --merge` and `sync` read a synonym on the same verb as `renamed`, not `undocumented` (`PlaceOrder` in the code, `PlacePurchase` in a feature, when *Order* is a synonym of *Purchase*);
+- lint, in `reverse propose` and in `ghk lint`, reads a term of two or more words as business vocabulary: with *controller terms* in the glossary, "the user accepts the controller terms" is no longer implementation leakage (GHK007). A single code word (*controller*) is never exempted;
+- `propose --assist` tells the model to use the terms as written.
+
+Without a glossary, nothing changes.
+
+### Line coverage
+
+`reverse scan --coverage-report <file>` (repeatable) reads a report a test run already wrote: lcov (c8, nyc, Jest, Vitest, pytest-cov), JaCoCo XML or Cobertura XML (coverage.py, coverlet, gcovr). Nothing is executed. A line that ran proves nothing about the outcome on its own, so evidence becomes `confirmed` only when its line ran **and** a test calls the endpoint it belongs to. `scan.json` records the reports and how many items they confirmed; without a report the scan is unchanged.
 
 ### --assist (opt-in)
 
