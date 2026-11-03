@@ -21,6 +21,14 @@ export interface ProposedStep {
   keyword: 'Given' | 'When' | 'Then' | 'And';
   text: string;
   evidence: string[];
+  /** A DataTable under the step: the request's fields and their rules, read from the code (RV-07). No values. */
+  table?: string[][];
+}
+
+/** The Examples of a Scenario Outline: one row per case, each with the evidence behind it (RV-07). */
+export interface ScenarioExamples {
+  header: string[];
+  rows: { cells: string[]; evidence: string[] }[];
 }
 
 export type ScenarioKind = 'happy-path' | 'validation' | 'authorization' | 'error-handling';
@@ -30,6 +38,8 @@ export interface ScenarioCandidate {
   category: ScenarioKind;
   steps: ProposedStep[];
   confidence: EvidenceConfidence;
+  /** Present when the scenario is a Scenario Outline. */
+  examples?: ScenarioExamples;
 }
 
 export interface BehaviorCandidate {
@@ -216,6 +226,8 @@ interface Failure {
   condition?: string;
   field?: string;
   rule?: string;
+  /** The rule's argument as written (`50` in `@MaxLength(50)`). */
+  param?: string;
   roles?: string[];
   kind: SourceEvidence['kind'];
   evidence: SourceEvidence[];
@@ -271,6 +283,36 @@ function failureScenario(f: Failure, ctx: { aggregate: string; noun: string; phr
   steps.push({ ...ctx.when, keyword: 'When' });
   steps.push({ keyword: 'Then', text: then, evidence: ids });
   return { name: name.replace(/\s+/g, ' ').trim(), category, steps: normaliseKeywords(steps), confidence: conf };
+}
+
+/**
+ * Validation of several fields as one Scenario Outline (RV-07): `Then the request is rejected because the <field>
+ * is <problem>`, with a row per field and rule. Every cell comes from the code: the field name, the rule and its
+ * limit (`@MaxLength(50)` → "not short enough (at most 50)"); nothing is invented.
+ */
+function validationOutline(failures: Failure[], ctx: { phrase: string; when: ProposedStep; auth?: ProposedStep }): ScenarioCandidate {
+  const rows = failures
+    .map(f => {
+      const field = humanField(f.field!);
+      const limit = typeof f.param === 'string' && /^\d+(\.\d+)?$/.test(f.param.trim()) ? f.param.trim() : undefined;
+      const words = f.rule === 'required' ? 'missing' : `not ${ruleWords(f.rule, isProse(f.message) ? f.message : undefined)}`;
+      const bound = limit && /^(min|minLength|length|minItems)$/.test(f.rule ?? '') ? ` (at least ${limit})` : limit && /^(max|maxLength)$/.test(f.rule ?? '') ? ` (at most ${limit})` : '';
+      return { cells: [field, `${words}${bound}`], evidence: f.evidence.map(e => e.id).sort() };
+    })
+    .sort((a, b) => a.cells[0].localeCompare(b.cells[0]) || a.cells[1].localeCompare(b.cells[1]));
+  // One row per field and problem (two analyzers may report the same rule).
+  const unique = [...new Map(rows.map(r => [r.cells.join('|'), r])).values()];
+  const steps: ProposedStep[] = [];
+  if (ctx.auth) steps.push(ctx.auth);
+  steps.push({ ...ctx.when, keyword: 'When' });
+  steps.push({ keyword: 'Then', text: 'the request is rejected because the <field> is <problem>', evidence: [...new Set(unique.flatMap(r => r.evidence))].sort() });
+  return {
+    name: `${capitalise(gerund(ctx.phrase))} is rejected when a field is invalid`,
+    category: 'validation',
+    steps: normaliseKeywords(steps),
+    confidence: maxConfidence(failures.flatMap(f => f.evidence.map(e => e.confidence))),
+    examples: { header: ['field', 'problem'], rows: unique }
+  };
 }
 
 const capitalise = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
@@ -398,7 +440,8 @@ export function buildCandidates(evidence: SourceEvidence[]): CandidateResult {
     const addFailure = (e: SourceEvidence) => {
       const m = (e.metadata ?? {}) as any;
       if (m.technical) return;
-      const k = e.kind === 'validation-rule' && m.field ? `field:${m.field}` : e.kind === 'authorization-rule' ? `auth:${m.status === 403 || m.roles ? 403 : 401}` : `status:${m.status ?? '?'}|${(m.message ?? m.condition ?? '').toLowerCase()}`;
+      // One failure per field and rule: `quantity` that must be an integer and positive is two cases (RV-07).
+      const k = e.kind === 'validation-rule' && m.field ? `field:${m.field}:${m.rule ?? ''}` : e.kind === 'authorization-rule' ? `auth:${m.status === 403 || m.roles ? 403 : 401}` : `status:${m.status ?? '?'}|${(m.message ?? m.condition ?? '').toLowerCase()}`;
       const prev = failures.get(k);
       if (prev) {
         prev.evidence.push(e);
@@ -411,7 +454,7 @@ export function buildCandidates(evidence: SourceEvidence[]): CandidateResult {
         const same = [...failures.values()].find(f => f.status === m.status && f.kind === e.kind);
         if (same) { same.evidence.push(e); return; }
       }
-      failures.set(k, { status: m.status, message: m.message, condition: m.condition, field: m.field, rule: m.rule, roles: m.roles, kind: e.kind, evidence: [e] });
+      failures.set(k, { status: m.status, message: m.message, condition: m.condition, field: m.field, rule: m.rule, param: m.param, roles: m.roles, kind: e.kind, evidence: [e] });
     };
     // Code first, then the contract, so documented statuses attach to what the code raises.
     for (const e of related.filter(x => ['validation-rule', 'authorization-rule', 'error-condition'].includes(x.kind)).sort((a, b) => Number(a.extractor === 'openapi') - Number(b.extractor === 'openapi'))) addFailure(e);
@@ -458,9 +501,24 @@ export function buildCandidates(evidence: SourceEvidence[]): CandidateResult {
     } else {
       unresolved.push({ endpoint: `${meta.method} ${meta.path}`, question: `What does ${meta.method} ${meta.path} return or change? No response, state or event was found in the code.`, evidence: endpointIds });
     }
+    // Validation of two or more fields: one Scenario Outline, a row per field and rule, each row with its evidence (RV-07).
+    const fieldRules = [...failures.values()].filter(f => f.kind === 'validation-rule' && f.field);
+    const outline = fieldRules.length >= 2 ? validationOutline(fieldRules, { phrase, when, auth: authStep }) : undefined;
+    if (outline) scenarios.push(outline);
     for (const f of [...failures.values()].sort((a, b) => (a.status ?? 0) - (b.status ?? 0) || (a.field ?? '').localeCompare(b.field ?? ''))) {
+      if (outline && fieldRules.includes(f)) continue;
       const sc = failureScenario(f, { aggregate, noun, phrase, when, givenItem, auth: f.kind === 'authorization-rule' ? undefined : authStep });
       if (sc) scenarios.push(sc);
+    }
+    // The request's fields under the success When, from the input contract the analyzers read (RV-07).
+    const contract = related.find(e => e.kind === 'input-contract' && Array.isArray((e.metadata as any)?.fields) && (e.metadata as any).fields.length);
+    const happy = scenarios.find(s => s.category === 'happy-path');
+    if (contract && happy) {
+      const fields = ((contract.metadata as any).fields as { name: string; rules?: string[] }[]).filter(f => /^[A-Za-z_][\w]*$/.test(f.name));
+      const at = happy.steps.findIndex(s => s.keyword === 'When');
+      if (fields.length && at >= 0) {
+        happy.steps[at] = { ...happy.steps[at], text: `${happy.steps[at].text} with`, evidence: [...new Set([...happy.steps[at].evidence, contract.id])].sort(), table: [['field', 'rules'], ...fields.map(f => [f.name, [...new Set(f.rules ?? [])].join(', ') || '-'])] };
+      }
     }
     // Failures that read the same (two validation errors without a field or a message) are one scenario with
     // the evidence of both, not two identical scenarios (GHK004).

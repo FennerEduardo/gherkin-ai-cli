@@ -53,8 +53,15 @@ const evidenceComment = (ids: string[], byId: Map<string, SourceEvidence>, inden
   return parts.length ? [`${indent}# evidence: ${parts.join(', ')}`] : [];
 };
 
+/** `| a | b |` rows with the columns aligned; pipes and backslashes in cells escaped as Gherkin requires. */
+function tableLines(rows: string[][], indent: string): string[] {
+  const esc = (c: string) => c.replace(/\\/g, '\\\\').replace(/\|/g, '\\|');
+  const widths = rows[0].map((_, i) => Math.max(...rows.map(r => esc(r[i] ?? '').length)));
+  return rows.map(r => `${indent}| ${r.map((c, i) => esc(c ?? '').padEnd(widths[i])).join(' | ')} |`);
+}
+
 function renderStep(step: ProposedStep, byId: Map<string, SourceEvidence>): string[] {
-  return [...evidenceComment(step.evidence, byId, '    '), `    ${step.keyword} ${step.text}`];
+  return [...evidenceComment(step.evidence, byId, '    '), `    ${step.keyword} ${step.text}`, ...(step.table?.length ? tableLines(step.table, '      ') : [])];
 }
 
 export function renderAggregate(aggregate: string, candidates: BehaviorCandidate[], evidence: SourceEvidence[], options: RenderOptions = {}): RenderedProposal {
@@ -83,8 +90,14 @@ export function renderAggregate(aggregate: string, candidates: BehaviorCandidate
       kept.push(sc.confidence);
       lines.push(...evidenceComment(c.endpointEvidence, byId, '  '));
       const tags = [c.operation.type === 'command' ? `@command:${c.operation.name}` : `@query:${c.operation.name}`, `@confidence:${sc.confidence}`];
-      lines.push(`  ${tags.join(' ')}`, `  Scenario: ${sc.name}`);
+      lines.push(`  ${tags.join(' ')}`, `  ${sc.examples ? 'Scenario Outline' : 'Scenario'}: ${sc.name}`);
       for (const step of sc.steps) lines.push(...renderStep(step, byId));
+      if (sc.examples) {
+        // One evidence comment per row: every case of the outline points to the code that rejects it.
+        const table = tableLines([sc.examples.header, ...sc.examples.rows.map(r => r.cells)], '      ');
+        lines.push('', '    Examples:', table[0]);
+        sc.examples.rows.forEach((r, i) => lines.push(...evidenceComment(r.evidence, byId, '      '), table[i + 1]));
+      }
       lines.push('');
     }
   }

@@ -183,6 +183,8 @@ analyzers ─► Source Evidence IR ─► behaviour candidates ─► proposal 
    - Failures are grouped as validation, authorization, not found, conflict and so on.
    - A precondition on a state (`order.status !== 'PENDING'`) becomes `Given an order with status "PENDING"`, plus a failure scenario for every other state.
    - Technical conditions (5xx, infrastructure) never become scenarios. They are listed as open questions.
+   - When the analyzers read the fields of the request body (a NestJS DTO, a Java or Kotlin class or record, a C# class or record), the success `When` carries a data table of its fields and their rules: `| field | rules |`, with no values. Values would have to be invented.
+   - When two or more fields fail validation, they are one `Scenario Outline` (`… is rejected when a field is invalid`), with one `Examples` row per field and rule (`| quantity | not large enough |`). Each row is preceded by the evidence of the validator behind it, and a limit is quoted only when the code states it (`@MaxLength(50)` → `not short enough (at most 50)`).
 4. **Proposal.** One feature per aggregate, tagged `@reverse-engineered @characterization @needs-review` and `@aggregate:<Name>`. Each scenario carries `@command:<Name>` (or `@query:<Name>`) and `@confidence:<level>`. Each scenario and step is preceded by `# evidence: <id> <file>:<line>`.
 5. **Verification.** Each proposal is parsed back with the same parser and IR builder that `ghk lint` uses.
    - The IR must recover every declared command; this is the *round trip*.
@@ -226,6 +228,7 @@ Everything goes in `.ghe/reverse/`. That directory contains a `.gitignore` of `*
 | `candidates.json` | One behaviour candidate per operation: aggregate, command or query, scenarios, and the evidence of every step |
 | `review.json` | The decisions of `reverse review`: approve or reject per scenario, with an optional note and the fingerprint of the evidence each decision was made on |
 | `unresolved-questions.json` | What the code does not answer: endpoints with no observable outcome, technical conditions left out, two endpoints mapped to one name |
+| `conflicts.json` | Tests that contradict the code: a success status the test expects and the code never declares (201 in the code, 200 in the test), an endpoint the test calls and the code does not expose, an event the test names and no code publishes. The scenarios of those operations drop to `inferred`. Failure statuses are not compared: security filters and global exception handlers produce them where the analyzers do not look. gherkin-ai's own contract tests (`generated-specs/`) are not read for this |
 | `proposals/<aggregate>.feature` | The proposals. Proposals that a later run no longer produces are removed |
 
 `reverse scan --json` and `reverse propose --json` print the same data as one JSON document. With the global `--dry-run`, both analyse and report but write nothing, not even `.ghe/reverse/`.
@@ -331,5 +334,5 @@ Java, Kotlin, C#, Python and Go are parsed with tree-sitter (`web-tree-sitter` 0
 - **Code shows structure, not intent.** A proposal describes what the system does today, including its bugs, and the `@characterization` tag says so. Whether that behaviour is correct is a product decision.
 - **Static analysis only.** Reflection, dynamic routing and dependency injection that the type checker cannot resolve are missed. Such endpoints show up with fewer outcomes or as open questions.
 - **Entry points that are not read.** A Go loop over `time.NewTicker`, a message consumer registered by configuration rather than in code (Spring Cloud Stream function beans, a Kafka consumer group polled by hand), and Celery beat schedules defined in settings. Their bodies are not analysed.
-- **Data shapes are not specified.** Request and response bodies appear as fields in the evidence, not as data tables in the scenarios.
+- **Data shapes without values.** A request's fields and rules become a data table and the validation cases an outline, but no example values: the code does not say which values a real request carries. Response bodies are not specified.
 - **No language model by default.** Wording is template-based; `--assist` is the opt-in wording pass. It has been verified against a simulated provider in CI and against Gemini; other providers are untested with it ([Providers verified](#--assist-opt-in)).

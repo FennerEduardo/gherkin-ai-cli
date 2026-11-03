@@ -17,11 +17,12 @@ import path from 'path';
 import { runPropose, runScan } from '../../src/core/reverse';
 import { grammarDir, parserFor, unquote } from '../../src/core/reverse/analyzers/treesitter/loader';
 import { exceptionStatusByName, statusFromText, throwFromText } from '../../src/core/reverse/analyzers/jvm/spring';
+import { expandedNames } from './support-outline';
 import { resourceFromPath, singular } from '../../src/core/reverse/candidates';
 
 const FIXTURES = path.join(__dirname, '..', 'fixtures');
 const propose = async (rel: string) => runPropose(path.join(FIXTURES, rel), await runScan(path.join(FIXTURES, rel), { write: false }), { write: false });
-const scenarioNames = (result: Awaited<ReturnType<typeof propose>>, op: string) => result.candidates.find(c => c.operation.name === op)?.scenarios.map(s => s.name) ?? [];
+const scenarioNames = (result: Awaited<ReturnType<typeof propose>>, op: string) => expandedNames(result.candidates.find(c => c.operation.name === op)?.scenarios);
 
 describe('tree-sitter loader', () => {
   it('loads every vendored grammar with the pinned web-tree-sitter', async () => {

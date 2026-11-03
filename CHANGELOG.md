@@ -53,6 +53,14 @@ All notable changes to this project will be documented in this file. See [commit
     - Platform jobs (outbox relay, inbox, pollers, retries, gherkin-ai's own runtime) are left out, like health endpoints. Verified on one hand-written fixture per language.
   - **Database constraints** (`persistence/constraints`, a new beta analyzer for any stack) read unique constraints from Prisma, SQL migrations, JPA, EF Core, Django, SQLAlchemy and TypeORM. A constraint confirms the conflict scenario of its aggregate, or asks what happens on a duplicate.
   - **Calls to other systems** (HTTP clients, payment and messaging SDKs) are evidence and open questions, never steps.
+  - **Data shapes, without invented values.**
+    - The success `When` carries a data table of the request's fields and rules, read from NestJS DTOs, Java/Kotlin classes and records, and C# classes and records.
+    - Validation of two or more fields is one `Scenario Outline`, with an `Examples` row per field and rule, each preceded by its evidence. A limit is quoted only when the code states it.
+  - **Tests that contradict the code** are written to `.ghe/reverse/conflicts.json`, and the operations they touch drop to `inferred`. Three kinds:
+    - a success status the test expects and the code never declares;
+    - an endpoint the test calls that the code does not expose;
+    - an event the test names that no code publishes.
+    - Failure statuses are not compared, because security filters and global handlers produce them out of the analyzers' sight. On the 16 reference projects and the LMS (25 code bases) it reports none.
   - **`reverse sync`** keeps the accepted features alive.
     - It compares the code as it is now with every `@reverse-engineered` feature. New, missing and changed operations (status written, event published, failure scenarios) are drift and exit 7; moved evidence is reported.
     - It never edits a feature: it writes a patch per feature in `.ghe/patches/` to review and `git apply`.

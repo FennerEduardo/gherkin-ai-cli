@@ -22,6 +22,7 @@ import { kebab, renderProposals, type RenderedProposal } from './renderer';
 import { compareWithSpec, type DedupReport } from './dedup';
 import { approvedOnly, readReview, type ScenarioStatus } from './review';
 import { acceptedFeatureText } from './sync';
+import { applyConflicts, findConflicts, type Conflict } from './conflicts';
 
 export const REVERSE_DIR = path.join('.ghe', 'reverse');
 
@@ -66,6 +67,8 @@ export interface ProposeResult {
   threshold: number;
   /** How the proposed operations compare with the features that already exist. */
   spec: DedupReport;
+  /** Tests that contradict the code (.ghe/reverse/conflicts.json). */
+  conflicts: Conflict[];
 }
 
 const rel = (root: string, p: string) => path.relative(root, p).split(path.sep).join('/');
@@ -240,6 +243,9 @@ export function runCoverage(root: string, scan: ScanResult): CoverageResult {
 
 export function runPropose(root: string, scan: ScanResult, options: ProposeOptions = {}): ProposeResult {
   const { candidates: all, unresolved } = buildCandidates(scan.evidence);
+  // Tests that contradict the code (RV-09): reported, and their operations drop to `inferred`.
+  const conflicts = findConflicts(scan.evidence, all);
+  applyConflicts(all, conflicts);
   const scope = (options.scope ?? []).map(s => s.toLowerCase());
   const candidates = scope.length ? all.filter(c => scope.includes(c.aggregate.toLowerCase()) || scope.includes(c.operation.name.toLowerCase())) : all;
   const threshold = options.threshold ?? 80;
@@ -255,6 +261,7 @@ export function runPropose(root: string, scan: ScanResult, options: ProposeOptio
     for (const p of rendered) writeReverseFile(root, path.join('proposals', p.file), p.text);
     writeReverseFile(root, 'candidates.json', stableJson(candidates));
     writeReverseFile(root, 'unresolved-questions.json', stableJson(unresolved));
+    writeReverseFile(root, 'conflicts.json', stableJson(conflicts));
   }
 
   return {
@@ -264,6 +271,7 @@ export function runPropose(root: string, scan: ScanResult, options: ProposeOptio
     candidates,
     unresolved,
     threshold,
-    spec: compareWithSpec(root, candidates)
+    spec: compareWithSpec(root, candidates),
+    conflicts
   };
 }

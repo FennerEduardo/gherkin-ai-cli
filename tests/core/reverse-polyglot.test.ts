@@ -17,12 +17,13 @@ import { csharpStatus } from '../../src/core/reverse/analyzers/csharp/aspnet';
 import { pythonStatus } from '../../src/core/reverse/analyzers/python/fastapi';
 import { goStatus } from '../../src/core/reverse/analyzers/go/go-http';
 import { eventsInText, pathMatchesTemplate, statesInText } from '../../src/core/reverse/analyzers/shared/body-text';
+import { expandedNames } from './support-outline';
 import { exceptionStatusByName } from '../../src/core/reverse/analyzers/jvm/spring';
 
 const FIXTURES = path.join(__dirname, '..', 'fixtures', 'reverse');
 const propose = async (rel: string) => runPropose(path.join(FIXTURES, rel), await runScan(path.join(FIXTURES, rel), { write: false }), { write: false });
 const op = (r: Awaited<ReturnType<typeof propose>>, name: string) => r.candidates.find(c => c.operation.name === name)!;
-const names = (r: Awaited<ReturnType<typeof propose>>, name: string) => op(r, name)?.scenarios.map(s => s.name) ?? [];
+const names = (r: Awaited<ReturnType<typeof propose>>, name: string) => expandedNames(op(r, name)?.scenarios);
 const steps = (r: Awaited<ReturnType<typeof propose>>, name: string) => op(r, name).scenarios[0].steps.map(s => `${s.keyword} ${s.text}`);
 
 describe('status and text helpers', () => {

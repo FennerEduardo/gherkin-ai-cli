@@ -21,6 +21,7 @@ import { clearTsProjects } from '../../src/core/reverse/analyzers/typescript/pro
 import { parseGherkinText } from '../../src/core/gherkin-parser';
 import { buildIR } from '../../src/core/ir-builder';
 import { handleReverseCommand } from '../../src/commands/reverse';
+import { expandedNames } from './support-outline';
 import { UsageError } from '../../src/core/errors';
 
 const FIXTURES = path.join(__dirname, '..', 'fixtures');
@@ -171,10 +172,14 @@ describe('ghk reverse on the NestJS service', () => {
 
     const place = candidates.find(c => c.operation.name === 'PlaceOrder')!;
     expect(place.events).toEqual(['OrderPlaced']);
-    expect(place.scenarios.filter(s => s.category === 'validation').map(s => s.name)).toEqual([
+    // Three fields fail validation: one Scenario Outline with a row each (RV-07).
+    expect(place.scenarios.filter(s => s.category === 'validation')).toHaveLength(1);
+    expect(place.scenarios.find(s => s.category === 'validation')!.examples!.header).toEqual(['field', 'problem']);
+    expect(expandedNames(place.scenarios.filter(s => s.category === 'validation'))).toEqual([
       'Placing an order is rejected when customer email is not a valid email',
       'Placing an order is rejected when items are missing',
-      'Placing an order is rejected when quantity is not a whole number'
+      'Placing an order is rejected when quantity is not a whole number',
+      'Placing an order is rejected when quantity is not large enough'
     ]);
     // The e2e test calls POST /api/v1/orders: the behaviour is confirmed.
     expect(place.confidence).toBe('confirmed');

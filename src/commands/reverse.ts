@@ -357,5 +357,7 @@ export async function handleReverseCommand(subcommand: string | undefined, optio
     console.log(`  Against the ${result.spec.features} existing feature(s): ${c.documented} documented, ${c.renamed} renamed, ${c.undocumented} undocumented (ghk reverse coverage for the list)`);
   }
   if (result.unresolved.length) console.log(`  ${result.unresolved.length} open question(s) in ${path.join('.ghe', 'reverse', 'unresolved-questions.json')}`);
+  for (const c of result.conflicts) console.log(`  ! ${c.message}`);
+  if (result.conflicts.length) console.log(`  ${result.conflicts.length} contradiction(s) between tests and code in ${path.join('.ghe', 'reverse', 'conflicts.json')}; those operations are inferred until someone decides`);
   console.log('  These are candidate specifications: they describe what the code does today and need human review.');
 }
