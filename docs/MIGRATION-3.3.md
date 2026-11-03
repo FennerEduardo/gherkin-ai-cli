@@ -28,6 +28,7 @@ Running `ghk reverse` on real projects exposed two naming defects. They date fro
 | What | 3.2.2 | 3.3.0 | Do |
 |---|---|---|---|
 | Installed size | 1.9 MB packed, 6.2 MB unpacked | 2.7 MB packed, 15.5 MB unpacked, plus the `web-tree-sitter` dependency (5.7 MB). The tree-sitter grammars used by `ghk reverse` are in `vendor/tree-sitter/` | – |
+| Default model of `llm.provider: "gemini"` | `gemini-2.5-pro` (404 for new API keys) | `gemini-flash-lite-latest` | to keep another model, set `llm.model` or `LLM_MODEL` |
 | Command names of undeclared features | see IR-05 / IR-06 above | see above | regenerate, or add `@command:` tags |
 | `stack.database: "mysql"` without `stack.kernelDatabase` | the kernel ran on PostgreSQL, but the compose file, `.env.example` and Prisma used MySQL | all use PostgreSQL, and `generate` warns | to run on MySQL, set `stack.kernelDatabase: "mysql"` (NestJS, Express, Spring Boot, Quarkus, FastAPI, Django, ASP.NET Core and Go in 3.3.0); otherwise set `stack.database: "postgresql"` to say what the service runs on |
 | `stack.database: "mongodb"` without `stack.kernelDatabase` | the compose file used `mongo:7.0` with a root user and `.env.example` a `mongodb://` URL, for a kernel that speaks PostgreSQL; Prisma 7 was rejected | PostgreSQL everywhere, `generate` warns, Prisma 7 is accepted | to run on MongoDB, set `stack.kernelDatabase: "mongodb"` (NestJS, Express, Spring Boot Java, FastAPI, ASP.NET Core and Go in 3.3.0); otherwise set `stack.database: "postgresql"` |

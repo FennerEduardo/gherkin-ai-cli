@@ -81,6 +81,7 @@ All notable changes to this project will be documented in this file. See [commit
   - Verified by the goldens `express-mongo`, `nestjs-mongo`, `java-mongo`, `fastapi-mongo`, `dotnet-mongo` and `go-mongo`: the suites against MongoDB 8, and the production image with its spans over OTLP.
 
 ### Changed
+- **Default Gemini model: `gemini-flash-lite-latest`** (was `gemini-2.5-pro`, which answers 404 to new Gemini API keys; G-07). `LLM_MODEL` / `llm.model` still choose another; Vertex AI keeps `gemini-2.5-pro` ([ENTERPRISE.md](docs/ENTERPRISE.md)). `reverse --assist` and `lint --assist` were verified against it.
 - **Command names of features without `@command:` tags** (found by `ghk reverse` on real projects; [MIGRATION-3.3.md](docs/MIGRATION-3.3.md)).
   - IR-05: a relative clause ends the command noun. "cancels an order that does not exist" is `CancelOrder`, no longer `CancelOrderThat`.
   - IR-06: a business verb outside the core list names its own command next to core ones ("places an order" + "cancels the order" → `PlaceOrder`, `CancelOrder`).

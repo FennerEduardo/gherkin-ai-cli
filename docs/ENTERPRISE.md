@@ -89,6 +89,7 @@ Notes:
 - **Entra ID for Azure.** Set `llm.azure.useEntraId: true` and install the optional package `@azure/identity` next to the CLI. It uses `DefaultAzureCredential`.
 - **Gateway headers.** `llm.headers` adds headers to every request, for example a cost-center or routing header.
 - **Defaults.** Default models live in one table (`src/core/llm/defaults.ts`). Override them with `llm.model` / `LLM_MODEL`.
+- **Gemini default (3.3.0).** `gemini` uses `gemini-flash-lite-latest`. The previous default, `gemini-2.5-pro`, answers 404 to new Gemini API keys, and the Flash-Lite alias was the one model available on every key tested. For a larger model set `LLM_MODEL` (for example `gemini-flash-latest`, which may answer 503 under load). `vertex` keeps `gemini-2.5-pro`.
 - **Limits.** `llm.timeoutMs` (default 120 s), `llm.maxRetries` (default 2) and `llm.maxOutputTokens` apply to every provider. Retries cover 408/409/429/5xx and connection errors, honor `Retry-After`, and happen in one place, so they are never multiplied.
 - **Budget.** `llm.budget.maxTokensPerRun` stops a run before it exceeds the budget (exit code `5`).
 - **Policy.** `allowedProviders`, `allowedModels` and `allowedBaseUrls` accept exact values or a trailing `*`. The project constitution's `allowedLLMProviders` / `forbiddenLLMProviders` are enforced too.

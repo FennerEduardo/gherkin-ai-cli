@@ -11,7 +11,9 @@ export const DEFAULT_MODELS: Record<LLMProviderName, string> = {
   'azure-openai': 'gpt-4.1',
   anthropic: 'claude-opus-5-5',
   bedrock: 'anthropic.claude-opus-5-5',
-  gemini: 'gemini-2.5-pro',
+  // 3.3.0 (G-07): gemini-2.5-pro answers 404 to new Gemini API keys; the Flash-Lite alias follows Google's current
+  // model and is the one available on every key we tried (docs/ENTERPRISE.md). LLM_MODEL picks another.
+  gemini: 'gemini-flash-lite-latest',
   vertex: 'gemini-2.5-pro',
   ollama: 'llama3',
   ide_delegate: 'ide-delegate'
