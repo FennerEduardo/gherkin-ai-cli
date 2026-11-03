@@ -50,6 +50,8 @@ All notable changes to this project will be documented in this file. See [commit
   - Tests that call concrete URLs (`/orders/o-1/cancel`) confirm the matching route template; .NET `HttpClient` calls are recognised. `InvalidOperationException` and `IllegalStateException` are read as 409.
   - The aggregate of an operation is the last collection in its path (`/institutions/{id}/members` → `Member`). The word after an id is the action (`POST /payments/{id}/settle` → `SettlePayment`).
 
+- **`--assist` verified against a real model** (`lint --assist` and `reverse propose --assist`, Gemini `gemini-flash-lite-latest`): both write a patch, change no step, and the validation rejected the one invalid name the model proposed. Other providers share the client and the validation but are untested with `--assist`; [docs/REVERSE.md](docs/REVERSE.md#--assist-opt-in) says how to report a run.
+
 - **`ghk reverse` scores on the golden-build dashboard** ([goldens.html#reverse](https://fennereduardo.github.io/gherkin-ai-cli/goldens.html#reverse)): every analyzer with its maturity, the validation on open-source code (rerun by the Pages workflow on every build), and the round trips on the reference projects and the LMS (release snapshot `docs/reverse-scores.json`, written by `scripts/reverse-scores.js`). `goldens.json` carries the same data under `reverse`.
 
 - **`deploy.base` on Google Cloud and Azure** (it was AWS only), for both compute modes ([DEPLOYMENT.md](docs/DEPLOYMENT.md#shared-base-stack-for-a-monorepo-deploybase)).

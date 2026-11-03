@@ -112,6 +112,8 @@ The model's answer is validated before anything is used:
 
 The proposal is redacted before it is sent and is treated as data, never as instructions. Accepted wording is written as a patch in `.ghe/patches/`; the proposal itself is never written. The deterministic run stays the default and the only path in CI.
 
+**Providers verified.** `reverse propose --assist` and `lint --assist` have been run against **Gemini** (`gemini-flash-lite-latest`, the default Gemini model since 3.3.0). Both wrote a patch, changed no step, and the validation rejected the one invalid name the model proposed (`ShelfBook`: "Shelf" is not a verb). The other providers (OpenAI, Azure OpenAI, Anthropic, Bedrock, Vertex AI, Ollama, OpenAI-compatible gateways) share the same client and validation, but they have not been run with `--assist` yet. A report of a run on another provider is welcome: open an issue with the provider, the model, and whether the patch was accepted, rejected or failed. Leave out keys and prompts.
+
 ### Over MCP
 
 `ghk_reverse_scan` and `ghk_reverse_get_evidence` are read-only. `ghk_reverse_propose` writes only `.ghe/reverse/` and needs `mcp.allowWrite`. `accept` is not exposed over MCP ([MCP_GUIDE.md](MCP_GUIDE.md#reverse-engineering-over-mcp-beta)).
@@ -278,4 +280,4 @@ Java, Kotlin, C#, Python and Go are parsed with tree-sitter (`web-tree-sitter` 0
 - **Code shows structure, not intent.** A proposal describes what the system does today, including its bugs, and the `@characterization` tag says so. Whether that behaviour is correct is a product decision.
 - **Static analysis only.** Reflection, dynamic routing and dependency injection that the type checker cannot resolve are missed. Such endpoints show up with fewer outcomes or as open questions.
 - **Data shapes are not specified.** Request and response bodies appear as fields in the evidence, not as data tables in the scenarios.
-- **No language model by default.** Wording is template-based; `--assist` is the opt-in wording pass. It has been verified against a simulated provider, and a run against a real model is part of the 3.3.0 release checks.
+- **No language model by default.** Wording is template-based; `--assist` is the opt-in wording pass. It has been verified against a simulated provider in CI and against Gemini; other providers are untested with it ([Providers verified](#--assist-opt-in)).
