@@ -341,6 +341,15 @@ The [golden-build dashboard](https://fennereduardo.github.io/gherkin-ai-cli/gold
 
 The table measures route extraction. The proposals for these apps lint between 94 and 99 (69 to 79 before the duplicated-scenario fixes of 3.3.0), and they are still drafts to review, as the `@needs-review` tag says. The Go app registers its routes on gin groups that `main` hands to registration functions in other packages. Before 3.3.0 the analyzer lost those prefixes, and the run above found the problem.
 
+### Django and Django REST framework
+
+`python/django` (beta) reads the routes of every `urls.py`: `path()`, `re_path()` and `url()` regexes, with the prefix of each `include("app.urls")` that reaches them, and DRF routers (`router.register(r"orders", OrderViewSet)` with `include(router.urls)`). The verbs come from the view:
+- ViewSets: `ModelViewSet`, `ReadOnlyModelViewSet`, `GenericViewSet` with its mixins, the actions the class defines, `@action(detail=…, methods=[…], url_path=…)` and `lookup_field`;
+- generic views (`ListCreateAPIView`, `RetrieveUpdateAPIView`, …);
+- `APIView` methods (`get`, `post`, …) and `@api_view([...])` functions.
+
+`permission_classes` give the authorization rules: `IsAuthenticated` (401), `IsAdminUser` (403), and `IsAuthenticatedOrReadOnly` on writes. The serializer's fields give the input and validation rules (`EmailField`, required, `max_length`, `min_value`, …). They apply to standard writes, and to a custom `@action` only when its body uses the serializer. Bodies are analysed the same way as FastAPI's: `raise NotFound(…)`, `return Response(…, status=status.HTTP_409_CONFLICT)`, states, events and calls. When `PUT` and `PATCH` share a path, `PUT` keeps `Update…` and `PATCH` becomes `Patch…`.
+
 ### ASP.NET Core, FastAPI and Go
 
 | | ASP.NET Core | FastAPI | Go |
