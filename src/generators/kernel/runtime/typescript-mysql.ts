@@ -40,7 +40,7 @@ export const usesMysql = (config?: Pick<GherkinAIConfig, 'stack'>) => (config?.s
 export const kernelDatabase = (config?: Pick<GherkinAIConfig, 'stack'>): 'postgresql' | 'mysql' | 'mongodb' => {
   const language = (config?.stack?.language || '').toLowerCase();
   if (usesMysql(config) && MYSQL_KERNEL_LANGUAGES.has(language)) return 'mysql';
-  if (usesMongo(config) && mongoKernel(language, (config?.stack?.framework || '').toLowerCase())) return 'mongodb';
+  if (usesMongo(config) && MONGO_KERNEL_LANGUAGES.has(language)) return 'mongodb';
   return 'postgresql';
 };
 
@@ -50,12 +50,8 @@ export const usesMongo = (config?: Pick<GherkinAIConfig, 'stack'>) => (config?.s
 /** Runtimes whose kernel has a MySQL implementation (PLAN-3.3.0 X-01b extends it to the JVM, Python, .NET and Go). */
 export const MYSQL_KERNEL_LANGUAGES = new Set(['typescript', 'javascript', 'node', 'java', 'kotlin', 'python', 'csharp', 'dotnet', '.net', 'go']);
 
-/** Runtimes whose kernel has a MongoDB implementation (PLAN-3.3.0 X-02). */
-export const MONGO_KERNEL_LANGUAGES = new Set(['typescript', 'javascript', 'node', 'java', 'python', 'csharp', 'dotnet', '.net', 'go']);
-
-/** The scope of X-02: Java on MongoDB is Spring Boot (Quarkus and Kotlin keep PostgreSQL or MySQL); Python is FastAPI. */
-const mongoKernel = (language: string, framework: string) =>
-  MONGO_KERNEL_LANGUAGES.has(language) && (language !== 'java' || framework.startsWith('spring')) && (language !== 'python' || framework !== 'django');
+/** Runtimes whose kernel has a MongoDB implementation (PLAN-3.3.0 X-02): every core runtime; Django shares the Python kernel with FastAPI. */
+export const MONGO_KERNEL_LANGUAGES = new Set(['typescript', 'javascript', 'node', 'java', 'kotlin', 'python', 'csharp', 'dotnet', '.net', 'go']);
 
 const DATABASE_NAMES: Record<string, string> = { postgresql: 'PostgreSQL', mysql: 'MySQL', mongodb: 'MongoDB' };
 

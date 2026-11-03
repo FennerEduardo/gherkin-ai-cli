@@ -36,9 +36,21 @@ describe('Spring Boot (Java) kernel on MongoDB (X-02)', () => {
     expect([...files.entries()].find(([n]) => n.endsWith('RuntimeIntegrationTest.java'))![1]).toContain('count("ghk_outbox", new Document("aggregate_id", "agg-1"))');
   });
 
-  it('Quarkus and Kotlin keep PostgreSQL (MongoDB is Spring Boot Java only in 3.3.0)', () => {
-    expect(kernelDatabase(configOf('java', 'spring-boot', 'mongodb'))).toBe('mongodb');
-    expect(kernelDatabase(configOf('java', 'quarkus', 'mongodb'))).toBe('postgresql');
-    expect(kernelDatabase(configOf('kotlin', 'spring-boot', 'mongodb'))).toBe('postgresql');
+  it.each([['java', 'spring-boot'], ['java', 'quarkus'], ['kotlin', 'spring-boot'], ['kotlin', 'quarkus']])('%s / %s runs on MongoDB', (language, framework) => {
+    expect(kernelDatabase(configOf(language, framework, 'mongodb'))).toBe('mongodb');
+    const files = project(configOf(language, framework, 'mongodb'));
+    expect(main(files)).not.toMatch(/java\.sql\.Connection|PreparedStatement|AgroalDataSource|DataSource;|ON CONFLICT/);
+    const build = files.get('pom.xml') ?? files.get('build.gradle.kts')!;
+    expect(build).toContain('mongodb-driver-sync');
+    expect(build).not.toMatch(/postgresql|quarkus-agroal|data-jpa/);
+  });
+
+  it('Quarkus: the client comes from DATABASE_URL, and readiness pings MongoDB', () => {
+    const files = project(configOf('java', 'quarkus', 'mongodb'));
+    const names = [...files.keys()];
+    expect(names.some(n => n.endsWith('DatabaseUrlConfigSource.java'))).toBe(false);
+    expect(names.some(n => n.endsWith('org.eclipse.microprofile.config.spi.ConfigSource'))).toBe(false);
+    expect([...files.entries()].find(([n]) => n.endsWith('/runtime/MongoReadiness.java'))![1]).toContain('connections.ping();');
+    expect(files.get('src/main/resources/application.properties')).not.toMatch(/quarkus\.datasource/);
   });
 });

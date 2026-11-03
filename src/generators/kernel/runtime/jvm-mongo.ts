@@ -592,12 +592,111 @@ const CONNECTION_BEAN = `    /**
     }
 `;
 
+/** Quarkus: the client from DATABASE_URL instead of the Agroal pool (a singleton: a final class takes no client proxy). */
+function quarkusProducersJava(pkg: string): string {
+  return `package ${pkg}.runtime;
+
+import io.quarkus.runtime.StartupEvent;
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.enterprise.event.Observes;
+import jakarta.enterprise.inject.Disposes;
+import jakarta.enterprise.inject.Produces;
+import jakarta.inject.Singleton;
+import org.eclipse.microprofile.config.inject.ConfigProperty;
+
+/** Wires the runtime kernel into CDI: the MongoDB client from DATABASE_URL and the CommandService. */
+@ApplicationScoped
+public class RuntimeProducers {
+    @Produces
+    @Singleton
+    ConnectionFactory connectionFactory() {
+        String url = System.getenv("DATABASE_URL");
+        if (url == null || url.isBlank()) throw new IllegalStateException("DATABASE_URL is not set (mongodb://host:27017/db?replicaSet=rs0)");
+        return ConnectionFactory.fromUrl(url);
+    }
+
+    void close(@Disposes ConnectionFactory connections) {
+        connections.close();
+    }
+
+    /**
+     * Creates the kernel's collections when the service starts, before it serves or relays anything (idempotent).
+     * GHK_MIGRATE=false when another tool owns them.
+     */
+    void migrate(@Observes StartupEvent event, ConnectionFactory connections, @ConfigProperty(name = "ghk.schema.migrate", defaultValue = "true") boolean migrate) {
+        if (migrate) Schema.migrate(connections, "public");
+    }
+
+    @Produces
+    @ApplicationScoped
+    CommandService commandService(ConnectionFactory connections) {
+        return new CommandService(connections, "public");
+    }
+}
+`;
+}
+
+/** Quarkus readiness: on PostgreSQL the Agroal datasource check answered /q/health/ready. */
+function quarkusReadinessJava(pkg: string): string {
+  return `package ${pkg}.runtime;
+
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
+import org.eclipse.microprofile.health.HealthCheck;
+import org.eclipse.microprofile.health.HealthCheckResponse;
+import org.eclipse.microprofile.health.Readiness;
+
+/** /q/health/ready: MongoDB answers a ping. */
+@Readiness
+@ApplicationScoped
+public class MongoReadiness implements HealthCheck {
+    @Inject
+    ConnectionFactory connections;
+
+    @Override
+    public HealthCheckResponse call() {
+        try {
+            connections.ping();
+            return HealthCheckResponse.up("mongodb");
+        } catch (RuntimeException e) {
+            return HealthCheckResponse.down("mongodb");
+        }
+    }
+}
+`;
+}
+
 const OUTBOX_CHECK = /try \(Connection conn = ConnectionFactory\.fromUrl\(System\.getenv\("DATABASE_URL"\)\)\.open\(\);\n\s+PreparedStatement ps = conn\.prepareStatement\("SELECT tenant_id FROM ghk_outbox WHERE aggregate_id = \?"\)\) \{[\s\S]*?\n {8}\}\n/;
 
-/** Adapts a generated Spring Boot (Java) project (PostgreSQL kernel) to MongoDB; also its pom (contracts.ts). */
+const MONGO_GRADLE = `implementation("${MONGO_JAVA_DRIVER.groupId}:${MONGO_JAVA_DRIVER.artifactId}")`;
+
+/**
+ * Adapts a generated Spring Boot or Quarkus project, Java or Kotlin (PostgreSQL kernel), to MongoDB; also its
+ * pom / build.gradle.kts (contracts.ts). The runtime and the application layer are Java in both languages.
+ */
 export function mongoizeJvmProject(files: File[]): File[] {
-  return files.map(f => {
+  // Quarkus: the DATABASE_URL -> Agroal config source has no datasource to configure; a readiness check replaces Agroal's.
+  const quarkus = files.find(f => /\/runtime\/RuntimeProducers\.java$/.test(f.filename));
+  const kept = files.filter(f => !/\/runtime\/DatabaseUrlConfigSource\.java$/.test(f.filename)
+    && !(/META-INF\/services\/org\.eclipse\.microprofile\.config\.spi\.ConfigSource$/.test(f.filename) && f.content.includes('DatabaseUrlConfigSource')));
+  const extra = quarkus ? [{ filename: quarkus.filename.replace(/RuntimeProducers\.java$/, 'MongoReadiness.java'), content: quarkusReadinessJava(pkgOf(quarkus.content).replace(/\.runtime$/, '')) }] : [];
+  return [...kept.map(f => mongoizeJvmFile(f)), ...extra];
+}
+
+function mongoizeJvmFile(f: File): File {
+  {
     const name = f.filename.split('/').pop() ?? '';
+    if (/\/runtime\/RuntimeProducers\.java$/.test(f.filename)) return { ...f, content: quarkusProducersJava(pkgOf(f.content).replace(/\.runtime$/, '')) };
+    if (name === 'build.gradle.kts') {
+      return {
+        ...f, content: f.content
+          .replace(/^ {4}implementation\("org\.springframework\.boot:spring-boot-starter-data-jpa"\)\n/m, '')
+          .replace(/^ {4}implementation\("io\.quarkus:quarkus-agroal"\)\n/m, '')
+          // No version: the Spring Boot / Quarkus BOM manages the MongoDB driver (driver-sync must match its driver-core).
+          .replace('runtimeOnly("org.postgresql:postgresql")', MONGO_GRADLE)
+          .replace('implementation("io.quarkus:quarkus-jdbc-postgresql")', MONGO_GRADLE)
+      };
+    }
     const p = `package ${pkgOf(f.content)};\n\n`;
     if (/\/runtime\/ConnectionFactory\.java$/.test(f.filename)) return { ...f, content: connectionFactoryJava(p) };
     if (/\/runtime\/Schema\.java$/.test(f.filename)) return { ...f, content: schemaJava(p) };
@@ -649,11 +748,23 @@ export function mongoizeJvmProject(files: File[]): File[] {
           .replace(/<groupId>org\.postgresql<\/groupId>\n {6}<artifactId>postgresql<\/artifactId>\n {6}<scope>runtime<\/scope>/,
             // No version: spring-boot-starter-parent manages the MongoDB driver, and driver-sync must match its driver-core.
             `<groupId>${MONGO_JAVA_DRIVER.groupId}</groupId>\n      <artifactId>${MONGO_JAVA_DRIVER.artifactId}</artifactId>`)
+          // Quarkus: no Agroal datasource; the Quarkus BOM manages the MongoDB driver.
+          .replace(/ {4}<dependency>\n {6}<groupId>io\.quarkus<\/groupId>\n {6}<artifactId>quarkus-agroal<\/artifactId>\n {4}<\/dependency>\n/, '')
+          .replace(/<groupId>io\.quarkus<\/groupId>\n {6}<artifactId>quarkus-jdbc-postgresql<\/artifactId>/,
+            `<groupId>${MONGO_JAVA_DRIVER.groupId}</groupId>\n      <artifactId>${MONGO_JAVA_DRIVER.artifactId}</artifactId>`)
       };
     }
     if (name === 'application.properties') {
-      return { ...f, content: f.content.replace(/# The runtime kernel creates its own tables[^\n]*\n# the schema[^\n]*\nspring\.jpa\.hibernate\.ddl-auto=none\nspring\.jpa\.open-in-view=false\n/, '# The runtime kernel creates its collections when the service starts (Schema.migrate). GHK_MIGRATE=false when another tool owns them.\n') };
+      return {
+        ...f, content: f.content
+          .replace(/# The runtime kernel creates its own tables[^\n]*\n# the schema[^\n]*\nspring\.jpa\.hibernate\.ddl-auto=none\nspring\.jpa\.open-in-view=false\n/, '# The runtime kernel creates its collections when the service starts (Schema.migrate). GHK_MIGRATE=false when another tool owns them.\n')
+          // Quarkus: the kernel's MongoDB client comes from DATABASE_URL (runtime/RuntimeProducers.java); no datasource.
+          .replace('# runtime/DatabaseUrlConfigSource.java maps DATABASE_URL to the Agroal datasource below.', '# runtime/RuntimeProducers.java builds the kernel\'s MongoDB client from DATABASE_URL.')
+          .replace(/quarkus\.datasource\.db-kind=postgresql\n# The runtime kernel manages its own JDBC transactions[^\n]*\nquarkus\.datasource\.jdbc\.transactions=disabled\n/, '')
+          .replace('# The kernel\'s tables are created when the service starts', '# The kernel\'s collections are created when the service starts')
+          .replace('# PostgreSQL and RabbitMQ are provided', '# MongoDB and RabbitMQ are provided')
+      };
     }
     return f;
-  });
+  }
 }

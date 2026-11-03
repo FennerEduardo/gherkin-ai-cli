@@ -365,8 +365,8 @@ for (const [name, cloud, backend, extra, compute] of [['terraform-gcp-base', 'gc
 for (const key of ['java', 'kotlin', 'quarkus', 'kotlin-quarkus', 'fastapi', 'django', 'dotnet', 'go']) {
   STACKS[`${key}-mysql`] = { ...STACKS[key], stack: { ...STACKS[key].stack, database: 'mysql', kernelDatabase: 'mysql' }, services: [...(STACKS[key].services || []), MYSQL_DATABASE] };
 }
-// 3.3.0 (X-02): the Spring Boot (Java), FastAPI, .NET and Go runtime kernels on a MongoDB 8 replica set.
-for (const key of ['java', 'fastapi', 'dotnet', 'go']) {
+// 3.3.0 (X-02): every core runtime kernel on a MongoDB 8 replica set (JVM, Python, .NET, Go; TypeScript above).
+for (const key of ['java', 'kotlin', 'quarkus', 'kotlin-quarkus', 'fastapi', 'django', 'dotnet', 'go']) {
   STACKS[`${key}-mongo`] = { ...STACKS[key], stack: { ...STACKS[key].stack, database: 'mongodb', kernelDatabase: 'mongodb' }, services: [...(STACKS[key].services || []), MONGO_DATABASE] };
 }
 // 3.3.0 (X-06b): a backend-for-frontend deploys without database or broker; every cloud, both compute modes, and

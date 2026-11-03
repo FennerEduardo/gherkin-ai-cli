@@ -421,6 +421,7 @@ const STATEMENTS: [RegExp | string, string | ((...m: string[]) => string)][] = [
   [/ {4}with psycopg\.connect\(DSN\) as conn:\n {8}rows = conn\.execute\("SELECT tenant_id FROM ghk_outbox WHERE aggregate_id = %s", \(aggregate_id,\)\)\.fetchall\(\)/,
     '    rows = [(d["tenant_id"],) for d in kernel_db.client(DSN)[kernel_db.database_of(DSN)].ghk_outbox.find({"aggregate_id": aggregate_id})]'],
   ['against PostgreSQL and RabbitMQ', 'against MongoDB and RabbitMQ'],
+  ['"""Runtime kernel: PostgreSQL + event broker', '"""Runtime kernel: MongoDB + event broker'],
   ['against PostgreSQL and the selected broker', 'against MongoDB and the selected broker'],
   ['HTTP contract of the application layer against PostgreSQL', 'HTTP contract of the application layer against MongoDB'],
   // pyproject.toml

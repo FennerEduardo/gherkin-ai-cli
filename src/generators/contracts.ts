@@ -591,8 +591,8 @@ docker run --rm -v "$(pwd)":/app -w /app -e DOTNET_CLI_TELEMETRY_OPTOUT=1 -e DOT
     const adapted = mysqlizeJvmProject(Array.isArray(projectRootFile) ? projectRootFile : [projectRootFile]);
     projectRootFile = Array.isArray(projectRootFile) ? adapted : adapted[0];
   }
-  // Spring Boot (Java) kernel on MongoDB (X-02): the MongoDB driver instead of PostgreSQL and JPA (kernel/runtime/jvm-mongo.ts).
-  if (projectRootFile && config.stack.language === 'java' && kernelDatabase(config) === 'mongodb') {
+  // JVM kernel on MongoDB (X-02): the MongoDB driver instead of PostgreSQL, JPA and Agroal (kernel/runtime/jvm-mongo.ts).
+  if (projectRootFile && ['java', 'kotlin'].includes(config.stack.language) && kernelDatabase(config) === 'mongodb') {
     const adapted = mongoizeJvmProject(Array.isArray(projectRootFile) ? projectRootFile : [projectRootFile]);
     projectRootFile = Array.isArray(projectRootFile) ? adapted : adapted[0];
   }

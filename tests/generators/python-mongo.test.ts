@@ -30,8 +30,11 @@ describe('FastAPI kernel on MongoDB (X-02)', () => {
     expect(files.get('tests/integration/test_runtime.py')).toContain('count(schema, "ghk_outbox", {"aggregate_id": "agg-1"})');
   });
 
-  it('Django keeps PostgreSQL (MongoDB is FastAPI only in 3.3.0)', () => {
-    expect(kernelDatabase(configOf('fastapi', 'mongodb'))).toBe('mongodb');
-    expect(kernelDatabase(configOf('django', 'mongodb'))).toBe('postgresql');
+  it('Django runs the same kernel on MongoDB; its own ORM keeps SQLite', () => {
+    expect(kernelDatabase(configOf('django', 'mongodb'))).toBe('mongodb');
+    const files = project('django', 'mongodb');
+    expect(code(files)).not.toMatch(/psycopg|ON CONFLICT|SKIP LOCKED|DROP SCHEMA|INSERT INTO|SELECT /);
+    expect(files.get('app/runtime/command_service.py')).toContain('return in_transaction(self.dsn,');
+    expect(files.get('config/settings.py')).toContain('django.db.backends.sqlite3');
   });
 });
