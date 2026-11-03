@@ -205,14 +205,16 @@ function smokeImage(dir, def, name, services) {
     // A database nothing has touched: the service must create the kernel's tables itself when it starts, as in
     // a first deployment (the integration suite above already migrated the shared one).
     const mysql = /^mysql:/.test(services.env.DATABASE_URL);
-    const freshDb = mysql
+    // MongoDB creates a database on its first write: nothing to create beforehand.
+    const mongo = /^mongodb:/.test(services.env.DATABASE_URL);
+    const freshDb = mongo ? { code: 0, out: '' } : mysql
       ? run('docker', ['run', '--rm', '--network', services.network, MYSQL_DATABASE.image, 'mysql', '-hmysql', '-uroot', '-pghk', '-e', 'CREATE DATABASE ghk_smoke'], opts)
       : run('docker', ['run', '--rm', '--network', services.network, POSTGRES_IMAGE, 'psql', services.env.DATABASE_URL,
         '-v', 'ON_ERROR_STOP=1', '-c', 'CREATE DATABASE ghk_smoke'], opts);
     if (freshDb.code !== 0) return { code: freshDb.code, out: `could not create the smoke database\n${freshDb.out}` };
     const env = {
       ...IMAGE_ENV, ...services.env,
-      DATABASE_URL: services.env.DATABASE_URL.replace(mysql ? /\/ghk(\?|$)/ : /\/postgres(\?|$)/, '/ghk_smoke$1'),
+      DATABASE_URL: services.env.DATABASE_URL.replace(mysql || mongo ? /\/ghk(\?|$)/ : /\/postgres(\?|$)/, '/ghk_smoke$1'),
       OTEL_EXPORTER_OTLP_ENDPOINT: `http://${collector}:4318`, OTEL_SERVICE_NAME: serviceName, OTEL_BSP_SCHEDULE_DELAY: '500'
     };
     const start = run('docker', ['run', '-d', '--name', container, '--network', services.network,

@@ -175,3 +175,26 @@ The TypeScript kernel (NestJS, Express) and, since 3.3.0, the JVM kernel (Spring
 On the JVM, the JDBC URL sets `openTelemetry=DISABLED`. Connector/J's own OpenTelemetry hook reads `GlobalOpenTelemetry` when the first connection opens, which is before Spring registers the service's SDK, and that left the service with a no-op tracer: no span reached the collector. The kernel's spans already cover each command, the outbox publish and the inbox.
 
 The goldens `express-mysql`, `nestjs-mysql`, `java-mysql`, `kotlin-mysql`, `quarkus-mysql`, `kotlin-quarkus-mysql`, `fastapi-mysql`, `django-mysql`, `dotnet-mysql` and `go-mysql` run IT1–IT7 and the HTTP suite against MySQL 8.4, then start the production image on a database nothing has touched, send one command and check that its spans reach an OTLP collector. The community stacks (Laravel, Rails, Phoenix, Axum) run their kernel on PostgreSQL only: there, `kernelDatabase: "mysql"` is ignored and the compose file uses PostgreSQL (M-04).
+
+## MongoDB (`stack.kernelDatabase: "mongodb"`)
+
+Since 3.3.0 the TypeScript kernel (NestJS, Express) also runs on MongoDB 8. The command service, outbox relay, inbox, sagas and the IT1–IT7 suite are the same; the guarantees are kept with MongoDB's own tools:
+
+| | PostgreSQL | MongoDB |
+|---|---|---|
+| Driver | `pg` | `mongodb` (the official driver), behind `src/runtime/db.ts` (`Pool`, `inTransaction`) |
+| Schema | a PostgreSQL schema (default `public`) | a database (default: the one in `DATABASE_URL`) |
+| Tables | `ghk_aggregates`, `ghk_outbox`, `ghk_idempotency`, `ghk_inbox`, `ghk_sagas` | collections with the same names and fields; unique indexes for the keys |
+| Command | one transaction; `FOR UPDATE` on the aggregate | one transaction (snapshot reads, majority writes). A concurrent writer causes a write conflict, and the transaction runs again on the committed data |
+| Idempotency | `INSERT ... ON CONFLICT DO NOTHING`, waiting on the unique index | lookup, then insert, in the command's transaction. A concurrent request with the same key conflicts and then replays the stored result |
+| Outbox claim | `UPDATE ... RETURNING` over `FOR UPDATE SKIP LOCKED` | one atomic `findOneAndUpdate` per event, with a lease on the server's clock (`$$NOW`) |
+| Inbox | `ON CONFLICT DO NOTHING` in the handler's transaction | lookup and insert in the handler's transaction; `MessageMeta` carries its `session` and `db` |
+| Tenant isolation | the repository filter, plus optional row-level security | the repository filter only |
+
+Transactions need a replica set. One node is enough: `mongod --replSet rs0`, initiated once. The developer compose file does this: `mongo:8.0`, a healthcheck that initiates the set, `DATABASE_URL=mongodb://mongodb:27017/<db>?replicaSet=rs0`, and `directConnection=true` from the host. Managed services (MongoDB Atlas, Azure Cosmos DB for MongoDB vCore) are replica sets already.
+
+A transaction can run more than once, so an inbox handler should keep its effects in the transaction (`meta.session`). An effect outside it, such as a call to another service, can happen again.
+
+With `stack.orm: "prisma"` (NestJS), the Prisma datasource is MongoDB too, which needs Prisma 6: Prisma 7 does not support MongoDB.
+
+The goldens `express-mongo` and `nestjs-mongo` run IT1–IT7 and the HTTP suite against a MongoDB 8 replica set. They then start the production image on an empty database and check that the spans of one command reach an OTLP collector.

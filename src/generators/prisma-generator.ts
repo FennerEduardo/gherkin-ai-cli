@@ -12,9 +12,8 @@ import { kernelDatabase } from './kernel/runtime/typescript-mysql';
 import { aggregateTagName, featurePascalName } from '../utils/naming';
 
 export function generatePrismaSchema(ir: SpecificationIR, config: GherkinAIConfig): string {
-  // M-04 (3.3.0): a declared MySQL follows the kernel's database (shared DATABASE_URL).
-  const dbProvider = config.stack.database === 'mysql' ? kernelDatabase(config) :
-                     config.stack.database === 'mongodb' ? 'mongodb' :
+  // M-04 (3.3.0): a declared MySQL or MongoDB follows the kernel's database (shared DATABASE_URL).
+  const dbProvider = config.stack.database === 'mysql' || config.stack.database === 'mongodb' ? kernelDatabase(config) :
                      config.stack.database === 'sqlite' ? 'sqlite' : 'postgresql';
 
   const profile = resolveNodeProfile(config);

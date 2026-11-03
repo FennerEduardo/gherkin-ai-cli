@@ -37,19 +37,32 @@ export const usesMysql = (config?: Pick<GherkinAIConfig, 'stack'>) => (config?.s
  * so they follow it. Until 3.2.2 they followed stack.database: a project declaring "mysql" without
  * kernelDatabase got a MySQL container and a mysql:// URL for a kernel that speaks PostgreSQL.
  */
-export const kernelDatabase = (config?: Pick<GherkinAIConfig, 'stack'>): 'postgresql' | 'mysql' =>
-  usesMysql(config) && MYSQL_KERNEL_LANGUAGES.has((config?.stack?.language || '').toLowerCase()) ? 'mysql' : 'postgresql';
+export const kernelDatabase = (config?: Pick<GherkinAIConfig, 'stack'>): 'postgresql' | 'mysql' | 'mongodb' => {
+  const language = (config?.stack?.language || '').toLowerCase();
+  if (usesMysql(config) && MYSQL_KERNEL_LANGUAGES.has(language)) return 'mysql';
+  if (usesMongo(config) && MONGO_KERNEL_LANGUAGES.has(language)) return 'mongodb';
+  return 'postgresql';
+};
+
+/** stack.kernelDatabase "mongodb" (PLAN-3.3.0 X-02): asked explicitly, as MySQL. */
+export const usesMongo = (config?: Pick<GherkinAIConfig, 'stack'>) => (config?.stack?.kernelDatabase || '').toLowerCase() === 'mongodb';
 
 /** Runtimes whose kernel has a MySQL implementation (PLAN-3.3.0 X-01b extends it to the JVM, Python, .NET and Go). */
-export const MYSQL_KERNEL_LANGUAGES = new Set(['typescript', 'javascript', 'java', 'kotlin', 'python', 'csharp', 'dotnet', '.net', 'go']);
+export const MYSQL_KERNEL_LANGUAGES = new Set(['typescript', 'javascript', 'node', 'java', 'kotlin', 'python', 'csharp', 'dotnet', '.net', 'go']);
+
+/** Runtimes whose kernel has a MongoDB implementation (PLAN-3.3.0 X-02). */
+export const MONGO_KERNEL_LANGUAGES = new Set(['typescript', 'javascript', 'node']);
+
+const DATABASE_NAMES: Record<string, string> = { postgresql: 'PostgreSQL', mysql: 'MySQL', mongodb: 'MongoDB' };
 
 /** The declared database differs from the one the kernel runs on (a hint for `generate`). */
 export function databaseMismatch(config?: Pick<GherkinAIConfig, 'stack'>): string | undefined {
   const declared = (config?.stack?.database || 'postgresql').toLowerCase();
   const runs = kernelDatabase(config);
   if (declared.startsWith('postgres') || declared === runs || declared === 'none' || declared === 'sqlite') return undefined;
-  return `stack.database is "${declared}" but the runtime kernel runs on ${runs === 'postgresql' ? 'PostgreSQL' : 'MySQL'}: the compose file, .env.example and the Prisma datasource use ${runs === 'postgresql' ? 'PostgreSQL' : 'MySQL'} too.` +
-    (declared === 'mysql' ? ' Set stack.kernelDatabase "mysql" to run the service on MySQL, or stack.database "postgresql" to say what it runs on.' : ` Set stack.database "postgresql" to say what it runs on.`);
+  const name = DATABASE_NAMES[runs];
+  return `stack.database is "${declared}" but the runtime kernel runs on ${name}: the compose file, .env.example and the Prisma datasource use ${name} too.` +
+    (declared === 'mysql' || declared === 'mongodb' ? ` Set stack.kernelDatabase "${declared}" to run the service on ${DATABASE_NAMES[declared]}, or stack.database "postgresql" to say what it runs on.` : ` Set stack.database "postgresql" to say what it runs on.`);
 }
 
 const DB_TS = `// MySQL 8 behind the part of the node-postgres API the runtime kernel uses (stack.database "mysql").
@@ -245,7 +258,7 @@ const STATEMENTS: [string, string][] = [
 const RELAY_CLAIM = /const \{ rows \} = await this\.pool\.query\(\n\s+`UPDATE \$\{this\.s\}\.ghk_outbox SET claimed_by[\s\S]*?\[workerId, this\.leaseSeconds, limit\]\n\s+\);/;
 
 /** The relative module specifier of src/runtime/<name> from a generated file. */
-function runtimeModule(filename: string, name: string, ext: string): string {
+export function runtimeModule(filename: string, name: string, ext: string): string {
   const from = filename.split('/').slice(0, -1);
   const to = ['src', 'runtime'];
   let common = 0;

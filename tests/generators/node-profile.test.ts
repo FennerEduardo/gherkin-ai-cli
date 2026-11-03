@@ -37,7 +37,9 @@ describe('NestJS / Prisma version profile', () => {
   it('rejects unsupported majors and Prisma 7 with MongoDB as configuration errors', () => {
     expect(() => resolveNodeProfile(cfg({ frameworkVersion: '10' }))).toThrow(expect.objectContaining({ exitCode: 3 }));
     expect(() => resolveNodeProfile(cfg({ ormVersion: '5' }))).toThrow(/not supported for Prisma/);
-    expect(() => resolveNodeProfile(cfg({ ormVersion: '7', database: 'mongodb' }))).toThrow(/MongoDB/);
+    expect(() => resolveNodeProfile(cfg({ ormVersion: '7', database: 'mongodb', kernelDatabase: 'mongodb' }))).toThrow(/MongoDB/);
+    // 3.3.0 (M-04): a declared MongoDB the kernel does not run on leaves Prisma on the kernel's PostgreSQL.
+    expect(resolveNodeProfile(cfg({ ormVersion: '7', database: 'mongodb' })).database).toBe('postgresql');
   });
 
   it('adds .js to relative specifiers only', () => {

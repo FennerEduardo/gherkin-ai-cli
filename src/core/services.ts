@@ -47,6 +47,19 @@ export const MYSQL_DATABASE: ExtraService = {
   ready: ['mysql', '-uroot', '-pghk', '-h127.0.0.1', '-e', 'SELECT 1']
 };
 
+/**
+ * MongoDB 8 as a single-node replica set (transactions need one) for stack.kernelDatabase "mongodb": its
+ * DATABASE_URL replaces PostgreSQL's. The probe initiates the replica set once and is ready when the node is primary.
+ */
+export const MONGO_DATABASE: ExtraService = {
+  name: 'mongo',
+  image: 'mongo:8.0',
+  command: ['mongod', '--replSet', 'rs0', '--bind_ip_all'],
+  env: { DATABASE_URL: 'mongodb://mongo:27017/ghk?replicaSet=rs0' },
+  ready: ['mongosh', '--quiet', '--eval',
+    "try { rs.status() } catch (e) { rs.initiate({ _id: 'rs0', members: [{ _id: 0, host: 'mongo:27017' }] }) }; if (!db.hello().isWritablePrimary) quit(1)"]
+};
+
 export const PUBSUB_EMULATOR: ExtraService = {
   name: 'pubsub',
   image: 'gcr.io/google.com/cloudsdktool/google-cloud-cli:emulators',

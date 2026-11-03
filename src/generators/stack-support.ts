@@ -46,6 +46,8 @@ export const STACK_SUPPORT: StackSupport[] = [
   { id: 'typescript/express-prisma7', label: 'TypeScript · Express 5 + Prisma 7', kind: 'backend', tier: 'stable', golden: 'express-prisma7', notes: 'stack.ormVersion "7".' },
   { id: 'typescript/express-mysql', label: 'TypeScript · Express 5 on MySQL 8.4 (stack.kernelDatabase "mysql")', kind: 'backend', tier: 'stable', golden: 'express-mysql', notes: 'Runtime kernel on MySQL: tenant isolation in the queries (no row-level security).' },
   { id: 'typescript/nestjs-mysql', label: 'TypeScript · NestJS 11 on MySQL 8.4 (stack.kernelDatabase "mysql")', kind: 'backend', tier: 'stable', golden: 'nestjs-mysql' },
+  { id: 'typescript/express-mongo', label: 'TypeScript · Express 5 on MongoDB 8 (stack.kernelDatabase "mongodb")', kind: 'backend', tier: 'stable', golden: 'express-mongo', notes: 'Runtime kernel on a MongoDB replica set (one node is enough): transactions, unique indexes, atomic outbox claim.' },
+  { id: 'typescript/nestjs-mongo', label: 'TypeScript · NestJS 11 + Prisma 6 on MongoDB 8 (stack.kernelDatabase "mongodb")', kind: 'backend', tier: 'stable', golden: 'nestjs-mongo' },
   { id: 'csharp/dotnet', label: 'C# · ASP.NET Core 8 + EF Core', kind: 'backend', tier: 'stable', golden: 'dotnet' },
   { id: 'csharp/dotnet-mysql', label: 'C# · ASP.NET Core 8 on MySQL 8.4 (stack.kernelDatabase "mysql")', kind: 'backend', tier: 'stable', golden: 'dotnet-mysql', notes: 'MySqlConnector instead of Npgsql.' },
   { id: 'java/spring', label: 'Java 17 · Spring Boot 4 (Maven)', kind: 'backend', tier: 'stable', golden: 'java' },

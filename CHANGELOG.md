@@ -70,6 +70,12 @@ All notable changes to this project will be documented in this file. See [commit
   - Go: `database/sql` with `go-sql-driver/mysql` replaces `pgx`, behind `internal/runtime/db.go`, which keeps the pgx calls the kernel uses (`Pool.Exec`, `Query`, `QueryRow`, `Begin`, `RowsAffected`) and binds `$1..$n` as positional parameters in the order they appear. The migration lock is held on one connection.
   - Verified by the goldens `java-mysql`, `kotlin-mysql`, `quarkus-mysql`, `kotlin-quarkus-mysql`, `fastapi-mysql`, `django-mysql`, `dotnet-mysql` and `go-mysql`: the suites against MySQL 8.4, and the production image with its spans over OTLP.
 
+- **MongoDB 8 for the runtime kernel** (`stack.kernelDatabase: "mongodb"`; [RUNTIME-KERNEL.md](docs/RUNTIME-KERNEL.md#mongodb-stackkerneldatabase-mongodb)): NestJS and Express.
+  - The same command service, outbox relay, inbox, sagas and IT1–IT7 suite, on a replica set (one node is enough).
+  - Transactions replace row locks: a concurrent writer causes a write conflict, and the transaction runs again on the committed data. The outbox is claimed one event at a time with an atomic `findOneAndUpdate` and a lease on the server's clock.
+  - The developer compose file runs `mongo:8.0` as a single-node replica set. With Prisma (NestJS) the datasource is MongoDB, on Prisma 6.
+  - Verified by the goldens `express-mongo` and `nestjs-mongo`: the suites against MongoDB 8, and the production image with its spans over OTLP.
+
 ### Changed
 - **Command names of features without `@command:` tags** (found by `ghk reverse` on real projects; [MIGRATION-3.3.md](docs/MIGRATION-3.3.md)).
   - IR-05: a relative clause ends the command noun. "cancels an order that does not exist" is `CancelOrder`, no longer `CancelOrderThat`.
@@ -84,7 +90,7 @@ All notable changes to this project will be documented in this file. See [commit
   - On the reference projects, which are generated scaffolds, the 10 without a coverage report now converge lower. The LMS, which implements its steps, is unchanged.
 - **The developer compose file, `.env.example` and the Prisma datasource follow the database the runtime kernel runs on** (M-04).
   - Until 3.2.2 they followed `stack.database`. A project that declared `"mysql"` without `stack.kernelDatabase` got a MySQL container and a `mysql://` URL for a kernel that speaks PostgreSQL, so `docker compose up` could not start it. 14 of the 16 reference projects were in that state.
-  - Now they use PostgreSQL unless `kernelDatabase` is `"mysql"`, which is supported by the NestJS, Express, Spring Boot, Quarkus, FastAPI, Django, ASP.NET Core and Go kernels. The same applies to a declared `"mongodb"` until the MongoDB kernel exists.
+  - Now they use PostgreSQL unless `kernelDatabase` is `"mysql"`, which is supported by the NestJS, Express, Spring Boot, Quarkus, FastAPI, Django, ASP.NET Core and Go kernels, or `"mongodb"` (see above). A declared `"mongodb"` without `kernelDatabase` is handled the same way: Prisma 7 is no longer rejected there, because its datasource is the kernel's PostgreSQL.
   - `ghk generate` warns when the declared database is not the one the service runs on, and says which key to set.
 - **.NET + Kafka: an inbox consumer could finish draining before its consumer group was assigned** (the `dotnet-kafka` golden failed IT6 one run in three to five).
   - The idle window of `DrainAsync` now starts after the first poll. That first poll can wait for a new Kafka consumer group to join, and the join used to consume the whole window.

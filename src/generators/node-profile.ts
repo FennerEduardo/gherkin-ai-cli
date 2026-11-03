@@ -77,14 +77,14 @@ export function resolveNodeProfile(config: Pick<GherkinAIConfig, 'stack'>): Node
       hint: `Supported Prisma majors: ${PRISMA_MAJORS.join(', ')} (default 6).`
     });
   }
-  if (prisma === '7' && lower(config.stack.database) === 'mongodb') {
+  if (prisma === '7' && lower(config.stack.database) === 'mongodb' && kernelDatabase(config) === 'mongodb') {
     throw new ConfigError('Prisma 7 does not support MongoDB.', { hint: 'Use stack.ormVersion "6" with MongoDB.' });
   }
 
   const esm = nestProject && nest === '12';
-  // M-04 (3.3.0): a declared MySQL follows the kernel's database, which shares DATABASE_URL with Prisma.
+  // M-04 (3.3.0): a declared MySQL or MongoDB follows the kernel's database, which shares DATABASE_URL with Prisma.
   const declared = lower(config.stack.database);
-  const datasource = declared === 'mysql' || declared === 'mariadb' ? kernelDatabase(config) : config.stack.database;
+  const datasource = declared === 'mysql' || declared === 'mariadb' || declared === 'mongodb' ? kernelDatabase(config) : config.stack.database;
   return { nest: nest as NestMajor, prisma: prisma as PrismaMajor, esm, ext: esm ? '.js' : '', database: prismaDatabase(datasource) };
 }
 

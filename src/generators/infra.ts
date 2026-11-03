@@ -45,7 +45,8 @@ export function generateInfra(config: GherkinAIConfig): { dockerComposeYaml: str
   const dbName = `${config.projectName}_db`;
   // The runtime kernel reads DATABASE_URL and AMQP_URL in every stack.
   const databaseUrl = (host: string) =>
-    db.includes('mongo') ? `mongodb://dev_user:dev_password@${host}:27017/${dbName}?authSource=admin` :
+    // MongoDB: a single-node replica set (the kernel uses transactions); from the host, connect to it directly.
+    db.includes('mongo') ? `mongodb://${host}:27017/${dbName}?${host === 'localhost' ? 'directConnection=true' : 'replicaSet=rs0'}` :
     db.includes('mysql') || db.includes('mariadb') ? `mysql://dev_user:dev_password@${host}:3306/${dbName}` :
     `postgresql://dev_user:dev_password@${host}:5432/${dbName}`;
   // RabbitMQ only lets `guest` in from localhost, so compose creates a dev user.
@@ -92,10 +93,16 @@ export function generateInfra(config: GherkinAIConfig): { dockerComposeYaml: str
       MYSQL_PASSWORD: \${MYSQL_PASSWORD:-dev_password}`;
     dbPort = '3306:3306';
   } else if (db.includes('mongo')) {
-    dbImage = 'mongo:7.0';
+    dbImage = 'mongo:8.0';
+    // No authentication in development (a replica set with users needs a key file). The healthcheck initiates the
+    // single-node replica set once, with the service name as its host.
     dbEnv = `
-      MONGO_INITDB_ROOT_USERNAME: dev_user
-      MONGO_INITDB_ROOT_PASSWORD: dev_password`;
+      MONGO_INITDB_DATABASE: ${dbName}
+    command: ["mongod", "--replSet", "rs0", "--bind_ip_all"]
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "try { rs.status() } catch (e) { rs.initiate({ _id: 'rs0', members: [{ _id: 0, host: '${db}:27017' }] }) }"]
+      interval: 5s
+      retries: 30`;
     dbPort = '27017:27017';
   }
 

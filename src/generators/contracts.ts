@@ -88,7 +88,8 @@ export interface GeneratedContractsOutput {
 }
 
 import { SpecificationIR } from '../core/semantic-ir';
-import { MYSQL_DRIVER, kernelDatabase, usesMysql } from './kernel/runtime/typescript-mysql';
+import { MYSQL_DRIVER, kernelDatabase } from './kernel/runtime/typescript-mysql';
+import { MONGO_DRIVER } from './kernel/runtime/typescript-mongo';
 import { mysqlizeJvmProject } from './kernel/runtime/jvm-mysql';
 import { mysqlizeCsProject } from './kernel/runtime/csharp-mysql';
 import { mysqlizeGoProject } from './kernel/runtime/go-mysql';
@@ -137,13 +138,15 @@ function prismaDependencies(profile: NodeProfile): { dependencies: Record<string
   };
 }
 
-/** stack.database "mysql": the runtime kernel talks to MySQL through mysql2 instead of node-postgres. */
+/** stack.kernelDatabase "mysql" / "mongodb": the runtime kernel uses mysql2 / mongodb instead of node-postgres. */
 function nodeDependencies(config: GherkinAIConfig): NodePackage {
   const pkg = postgresNodeDependencies(config);
-  if (!usesMysql(config)) return pkg;
+  const database = kernelDatabase(config);
+  if (database === 'postgresql') return pkg;
   const { pg: _pg, ...dependencies } = pkg.dependencies;
   const { '@types/pg': _types, ...devDependencies } = pkg.devDependencies;
-  return { ...pkg, dependencies: { ...dependencies, ...MYSQL_DRIVER }, devDependencies };
+  // stack.kernelDatabase "mongodb" (X-02): the official driver (kernel/runtime/typescript-mongo.ts).
+  return { ...pkg, dependencies: { ...dependencies, ...(database === 'mysql' ? MYSQL_DRIVER : MONGO_DRIVER) }, devDependencies };
 }
 
 function postgresNodeDependencies(config: GherkinAIConfig): NodePackage {

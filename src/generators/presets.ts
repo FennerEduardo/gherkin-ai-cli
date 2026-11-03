@@ -31,6 +31,7 @@ import { mysqlizeJvmProject } from './kernel/runtime/jvm-mysql';
 import { mysqlizePyProject } from './kernel/runtime/python-mysql';
 import { mysqlizeCsProject } from './kernel/runtime/csharp-mysql';
 import { mysqlizeGoProject } from './kernel/runtime/go-mysql';
+import { mongoizeTsProject } from './kernel/runtime/typescript-mongo';
 import { resolveNodeProfile } from './node-profile';
 import { renderContainerFiles } from './deploy/container';
 import { buildDomainModel } from './kernel/domain-model';
@@ -83,8 +84,10 @@ export const BACKEND_PRESET_IDS = Object.keys(BACKEND_PRESETS);
 function backendPreset(id: string): BackendPreset | undefined {
   // NestJS / Express variants (framework and ORM majors) share one preset each; stack.database "mysql"
   // adapts their runtime kernel (kernel/runtime/typescript-mysql.ts).
+  // stack.kernelDatabase "mongodb" (X-02) replaces their database layer (kernel/runtime/typescript-mongo.ts).
   const mysql = (files: { filename: string; content: string }[], c: GherkinAIConfig) =>
-    usesMysql(c) ? mysqlizeTsProject(files, resolveNodeProfile(c).esm) : files;
+    usesMysql(c) ? mysqlizeTsProject(files, resolveNodeProfile(c).esm)
+      : kernelDatabase(c) === 'mongodb' ? mongoizeTsProject(files, resolveNodeProfile(c).esm) : files;
   if (id.startsWith('typescript/nestjs')) return (p, c) => mysql(generateNodeNestJsPreset(p, c), c);
   if (id.startsWith('typescript/express')) return (p, c) => mysql(generateNodeExpressPreset(p, c), c);
   // Spring Boot and Quarkus, Java and Kotlin (X-01b, 3.3.0): the JVM kernel on MySQL (kernel/runtime/jvm-mysql.ts).
