@@ -8,12 +8,12 @@
 
 gherkin-ai turns requirements into executable Gherkin specifications and generates verified contracts and code for 20+ stacks. It gates changes on specification quality, drift and delivery risk, and controls what AI coding agents may change.
 
-- **Specify.** Write or import (GitHub Spec Kit) `.feature` files, lint them, and build a semantic model of commands, events, endpoints, states and rules.
+- **Specify.** Write or import (GitHub Spec Kit) `.feature` files, lint them, and build a semantic model of commands, events, endpoints, states and rules. On an existing code base, `ghk reverse` (beta) proposes the features from the code, each step with its evidence.
 - **Generate.** Contracts, a domain kernel, tests bound to the feature, and a runtime for persistence, messaging and tracing. Every stable stack is built and tested in CI.
 - **Govern.** An agent firewall for MCP clients, IDE agents and the CLI's own agent loops. Risk scoring of every change, traceability from requirement to code to tests, and a local audit trail.
 - **Verify.** Spec-to-code convergence, contract drift checks (a feature changed alone, a route the running service no longer serves), and agent repair loops sandboxed in a container by default, with stable exit codes and `--json` for CI.
 
-Adding it to an existing code base? Start with [docs/ADOPTION.md](docs/ADOPTION.md); for the organization-wide rollout, [docs/ENTERPRISE.md](docs/ENTERPRISE.md). Upgrading a generated project? See [docs/MIGRATION-3.2.md](docs/MIGRATION-3.2.md), which covers every path from 2.x.
+Adding it to an existing code base? Start with [docs/ADOPTION.md](docs/ADOPTION.md); for the organization-wide rollout, [docs/ENTERPRISE.md](docs/ENTERPRISE.md). Upgrading a generated project? See [docs/MIGRATION-3.3.md](docs/MIGRATION-3.3.md) for 3.2 to 3.3, and [docs/MIGRATION-3.2.md](docs/MIGRATION-3.2.md) for every path from 2.x.
 
 ## Installation
 
@@ -52,6 +52,15 @@ npx -y gherkin-ai@3 firewall check "cat .env"                # DENY: exit 5
 
 `tests/golden/brownfield.test.ts` runs exactly these on an Express and a Spring service. [docs/ADOPTION.md](docs/ADOPTION.md#0-no-configuration-the-governance-commands-only) has the CI job.
 
+No features yet? Start from the code (beta; [docs/REVERSE.md](docs/REVERSE.md)). `scan` and `propose` are deterministic and write only to `.ghe/reverse/`:
+
+```bash
+npx -y gherkin-ai@3 reverse scan                 # controllers, DTOs, repositories, tests, OpenAPI -> evidence with file:line
+npx -y gherkin-ai@3 reverse propose              # one candidate feature per aggregate, @characterization @needs-review
+npx -y gherkin-ai@3 reverse accept --all --yes   # after review: features/discovered/
+npx -y gherkin-ai@3 reverse coverage --min 60    # share of operations the features explain (exit 7 below)
+```
+
 Connect your coding agent:
 
 ```bash
@@ -66,7 +75,8 @@ ghk firewall check --exec "npm test && git push"  # what an agent may write, run
 | Specification lint, semantic model, validation | `lint`, `validate`, `create`, `export` | Stable |
 | Industry profiles: reference standards as lint rules, constraints and agent guidance | `industry`, `init --industry` | Stable |
 | Code generation for the supported stacks | `init`, `generate`, `add`, `upgrade` | Stable |
-| Runtime kernel: PostgreSQL, outbox/inbox over RabbitMQ, Pub/Sub, Service Bus or Kafka, sagas, OpenTelemetry | generated with each backend | Stable |
+| Reverse engineering: proposed features from existing code, with evidence | `reverse` | Beta |
+| Runtime kernel: PostgreSQL, MySQL or MongoDB; outbox/inbox over RabbitMQ, Pub/Sub, Service Bus or Kafka, sagas, OpenTelemetry | generated with each backend | Stable |
 | Production image and deployment: Dockerfile, Terraform (AWS, GCP, Azure), Helm | generated with each backend; `deploy` in the configuration | Stable |
 | Spec-to-code convergence and drift | `converge`, `diff`, `impact` | Stable |
 | Agent prompts and context packages | `implement`, `context`, `skill` | Stable |
@@ -82,7 +92,7 @@ ghk firewall check --exec "npm test && git push"  # what an agent may write, run
 | LLM repair loops | `verify --auto-fix`, `autopilot` | Experimental |
 
 - **Stable:** covered by tests and by the golden builds, with the CLI contract (exit codes, `--json`) kept across 3.x.
-- **Beta:** complete and tested; output formats may still change in a minor release. No feature is in beta in 3.2.
+- **Beta:** complete and tested; output formats may still change in a minor release. In 3.3: `ghk reverse`, whose analyzers each carry their own maturity (`ghk stacks`).
 - **Experimental:** use with human review only.
 
 The LLM repair loops write `.patch` proposals by default. `--apply` is refused in CI and on protected branches unless explicitly allowed, and every file goes through the agent firewall.
@@ -138,6 +148,7 @@ With `--json`, stdout carries exactly one JSON document and diagnostics go to st
 
 - **Semantic model.** It is extracted from Gherkin with deterministic rules. Unusual phrasing can produce generic command names. `ghk lint` reports specifications that are too vague to model. The `@aggregate:Name`, `@command:Name` and `@event:Name` tags set the names explicitly in any Gherkin dialect, `ghk lint --explain-ir` shows where every generated name comes from, and `ghk lint --assist` asks the configured LLM to propose the tags (validated, as a patch; never in the default path).
 - **Generated runtime.** It is a verified starting point, not a framework. The runtime kernel covers one aggregate per feature, on PostgreSQL (and on MySQL 8 for NestJS, Express, Spring Boot, Quarkus, FastAPI, Django, ASP.NET Core and Go, with `stack.kernelDatabase: "mysql"`; on MongoDB 8 for NestJS, Express, Spring Boot Java, FastAPI, ASP.NET Core and Go, with `"mongodb"`), with RabbitMQ, Pub/Sub, Service Bus or Kafka. Other databases generate contracts and configuration only.
+- **Reverse engineering (beta).** Proposals describe what the code does today, not what it should do; every one needs review before `accept`. TypeScript (Express, NestJS), Spring and Quarkus, OpenAPI and tests are beta; ASP.NET Core, FastAPI and Go are experimental; other stacks are read through their OpenAPI document only. Measured on code gherkin-ai did not write (an LMS), the proposals recover a part of the behavior, not all of it ([docs/REVERSE.md](docs/REVERSE.md)).
 - **Industry profiles.** Their rules check the specification, not the code, and their compliance items are engineering guidance, not certification.
 - **Traceability graph.** It links code by symbol names. Code that does not use the domain names from the specification is not linked.
 - **Risk scores.** They are heuristics with documented weights and evidence. Calibrate the approval threshold (`policy.risk`) to your organization.
@@ -155,12 +166,13 @@ With `--json`, stdout carries exactly one JSON document and diagnostics go to st
 - [Compliance mapping](docs/COMPLIANCE.md): which gherkin-ai controls give evidence for ISO/IEC 42001, SOC 2 and the EU AI Act, and what they do not cover
 - [Industry profiles](docs/INDUSTRIES.md)
 - [Commands](docs/COMMANDS.md)
+- [Reverse engineering](docs/REVERSE.md) (beta): from existing code to proposed features
 - [Runtime kernel](docs/RUNTIME-KERNEL.md)
 - [Deployment](docs/DEPLOYMENT.md): production image, brokers per cloud, Terraform, Helm, CI/CD
 - [Verification evidence](docs/EVALUATION_REPORT.md)
 - [MCP guide](docs/MCP_GUIDE.md)
 - [Architecture](docs/ARCHITECTURE.md)
-- Migration: [to 3.2](docs/MIGRATION-3.2.md) (every path from 2.x), [to 3.1](docs/MIGRATION-3.1.md), [to 3.0](docs/MIGRATION-3.0.md)
+- Migration: [to 3.3](docs/MIGRATION-3.3.md), [to 3.2](docs/MIGRATION-3.2.md) (every path from 2.x), [to 3.1](docs/MIGRATION-3.1.md), [to 3.0](docs/MIGRATION-3.0.md)
 - [Changelog](CHANGELOG.md)
 
 ## Support and security

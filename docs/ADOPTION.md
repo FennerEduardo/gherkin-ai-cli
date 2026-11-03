@@ -2,7 +2,7 @@
 
 This guide is for teams that already have a code base, a CI pipeline and a release process, and want to add gherkin-ai without stopping delivery. It covers the order of adoption, what each step changes in the repository, and the gates to turn on along the way.
 
-Upgrading a project that was generated with an earlier gherkin-ai version is a different task; see [MIGRATION-3.2.md](MIGRATION-3.2.md).
+Upgrading a project that was generated with an earlier gherkin-ai version is a different task; see [MIGRATION-3.3.md](MIGRATION-3.3.md) (from 3.2) and [MIGRATION-3.2.md](MIGRATION-3.2.md) (from 2.x).
 
 ## Choose how deep to go
 
@@ -38,9 +38,9 @@ jobs:
         with: { fetch-depth: 0 }
       - uses: actions/setup-node@v5
         with: { node-version: '24' }
-      - run: npx -y gherkin-ai@3.2.2 lint --threshold 80
-      - run: npx -y gherkin-ai@3.2.2 converge --openapi docs/openapi.json --threshold 80
-      - run: npx -y gherkin-ai@3.2.2 risk --base origin/${{ github.base_ref }} --fail-on HIGH
+      - run: npx -y gherkin-ai@3.3.0 lint --threshold 80
+      - run: npx -y gherkin-ai@3.3.0 converge --openapi docs/openapi.json --threshold 80
+      - run: npx -y gherkin-ai@3.3.0 risk --base origin/${{ github.base_ref }} --fail-on HIGH
 ```
 
 `tests/golden/brownfield.test.ts` runs these commands on an Express and a Spring service in every CI run. When the team wants gherkin-ai's own contracts, architecture rules and industry profile, continue with step 1.
@@ -48,11 +48,11 @@ jobs:
 ## 1. Install and pin
 
 ```bash
-npm install --save-dev --save-exact gherkin-ai@3.2.2   # or a pinned global install on the build agents
+npm install --save-dev --save-exact gherkin-ai@3.3.0   # or a pinned global install on the build agents
 npx ghk --version
 ```
 
-- **Pin an exact version** in the repository, in CI (`npx --yes gherkin-ai@3.2.2`) and in MCP clients (`ghk mcp install` pins it). An unpinned install changes generated output and lint scores without a commit.
+- **Pin an exact version** in the repository, in CI (`npx --yes gherkin-ai@3.3.0`) and in MCP clients (`ghk mcp install` pins it). An unpinned install changes generated output and lint scores without a commit.
 - **Requirements:** Node.js 22.19 or later. Docker for `ghk verify --docker`, `--services` and the golden recipes.
 - **Organization settings:** providers, proxies, locked keys and allow-lists belong in the organization configuration layer, not in each repository ([ENTERPRISE.md §1](ENTERPRISE.md#1-configuration-layers-and-organization-policy)). Set it up once, before the first team starts.
 
@@ -106,6 +106,24 @@ ghk lint --explain-ir -f features/invoicing.feature
 
   Code that does not use the domain names of the specification is not linked automatically.
 
+### Start from the code: `ghk reverse` (beta)
+
+When the service has no features yet, `ghk reverse` drafts the characterization features from the code. It needs no `ghk init`. Details are in [REVERSE.md](REVERSE.md).
+
+```bash
+ghk reverse scan                          # evidence: routes, DTO validation, states, events, tests, OpenAPI (file:line, confidence)
+ghk reverse propose                       # .ghe/reverse/proposals/<aggregate>.feature, every step after its "# evidence:" line
+ghk reverse propose --assist              # optional: the LLM proposes title, user story and scenario names as a patch, never steps
+ghk reverse accept order --yes            # after review: features/discovered/order.feature, without @needs-review
+ghk lint --threshold 80 && ghk graph      # the accepted features join the gates and the traceability graph
+ghk reverse coverage --min 60             # share of the code's operations the features explain (exit 7 below)
+```
+
+- **Read the proposals as a draft.** They describe what the code does today (`@characterization`), including what it should not do. Rename commands to the business's words, delete what is technical, and add what the code cannot show (why a rule exists). Then accept.
+- **Deterministic by default.** `scan` and `propose` give the same output on every run, call no LLM and write only to `.ghe/reverse/`. Secret files (`.env`, keys) are never read.
+- **Keep the features and the code together.** With features already in the repository, `accept --merge` leaves out what they already specify and exits 7 when a feature names a command the code does not implement. `coverage` lists each operation as documented, renamed or undocumented.
+- **Maturity by stack.** TypeScript (Express, NestJS), Spring and Quarkus, OpenAPI documents and tests are beta. ASP.NET Core, FastAPI and Go are experimental. Any other stack is read through its OpenAPI document (`--openapi`). `ghk stacks` lists the analyzers.
+
 ## 4. Gate pull requests, then tighten
 
 Add the gates in report-only form, read the results for a sprint, then make them blocking. The exit codes are stable across 3.x ([ENTERPRISE.md §5](ENTERPRISE.md#5-automation-contract-exit-codes-and---json)).
@@ -125,9 +143,9 @@ jobs:
         with:
           node-version: 24
       - name: Specification quality, convergence and delivery risk on the pull request
-        run: npx --yes gherkin-ai@3.2.2 report --provider github --base origin/${{ github.base_ref }} --threshold 70 --fail-on CRITICAL
+        run: npx --yes gherkin-ai@3.3.0 report --provider github --base origin/${{ github.base_ref }} --threshold 70 --fail-on CRITICAL
       - name: Upgrade check
-        run: npx --yes gherkin-ai@3.2.2 upgrade --check
+        run: npx --yes gherkin-ai@3.3.0 upgrade --check
 ```
 
 `ghk report` writes annotations on the changed `.feature` lines and a job summary, with no token and no extra permission (`--provider gitlab` writes a Code Quality report for merge requests).

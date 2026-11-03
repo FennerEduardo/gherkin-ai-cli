@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
-## [Unreleased] - 3.3.0
+## [3.3.0] - 2026-11-03
 
 ### Added
 - **`ghk reverse` (beta): from existing code to proposed specifications** ([REVERSE.md](docs/REVERSE.md)).
