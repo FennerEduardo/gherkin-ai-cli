@@ -40,6 +40,12 @@ All notable changes to this project will be documented in this file. See [commit
     - The `@needs-review` tag is removed; the evidence comments stay.
     - It writes only after confirmation or `--yes`; without a terminal and without `--yes` it writes nothing and exits 2. Each accept is audited.
     - `--merge` leaves out what a feature already specifies and exits 7 when a feature declares commands the code does not implement.
+  - **`reverse explain <operation>`** (a name, or `"METHOD /path"`) shows where an operation's name, aggregate and confidence come from, and its evidence chain from the endpoint to the tests, with files and lines.
+  - **`reverse review [aggregate…]`** shows each proposed scenario with the code behind every step, with secrets redacted.
+    - `--approve` and `--reject` (a scenario name, `@Command` or `all`), `--note`, and `--interactive` in a terminal.
+    - Decisions are recorded in `.ghe/reverse/review.json` and audited.
+    - A decision remembers the evidence it was made on. When the code under a scenario changes, the decision is stale.
+    - With a review on file, `accept` takes only the approved scenarios that are not stale; `--ignore-review` takes them all.
   - **`reverse coverage`** reports the share of the code's operations that the existing features specify, by status:
     - documented;
     - renamed (same verb or a synonym on a related noun: `CreatePeriod` vs `CreateAcademicPeriod`);

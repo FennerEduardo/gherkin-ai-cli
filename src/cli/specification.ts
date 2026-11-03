@@ -99,7 +99,7 @@ export function registerSpecificationCommands(program: Command): void {
   const collect = (value: string, previous: string[] = []) => [...previous, value];
   program
     .command('reverse [subcommand] [names...]')
-    .description('(beta) Reverse engineering: `scan` reads controllers, services, repositories, models, tests and OpenAPI documents into evidence; `propose` turns it into candidate .feature files with source traceability; `accept <aggregate…>` moves reviewed proposals into the specifications; `coverage` reports the share of the code the features specify. Deterministic, works without ghk init')
+    .description('(beta) Reverse engineering: `scan` reads controllers, services, repositories, models, tests and OpenAPI documents into evidence; `propose` turns it into candidate .feature files with source traceability; `accept <aggregate…>` moves reviewed proposals into the specifications; `coverage` reports the share of the code the features specify; `explain <operation>` shows where its names, confidence and evidence come from; `review [aggregate…]` shows each scenario with the code behind it and records approve/reject decisions that `accept` follows. Deterministic, works without ghk init')
     .option('--path <dir>', 'scan: sub-directory to analyse (default: the whole project)')
     .option('--include <glob>', 'scan: only files matching this glob (repeatable)', collect)
     .option('--exclude <glob>', 'scan: skip files matching this glob (repeatable)', collect)
@@ -114,6 +114,12 @@ export function registerSpecificationCommands(program: Command): void {
     .option('--to <dir>', 'accept: destination directory (default: features/discovered)')
     .option('--merge', 'accept: leave out operations a feature already specifies (same or renamed command); exit 7 when a feature declares commands the code does not implement')
     .option('--force', 'accept: overwrite existing feature files')
+    .option('--approve <selector>', 'review: approve a scenario (its name), every scenario of an operation (@Command) or all (repeatable)', collect)
+    .option('--reject <selector>', 'review: reject a scenario, @Command or all (repeatable)', collect)
+    .option('--note <text>', 'review: note stored with the decisions')
+    .option('--interactive', 'review: step through the pending scenarios in the terminal')
+    .option('--context <lines>', 'review: lines of code shown around each evidence location (default: 3)')
+    .option('--ignore-review', 'accept: take every scenario even when a review is on file')
     .option('--min <pct>', 'coverage: minimum share of operations specified by features; below it exits with code 7')
     .option('--json', 'Output as JSON')
     .action(async (subcommand, names, options) => {

@@ -5,20 +5,24 @@
    ghk reverse propose  [--scope Order] [--min-confidence strong] [--threshold 80] [--rescan] [--json]
    ghk reverse accept   <aggregate…> | --all  [--to features/discovered] [--merge] [--force] [--yes] [--json]
    ghk reverse coverage [--min <pct>] [--rescan] [--json]
+   ghk reverse explain  <Command | "METHOD /path"> [--json]
+   ghk reverse review   [aggregate…] [--approve <sel>] [--reject <sel>] [--note t] [--interactive] [--context n] [--json]
 
    Deterministic: no LLM is called. scan and propose write only inside
    .ghe/reverse/; accept writes .feature files after confirmation (or
    --yes). None needs `ghk init`. Exit codes: 2 usage, 4 when a proposal
    scores below the lint threshold or loses a command in its round trip,
    7 when coverage is below --min or `accept --merge` finds commands a
-   feature declares and the code does not implement. PLAN-3.3.0 §3.A.
+   feature declares and the code does not implement. PLAN-3.3.0 §3.A;
+   explain and review: PLAN-3.3.0-reverse-plus RV-01, RV-03.
    ========================================================================== */
 
 import fs from 'fs';
 import path from 'path';
 import { ExitCode, UsageError } from '../core/errors';
 import { CONFIDENCE_ORDER, type EvidenceConfidence } from '../core/reverse/evidence';
-import { readCandidates, readScan, runAccept, runCoverage, runPropose, runScan, type ScanOptions, type ScanResult } from '../core/reverse';
+import { REVERSE_DIR, readCandidates, readScan, readUnresolved, runAccept, runCoverage, runPropose, runScan, writeReverseFile, type ScanOptions, type ScanResult } from '../core/reverse';
+import { REVIEW_FILE, applyDecisions, buildReviewReport, explainOperation, findOperation, readReview, type Decision } from '../core/reverse/review';
 import { emitJson } from '../utils/output';
 import { logger } from '../utils/logger';
 
@@ -45,9 +49,17 @@ export interface ReverseCommandOptions {
   min?: string;
   /** propose: LLM wording as a patch (opt-in). */
   assist?: boolean;
+  /** review */
+  approve?: string[];
+  reject?: string[];
+  note?: string;
+  interactive?: boolean;
+  context?: string;
+  /** accept: take every scenario even with a review on file. */
+  ignoreReview?: boolean;
 }
 
-const SUBCOMMANDS = ['scan', 'propose', 'accept', 'coverage'];
+const SUBCOMMANDS = ['scan', 'propose', 'accept', 'coverage', 'explain', 'review'];
 
 function scanOptions(o: ReverseCommandOptions): ScanOptions {
   return { path: o.path, include: o.include, exclude: o.exclude, openapi: o.openapi, includeTests: o.tests !== false, write: !o.dryRun };
@@ -160,16 +172,114 @@ export async function handleReverseCommand(subcommand: string | undefined, optio
     return;
   }
 
+  if (subcommand === 'explain' || subcommand === 'review') {
+    const { buildCandidates } = await import('../core/reverse/candidates');
+    const scan = (!options.rescan && readScan(root)) || await runScan(root, scanOptions(options));
+    const fromFile = !options.rescan ? readCandidates(root) : undefined;
+    const built = fromFile ? undefined : buildCandidates(scan.evidence);
+    const candidates = fromFile ?? built!.candidates;
+    const unresolved = fromFile ? readUnresolved(root) : built!.unresolved;
+
+    if (subcommand === 'explain') {
+      const target = names.join(' ').trim();
+      if (!target) throw new UsageError('Name the operation to explain.', { hint: 'ghk reverse explain PlaceOrder  |  ghk reverse explain "POST /orders/{id}/cancel"' });
+      const hits = findOperation(candidates, target);
+      if (!hits.length) throw new UsageError(`No operation matches: ${target}`, { hint: `Operations: ${candidates.map(c => c.operation.name).slice(0, 20).join(', ')}` });
+      const explanations = hits.map(c => explainOperation(c, scan.evidence, unresolved));
+      if (options.json) { emitJson({ status: 'beta', explanations }); return; }
+      for (const x of explanations) {
+        logger.info(`${x.operation} (${x.type}) — ${x.endpoint}, aggregate ${x.aggregate}`);
+        console.log(`  Name:       ${x.name.origin}: ${x.name.detail}`);
+        console.log(`  Aggregate:  ${x.aggregateOrigin.origin}: ${x.aggregateOrigin.detail}`);
+        console.log(`  Confidence: ${x.confidence.level}: ${x.confidence.reason}`);
+        console.log('  Evidence chain:');
+        for (const l of x.chain) console.log(`    ${l.role.padEnd(11)} ${l.file}:${l.line}  ${l.description}  [${l.extractor}, ${l.confidence}] ${l.id}`);
+        console.log(`  Scenarios: ${x.scenarios.map(s => `${s.name} (${s.category}, ${s.confidence})`).join('; ') || 'none'}`);
+        for (const q of x.openQuestions) console.log(`  ? ${q}`);
+      }
+      return;
+    }
+
+    // review
+    let review = readReview(root, REVERSE_DIR);
+    const selectors: { decision: Decision; selector: string }[] = [
+      ...(options.approve ?? []).map(selector => ({ decision: 'approve' as const, selector })),
+      ...(options.reject ?? []).map(selector => ({ decision: 'reject' as const, selector }))
+    ];
+    const scoped = names.length ? candidates.filter(c => names.map(n => n.toLowerCase()).includes(c.aggregate.toLowerCase())) : candidates;
+    if (names.length && !scoped.length) throw new UsageError(`No proposal matches: ${names.join(', ')}`, { hint: `Proposals: ${[...new Set(candidates.map(c => c.aggregate))].join(', ')}` });
+    const save = (next: typeof review, changed: string[]) => {
+      if (options.dryRun || !changed.length) return;
+      writeReverseFile(root, REVIEW_FILE, `${JSON.stringify(next, null, 2)}\n`);
+    };
+
+    if (selectors.length) {
+      const { review: next, changed, unmatched } = applyDecisions(review, scoped, selectors, options.note);
+      if (unmatched.length && !changed.length) throw new UsageError(`No scenario matches: ${unmatched.join(', ')}`, { hint: 'Use a scenario name, @CommandName for every scenario of an operation, or all.' });
+      save(next, changed);
+      review = next;
+      if (changed.length) {
+        const { getTelemetry } = await import('../core/telemetry');
+        getTelemetry().recordAudit({ action: 'reverse:review', status: 'SUCCESS', resource: changed.join(', '), details: selectors.map(s => `${s.decision} ${s.selector}`).join('; ') });
+      }
+      if (!options.json) {
+        for (const k of changed) console.log(`  ${next.decisions[k].decision === 'approve' ? '✔' : '✖'} ${k}`);
+        for (const u of unmatched) console.log(`  ? no scenario matches ${u}`);
+      }
+    } else if (options.interactive) {
+      if (!process.stdin.isTTY || options.json) throw new UsageError('--interactive needs a terminal.', { hint: 'Without a terminal, decide with --approve and --reject.' });
+      const inquirer = (await import('inquirer')).default;
+      const report = buildReviewReport(root, scoped, scan.evidence, review, unresolved, { context: Number(options.context ?? 3) });
+      const picks: { decision: Decision; selector: string }[] = [];
+      outer: for (const p of report.proposals) for (const s of p.scenarios.filter(x => x.status === 'pending' || x.status === 'stale')) {
+        console.log(`\n${p.aggregate} · ${s.operation} · ${s.name}  [${s.confidence}${s.status === 'stale' ? ', code changed since the last review' : ''}]`);
+        for (const st of s.steps) {
+          console.log(`  ${st.keyword} ${st.text}`);
+          for (const e of st.evidence) for (const [i, line] of (e.excerpt?.lines ?? []).entries()) console.log(`      ${String((e.excerpt!.from + i)).padStart(5)} │ ${line}`);
+        }
+        const { choice } = await inquirer.prompt([{ type: 'list', name: 'choice', message: 'Decision', choices: ['approve', 'reject', 'skip', 'quit'] }]);
+        if (choice === 'quit') break outer;
+        if (choice !== 'skip') picks.push({ decision: choice as Decision, selector: s.name });
+      }
+      const { review: next, changed } = applyDecisions(review, scoped, picks);
+      save(next, changed);
+      review = next;
+    }
+
+    const report = buildReviewReport(root, scoped, scan.evidence, review, unresolved, { context: Number(options.context ?? 3), excerpts: !selectors.length });
+    if (options.json) { emitJson({ status: 'beta', ...report }); return; }
+    if (!selectors.length) {
+      for (const p of report.proposals) {
+        logger.info(`${p.aggregate}`);
+        for (const s of p.scenarios) {
+          const mark = { approved: '✔', rejected: '✖', stale: '!', pending: '·' }[s.status];
+          console.log(`  ${mark} ${s.name}  @${s.operation} [${s.confidence}]${s.status === 'stale' ? ' (code changed since the last review)' : ''}${s.note ? `  note: ${s.note}` : ''}`);
+          for (const st of s.steps) {
+            console.log(`      ${st.keyword} ${st.text}`);
+            for (const e of st.evidence) {
+              console.log(`        ${e.file}:${e.line}`);
+              for (const [i, line] of (e.excerpt?.lines ?? []).entries()) console.log(`        ${String(e.excerpt!.from + i).padStart(5)} │ ${line}`);
+            }
+          }
+        }
+      }
+      for (const q of report.openQuestions) console.log(`  ? ${q.question}`);
+    }
+    const c = report.counts;
+    console.log(`  ${c.approved} approved, ${c.rejected} rejected, ${c.stale} stale, ${c.pending} pending. ghk reverse accept takes the approved scenarios.`);
+    return;
+  }
+
   if (subcommand === 'accept') {
     if (!names.length && !options.all) throw new UsageError('Name the proposals to accept, or pass --all.', { hint: 'ghk reverse accept order invoice  |  ghk reverse accept --all' });
     const scan = readScan(root);
     const candidates = readCandidates(root);
     if (!scan || !candidates) throw new UsageError('There are no proposals to accept.', { hint: 'Run ghk reverse propose first and review .ghe/reverse/proposals/.' });
-    const plan = runAccept(root, scan, candidates, { names, all: options.all, to: options.to, merge: options.merge, force: options.force, minConfidence: minConfidence(options), write: false });
+    const plan = runAccept(root, scan, candidates, { names, all: options.all, to: options.to, merge: options.merge, force: options.force, minConfidence: minConfidence(options), ignoreReview: options.ignoreReview, write: false });
     if (!plan.matched) throw new UsageError(`No proposal matches: ${names.join(', ')}`, { hint: `Proposals: ${[...new Set(candidates.map(c => c.aggregate))].join(', ')}` });
     let result = plan;
     if (plan.written.length && !options.dryRun && await confirmWrite(plan.written.map(w => w.file), options)) {
-      result = runAccept(root, scan, candidates, { names, all: options.all, to: options.to, merge: options.merge, force: options.force, minConfidence: minConfidence(options), write: true });
+      result = runAccept(root, scan, candidates, { names, all: options.all, to: options.to, merge: options.merge, force: options.force, minConfidence: minConfidence(options), ignoreReview: options.ignoreReview, write: true });
       const { getTelemetry } = await import('../core/telemetry');
       getTelemetry().recordAudit({ action: 'reverse:accept', status: 'SUCCESS', resource: result.written.map(w => w.file).join(', '), details: options.merge ? 'merge' : 'all scenarios' });
     } else if (plan.written.length) {
@@ -180,6 +290,7 @@ export async function handleReverseCommand(subcommand: string | undefined, optio
     if (!result.written.length && !result.skipped.length) console.log('  Nothing to accept: the features already specify every selected operation.');
     for (const w of result.written) console.log(`  ✔ ${w.file}  ${w.scenarios} scenario(s)`);
     for (const s of result.skipped) console.log(`  – ${s.file}: ${s.reason}`);
+    if (result.notApproved?.length) console.log(`  ${result.notApproved.length} scenario(s) left out by the review (${[...new Set(result.notApproved.map(n => n.status))].join(", ")}); --ignore-review takes them all`);
     for (const s of result.spec?.specOnly ?? []) console.log(`  ! ${s.command} in ${s.feature}: declared by the feature, not implemented by the code (exit 7)`);
     if (result.written.length) console.log('  Next: ghk lint --all, ghk graph, ghk converge --all');
     return;

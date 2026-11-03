@@ -21,13 +21,36 @@
 npx gherkin-ai@3 reverse scan                      # evidence → .ghe/reverse/scan.json
 npx gherkin-ai@3 reverse propose                   # proposals → .ghe/reverse/proposals/*.feature
 npx gherkin-ai@3 reverse coverage                  # how much of the code the existing features specify
-# review the proposals, then:
+npx gherkin-ai@3 reverse explain PlaceOrder        # where an operation's names, confidence and evidence come from
+npx gherkin-ai@3 reverse review order              # each scenario with the code behind it
+npx gherkin-ai@3 reverse review --approve @PlaceOrder --reject "Cancel the order"
+# then:
 npx gherkin-ai@3 reverse accept order invoice --yes          # → features/discovered/
 npx gherkin-ai@3 reverse accept --all --merge --yes          # only what no feature specifies yet
 npx gherkin-ai@3 lint --all && npx gherkin-ai@3 converge --all
 ```
 
-None of the subcommands needs `ghk init` or calls a language model. `scan`, `propose` and `coverage` write nothing outside `.ghe/reverse/`. `accept` writes feature files only after you confirm interactively, or with `--yes`. Without a terminal and without `--yes`, it writes nothing and exits 2.
+None of the subcommands needs `ghk init` or calls a language model. `scan`, `propose`, `coverage`, `explain` and `review` write nothing outside `.ghe/reverse/`. `accept` writes feature files only after you confirm interactively, or with `--yes`. Without a terminal and without `--yes`, it writes nothing and exits 2.
+
+### explain
+
+`reverse explain <operation>` takes an operation name (`PlaceOrder`) or a method and path (`"POST /orders/{id}/cancel"`; `:id` works too) and shows:
+- where the operation name comes from: declared by the code, the OpenAPI `operationId`, the handler name, the method and path by REST convention, or *disambiguated* (two endpoints of one aggregate would share a name, so the path segments that tell them apart are added);
+- where the aggregate comes from: declared, the last collection in the path, the controller class, or the first path segment;
+- why it has its confidence: a test that calls it, the code and the contract agreeing, or the syntax tree only;
+- the evidence chain, ordered endpoint → guards → input → calls → persistence → state → events → failures → response → tests, each with its file, line, analyzer and confidence;
+- its scenarios and open questions.
+
+### review
+
+`reverse review [aggregate…]` prints every proposed scenario with the code behind each step: the lines around each `# evidence:` location (`--context <n>`, 3 by default), with secrets redacted. Decisions are recorded with:
+- `--approve <selector>` and `--reject <selector>`, repeatable. A selector is a scenario name, `@CommandName` for every scenario of an operation, or `all`;
+- `--note <text>`, stored with the decisions;
+- `--interactive`, which steps through the pending scenarios in a terminal.
+
+The decisions go to `.ghe/reverse/review.json`, keyed by operation and scenario name. Each decision remembers the evidence it was made on. When the code under a scenario changes (a moved line counts), the decision is **stale** and counts as not reviewed until someone decides again. Each decision is audited (`reverse:review`).
+
+Once a review is on file, `accept` takes only the approved scenarios that are not stale, and reports how many it left out. `--ignore-review` takes them all.
 
 ### accept
 
@@ -177,6 +200,7 @@ Everything goes in `.ghe/reverse/`. That directory contains a `.gitignore` of `*
 |---|---|
 | `scan.json` | Analyzers that ran, with their maturity and evidence count; counts by kind; every evidence item |
 | `candidates.json` | One behaviour candidate per operation: aggregate, command or query, scenarios, and the evidence of every step |
+| `review.json` | The decisions of `reverse review`: approve or reject per scenario, with an optional note and the fingerprint of the evidence each decision was made on |
 | `unresolved-questions.json` | What the code does not answer: endpoints with no observable outcome, technical conditions left out, two endpoints mapped to one name |
 | `proposals/<aggregate>.feature` | The proposals. Proposals that a later run no longer produces are removed |
 

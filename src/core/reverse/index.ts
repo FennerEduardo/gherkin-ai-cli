@@ -20,6 +20,7 @@ import { loadBuiltinAnalyzers, type AnalysisContext, type AnalyzerMaturity } fro
 import { buildCandidates, type BehaviorCandidate, type UnresolvedQuestion } from './candidates';
 import { kebab, renderProposals, type RenderedProposal } from './renderer';
 import { compareWithSpec, type DedupReport } from './dedup';
+import { approvedOnly, readReview, type ScenarioStatus } from './review';
 
 export const REVERSE_DIR = path.join('.ghe', 'reverse');
 
@@ -145,6 +146,8 @@ export interface AcceptOptions {
   force?: boolean;
   write?: boolean;
   minConfidence?: EvidenceConfidence;
+  /** Accept every scenario even when a review is on file. */
+  ignoreReview?: boolean;
 }
 
 export interface AcceptResult {
@@ -156,6 +159,8 @@ export interface AcceptResult {
   spec?: DedupReport;
   /** With --merge: a feature declares commands the code does not implement. */
   drift: boolean;
+  /** With a review on file: the scenarios left out because they are not approved (pending, rejected or stale). */
+  notApproved?: { key: string; status: ScenarioStatus }[];
 }
 
 /** The accepted text: reviewed, so no longer @needs-review; the evidence comments stay (traceability). */
@@ -174,10 +179,26 @@ export function readCandidates(root: string): BehaviorCandidate[] | undefined {
   }
 }
 
+export function readUnresolved(root: string): UnresolvedQuestion[] {
+  try {
+    return JSON.parse(fs.readFileSync(path.join(root, REVERSE_DIR, 'unresolved-questions.json'), 'utf8')) as UnresolvedQuestion[];
+  } catch {
+    return [];
+  }
+}
+
 export function runAccept(root: string, scan: ScanResult, candidates: BehaviorCandidate[], options: AcceptOptions): AcceptResult {
   const wanted = (options.names ?? []).map(n => n.toLowerCase().replace(/\.feature$/, ''));
   let selected = options.all ? candidates : candidates.filter(c => wanted.includes(c.aggregate.toLowerCase()) || wanted.includes(kebab(c.aggregate)));
   const matched = selected.length;
+  // A review on file (`ghk reverse review`) decides: only approved scenarios whose evidence has not changed.
+  const review = readReview(root, REVERSE_DIR);
+  let notApproved: AcceptResult['notApproved'];
+  if (Object.keys(review.decisions).length && !options.ignoreReview) {
+    const filtered = approvedOnly(review, selected);
+    selected = filtered.candidates;
+    notApproved = filtered.left;
+  }
   const spec = options.merge ? compareWithSpec(root, selected) : undefined;
   if (spec) {
     const known = new Set(spec.operations.filter(o => o.status !== 'undocumented').map(o => `${o.aggregate}|${o.operation}`));
@@ -185,7 +206,7 @@ export function runAccept(root: string, scan: ScanResult, candidates: BehaviorCa
   }
   const rendered = renderProposals(selected, scan.evidence, { minConfidence: options.minConfidence });
   const destination = path.resolve(root, options.to ?? path.join('features', 'discovered'));
-  const result: AcceptResult = { matched, written: [], skipped: [], spec, drift: Boolean(spec?.specOnly.length) };
+  const result: AcceptResult = { matched, written: [], skipped: [], spec, drift: Boolean(spec?.specOnly.length), ...(notApproved ? { notApproved } : {}) };
   for (const p of rendered) {
     const target = path.join(destination, p.file);
     const rel = path.relative(root, target).split(path.sep).join('/');
