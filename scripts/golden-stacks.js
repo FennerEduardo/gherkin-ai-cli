@@ -365,8 +365,10 @@ for (const [name, cloud, backend, extra, compute] of [['terraform-gcp-base', 'gc
 for (const key of ['java', 'kotlin', 'quarkus', 'kotlin-quarkus', 'fastapi', 'django', 'dotnet', 'go']) {
   STACKS[`${key}-mysql`] = { ...STACKS[key], stack: { ...STACKS[key].stack, database: 'mysql', kernelDatabase: 'mysql' }, services: [...(STACKS[key].services || []), MYSQL_DATABASE] };
 }
-// 3.3.0 (X-02): the Spring Boot (Java) runtime kernel on a MongoDB 8 replica set.
-STACKS['java-mongo'] = { ...STACKS.java, stack: { ...STACKS.java.stack, database: 'mongodb', kernelDatabase: 'mongodb' }, services: [...(STACKS.java.services || []), MONGO_DATABASE] };
+// 3.3.0 (X-02): the Spring Boot (Java), FastAPI, .NET and Go runtime kernels on a MongoDB 8 replica set.
+for (const key of ['java', 'fastapi']) {
+  STACKS[`${key}-mongo`] = { ...STACKS[key], stack: { ...STACKS[key].stack, database: 'mongodb', kernelDatabase: 'mongodb' }, services: [...(STACKS[key].services || []), MONGO_DATABASE] };
+}
 // 3.3.0 (X-06b): a backend-for-frontend deploys without database or broker; every cloud, both compute modes, and
 // a check that no database or broker resource is left.
 const NO_DATA = 'grep -rqE "aws_db_instance|aws_mq_broker|google_sql_|google_pubsub_|azurerm_postgresql|azurerm_servicebus" . && exit 1 || true';

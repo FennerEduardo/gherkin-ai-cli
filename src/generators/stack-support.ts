@@ -67,6 +67,7 @@ export const STACK_SUPPORT: StackSupport[] = [
   { id: 'python/django', label: 'Python · Django + DRF', kind: 'backend', tier: 'stable', golden: 'django' },
   { id: 'python/fastapi-mysql', label: 'Python · FastAPI on MySQL 8.4 (stack.kernelDatabase "mysql")', kind: 'backend', tier: 'stable', golden: 'fastapi-mysql', notes: 'PyMySQL behind the psycopg call shape of the kernel (runtime/db.py).' },
   { id: 'python/django-mysql', label: 'Python · Django + DRF on MySQL 8.4 (stack.kernelDatabase "mysql")', kind: 'backend', tier: 'stable', golden: 'django-mysql' },
+  { id: 'python/fastapi-mongo', label: 'Python · FastAPI on MongoDB 8 (stack.kernelDatabase "mongodb")', kind: 'backend', tier: 'stable', golden: 'fastapi-mongo', notes: 'pymongo; SQLAlchemy keeps a local SQLite for the generated models (no MongoDB dialect).' },
   { id: 'go/chi', label: 'Go · chi', kind: 'backend', tier: 'stable', golden: 'go' },
   { id: 'go/chi-mysql', label: 'Go · chi on MySQL 8.4 (stack.kernelDatabase "mysql")', kind: 'backend', tier: 'stable', golden: 'go-mysql', notes: 'database/sql + go-sql-driver/mysql behind the pgx calls of the kernel (internal/runtime/db.go).' },
   { id: 'php/laravel', label: 'PHP · Laravel 13', kind: 'backend', tier: 'stable', golden: 'laravel' },
