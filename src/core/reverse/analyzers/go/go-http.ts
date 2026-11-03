@@ -19,7 +19,7 @@
 
 import fs from 'fs';
 import { isTestFile } from '../../discovery';
-import { joinPaths, makeEvidence, type EndpointMetadata, type SourceEvidence } from '../../evidence';
+import { joinPaths, makeEvidence, type EndpointMetadata, type EntryMetadata, type SourceEvidence } from '../../evidence';
 import type { AnalysisContext, SourceAnalyzer } from '../../registry';
 import { failureKind } from '../typescript/ts-body';
 import { childOfType, lineRange, ofType, parserFor, unquote, type TSNode } from '../treesitter/loader';
@@ -93,6 +93,12 @@ function analyzeBody(fn: GoFunc, endpointId: string, funcs: GoFunc[], sentinels:
     if (f?.type !== 'selector_expression') continue;
     const name = f.childForFieldName('field')?.text;
     const operand = f.childForFieldName('operand')?.text ?? '';
+    // Calls to other systems (PLAN-3.3.0-reverse-plus RV-08): net/http as a client, and HTTP client fields.
+    if (name && ((operand === 'http' && /^(Get|Post|PostForm|Head)$/.test(name)) || (/(^|\.)(client|httpClient|http_client|apiClient)$/i.test(operand) && /^(Do|Get|Post|PostForm|Head)$/.test(name)))) {
+      const url = call.text.match(/"((?:https?:)?\/\/[^"?#]+)"/)?.[1];
+      out.push(makeEvidence({ kind: 'external-integration', extractor: ID, confidence: 'strong', references: [endpointId], location: { file: fn.file, ...lineRange(call) }, symbol: `${operand}.${name}`, description: `${operand}.${name}${url ? ` ${url}` : ''}`, metadata: { client: operand, method: name, url } }));
+      continue;
+    }
     if (!name || /^(http|json|errors|fmt|strconv|time|context|log|chi|c|w|r|ctx)$/.test(operand)) continue;
     if (/(repo|store|db|repository)$/i.test(operand.split('.').pop() ?? '') && /^(Save|Get|Find|Create|Update|Delete|Insert|List)\w*$/.test(name)) {
       out.push(makeEvidence({ kind: 'repository-query', extractor: ID, confidence: 'strong', references: [endpointId], location: { file: fn.file, ...lineRange(call) }, symbol: `${operand}.${name}`, description: `${/^(Get|Find|List)/.test(name) ? 'reads' : 'writes'} ${operand}`, metadata: { target: operand, method: name } }));
@@ -114,7 +120,7 @@ const goHttp: SourceAnalyzer = {
   maturity: 'beta',
   detect(ctx) {
     return ctx.files.some(f => f.ext === '.go' && !isTestFile(f.rel) && (() => {
-      try { return /go-chi\/chi|gin-gonic\/gin|labstack\/echo|\.HandleFunc\(\s*"(GET|POST|PUT|PATCH|DELETE) /.test(fs.readFileSync(f.abs, 'utf8')); } catch { return false; }
+      try { return /go-chi\/chi|gin-gonic\/gin|labstack\/echo|\.HandleFunc\(\s*"(GET|POST|PUT|PATCH|DELETE) |robfig\/cron|nats-io\/nats/.test(fs.readFileSync(f.abs, 'utf8')); } catch { return false; }
     })());
   },
   async analyze(ctx: AnalysisContext) {
@@ -190,6 +196,19 @@ const goHttp: SourceAnalyzer = {
         const args = call.childForFieldName('arguments')?.namedChildren.filter((a): a is TSNode => Boolean(a)) ?? [];
         const first = args[0] && /string_literal$/.test(args[0].type) ? unquote(args[0].text) : undefined;
         if (first === undefined) continue;
+        // Scheduled jobs (robfig/cron `c.AddFunc("@every 1h", fn)`) and NATS subscriptions (`nc.Subscribe("order.placed", fn)`):
+        // PLAN-3.3.0-reverse-plus RV-06.
+        if (/^(AddFunc|AddJob|Subscribe|QueueSubscribe)$/.test(method) && args.length >= 2) {
+          const handlerArg = args[args.length - 1];
+          const handlerName = handlerArg.type === 'identifier' ? handlerArg.text : handlerArg.type === 'selector_expression' ? handlerArg.childForFieldName('field')?.text : undefined;
+          const target = handlerArg.type === 'func_literal' ? { name: '', file: rel, node: handlerArg, body: handlerArg.childForFieldName('body') ?? undefined } as GoFunc : funcs.find(g => g.name === handlerName);
+          const kind = /Subscribe$/.test(method) ? 'message-handler' as const : 'scheduled-job' as const;
+          const meta: EntryMetadata = kind === 'message-handler' ? { trigger: 'message', channel: first, handler: handlerName } : { trigger: 'schedule', schedule: first, handler: handlerName };
+          const entry = makeEvidence({ kind, extractor: ID, confidence: 'strong', location: { file: rel, ...lineRange(call) }, symbol: handlerName, description: kind === 'message-handler' ? `handles ${first}` : `runs on schedule ${first}`, metadata: meta as unknown as Record<string, unknown>, key: `${kind}|${first}|${handlerName ?? ''}` });
+          out.push(entry);
+          if (target?.body) out.push(...analyzeBody(target, entry.id, funcs, sentinels, 0, new Set()));
+          continue;
+        }
         let verb = VERBS[method];
         let route = first;
         if (!verb && /^Handle(Func)?$/.test(method)) {

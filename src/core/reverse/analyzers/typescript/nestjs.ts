@@ -6,7 +6,8 @@
    the rest 200 by default). @UseGuards / @Roles become authorization rules.
    The @Body() DTO class gives the input contract, and its class-validator
    decorators the validation rules. Method bodies and the services they call
-   are analysed by ts-body.
+   are analysed by ts-body. Message handlers and scheduled jobs come from
+   ./entries.
    ========================================================================== */
 
 import { Node, SyntaxKind } from 'ts-morph';
@@ -16,6 +17,7 @@ import type { SourceAnalyzer } from '../../registry';
 import { analyzeBody, relPath } from './ts-body';
 import fs from 'fs';
 import { packageDeps, tsProject, tsSources } from './project';
+import { tsEntryPoints } from './entries';
 
 const ID = 'typescript/nestjs';
 const ROUTE_DECORATORS: Record<string, EndpointMetadata['method']> = { Get: 'GET', Post: 'POST', Put: 'PUT', Patch: 'PATCH', Delete: 'DELETE' };
@@ -132,6 +134,8 @@ const nestjs: SourceAnalyzer = {
         }
       }
     }
+    // Message handlers and scheduled jobs (PLAN-3.3.0-reverse-plus RV-06).
+    out.push(...tsEntryPoints(project, ctx.root, ID));
     return out;
   }
 };

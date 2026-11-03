@@ -17,7 +17,7 @@
 import fs from 'fs';
 import path from 'path';
 import { isTestFile } from '../../discovery';
-import { joinPaths, makeEvidence, type EndpointMetadata, type SourceEvidence } from '../../evidence';
+import { joinPaths, makeEvidence, type EndpointMetadata, type EntryMetadata, type SourceEvidence } from '../../evidence';
 import type { AnalysisContext, SourceAnalyzer } from '../../registry';
 import { failureKind } from '../typescript/ts-body';
 import { childOfType, childrenOfType, lineRange, ofType, parserFor, unquote, type TSNode } from '../treesitter/loader';
@@ -76,6 +76,13 @@ function analyzeBody(fn: PyFunction, endpointId: string, functions: PyFunction[]
     if (!callee) continue;
     const [receiver, name] = callee.type === 'attribute' ? [callee.childForFieldName('object')?.text, callee.childForFieldName('attribute')?.text] : [undefined, callee.text];
     if (!name || !/^[a-z_]\w*$/.test(name)) continue;
+    // Calls to other systems (PLAN-3.3.0-reverse-plus RV-08): httpx, requests, aiohttp, and payment/messaging SDKs.
+    const root = receiver?.replace(/^self\./, '').split('.')[0] ?? '';
+    if ((/^(httpx|requests|aiohttp|session|client|http_client|api_client)$/.test(root) && /^(get|post|put|patch|delete|request|send|head)$/.test(name)) || /^(stripe|twilio|sendgrid|boto3|ses|sns|s3)$/.test(root)) {
+      const url = call.text.match(/["']((?:https?:)?\/\/[^"'?#]+)["']/)?.[1];
+      out.push(makeEvidence({ kind: 'external-integration', extractor: ID, confidence: /^(httpx|requests|aiohttp|stripe|twilio|sendgrid|boto3)$/.test(root) ? 'strong' : 'inferred', references: [endpointId], location: { file: fn.file, ...lineRange(call) }, symbol: `${receiver}.${name}`, description: `${receiver}.${name}${url ? ` ${url}` : ''}`, metadata: { client: root, method: name, url } }));
+      continue;
+    }
     // Repository-like calls: orders.save(order), session.add(x), db.commit().
     if (receiver && /^(save|add|delete|remove|update|insert|get|find\w*|filter|query|execute|merge|commit)$/.test(name) && /(repo|repository|session|db|orders?|store|\w+s)$/i.test(receiver) && !functions.some(f => f.name === name && f.module === receiver)) {
       out.push(makeEvidence({ kind: 'repository-query', extractor: ID, confidence: 'inferred', references: [endpointId], location: { file: fn.file, ...lineRange(call) }, symbol: `${receiver}.${name}`, description: `${/^(get|find|filter|query)/.test(name) ? 'reads' : 'writes'} ${receiver}`, metadata: { target: receiver, method: name } }));
@@ -97,7 +104,7 @@ const fastapi: SourceAnalyzer = {
   maturity: 'beta',
   detect(ctx) {
     return ctx.files.some(f => f.ext === '.py' && !isTestFile(f.rel) && (() => {
-      try { return /from fastapi import|import fastapi/.test(fs.readFileSync(f.abs, 'utf8')); } catch { return false; }
+      try { return /from fastapi import|import fastapi|from celery import|import celery|@shared_task\b|import dramatiq/.test(fs.readFileSync(f.abs, 'utf8')); } catch { return false; }
     })());
   },
   async analyze(ctx: AnalysisContext) {
@@ -134,6 +141,22 @@ const fastapi: SourceAnalyzer = {
     }
 
     const out: SourceEvidence[] = [];
+    // Celery tasks (a message on the broker runs them) and scheduled functions (PLAN-3.3.0-reverse-plus RV-06).
+    for (const fn of functions) {
+      for (const dec of fn.decorators) {
+        const text = dec.text;
+        const task = /^@(?:shared_task|[\w.]*\.task|dramatiq\.actor|actor)\b/.test(text);
+        const scheduled = /^@(?:[\w.]*\.scheduled_job|repeat_every|[\w.]*\.on_after_configure|aiocron\.crontab|crontab)\b/.test(text);
+        if (!task && !scheduled) continue;
+        const meta: EntryMetadata = task
+          ? { trigger: 'message', channel: text.match(/name\s*=\s*["']([^"']+)["']/)?.[1] ?? `${fn.module}.${fn.name}`, handler: fn.name, owner: fn.module }
+          : { trigger: 'schedule', schedule: (text.match(/\(([\s\S]*)\)/)?.[1] ?? '').replace(/\s+/g, ' ').trim() || undefined, handler: fn.name, owner: fn.module };
+        const kind = task ? 'message-handler' as const : 'scheduled-job' as const;
+        const entry = makeEvidence({ kind, extractor: ID, confidence: 'strong', location: { file: fn.file, ...lineRange(fn.node) }, symbol: `${fn.module}.${fn.name}`, description: task ? `handles ${meta.channel}` : `runs on schedule ${meta.schedule ?? ''}`.trim(), metadata: meta as unknown as Record<string, unknown>, key: `${kind}|${fn.module}.${fn.name}` });
+        out.push(entry, ...analyzeBody(fn, entry.id, functions, 0, new Set()));
+        break;
+      }
+    }
     for (const fn of functions) {
       for (const dec of fn.decorators) {
         const call = childOfType(dec, 'call');

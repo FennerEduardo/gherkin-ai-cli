@@ -20,7 +20,7 @@
 
 import fs from 'fs';
 import { isTestFile } from '../../discovery';
-import { joinPaths, makeEvidence, type EndpointMetadata, type SourceEvidence } from '../../evidence';
+import { joinPaths, makeEvidence, type EndpointMetadata, type EntryMetadata, type SourceEvidence } from '../../evidence';
 import type { AnalysisContext, SourceAnalyzer } from '../../registry';
 import { failureKind, eventName } from '../typescript/ts-body';
 import { childOfType, lineRange, ofType, parserFor, unquote, type TSNode } from '../treesitter/loader';
@@ -45,6 +45,19 @@ const VALIDATORS: Record<string, string> = {
 /** Event classes that carry the event name as data, or that are not domain events at all. */
 const GENERIC_EVENT = /^(Domain|Integration|Outbox|Base|Abstract|Incoming|Outgoing|Application|Spring|Context\w*|Servlet\w*|Cloud|Message|Generic)?Event$|DomainEvent$|IntegrationEvent$/;
 const REPO_METHOD = /^(save|saveAll|saveAndFlush|insert|update|delete|deleteById|deleteAll|remove|persist|persistAndFlush|merge|find\w*|get\w*|count\w*|exists\w*|list\w*|stream\w*)$/;
+/** HTTP client types injected into a service: a call through them reaches another system (RV-08). */
+const EXTERNAL_CLIENT = /^(RestTemplate|WebClient|RestClient|HttpClient|OkHttpClient|CloseableHttpClient|WebTarget|StripeClient|SesClient|SnsClient|S3Client)$/;
+/** Message listeners and scheduled methods (PLAN-3.3.0-reverse-plus RV-06). */
+const LISTENERS = new Set(['KafkaListener', 'RabbitListener', 'JmsListener', 'SqsListener', 'StreamListener', 'Incoming', 'ConsumeEvent', 'EventListener', 'TransactionalEventListener', 'ObservesAsync']);
+
+/** The channel a listener annotation names, or the event class its first parameter takes. */
+function listenerChannel(a: Annotation, m: JvmMethod): string | undefined {
+  const named = a.pairs.topics ?? a.pairs.queues ?? a.pairs.destination ?? a.pairs.value ?? a.pairs.address;
+  const literal = (named && unquote(named.replace(/^[{[]|[}\]]$/g, '').split(',')[0].trim())) ?? a.strings[0];
+  if (literal) return literal;
+  const type = m.params[0]?.type?.replace(/<.*$/, '');
+  return type && /^[A-Z]/.test(type) ? eventName(type) : undefined;
+}
 
 /** First HTTP status a piece of code names: HttpStatus.X, Response.Status.X, .status(404), ResponseEntity.notFound(), Response.created(…). */
 export function statusFromText(text: string): number | undefined {
@@ -241,6 +254,13 @@ function analyzeBody(method: JvmMethod, b: BodyCtx): SourceEvidence[] {
     }
     if (!receiver || !name || !/^\w+$/.test(receiver)) continue;
     const type = b.owner.fields.get(receiver);
+    // Calls to other systems (PLAN-3.3.0-reverse-plus RV-08): HTTP clients, and Feign / MicroProfile REST clients.
+    const restClient = type ? b.index.classes.get(type)?.find(c => c.annotations.some(a => a.name === 'FeignClient' || a.name === 'RegisterRestClient')) : undefined;
+    if (type && (EXTERNAL_CLIENT.test(type) || restClient)) {
+      const url = call.text.match(/"((?:https?:)?\/\/[^"?#]+|\/[\w/{}.-]*)"/)?.[1];
+      out.push(makeEvidence({ kind: 'external-integration', extractor: ID, confidence: 'strong', references: [b.endpointId], location: loc(b.owner.file, call), symbol: `${type}.${name}`, description: `${restClient ? `REST client ${type}` : type}.${name}${url ? ` ${url}` : ''}`, metadata: { client: type, method: name, url } }));
+      continue;
+    }
     if (!type) {
       // Static factory on a project class (Course.create(…)), or a method of a loaded entity (period.open()):
       // followed when exactly one project class declares a method of that name.
@@ -348,7 +368,7 @@ const spring: SourceAnalyzer = {
   maturity: 'beta',
   detect(ctx) {
     return ctx.files.some(f => (f.ext === '.java' || f.ext === '.kt') && !isTestFile(f.rel) && (() => {
-      try { return /@(RestController|Controller|Path)\b|import (?:jakarta|javax)\.ws\.rs/.test(fs.readFileSync(f.abs, 'utf8')); } catch { return false; }
+      try { return /@(RestController|Controller|Path|KafkaListener|RabbitListener|JmsListener|SqsListener|Incoming|ConsumeEvent|Scheduled|EventListener|TransactionalEventListener)\b|import (?:jakarta|javax)\.ws\.rs/.test(fs.readFileSync(f.abs, 'utf8')); } catch { return false; }
     })());
   },
   async analyze(ctx) {
@@ -366,6 +386,24 @@ const spring: SourceAnalyzer = {
     const index = buildIndex(classes);
     const out: SourceEvidence[] = [];
     for (const cls of classes) {
+      // Message listeners and scheduled jobs, in any class (RV-06). Their bodies are analysed as an endpoint's.
+      for (const m of cls.methods) {
+        const listener = m.annotations.find(a => LISTENERS.has(a.name));
+        const observes = m.params.find(p => p.annotations.some(a => a.name === 'Observes' || a.name === 'ObservesAsync'));
+        const scheduled = annotation(m.annotations, 'Scheduled');
+        const kind = listener || observes ? 'message-handler' as const : scheduled ? 'scheduled-job' as const : undefined;
+        if (!kind) continue;
+        const channel = listener ? listenerChannel(listener, m) : observes ? eventName(observes.type.replace(/<.*$/, '')) : undefined;
+        const schedule = scheduled ? (unquote(scheduled.pairs.cron ?? scheduled.pairs.every ?? '') ?? Object.entries(scheduled.pairs).map(([k, v]) => `${k} = ${v}`).join(', ')) || scheduled.raw : undefined;
+        const meta: EntryMetadata = kind === 'message-handler' ? { trigger: 'message', channel, handler: m.name, owner: cls.name } : { trigger: 'schedule', schedule, handler: m.name, owner: cls.name };
+        const entry = makeEvidence({
+          kind, extractor: ID, confidence: 'strong', location: loc(cls.file, m.node), symbol: `${cls.name}.${m.name}`,
+          description: kind === 'message-handler' ? `handles ${channel ?? 'messages'}` : `runs on schedule ${schedule ?? ''}`.trim(),
+          metadata: meta as unknown as Record<string, unknown>, key: `${kind}|${channel ?? schedule ?? ''}|${m.name}`
+        });
+        out.push(entry);
+        out.push(...analyzeBody(m, { ctx, index, endpointId: entry.id, owner: cls, depth: 0, visited: new Set() }).filter(e => e.kind !== 'success-response'));
+      }
       const isController = cls.annotations.some(a => a.name === 'RestController' || a.name === 'Controller') || Boolean(annotation(cls.annotations, 'Path'));
       if (!isController) continue;
       for (const ep of endpointsOf(cls)) {

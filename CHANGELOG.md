@@ -46,6 +46,13 @@ All notable changes to this project will be documented in this file. See [commit
     - Decisions are recorded in `.ghe/reverse/review.json` and audited.
     - A decision remembers the evidence it was made on. When the code under a scenario changes, the decision is stale.
     - With a review on file, `accept` takes only the approved scenarios that are not stale; `--ignore-review` takes them all.
+  - **Message handlers and scheduled jobs are operations**, in every analyzer.
+    - Handlers: NestJS `@OnEvent`/`@EventPattern`/`@MessagePattern`, event-bus `.on()`; Spring `@KafkaListener`/`@RabbitListener`/`@EventListener`, Quarkus `@Incoming`; .NET `IConsumer<T>`/`INotificationHandler<T>`; Celery tasks; Go NATS subscriptions.
+    - Jobs: `@Cron`/`@Scheduled`, `BackgroundService`, Hangfire, node-cron, robfig/cron.
+    - Their scenarios start with "When the `OrderPlaced` event is received" or "When the scheduled job runs", and `coverage` and `sync` count them.
+    - Platform jobs (outbox relay, inbox, pollers, retries, gherkin-ai's own runtime) are left out, like health endpoints. Verified on one hand-written fixture per language.
+  - **Database constraints** (`persistence/constraints`, a new beta analyzer for any stack) read unique constraints from Prisma, SQL migrations, JPA, EF Core, Django, SQLAlchemy and TypeORM. A constraint confirms the conflict scenario of its aggregate, or asks what happens on a duplicate.
+  - **Calls to other systems** (HTTP clients, payment and messaging SDKs) are evidence and open questions, never steps.
   - **`reverse sync`** keeps the accepted features alive.
     - It compares the code as it is now with every `@reverse-engineered` feature. New, missing and changed operations (status written, event published, failure scenarios) are drift and exit 7; moved evidence is reported.
     - It never edits a feature: it writes a patch per feature in `.ghe/patches/` to review and `git apply`.

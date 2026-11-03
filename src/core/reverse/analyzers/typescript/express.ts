@@ -15,6 +15,7 @@ import { joinPaths, makeEvidence, type EndpointMetadata, type SourceEvidence } f
 import type { SourceAnalyzer } from '../../registry';
 import { analyzeBody, calleeName, relPath } from './ts-body';
 import { packageDeps, tsProject, tsSources } from './project';
+import { tsEntryPoints } from './entries';
 
 const METHODS = new Set(['get', 'post', 'put', 'patch', 'delete']);
 const AUTH_MIDDLEWARE = /(auth|authenticate|authorize|requireUser|requireLogin|isAuthenticated|ensureLoggedIn|protect|jwt|passport|guard|verifyToken|requireRole|hasRole)/i;
@@ -107,6 +108,8 @@ const express: SourceAnalyzer = {
         out.push(...analyzeBody(body, { root: ctx.root, extractor: ID, endpointId: endpoint.id }));
       }
     }
+    // Event-bus subscriptions and cron jobs (PLAN-3.3.0-reverse-plus RV-06); decorators are NestJS's.
+    out.push(...tsEntryPoints(project, ctx.root, ID, { decorators: false }));
     return out;
   }
 };

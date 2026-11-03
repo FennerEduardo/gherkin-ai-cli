@@ -22,7 +22,13 @@ export type EvidenceKind =
   | 'domain-event'
   | 'error-condition'
   | 'success-response'
-  | 'test-case';
+  | 'test-case'
+  // PLAN-3.3.0-reverse-plus RV-06: entry points that are not HTTP.
+  | 'message-handler'
+  | 'scheduled-job'
+  // RV-08: calls to other systems, and constraints the database enforces.
+  | 'external-integration'
+  | 'persistence-constraint';
 
 /**
  * How the evidence is known, highest first (PLAN-3.3.0 §2, GPT design §6.2):
@@ -73,6 +79,20 @@ export type EndpointMetadata = {
   command?: string;
   /** An aggregate name the code declares outright (`ghk:implements Order`). */
   aggregate?: string;
+};
+
+/**
+ * Metadata of `message-handler` and `scheduled-job` evidence: an operation the code runs when a message arrives
+ * or on a schedule. Behaviour inside the handler references it, exactly as for an endpoint.
+ */
+export type EntryMetadata = {
+  trigger: 'message' | 'schedule';
+  /** Topic, queue, channel or event name the handler listens to (`order.placed`, `orders-topic`). */
+  channel?: string;
+  /** Cron expression or interval as written (`0 0 * * *`, `every 5m`, `fixedRate = 60000`). */
+  schedule?: string;
+  handler?: string;
+  owner?: string;
 };
 
 /** Stable id: the same fact found again gets the same id, so two runs produce identical output. */

@@ -59,7 +59,10 @@ export interface CandidateResult {
 // ---------------------------------------------------------------------------
 
 const VERBS = new Set([...Object.keys(VERB_PATTERNS), ...Object.keys(EXTENDED_VERB_PATTERNS),
-  'get', 'list', 'retrieve', 'find', 'fetch', 'register', 'enroll', 'initiate', 'execute', 'link', 'unlink', 'set', 'add', 'remove', 'mark', 'notify', 'capture', 'evaluate', 'provide', 'change', 'save', 'edit', 'replace', 'patch', 'put', 'post', 'upsert', 'generate', 'sync', 'count', 'check', 'validate', 'login', 'logout', 'refresh']);
+  'get', 'list', 'retrieve', 'find', 'fetch', 'register', 'enroll', 'initiate', 'execute', 'link', 'unlink', 'set', 'add', 'remove', 'mark', 'notify', 'capture', 'evaluate', 'provide', 'change', 'save', 'edit', 'replace', 'patch', 'put', 'post', 'upsert', 'generate', 'sync', 'count', 'check', 'validate', 'login', 'logout', 'refresh',
+  // Verbs of jobs and reactions (PLAN-3.3.0-reverse-plus RV-06).
+  'purge', 'release', 'expire', 'close', 'remind', 'reconcile', 'settle', 'charge', 'refund', 'renew', 'import', 'export', 'clean', 'recalculate',
+  'rotate', 'deliver', 'dispatch', 'reserve', 'invoice', 'bill', 'escalate', 'publish', 'index', 'backfill', 'calculate', 'compute']);
 /** Handler names that are verbs of HTTP or CRUD plumbing rather than business verbs. */
 const PLUMBING: Record<string, string> = { post: 'create', put: 'update', patch: 'update', upsert: 'update', save: 'create', store: 'create', destroy: 'delete', remove: 'delete', index: 'list', show: 'get', findAll: 'list', findOne: 'get', getAll: 'list', getOne: 'get', fetch: 'get', retrieve: 'get' };
 const IGNORED_SEGMENTS = /^(api|apis|v\d+|rest|public|internal|admin|private|\{[^}]+\})$/i;
@@ -492,6 +495,9 @@ export function buildCandidates(evidence: SourceEvidence[]): CandidateResult {
       confidence: scenarios[0]?.confidence ?? 'unknown'
     });
   }
+  candidates.push(...entryCandidates(evidence, unresolved));
+  attachConstraintsAndIntegrations(candidates, evidence, unresolved);
+
   // Same operation name on two endpoints (two POSTs on one aggregate): keep both, disambiguate the second.
   const names = new Map<string, number>();
   for (const c of candidates) {
@@ -501,4 +507,172 @@ export function buildCandidates(evidence: SourceEvidence[]): CandidateResult {
     if (n) unresolved.push({ endpoint: `${c.operation.method} ${c.operation.path}`, question: `Two endpoints map to ${c.operation.name}; rename one of the proposals.`, evidence: c.endpointEvidence });
   }
   return { candidates, unresolved };
+}
+
+// ---------------------------------------------------------------------------
+// Entry points that are not HTTP (PLAN-3.3.0-reverse-plus RV-06)
+// ---------------------------------------------------------------------------
+
+const ENTRY_SUFFIX = /(Listeners?|Handlers?|Consumers?|Subscribers?|Controllers?|Services?|Jobs?|Schedulers?|Tasks?|Workers?|Processors?|Projectors?|Sagas?|Polic(?:y|ies))$/;
+
+/** `order.placed`, `orders.order-placed.v1`, `OrderPlaced` → OrderPlaced; `orders-queue` → OrdersQueue. */
+export function channelName(channel: string): string {
+  const parts = channel.split(/[./:]/).filter(s => s && !/^v\d+$/i.test(s));
+  const tail = parts[parts.length - 1] ?? channel;
+  const pick = parts.length > 1 && !/[-_]/.test(tail) ? parts.slice(-2) : [tail];
+  return pascal(pick.join(' ').replace(/[-_]+/g, ' '));
+}
+const looksLikeEvent = (channel: string) => /(ed|Event)$/i.test(channel.split(/[./:]/).filter(Boolean).pop()?.split(/[-_]/).pop() ?? '');
+
+/** The operation of a handler: its own name when it starts with a business verb, otherwise Handle<Event> / Run<Job>. */
+export function entryOperation(meta: { trigger: 'message' | 'schedule'; channel?: string; handler?: string }, aggregate: string): { name: string; verb: string } {
+  const handler = meta.handler?.split('.').pop();
+  if (handler) {
+    const w = words(pascal(handler));
+    // `sendConfirmation` → SendConfirmation; a bare verb (`expire`) acts on the aggregate: ExpireSagaTimeout.
+    if (VERBS.has(w[0]) && !/^(handle|process|consume|on|run|execute|receive)$/.test(w[0])) {
+      const rest = w.slice(1);
+      while (rest.length && PREPOSITIONS.test(rest[0])) rest.shift();
+      return { name: pascal(w[0]) + (rest.length ? pascal(rest.join(' ')) : aggregate), verb: w[0] };
+    }
+  }
+  if (meta.trigger === 'message' && meta.channel) return { name: `Handle${channelName(meta.channel)}`, verb: 'handle' };
+  const base = pascal((handler ?? aggregate).replace(/^(run|execute)/i, ''));
+  return { name: `Run${base}${/Job$/.test(base) ? '' : 'Job'}`, verb: 'run' };
+}
+
+/**
+ * The aggregate a handler works on, most specific first:
+ * 1. its class without the suffix (`StockListeners` → Stock), unless that is just the event's name
+ *    (`OrderShippedConsumer`);
+ * 2. the noun of a verb-first handler (`archiveDeliveredShipments` → Shipment);
+ * 3. the first segment of the channel (`orders.order-paid` → Order).
+ */
+function entryAggregate(meta: { trigger: 'message' | 'schedule'; channel?: string; owner?: string; handler?: string }): string {
+  const base = meta.owner?.replace(ENTRY_SUFFIX, '');
+  const isEventName = Boolean(base && meta.channel && channelName(meta.channel) === base);
+  if (base && base !== meta.owner && !isEventName) return pascal(singular(pascal(base)));
+  const hw = meta.handler ? words(pascal(meta.handler.split('.').pop()!)) : [];
+  if (hw.length > 1 && VERBS.has(hw[0]) && !/^(handle|process|consume|on|run|execute|receive)$/.test(hw[0])) return pascal(singular(hw[hw.length - 1]));
+  if (meta.channel) {
+    const first = meta.channel.split(/[./:_-]/).filter(Boolean)[0];
+    if (first) return pascal(singular(isEventName ? words(base!)[0] : first));
+  }
+  return base ? pascal(singular(pascal(base))) : 'Job';
+}
+
+/**
+ * Jobs and consumers of the platform, not of the business: the outbox relay, the inbox, pollers, health and
+ * metrics, cache warm-up, and gherkin-ai's own runtime kernel. Left out like health endpoints.
+ */
+const TECHNICAL_WORDS = new Set(['outbox', 'relay', 'inbox', 'poll', 'poller', 'polling', 'heartbeat', 'health', 'healthcheck', 'metric', 'metrics', 'telemetry', 'tracing', 'dlq', 'deadletter', 'retry', 'retries', 'lease', 'leases', 'reaper', 'ping', 'warmup', 'cache', 'logrotate']);
+export function isTechnicalEntry(e: SourceEvidence): boolean {
+  const m = (e.metadata ?? {}) as { owner?: string; handler?: string; channel?: string };
+  // Whole words, so `releaseExpiredReservations` (release) and `shippingJob` (shipping) are business jobs.
+  const w = [m.owner, m.handler, m.channel].filter(Boolean).flatMap(s => words(pascal(s!)));
+  return w.some(x => TECHNICAL_WORDS.has(x)) || /dead\s?letter/.test(w.join(' ')) || /(^|\/)runtime\//.test(e.location.file);
+}
+
+function entryCandidates(evidence: SourceEvidence[], unresolved: UnresolvedQuestion[]): BehaviorCandidate[] {
+  const out: BehaviorCandidate[] = [];
+  const entries = evidence.filter(e => (e.kind === 'message-handler' || e.kind === 'scheduled-job') && !isTechnicalEntry(e));
+  for (const e of [...entries].sort((a, b) => a.location.file.localeCompare(b.location.file) || a.location.startLine - b.location.startLine)) {
+    const meta = (e.metadata ?? {}) as { trigger: 'message' | 'schedule'; channel?: string; schedule?: string; handler?: string; owner?: string };
+    const aggregate = entryAggregate(meta);
+    const op = entryOperation(meta, aggregate);
+    const related = evidence.filter(x => x.references.includes(e.id));
+    const isEvent = meta.trigger === 'message' && Boolean(meta.channel) && looksLikeEvent(meta.channel!);
+    const label = meta.trigger === 'message' ? (meta.channel ?? 'message') : (meta.schedule ?? `${meta.owner ?? meta.handler ?? 'job'} (background)`);
+    const quote = (s: string) => s.replace(/"/g, "'");
+    const whenText = meta.trigger === 'message'
+      ? (isEvent ? `the "${channelName(meta.channel!)}" event is received` : `a message arrives on "${quote(meta.channel ?? 'its channel')}"`)
+      : `the scheduled job runs${meta.schedule ? ` ("${quote(meta.schedule)}")` : ''}`;
+    const when: ProposedStep = { keyword: 'When', text: whenText, evidence: [e.id] };
+    const nounWords = words(op.name).slice(1).join(' ') || words(aggregate).join(' ');
+    // "archives the delivered shipments", not "a delivered shipments".
+    const lastNoun = nounWords.split(' ').pop() ?? '';
+    const phrase = operationPhrase(op.name, op.verb, /[a-z]s$/.test(lastNoun) && !/ss$/.test(lastNoun) && !NOT_COLLECTIONS.test(lastNoun));
+
+    const steps: ProposedStep[] = [when];
+    const stateValues = new Map<string, string[]>();
+    const stateEvidence = related.filter(x => x.kind === 'state-value');
+    // A value the handler initialises and then changes is not an outcome: the last one written is.
+    const written = stateEvidence.some(s => !(s.metadata as any)?.initial) ? stateEvidence.filter(s => !(s.metadata as any)?.initial) : stateEvidence;
+    for (const s of written) {
+      const v = String((s.metadata as any).value);
+      stateValues.set(v, [...(stateValues.get(v) ?? []), s.id]);
+    }
+    for (const [value, ids] of stateValues) steps.push({ keyword: 'Then', text: `the ${words(aggregate).join(' ')} status is "${value}"`, evidence: ids });
+    const eventNames = new Map<string, string[]>();
+    for (const x of related.filter(r => r.kind === 'domain-event')) {
+      const n = String((x.metadata as any).event);
+      eventNames.set(n, [...(eventNames.get(n) ?? []), x.id]);
+    }
+    for (const [n, ids] of eventNames) steps.push({ keyword: 'Then', text: `the "${n}" event is published`, evidence: ids });
+
+    const scenarios: ScenarioCandidate[] = [];
+    const on = meta.trigger === 'message' ? ` on ${isEvent ? channelName(meta.channel!) : `"${quote(meta.channel ?? 'message')}"`}` : ' on schedule';
+    if (steps.some(s => s.keyword === 'Then')) {
+      scenarios.push({ name: `${capitalise(baseForm(phrase))}${on}`, category: 'happy-path', steps: normaliseKeywords(steps), confidence: minConfidence([e.confidence, maxConfidence(related.map(x => x.confidence))]) });
+    } else {
+      unresolved.push({ endpoint: `${meta.trigger === 'message' ? 'EVENT' : 'SCHEDULE'} ${label}`, question: `What does ${meta.handler ?? op.name} change when it runs (${label})? No state or event was found in the code.`, evidence: [e.id] });
+    }
+    for (const f of related.filter(x => x.kind === 'error-condition' && !(x.metadata as any)?.technical)) {
+      const m = (f.metadata ?? {}) as any;
+      const sc = failureScenario({ status: m.status, message: m.message, condition: m.condition, kind: f.kind, evidence: [f] }, { aggregate, noun: nounWords, phrase, when });
+      if (sc && !scenarios.some(x => x.name === sc.name)) scenarios.push(sc);
+    }
+    out.push({
+      id: `bc-${op.name}-${meta.trigger}`,
+      aggregate,
+      operation: { type: 'command', name: op.name, method: meta.trigger === 'message' ? 'EVENT' : 'SCHEDULE', path: label, phrase },
+      endpointEvidence: [e.id],
+      extractors: [...new Set([e, ...related].map(x => x.extractor))].sort(),
+      scenarios,
+      events: [...eventNames.keys()],
+      confidence: scenarios[0]?.confidence ?? 'unknown'
+    });
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------------------
+// Constraints and integrations (PLAN-3.3.0-reverse-plus RV-08)
+// ---------------------------------------------------------------------------
+
+/**
+ * A unique constraint on the aggregate's entity backs its conflict scenarios (409): the database enforces what
+ * the code returns, so the scenario is confirmed. A constraint with no conflict scenario, and every call to
+ * another system, become open questions: the code does not say what the user sees when they fail.
+ */
+function attachConstraintsAndIntegrations(candidates: BehaviorCandidate[], evidence: SourceEvidence[], unresolved: UnresolvedQuestion[]): void {
+  const constraints = evidence.filter(e => e.kind === 'persistence-constraint');
+  const norm = (s: string) => singular(s.toLowerCase().replace(/[^a-z0-9]/g, ''));
+  const covered = new Set<string>();
+  for (const c of candidates) {
+    const mine = constraints.filter(k => norm(String((k.metadata as any)?.entity ?? '')) === norm(c.aggregate));
+    if (!mine.length) continue;
+    for (const sc of c.scenarios) {
+      const then = sc.steps.find(s => s.keyword === 'Then' && /conflict|already exists|duplicate|already (registered|taken|in use)/i.test(s.text));
+      if (!then) continue;
+      then.evidence = [...new Set([...then.evidence, ...mine.map(k => k.id)])].sort();
+      sc.confidence = 'confirmed';
+      covered.add(norm(c.aggregate));
+    }
+  }
+  for (const k of constraints) {
+    const entity = String((k.metadata as any)?.entity ?? '');
+    if (covered.has(norm(entity))) continue;
+    const owner = candidates.find(c => norm(c.aggregate) === norm(entity) && c.operation.type === 'command' && c.operation.method === 'POST');
+    if (!owner) continue;
+    const fields = ((k.metadata as any)?.fields as string[] | undefined)?.join(', ');
+    unresolved.push({ endpoint: `${owner.operation.method} ${owner.operation.path}`, question: `${entity} has a unique constraint${fields ? ` on ${fields}` : ''} (${k.location.file}:${k.location.startLine}). What does the user see when a duplicate is sent?`, evidence: [k.id] });
+    covered.add(norm(entity));
+  }
+  for (const c of candidates) {
+    const ids = new Set(c.endpointEvidence);
+    for (const x of evidence.filter(e => e.kind === 'external-integration' && e.references.some(r => ids.has(r)))) {
+      unresolved.push({ endpoint: `${c.operation.method} ${c.operation.path}`, question: `${c.operation.name} calls another system: ${x.description} (${x.location.file}:${x.location.startLine}). What does the user observe when that call fails or is slow?`, evidence: [x.id] });
+    }
+  }
 }

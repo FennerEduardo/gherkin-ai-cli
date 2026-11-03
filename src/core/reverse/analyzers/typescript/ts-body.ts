@@ -194,6 +194,9 @@ export function analyzeBody(fn: Node, ctx: BodyContext): SourceEvidence[] {
           out.push(makeEvidence({ ...base, kind: 'success-response', location: loc(ctx.root, node), confidence: 'strong', description: `responds ${arg.getLiteralValue()}`, metadata: { status: Number(arg.getLiteralValue()) } }));
         }
       }
+      // Calls to other systems (PLAN-3.3.0-reverse-plus RV-08): HTTP clients and payment/messaging SDKs.
+      const integration = externalCall(node, name);
+      if (integration) out.push(makeEvidence({ ...base, kind: 'external-integration', location: loc(ctx.root, node), confidence: 'strong', symbol: integration.client, description: integration.description, metadata: integration }));
       if (!Node.isPropertyAccessExpression(expr)) continue;
       const target = expr.getExpression().getText();
       // Events: emitter.emit('order.placed', …) / eventBus.publish(new OrderPlacedEvent())
@@ -222,6 +225,26 @@ export function analyzeBody(fn: Node, ctx: BodyContext): SourceEvidence[] {
     }
   }
   return out;
+}
+
+const HTTP_CLIENT = /^(axios|got|ky|superagent|needle|undici|request|this\.(httpService|http|httpClient|apiClient|restClient))$/;
+const HTTP_VERBS = /^(get|post|put|patch|delete|head|request|fetch)$/;
+const SDK_CLIENT = /^(stripe|twilio|sendgrid|sgMail|mailgun|mailchimp|paypal|braintree|adyen|plaid|ses|sns|s3)$/i;
+
+/** `axios.post(url)`, `fetch(url)`, `this.httpService.get(…)`, `stripe.charges.create(…)`. */
+export function externalCall(node: Node, name: string): { client: string; method?: string; url?: string; description: string } | undefined {
+  if (!Node.isCallExpression(node)) return undefined;
+  const expr = node.getExpression();
+  const url = stringValue(node.getArguments()[0]);
+  const shown = url && /^(https?:)?\/\//.test(url) ? url.replace(/[?#].*$/, '') : undefined;
+  if (Node.isIdentifier(expr) && name === 'fetch') return { client: 'fetch', url: shown, description: `HTTP call${shown ? ` to ${shown}` : ''} (fetch)` };
+  if (!Node.isPropertyAccessExpression(expr)) return undefined;
+  const target = expr.getExpression().getText();
+  const client = target.replace(/^this\./, '');
+  if (HTTP_CLIENT.test(target) && HTTP_VERBS.test(name)) return { client, method: name.toUpperCase(), url: shown, description: `HTTP ${name.toUpperCase()}${shown ? ` ${shown}` : ''} (${client})` };
+  const root = client.split('.')[0];
+  if (SDK_CLIENT.test(root)) return { client: root, method: name, description: `${root} ${target.split('.').slice(1).concat(name).join('.')}` };
+  return undefined;
 }
 
 function stateValue(n: Node | undefined): string | undefined {

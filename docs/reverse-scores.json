@@ -141,7 +141,7 @@
   },
   "lms": {
     "description": "LMS (Spring services written by hand over the kernel), against its own features: a low F1 mostly measures how far the code drifted from the features.",
-    "meanF1": 0.377,
+    "meanF1": 0.352,
     "services": [
       {
         "service": "academic-service",
@@ -153,7 +153,7 @@
       },
       {
         "service": "enrollment-service",
-        "f1": 0.8
+        "f1": 0.571
       },
       {
         "service": "identity-service",

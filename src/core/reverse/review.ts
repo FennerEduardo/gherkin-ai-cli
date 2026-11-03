@@ -44,7 +44,11 @@ const ROLE_OF: Record<EvidenceKind, ChainRole> = {
   'domain-event': 'event',
   'error-condition': 'failure',
   'success-response': 'response',
-  'test-case': 'test'
+  'test-case': 'test',
+  'message-handler': 'endpoint',
+  'scheduled-job': 'endpoint',
+  'external-integration': 'call',
+  'persistence-constraint': 'persistence'
 };
 const ROLE_ORDER: ChainRole[] = ['endpoint', 'guard', 'input', 'call', 'persistence', 'state', 'event', 'failure', 'response', 'test', 'other'];
 

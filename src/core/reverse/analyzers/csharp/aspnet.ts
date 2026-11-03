@@ -20,9 +20,9 @@
 
 import fs from 'fs';
 import { isTestFile } from '../../discovery';
-import { joinPaths, makeEvidence, type EndpointMetadata, type SourceEvidence } from '../../evidence';
+import { joinPaths, makeEvidence, type EndpointMetadata, type EntryMetadata, type SourceEvidence } from '../../evidence';
 import type { AnalysisContext, SourceAnalyzer } from '../../registry';
-import { failureKind } from '../typescript/ts-body';
+import { eventName, failureKind } from '../typescript/ts-body';
 import { childOfType, childrenOfType, lineRange, ofType, parserFor, unquote, type TSNode } from '../treesitter/loader';
 import { exceptionStatusByName } from '../jvm/spring';
 import { eventsInText, statesInText } from '../shared/body-text';
@@ -52,7 +52,7 @@ export function csharpStatus(text: string): number | undefined {
 interface Attr { name: string; strings: string[]; named: Record<string, string>; raw: string; node: TSNode }
 interface CsParam { name: string; type: string; attrs: Attr[] }
 interface CsMethod { name: string; attrs: Attr[]; params: CsParam[]; body?: TSNode; node: TSNode }
-interface CsClass { name: string; kind: string; attrs: Attr[]; bases: string[]; fields: Map<string, string>; properties: CsParam[]; methods: CsMethod[]; file: string; node: TSNode }
+interface CsClass { name: string; kind: string; attrs: Attr[]; bases: string[]; /** Base types with their type arguments (IConsumer<OrderPlaced>). */ rawBases: string[]; fields: Map<string, string>; properties: CsParam[]; methods: CsMethod[]; file: string; node: TSNode }
 
 const simpleType = (t: string) => t.replace(/[?\s]/g, '').replace(/<.*$/, '').split('.').pop() ?? t;
 
@@ -105,7 +105,8 @@ function classOf(node: TSNode, file: string): CsClass {
   // `_orders` and `orders` name the same injected dependency.
   for (const [k, v] of [...fields]) fields.set(k.replace(/^_/, ''), v);
   const bases = (node.childForFieldName('bases') ?? childOfType(node, 'base_list'))?.namedChildren.map(b => simpleType(b?.text ?? '')) ?? [];
-  return { name: node.childForFieldName('name')?.text ?? '', kind: node.type.replace('_declaration', ''), attrs: attrsOf(node), bases, fields, properties, methods, file, node };
+  const rawBases = (node.childForFieldName('bases') ?? childOfType(node, 'base_list'))?.namedChildren.map(b => (b?.text ?? '').replace(/\s/g, '').split('.').pop() ?? '') ?? [];
+  return { name: node.childForFieldName('name')?.text ?? '', kind: node.type.replace('_declaration', ''), attrs: attrsOf(node), bases, rawBases, fields, properties, methods, file, node };
 }
 
 interface Index { classes: CsClass[]; exceptionStatus: Map<string, number> }
@@ -171,6 +172,14 @@ function analyzeBody(body: TSNode, b: BodyCtx): SourceEvidence[] {
     if (!receiver || !name || !/^\w+$/.test(receiver)) continue;
     const type = b.owner.fields.get(receiver) ?? b.owner.fields.get(receiver.replace(/^_/, ''));
     if (!type) continue;
+    // Calls to other systems (PLAN-3.3.0-reverse-plus RV-08): HttpClient and typed/Refit clients.
+    if (/^(HttpClient|IHttpClientFactory|RestClient|IRestClient|IAmazon\w+|StripeClient|\w+Service(Client|Proxy))$/.test(type) || (/Client$/.test(type) && !implementationOf(b.index, type)?.methods.some(m => m.name === name && m.body))) {
+      if (/^(Get|Post|Put|Patch|Delete|Send|Execute|Create|Invoke|Publish)\w*$/.test(name)) {
+        const url = call.text.match(/"((?:https?:)?\/\/[^"?#]+|\/?[\w/{}.-]*\/[\w/{}.-]*)"/)?.[1];
+        out.push(makeEvidence({ kind: 'external-integration', extractor: ID, confidence: 'strong', references: [b.endpointId], location: loc(b.owner.file, call), symbol: `${type}.${name}`, description: `${type}.${name}${url ? ` ${url}` : ''}`, metadata: { client: type, method: name, url } }));
+        continue;
+      }
+    }
     if (/(Repository|Repo|Store|DbContext|Context)$/.test(type)) {
       if (/^(Add|Update|Remove|Delete|Save|Find|Get|Insert|Upsert|Any|Count|First|Single|Where|List)\w*$/.test(name)) {
         const read = /^(Find|Get|Any|Count|First|Single|Where|List)/.test(name);
@@ -221,7 +230,7 @@ const aspnet: SourceAnalyzer = {
   maturity: 'beta',
   detect(ctx) {
     return ctx.files.some(f => f.ext === '.cs' && !isTestFile(f.rel) && (() => {
-      try { return /\[(ApiController|Http(Get|Post|Put|Patch|Delete))|\.Map(Get|Post|Put|Patch|Delete)\(/.test(fs.readFileSync(f.abs, 'utf8')); } catch { return false; }
+      try { return /\[(ApiController|Http(Get|Post|Put|Patch|Delete))|\.Map(Get|Post|Put|Patch|Delete)\(|:\s*(BackgroundService|IHostedService)\b|\b(IConsumer|INotificationHandler|IIntegrationEventHandler)<|RecurringJob\.AddOrUpdate/.test(fs.readFileSync(f.abs, 'utf8')); } catch { return false; }
     })());
   },
   async analyze(ctx: AnalysisContext) {
@@ -241,6 +250,29 @@ const aspnet: SourceAnalyzer = {
     }
     const index: Index = { classes, exceptionStatus };
     const out: SourceEvidence[] = [];
+
+    // Message consumers and background jobs (PLAN-3.3.0-reverse-plus RV-06): BackgroundService.ExecuteAsync,
+    // MassTransit IConsumer<T>.Consume, MediatR INotificationHandler<T>.Handle, Hangfire RecurringJob.AddOrUpdate.
+    for (const cls of classes) {
+      const consumer = cls.rawBases.map(b => b.match(/^(?:IConsumer|INotificationHandler|IEventHandler|IIntegrationEventHandler|IMessageHandler|IHandleMessages)<(\w+)>$/)?.[1]).find(Boolean);
+      const background = cls.bases.some(b => /^(BackgroundService|IHostedService|IJob|IInvocable)$/.test(b));
+      const method = consumer ? cls.methods.find(m => /^(Consume|Handle)(Async)?$/.test(m.name) && m.body) : background ? cls.methods.find(m => /^(ExecuteAsync|Execute|Invoke|StartAsync)$/.test(m.name) && m.body) : undefined;
+      if (!method?.body) continue;
+      const meta: EntryMetadata = consumer
+        ? { trigger: 'message', channel: eventName(consumer), handler: method.name.replace(/Async$/, ''), owner: cls.name }
+        // A background service has no schedule in its declaration: none is invented.
+        : { trigger: 'schedule', handler: cls.name, owner: cls.name };
+      const kind = consumer ? 'message-handler' as const : 'scheduled-job' as const;
+      const base = cls.bases.find(b => /^(BackgroundService|IHostedService|IJob|IInvocable)$/.test(b));
+      const entry = makeEvidence({ kind, extractor: ID, confidence: 'strong', location: loc(cls.file, method.node), symbol: `${cls.name}.${method.name}`, description: consumer ? `handles ${meta.channel}` : `runs as a ${base}`, metadata: meta as unknown as Record<string, unknown>, key: `${kind}|${meta.channel ?? base}|${cls.name}` });
+      out.push(entry, ...analyzeBody(method.body, { index, endpointId: entry.id, owner: cls, depth: 0, visited: new Set() }).filter(e => e.kind !== 'success-response'));
+    }
+    for (const f of files) {
+      for (const m of f.root.text.matchAll(/RecurringJob\.AddOrUpdate(?:<(\w+)>)?\(\s*"([^"]+)"\s*,\s*(?:\(?\s*\w*\s*\)?\s*=>\s*)?(?:\w+\.)?(\w+)\s*\([^)]*\)\s*,\s*([^)]+?)\)/g)) {
+        const line = f.root.text.slice(0, m.index!).split('\n').length;
+        out.push(makeEvidence({ kind: 'scheduled-job', extractor: ID, confidence: 'strong', location: { file: f.rel, startLine: line, endLine: line }, symbol: m[2], description: `runs on schedule ${m[4].trim()}`, metadata: { trigger: 'schedule', schedule: m[4].trim(), handler: m[3], owner: m[1] } satisfies EntryMetadata, key: `scheduled-job|${m[2]}` }));
+      }
+    }
 
     for (const cls of classes) {
       const isController = cls.attrs.some(a => a.name === 'ApiController') || cls.bases.some(b => /^(Controller|ControllerBase)$/.test(b)) || /Controller$/.test(cls.name) && cls.methods.some(m => m.attrs.some(a => VERBS[a.name]));
@@ -277,7 +309,7 @@ const aspnet: SourceAnalyzer = {
         if (route === undefined) continue;
         const receiver = (fn.childForFieldName('expression') ?? fn.namedChildren[0])?.text ?? '';
         const p = joinPaths(groups.get(receiver), route).replace(/\{(\w+)(?::[^}]+)?\??\}/g, '{$1}');
-        const owner: CsClass = { name: 'Program', kind: 'class', attrs: [], bases: [], fields: new Map(), properties: [], methods: [], file: f.rel, node: f.root };
+        const owner: CsClass = { name: 'Program', kind: 'class', attrs: [], bases: [], rawBases: [], fields: new Map(), properties: [], methods: [], file: f.rel, node: f.root };
         const endpoint = makeEvidence({ kind: 'http-endpoint', extractor: ID, confidence: 'strong', location: loc(f.rel, call), description: `${verb} ${p}`, key: `${verb} ${p}`, metadata: { method: verb, path: p } satisfies EndpointMetadata });
         out.push(endpoint);
         // .RequireAuthorization(…) chained on the call.
