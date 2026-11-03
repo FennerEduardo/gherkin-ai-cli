@@ -32,6 +32,7 @@ import { mysqlizePyProject } from './kernel/runtime/python-mysql';
 import { mysqlizeCsProject } from './kernel/runtime/csharp-mysql';
 import { mysqlizeGoProject } from './kernel/runtime/go-mysql';
 import { mongoizeTsProject } from './kernel/runtime/typescript-mongo';
+import { mongoizeJvmProject } from './kernel/runtime/jvm-mongo';
 import { resolveNodeProfile } from './node-profile';
 import { renderContainerFiles } from './deploy/container';
 import { buildDomainModel } from './kernel/domain-model';
@@ -92,7 +93,13 @@ function backendPreset(id: string): BackendPreset | undefined {
   if (id.startsWith('typescript/express')) return (p, c) => mysql(generateNodeExpressPreset(p, c), c);
   // Spring Boot and Quarkus, Java and Kotlin (X-01b, 3.3.0): the JVM kernel on MySQL (kernel/runtime/jvm-mysql.ts).
   const preset = BACKEND_PRESETS[id];
-  if (preset && /^(java|kotlin)\/(spring|quarkus)$/.test(id)) return (p, c, f) => (kernelDatabase(c) === 'mysql' ? mysqlizeJvmProject(preset(p, c, f)) : preset(p, c, f));
+  // Spring Boot (Java) on MongoDB (X-02): kernel/runtime/jvm-mongo.ts.
+  if (preset && /^(java|kotlin)\/(spring|quarkus)$/.test(id)) {
+    return (p, c, f) => {
+      const db = kernelDatabase(c);
+      return db === 'mysql' ? mysqlizeJvmProject(preset(p, c, f)) : db === 'mongodb' ? mongoizeJvmProject(preset(p, c, f)) : preset(p, c, f);
+    };
+  }
   // FastAPI and Django (X-01b): the Python kernel on MySQL (kernel/runtime/python-mysql.ts).
   if (preset && /^python\//.test(id)) return (p, c, f) => (kernelDatabase(c) === 'mysql' ? mysqlizePyProject(preset(p, c, f)) : preset(p, c, f));
   // ASP.NET Core (X-01b): the .NET kernel on MySQL through MySqlConnector (kernel/runtime/csharp-mysql.ts).

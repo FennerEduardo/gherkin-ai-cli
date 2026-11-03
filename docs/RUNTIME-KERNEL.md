@@ -178,11 +178,12 @@ The goldens `express-mysql`, `nestjs-mysql`, `java-mysql`, `kotlin-mysql`, `quar
 
 ## MongoDB (`stack.kernelDatabase: "mongodb"`)
 
-Since 3.3.0 the TypeScript kernel (NestJS, Express) also runs on MongoDB 8. The command service, outbox relay, inbox, sagas and the IT1–IT7 suite are the same; the guarantees are kept with MongoDB's own tools:
+Since 3.3.0 the TypeScript kernel (NestJS, Express) and the Spring Boot kernel (Java) also run on MongoDB 8. The command service, outbox relay, inbox, sagas and the IT1–IT7 suite are the same; the guarantees are kept with MongoDB's own tools:
 
 | | PostgreSQL | MongoDB |
 |---|---|---|
-| Driver | `pg` | `mongodb` (the official driver), behind `src/runtime/db.ts` (`Pool`, `inTransaction`) |
+| Driver (TypeScript) | `pg` | `mongodb` (the official driver), behind `src/runtime/db.ts` (`Pool`, `inTransaction`) |
+| Driver (Spring Boot) | JDBC (`org.postgresql`), a `DataSource` shared with JPA | `mongodb-driver-sync` (version managed by Spring Boot), behind `runtime/ConnectionFactory` (same name and `fromUrl`, now one `MongoClient`; `inTransaction`, `ping`). No `DataSource` or JPA: the pom drops `spring-boot-starter-data-jpa`, and `/health/ready` pings MongoDB. The public methods keep `throws SQLException`, so callers compile unchanged |
 | Schema | a PostgreSQL schema (default `public`) | a database (default: the one in `DATABASE_URL`) |
 | Tables | `ghk_aggregates`, `ghk_outbox`, `ghk_idempotency`, `ghk_inbox`, `ghk_sagas` | collections with the same names and fields; unique indexes for the keys |
 | Command | one transaction; `FOR UPDATE` on the aggregate | one transaction (snapshot reads, majority writes). A concurrent writer causes a write conflict, and the transaction runs again on the committed data |
@@ -197,4 +198,4 @@ A transaction can run more than once, so an inbox handler should keep its effect
 
 With `stack.orm: "prisma"` (NestJS), the Prisma datasource is MongoDB too, which needs Prisma 6: Prisma 7 does not support MongoDB.
 
-The goldens `express-mongo` and `nestjs-mongo` run IT1–IT7 and the HTTP suite against a MongoDB 8 replica set. They then start the production image on an empty database and check that the spans of one command reach an OTLP collector.
+The goldens `express-mongo`, `nestjs-mongo` and `java-mongo` run IT1–IT7 and the HTTP suite against a MongoDB 8 replica set. They then start the production image on an empty database and check that the spans of one command reach an OTLP collector.

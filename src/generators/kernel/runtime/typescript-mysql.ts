@@ -40,7 +40,7 @@ export const usesMysql = (config?: Pick<GherkinAIConfig, 'stack'>) => (config?.s
 export const kernelDatabase = (config?: Pick<GherkinAIConfig, 'stack'>): 'postgresql' | 'mysql' | 'mongodb' => {
   const language = (config?.stack?.language || '').toLowerCase();
   if (usesMysql(config) && MYSQL_KERNEL_LANGUAGES.has(language)) return 'mysql';
-  if (usesMongo(config) && MONGO_KERNEL_LANGUAGES.has(language)) return 'mongodb';
+  if (usesMongo(config) && mongoKernel(language, (config?.stack?.framework || '').toLowerCase())) return 'mongodb';
   return 'postgresql';
 };
 
@@ -51,7 +51,11 @@ export const usesMongo = (config?: Pick<GherkinAIConfig, 'stack'>) => (config?.s
 export const MYSQL_KERNEL_LANGUAGES = new Set(['typescript', 'javascript', 'node', 'java', 'kotlin', 'python', 'csharp', 'dotnet', '.net', 'go']);
 
 /** Runtimes whose kernel has a MongoDB implementation (PLAN-3.3.0 X-02). */
-export const MONGO_KERNEL_LANGUAGES = new Set(['typescript', 'javascript', 'node']);
+export const MONGO_KERNEL_LANGUAGES = new Set(['typescript', 'javascript', 'node', 'java']);
+
+/** Java on MongoDB: Spring Boot (the scope of X-02); Quarkus and Kotlin keep PostgreSQL or MySQL. */
+const mongoKernel = (language: string, framework: string) =>
+  MONGO_KERNEL_LANGUAGES.has(language) && (language !== 'java' || framework.startsWith('spring'));
 
 const DATABASE_NAMES: Record<string, string> = { postgresql: 'PostgreSQL', mysql: 'MySQL', mongodb: 'MongoDB' };
 

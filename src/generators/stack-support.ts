@@ -62,6 +62,7 @@ export const STACK_SUPPORT: StackSupport[] = [
   { id: 'kotlin/spring-mysql', label: 'Kotlin · Spring Boot 4 on MySQL 8.4 (stack.kernelDatabase "mysql")', kind: 'backend', tier: 'stable', golden: 'kotlin-mysql' },
   { id: 'java/quarkus-mysql', label: 'Java 21 · Quarkus 3.40 LTS on MySQL 8.4 (stack.kernelDatabase "mysql")', kind: 'backend', tier: 'stable', golden: 'quarkus-mysql' },
   { id: 'kotlin/quarkus-mysql', label: 'Kotlin · Quarkus 3.40 LTS on MySQL 8.4 (stack.kernelDatabase "mysql")', kind: 'backend', tier: 'stable', golden: 'kotlin-quarkus-mysql' },
+  { id: 'java/spring-mongo', label: 'Java 17 · Spring Boot 4 on MongoDB 8 (stack.kernelDatabase "mongodb")', kind: 'backend', tier: 'stable', golden: 'java-mongo', notes: 'mongodb-driver-sync; no DataSource or JPA. Transactions on a replica set (one node is enough).' },
   { id: 'python/fastapi', label: 'Python · FastAPI + SQLAlchemy', kind: 'backend', tier: 'stable', golden: 'fastapi' },
   { id: 'python/django', label: 'Python · Django + DRF', kind: 'backend', tier: 'stable', golden: 'django' },
   { id: 'python/fastapi-mysql', label: 'Python · FastAPI on MySQL 8.4 (stack.kernelDatabase "mysql")', kind: 'backend', tier: 'stable', golden: 'fastapi-mysql', notes: 'PyMySQL behind the psycopg call shape of the kernel (runtime/db.py).' },

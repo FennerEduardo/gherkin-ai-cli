@@ -90,6 +90,7 @@ export interface GeneratedContractsOutput {
 import { SpecificationIR } from '../core/semantic-ir';
 import { MYSQL_DRIVER, kernelDatabase } from './kernel/runtime/typescript-mysql';
 import { MONGO_DRIVER } from './kernel/runtime/typescript-mongo';
+import { mongoizeJvmProject } from './kernel/runtime/jvm-mongo';
 import { mysqlizeJvmProject } from './kernel/runtime/jvm-mysql';
 import { mysqlizeCsProject } from './kernel/runtime/csharp-mysql';
 import { mysqlizeGoProject } from './kernel/runtime/go-mysql';
@@ -586,6 +587,11 @@ docker run --rm -v "$(pwd)":/app -w /app -e DOTNET_CLI_TELEMETRY_OPTOUT=1 -e DOT
   // JVM kernel on MySQL (X-01b): the build file gets the MySQL driver (kernel/runtime/jvm-mysql.ts).
   if (projectRootFile && ['java', 'kotlin'].includes(config.stack.language) && kernelDatabase(config) === 'mysql') {
     const adapted = mysqlizeJvmProject(Array.isArray(projectRootFile) ? projectRootFile : [projectRootFile]);
+    projectRootFile = Array.isArray(projectRootFile) ? adapted : adapted[0];
+  }
+  // Spring Boot (Java) kernel on MongoDB (X-02): the MongoDB driver instead of PostgreSQL and JPA (kernel/runtime/jvm-mongo.ts).
+  if (projectRootFile && config.stack.language === 'java' && kernelDatabase(config) === 'mongodb') {
+    const adapted = mongoizeJvmProject(Array.isArray(projectRootFile) ? projectRootFile : [projectRootFile]);
     projectRootFile = Array.isArray(projectRootFile) ? adapted : adapted[0];
   }
   // .NET kernel on MySQL (X-01b): MySqlConnector instead of Npgsql in the csproj (kernel/runtime/csharp-mysql.ts).
