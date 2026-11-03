@@ -366,7 +366,7 @@ for (const key of ['java', 'kotlin', 'quarkus', 'kotlin-quarkus', 'fastapi', 'dj
   STACKS[`${key}-mysql`] = { ...STACKS[key], stack: { ...STACKS[key].stack, database: 'mysql', kernelDatabase: 'mysql' }, services: [...(STACKS[key].services || []), MYSQL_DATABASE] };
 }
 // 3.3.0 (X-02): the Spring Boot (Java), FastAPI, .NET and Go runtime kernels on a MongoDB 8 replica set.
-for (const key of ['java', 'fastapi']) {
+for (const key of ['java', 'fastapi', 'dotnet']) {
   STACKS[`${key}-mongo`] = { ...STACKS[key], stack: { ...STACKS[key].stack, database: 'mongodb', kernelDatabase: 'mongodb' }, services: [...(STACKS[key].services || []), MONGO_DATABASE] };
 }
 // 3.3.0 (X-06b): a backend-for-frontend deploys without database or broker; every cloud, both compute modes, and

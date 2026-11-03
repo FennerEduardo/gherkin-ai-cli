@@ -34,6 +34,7 @@ import { mysqlizeGoProject } from './kernel/runtime/go-mysql';
 import { mongoizeTsProject } from './kernel/runtime/typescript-mongo';
 import { mongoizeJvmProject } from './kernel/runtime/jvm-mongo';
 import { mongoizePyProject } from './kernel/runtime/python-mongo';
+import { mongoizeCsProject } from './kernel/runtime/csharp-mongo';
 import { resolveNodeProfile } from './node-profile';
 import { renderContainerFiles } from './deploy/container';
 import { buildDomainModel } from './kernel/domain-model';
@@ -110,7 +111,13 @@ function backendPreset(id: string): BackendPreset | undefined {
     };
   }
   // ASP.NET Core (X-01b): the .NET kernel on MySQL through MySqlConnector (kernel/runtime/csharp-mysql.ts).
-  if (preset && id === 'csharp/dotnet') return (p, c, f) => (kernelDatabase(c) === 'mysql' ? mysqlizeCsProject(preset(p, c, f)) : preset(p, c, f));
+  // ... and on MongoDB (X-02): kernel/runtime/csharp-mongo.ts.
+  if (preset && id === 'csharp/dotnet') {
+    return (p, c, f) => {
+      const db = kernelDatabase(c);
+      return db === 'mysql' ? mysqlizeCsProject(preset(p, c, f)) : db === 'mongodb' ? mongoizeCsProject(preset(p, c, f)) : preset(p, c, f);
+    };
+  }
   // Go (X-01b): the Go kernel on MySQL through database/sql + go-sql-driver/mysql (kernel/runtime/go-mysql.ts).
   if (preset && id === 'go/chi') return (p, c, f) => (kernelDatabase(c) === 'mysql' ? mysqlizeGoProject(preset(p, c, f)) : preset(p, c, f));
   return preset;

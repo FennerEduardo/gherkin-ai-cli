@@ -91,6 +91,7 @@ import { SpecificationIR } from '../core/semantic-ir';
 import { MYSQL_DRIVER, kernelDatabase } from './kernel/runtime/typescript-mysql';
 import { MONGO_DRIVER } from './kernel/runtime/typescript-mongo';
 import { mongoizeJvmProject } from './kernel/runtime/jvm-mongo';
+import { mongoizeCsProject } from './kernel/runtime/csharp-mongo';
 import { mysqlizeJvmProject } from './kernel/runtime/jvm-mysql';
 import { mysqlizeCsProject } from './kernel/runtime/csharp-mysql';
 import { mysqlizeGoProject } from './kernel/runtime/go-mysql';
@@ -592,6 +593,11 @@ docker run --rm -v "$(pwd)":/app -w /app -e DOTNET_CLI_TELEMETRY_OPTOUT=1 -e DOT
   // Spring Boot (Java) kernel on MongoDB (X-02): the MongoDB driver instead of PostgreSQL and JPA (kernel/runtime/jvm-mongo.ts).
   if (projectRootFile && config.stack.language === 'java' && kernelDatabase(config) === 'mongodb') {
     const adapted = mongoizeJvmProject(Array.isArray(projectRootFile) ? projectRootFile : [projectRootFile]);
+    projectRootFile = Array.isArray(projectRootFile) ? adapted : adapted[0];
+  }
+  // .NET kernel on MongoDB (X-02): MongoDB.Driver instead of Npgsql in the csproj (kernel/runtime/csharp-mongo.ts).
+  if (projectRootFile && ['csharp', '.net', 'dotnet'].includes(config.stack.language) && kernelDatabase(config) === 'mongodb') {
+    const adapted = mongoizeCsProject(Array.isArray(projectRootFile) ? projectRootFile : [projectRootFile]);
     projectRootFile = Array.isArray(projectRootFile) ? adapted : adapted[0];
   }
   // .NET kernel on MySQL (X-01b): MySqlConnector instead of Npgsql in the csproj (kernel/runtime/csharp-mysql.ts).

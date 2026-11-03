@@ -70,13 +70,14 @@ All notable changes to this project will be documented in this file. See [commit
   - Go: `database/sql` with `go-sql-driver/mysql` replaces `pgx`, behind `internal/runtime/db.go`, which keeps the pgx calls the kernel uses (`Pool.Exec`, `Query`, `QueryRow`, `Begin`, `RowsAffected`) and binds `$1..$n` as positional parameters in the order they appear. The migration lock is held on one connection.
   - Verified by the goldens `java-mysql`, `kotlin-mysql`, `quarkus-mysql`, `kotlin-quarkus-mysql`, `fastapi-mysql`, `django-mysql`, `dotnet-mysql` and `go-mysql`: the suites against MySQL 8.4, and the production image with its spans over OTLP.
 
-- **MongoDB 8 for the runtime kernel** (`stack.kernelDatabase: "mongodb"`; [RUNTIME-KERNEL.md](docs/RUNTIME-KERNEL.md#mongodb-stackkerneldatabase-mongodb)): NestJS, Express, Spring Boot (Java) and FastAPI.
+- **MongoDB 8 for the runtime kernel** (`stack.kernelDatabase: "mongodb"`; [RUNTIME-KERNEL.md](docs/RUNTIME-KERNEL.md#mongodb-stackkerneldatabase-mongodb)): NestJS, Express, Spring Boot (Java), FastAPI and ASP.NET Core.
   - The same command service, outbox relay, inbox, sagas and IT1–IT7 suite, on a replica set (one node is enough).
   - Transactions replace row locks: a concurrent writer causes a write conflict, and the transaction runs again on the committed data. The outbox is claimed one event at a time with an atomic `findOneAndUpdate` and a lease on the server's clock.
   - The developer compose file runs `mongo:8.0` as a single-node replica set. With Prisma (NestJS) the datasource is MongoDB, on Prisma 6.
   - Spring Boot: `ConnectionFactory` keeps its name over one `MongoClient` (`mongodb-driver-sync`); the service has no `DataSource` or JPA, and readiness pings MongoDB.
   - FastAPI: `pymongo` behind `runtime/db.py`, with the same kernel signatures. SQLAlchemy has no MongoDB dialect, so `app/database.py` keeps a local SQLite for the generated models.
-  - Verified by the goldens `express-mongo`, `nestjs-mongo`, `java-mongo` and `fastapi-mongo`: the suites against MongoDB 8, and the production image with its spans over OTLP.
+  - .NET: `MongoDB.Driver`; `Connections.FromUrl` returns a `KernelDatabase`, registered where the `NpgsqlDataSource` was.
+  - Verified by the goldens `express-mongo`, `nestjs-mongo`, `java-mongo`, `fastapi-mongo` and `dotnet-mongo`: the suites against MongoDB 8, and the production image with its spans over OTLP.
 
 ### Changed
 - **Command names of features without `@command:` tags** (found by `ghk reverse` on real projects; [MIGRATION-3.3.md](docs/MIGRATION-3.3.md)).

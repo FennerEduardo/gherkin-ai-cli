@@ -50,6 +50,7 @@ export const STACK_SUPPORT: StackSupport[] = [
   { id: 'typescript/nestjs-mongo', label: 'TypeScript · NestJS 11 + Prisma 6 on MongoDB 8 (stack.kernelDatabase "mongodb")', kind: 'backend', tier: 'stable', golden: 'nestjs-mongo' },
   { id: 'csharp/dotnet', label: 'C# · ASP.NET Core 8 + EF Core', kind: 'backend', tier: 'stable', golden: 'dotnet' },
   { id: 'csharp/dotnet-mysql', label: 'C# · ASP.NET Core 8 on MySQL 8.4 (stack.kernelDatabase "mysql")', kind: 'backend', tier: 'stable', golden: 'dotnet-mysql', notes: 'MySqlConnector instead of Npgsql.' },
+  { id: 'csharp/dotnet-mongo', label: 'C# · ASP.NET Core 8 on MongoDB 8 (stack.kernelDatabase "mongodb")', kind: 'backend', tier: 'stable', golden: 'dotnet-mongo', notes: 'MongoDB.Driver; KernelDatabase replaces NpgsqlDataSource.' },
   { id: 'java/spring', label: 'Java 17 · Spring Boot 4 (Maven)', kind: 'backend', tier: 'stable', golden: 'java' },
   { id: 'bff/express', label: 'Backend-for-frontend · Express 5 (stack.role "bff")', kind: 'backend', tier: 'stable', golden: 'express-bff', notes: 'No database or broker: forwards each command to bff.upstreams.' },
   { id: 'bff/nestjs', label: 'Backend-for-frontend · NestJS 11 (stack.role "bff")', kind: 'backend', tier: 'stable', golden: 'nestjs-bff' },
