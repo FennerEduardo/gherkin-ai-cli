@@ -34,7 +34,7 @@ const stackSchema = z.object({
    * Database of the runtime kernel: "postgresql" (default) or "mysql" (NestJS and Express only). Separate from
    * `database`, which the kernel ignored until 3.2.1 (projects that declare "mysql" there run on PostgreSQL).
    */
-  kernelDatabase: z.enum(['postgresql', 'mysql']).optional().describe('Runtime kernel database: "postgresql" (default) or "mysql" (NestJS, Express, Spring Boot, Quarkus, FastAPI, Django, ASP.NET Core).'),
+  kernelDatabase: z.enum(['postgresql', 'mysql']).optional().describe('Runtime kernel database: "postgresql" (default) or "mysql" (NestJS, Express, Spring Boot, Quarkus, FastAPI, Django, ASP.NET Core, Go).'),
   validation: z.string(),
   auth: z.string(),
   messaging: z.string().optional(),

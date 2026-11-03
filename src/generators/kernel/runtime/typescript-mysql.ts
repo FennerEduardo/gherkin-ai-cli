@@ -41,7 +41,7 @@ export const kernelDatabase = (config?: Pick<GherkinAIConfig, 'stack'>): 'postgr
   usesMysql(config) && MYSQL_KERNEL_LANGUAGES.has((config?.stack?.language || '').toLowerCase()) ? 'mysql' : 'postgresql';
 
 /** Runtimes whose kernel has a MySQL implementation (PLAN-3.3.0 X-01b extends it to the JVM, Python, .NET and Go). */
-export const MYSQL_KERNEL_LANGUAGES = new Set(['typescript', 'javascript', 'java', 'kotlin', 'python', 'csharp', 'dotnet', '.net']);
+export const MYSQL_KERNEL_LANGUAGES = new Set(['typescript', 'javascript', 'java', 'kotlin', 'python', 'csharp', 'dotnet', '.net', 'go']);
 
 /** The declared database differs from the one the kernel runs on (a hint for `generate`). */
 export function databaseMismatch(config?: Pick<GherkinAIConfig, 'stack'>): string | undefined {

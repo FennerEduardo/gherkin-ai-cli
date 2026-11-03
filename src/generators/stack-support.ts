@@ -65,6 +65,7 @@ export const STACK_SUPPORT: StackSupport[] = [
   { id: 'python/fastapi-mysql', label: 'Python · FastAPI on MySQL 8.4 (stack.kernelDatabase "mysql")', kind: 'backend', tier: 'stable', golden: 'fastapi-mysql', notes: 'PyMySQL behind the psycopg call shape of the kernel (runtime/db.py).' },
   { id: 'python/django-mysql', label: 'Python · Django + DRF on MySQL 8.4 (stack.kernelDatabase "mysql")', kind: 'backend', tier: 'stable', golden: 'django-mysql' },
   { id: 'go/chi', label: 'Go · chi', kind: 'backend', tier: 'stable', golden: 'go' },
+  { id: 'go/chi-mysql', label: 'Go · chi on MySQL 8.4 (stack.kernelDatabase "mysql")', kind: 'backend', tier: 'stable', golden: 'go-mysql', notes: 'database/sql + go-sql-driver/mysql behind the pgx calls of the kernel (internal/runtime/db.go).' },
   { id: 'php/laravel', label: 'PHP · Laravel 13', kind: 'backend', tier: 'stable', golden: 'laravel' },
   { id: 'ruby/rails', label: 'Ruby · Rails 8 (API)', kind: 'backend', tier: 'stable', golden: 'rails' },
   { id: 'elixir/phoenix', label: 'Elixir · Phoenix', kind: 'backend', tier: 'stable', golden: 'phoenix' },

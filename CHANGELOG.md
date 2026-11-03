@@ -62,12 +62,13 @@ All notable changes to this project will be documented in this file. See [commit
   - CI runs no integration suite and starts no database or broker.
   - Verified by the goldens `terraform-{aws,gcp,azure}-bff` and `helm-bff`.
 
-- **MySQL 8 for more runtime kernels** (`stack.kernelDatabase: "mysql"`; [RUNTIME-KERNEL.md](docs/RUNTIME-KERNEL.md#mysql-stackkerneldatabase-mysql)): Spring Boot and Quarkus in Java and Kotlin, FastAPI, Django and ASP.NET Core.
+- **MySQL 8 for more runtime kernels** (`stack.kernelDatabase: "mysql"`; [RUNTIME-KERNEL.md](docs/RUNTIME-KERNEL.md#mysql-stackkerneldatabase-mysql)): Spring Boot and Quarkus in Java and Kotlin, FastAPI, Django, ASP.NET Core and Go. With them, every core runtime kernel runs on PostgreSQL or MySQL.
   - The same command service, outbox relay, inbox, sagas and IT1–IT7 suite as on PostgreSQL. The SQL is the one of the TypeScript kernel on MySQL: `INSERT IGNORE`, `ON DUPLICATE KEY UPDATE`, the outbox claim in one transaction with `FOR UPDATE SKIP LOCKED`, and `GET_LOCK` around migrations.
   - JVM: the build file uses `mysql-connector-j` (Spring) or `quarkus-jdbc-mysql` (Quarkus, `db-kind=mysql`). Connector/J's own OpenTelemetry hook is turned off in the JDBC URL: it took the global OpenTelemetry before the service registered its SDK, and the service's spans were lost.
   - Python: `PyMySQL` replaces `psycopg`, behind `runtime/db.py`, which keeps the psycopg call shape the kernel uses. The FastAPI SQLAlchemy engine uses `mysql+pymysql://`.
   - .NET: `MySqlConnector` replaces `Npgsql`, with `IgnoreCommandTransaction` so commands join their connection's transaction. MySqlConnector binds positional `?` parameters: `CommandService.Exec` turns `$1..$n` (used out of order in some statements) into `?` and binds its arguments in that order.
-  - Verified by the goldens `java-mysql`, `kotlin-mysql`, `quarkus-mysql`, `kotlin-quarkus-mysql`, `fastapi-mysql`, `django-mysql` and `dotnet-mysql`: the suites against MySQL 8.4, and the production image with its spans over OTLP.
+  - Go: `database/sql` with `go-sql-driver/mysql` replaces `pgx`, behind `internal/runtime/db.go`, which keeps the pgx calls the kernel uses (`Pool.Exec`, `Query`, `QueryRow`, `Begin`, `RowsAffected`) and binds `$1..$n` as positional parameters in the order they appear. The migration lock is held on one connection.
+  - Verified by the goldens `java-mysql`, `kotlin-mysql`, `quarkus-mysql`, `kotlin-quarkus-mysql`, `fastapi-mysql`, `django-mysql`, `dotnet-mysql` and `go-mysql`: the suites against MySQL 8.4, and the production image with its spans over OTLP.
 
 ### Changed
 - **Command names of features without `@command:` tags** (found by `ghk reverse` on real projects; [MIGRATION-3.3.md](docs/MIGRATION-3.3.md)).
@@ -83,7 +84,7 @@ All notable changes to this project will be documented in this file. See [commit
   - On the reference projects, which are generated scaffolds, the 10 without a coverage report now converge lower. The LMS, which implements its steps, is unchanged.
 - **The developer compose file, `.env.example` and the Prisma datasource follow the database the runtime kernel runs on** (M-04).
   - Until 3.2.2 they followed `stack.database`. A project that declared `"mysql"` without `stack.kernelDatabase` got a MySQL container and a `mysql://` URL for a kernel that speaks PostgreSQL, so `docker compose up` could not start it. 14 of the 16 reference projects were in that state.
-  - Now they use PostgreSQL unless `kernelDatabase` is `"mysql"`, which is supported by the NestJS, Express, Spring Boot, Quarkus, FastAPI, Django and ASP.NET Core kernels. The same applies to a declared `"mongodb"` until the MongoDB kernel exists.
+  - Now they use PostgreSQL unless `kernelDatabase` is `"mysql"`, which is supported by the NestJS, Express, Spring Boot, Quarkus, FastAPI, Django, ASP.NET Core and Go kernels. The same applies to a declared `"mongodb"` until the MongoDB kernel exists.
   - `ghk generate` warns when the declared database is not the one the service runs on, and says which key to set.
 - **.NET + Kafka: an inbox consumer could finish draining before its consumer group was assigned** (the `dotnet-kafka` golden failed IT6 one run in three to five).
   - The idle window of `DrainAsync` now starts after the first poll. That first poll can wait for a new Kafka consumer group to join, and the join used to consume the whole window.

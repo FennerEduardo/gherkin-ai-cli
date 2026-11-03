@@ -153,7 +153,7 @@ Since 3.3.0, `deploy` and `ci` work for a BFF as for any service, but without da
 
 ## MySQL (`stack.kernelDatabase: "mysql"`)
 
-The TypeScript kernel (NestJS, Express) and, since 3.3.0, the JVM kernel (Spring Boot and Quarkus, Java and Kotlin) the Python kernel (FastAPI, Django) and the .NET kernel (ASP.NET Core) also run on MySQL 8.4 when `stack.kernelDatabase` is `"mysql"`. It is a separate key on purpose: until 3.2.1 the kernel ignored `stack.database`, so projects that declare `"mysql"` there run on PostgreSQL, and they keep doing so. Everything above holds, with these differences:
+The TypeScript kernel (NestJS, Express) and, since 3.3.0, the JVM kernel (Spring Boot and Quarkus, Java and Kotlin) the Python kernel (FastAPI, Django), the .NET kernel (ASP.NET Core) and the Go kernel (chi) also run on MySQL 8.4 when `stack.kernelDatabase` is `"mysql"`. It is a separate key on purpose: until 3.2.1 the kernel ignored `stack.database`, so projects that declare `"mysql"` there run on PostgreSQL, and they keep doing so. Everything above holds, with these differences:
 
 | | PostgreSQL | MySQL |
 |---|---|---|
@@ -161,6 +161,7 @@ The TypeScript kernel (NestJS, Express) and, since 3.3.0, the JVM kernel (Spring
 | Driver (JVM) | `org.postgresql:postgresql`, `quarkus-jdbc-postgresql` | `com.mysql:mysql-connector-j`, `quarkus-jdbc-mysql` (Quarkus `db-kind=mysql`); `ConnectionFactory` turns `mysql://` into a `jdbc:mysql://` URL |
 | Driver (Python) | `psycopg` 3 | `PyMySQL` (+ `cryptography` for MySQL 8's `caching_sha2_password`), behind `runtime/db.py`: the psycopg call shape the kernel uses (`connect(dsn, autocommit)`, `conn.execute(sql, params)`, commit on a clean `with` exit). The SQLAlchemy engine of FastAPI uses `mysql+pymysql://` |
 | Driver (.NET) | `Npgsql` | `MySqlConnector` (`MySqlDataSource`), with `IgnoreCommandTransaction=true` so a command joins its connection's transaction as with Npgsql. Parameters are positional `?`; `CommandService.Exec` keeps `$1..$n` in its statements and binds them in the order they appear |
+| Driver (Go) | `pgx` (`pgxpool`) | `database/sql` + `go-sql-driver/mysql`, behind `internal/runtime/db.go`: `runtime.Pool` and `runtime.Tx` keep the pgx calls the kernel uses (`Exec`, `Query`, `QueryRow`, `Begin`, `RowsAffected`, `ErrNoRows`) and bind `$1..$n` as `?` in the order they appear. `runtime.NewPool` replaces `pgxpool.New` |
 | Schema | a PostgreSQL schema (default `public`) | a MySQL database (default: the one in `DATABASE_URL`) |
 | Migration lock | `pg_advisory_xact_lock` | `GET_LOCK('ghk_runtime_schema')` |
 | Idempotency, inbox, saga claims | `INSERT ... ON CONFLICT DO NOTHING` | `INSERT IGNORE` |
@@ -173,4 +174,4 @@ The TypeScript kernel (NestJS, Express) and, since 3.3.0, the JVM kernel (Spring
 
 On the JVM, the JDBC URL sets `openTelemetry=DISABLED`. Connector/J's own OpenTelemetry hook reads `GlobalOpenTelemetry` when the first connection opens, which is before Spring registers the service's SDK, and that left the service with a no-op tracer: no span reached the collector. The kernel's spans already cover each command, the outbox publish and the inbox.
 
-The goldens `express-mysql`, `nestjs-mysql`, `java-mysql`, `kotlin-mysql`, `quarkus-mysql`, `kotlin-quarkus-mysql`, `fastapi-mysql`, `django-mysql` and `dotnet-mysql` run IT1–IT7 and the HTTP suite against MySQL 8.4, then start the production image on a database nothing has touched, send one command and check that its spans reach an OTLP collector. The Go kernel runs on PostgreSQL: there, `kernelDatabase: "mysql"` is not supported yet, and the compose file uses PostgreSQL (M-04).
+The goldens `express-mysql`, `nestjs-mysql`, `java-mysql`, `kotlin-mysql`, `quarkus-mysql`, `kotlin-quarkus-mysql`, `fastapi-mysql`, `django-mysql`, `dotnet-mysql` and `go-mysql` run IT1–IT7 and the HTTP suite against MySQL 8.4, then start the production image on a database nothing has touched, send one command and check that its spans reach an OTLP collector. The community stacks (Laravel, Rails, Phoenix, Axum) run their kernel on PostgreSQL only: there, `kernelDatabase: "mysql"` is ignored and the compose file uses PostgreSQL (M-04).

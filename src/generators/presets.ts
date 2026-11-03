@@ -30,6 +30,7 @@ import { kernelDatabase, mysqlizeTsProject, usesMysql } from './kernel/runtime/t
 import { mysqlizeJvmProject } from './kernel/runtime/jvm-mysql';
 import { mysqlizePyProject } from './kernel/runtime/python-mysql';
 import { mysqlizeCsProject } from './kernel/runtime/csharp-mysql';
+import { mysqlizeGoProject } from './kernel/runtime/go-mysql';
 import { resolveNodeProfile } from './node-profile';
 import { renderContainerFiles } from './deploy/container';
 import { buildDomainModel } from './kernel/domain-model';
@@ -93,6 +94,8 @@ function backendPreset(id: string): BackendPreset | undefined {
   if (preset && /^python\//.test(id)) return (p, c, f) => (kernelDatabase(c) === 'mysql' ? mysqlizePyProject(preset(p, c, f)) : preset(p, c, f));
   // ASP.NET Core (X-01b): the .NET kernel on MySQL through MySqlConnector (kernel/runtime/csharp-mysql.ts).
   if (preset && id === 'csharp/dotnet') return (p, c, f) => (kernelDatabase(c) === 'mysql' ? mysqlizeCsProject(preset(p, c, f)) : preset(p, c, f));
+  // Go (X-01b): the Go kernel on MySQL through database/sql + go-sql-driver/mysql (kernel/runtime/go-mysql.ts).
+  if (preset && id === 'go/chi') return (p, c, f) => (kernelDatabase(c) === 'mysql' ? mysqlizeGoProject(preset(p, c, f)) : preset(p, c, f));
   return preset;
 }
 

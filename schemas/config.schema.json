@@ -63,7 +63,7 @@
           "type": "string"
         },
         "kernelDatabase": {
-          "description": "Runtime kernel database: \"postgresql\" (default) or \"mysql\" (NestJS, Express, Spring Boot, Quarkus, FastAPI, Django, ASP.NET Core).",
+          "description": "Runtime kernel database: \"postgresql\" (default) or \"mysql\" (NestJS, Express, Spring Boot, Quarkus, FastAPI, Django, ASP.NET Core, Go).",
           "type": "string",
           "enum": [
             "postgresql",
