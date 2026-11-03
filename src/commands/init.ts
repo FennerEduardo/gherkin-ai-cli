@@ -5,7 +5,6 @@ import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import YAML from 'yaml';
-import inquirer from 'inquirer';
 import { defaultConfig, saveConfig, GherkinAIConfig } from '../core/config';
 import { generateConstitution } from '../core/constitution';
 import { logger } from '../utils/logger';
