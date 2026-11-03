@@ -283,7 +283,7 @@ describe('ghk reverse accept and coverage (R-14, R-15)', () => {
 describe('ghk reverse command', () => {
   it('rejects a missing or unknown subcommand and an invalid --min-confidence with a usage error', async () => {
     await expect(handleReverseCommand(undefined, {})).rejects.toBeInstanceOf(UsageError);
-    await expect(handleReverseCommand('sync', {})).rejects.toBeInstanceOf(UsageError);
+    await expect(handleReverseCommand('harvest', {})).rejects.toBeInstanceOf(UsageError);
     await expect(handleReverseCommand('propose', { minConfidence: 'unknown' })).rejects.toBeInstanceOf(UsageError);
     await expect(handleReverseCommand('propose', { threshold: '120' })).rejects.toBeInstanceOf(UsageError);
   });

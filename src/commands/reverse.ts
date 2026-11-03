@@ -6,6 +6,7 @@
    ghk reverse accept   <aggregate…> | --all  [--to features/discovered] [--merge] [--force] [--yes] [--json]
    ghk reverse coverage [--min <pct>] [--rescan] [--json]
    ghk reverse explain  <Command | "METHOD /path"> [--json]
+   ghk reverse sync     [--all-features] [--rescan] [--json]
    ghk reverse review   [aggregate…] [--approve <sel>] [--reject <sel>] [--note t] [--interactive] [--context n] [--json]
 
    Deterministic: no LLM is called. scan and propose write only inside
@@ -14,7 +15,8 @@
    scores below the lint threshold or loses a command in its round trip,
    7 when coverage is below --min or `accept --merge` finds commands a
    feature declares and the code does not implement. PLAN-3.3.0 §3.A;
-   explain and review: PLAN-3.3.0-reverse-plus RV-01, RV-03.
+   explain and review: PLAN-3.3.0-reverse-plus RV-01, RV-03; sync (exit 7 on drift,
+   a patch per feature in .ghe/patches/, never an edit): RV-02.
    ========================================================================== */
 
 import fs from 'fs';
@@ -57,9 +59,11 @@ export interface ReverseCommandOptions {
   context?: string;
   /** accept: take every scenario even with a review on file. */
   ignoreReview?: boolean;
+  /** sync: compare every feature, not only the accepted characterizations. */
+  allFeatures?: boolean;
 }
 
-const SUBCOMMANDS = ['scan', 'propose', 'accept', 'coverage', 'explain', 'review'];
+const SUBCOMMANDS = ['scan', 'propose', 'accept', 'coverage', 'explain', 'review', 'sync'];
 
 function scanOptions(o: ReverseCommandOptions): ScanOptions {
   return { path: o.path, include: o.include, exclude: o.exclude, openapi: o.openapi, includeTests: o.tests !== false, write: !o.dryRun };
@@ -169,6 +173,41 @@ export async function handleReverseCommand(subcommand: string | undefined, optio
     }
     for (const s of report.specOnly) console.log(`  - ${s.command} in ${s.feature}: no operation in the code implements it`);
     if (min !== undefined && c.percent < min) console.log(`  Below --min ${min}%: exit 7.`);
+    return;
+  }
+
+  if (subcommand === 'sync') {
+    const { buildCandidates } = await import('../core/reverse/candidates');
+    const { runSync } = await import('../core/reverse/sync');
+    const { writeProposal } = await import('../core/governance/agent-changes');
+    // sync always reads the code as it is now.
+    const scan = await runScan(root, { ...scanOptions(options), write: !options.dryRun });
+    const { candidates } = buildCandidates(scan.evidence);
+    const report = runSync(root, candidates, scan.evidence, {
+      allFeatures: options.allFeatures,
+      write: !options.dryRun,
+      writePatch: (feature, content) => path.relative(root, writeProposal(root, path.join(root, feature), content)).split(path.sep).join('/')
+    });
+    if (report.drift) process.exitCode = ExitCode.DRIFT;
+    if (options.json) { emitJson(report); return; }
+    if (!report.features) {
+      logger.warn('No accepted characterization feature (@reverse-engineered) to compare with.');
+      console.log('  Accept proposals first: ghk reverse propose, review, accept.');
+      return;
+    }
+    logger.info(`ghk reverse sync (beta): ${report.features} characterization feature(s) against the code`);
+    for (const n of report.newOperations) console.log(`  + ${n.method} ${n.path}  ${n.operation}: new in ${n.aggregate}, not in ${n.feature}`);
+    for (const m of report.missingOperations) console.log(`  - ${m.operation} in ${m.feature}: the code no longer has it`);
+    for (const c of report.changed) {
+      console.log(`  ~ ${c.operation} in ${c.feature}: behaviour changed`);
+      for (const a of c.added) console.log(`      + ${a}`);
+      for (const r of c.removed) console.log(`      - ${r}`);
+    }
+    for (const m of report.moved) console.log(`  > ${m.operation} / ${m.scenario}: evidence moved to ${m.after.join(', ')}`);
+    for (const s of report.specOnly) console.log(`  ! ${s.command} in ${s.feature}: declared, not implemented`);
+    if (report.uncovered) console.log(`  ${report.uncovered} operation(s) in aggregates no feature characterizes (ghk reverse coverage)`);
+    if (report.patches.length) console.log(`  Patches to review: ${report.patches.join(', ')} (git apply <patch>)`);
+    console.log(report.drift ? '  Drift between the code and the specifications: exit 7.' : '  The specifications match the code.');
     return;
   }
 

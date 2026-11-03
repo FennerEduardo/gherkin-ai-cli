@@ -46,6 +46,11 @@ All notable changes to this project will be documented in this file. See [commit
     - Decisions are recorded in `.ghe/reverse/review.json` and audited.
     - A decision remembers the evidence it was made on. When the code under a scenario changes, the decision is stale.
     - With a review on file, `accept` takes only the approved scenarios that are not stale; `--ignore-review` takes them all.
+  - **`reverse sync`** keeps the accepted features alive.
+    - It compares the code as it is now with every `@reverse-engineered` feature. New, missing and changed operations (status written, event published, failure scenarios) are drift and exit 7; moved evidence is reported.
+    - It never edits a feature: it writes a patch per feature in `.ghe/patches/` to review and `git apply`.
+    - `accept` writes what the review left out into the feature (`# Not accepted in review:`), so `sync` in CI does not report it as new.
+    - Verified on an Express service: a renamed route, a removed event, a changed status and a deleted endpoint are each drift, and the applied patch returns the run to exit 0.
   - **`reverse coverage`** reports the share of the code's operations that the existing features specify, by status:
     - documented;
     - renamed (same verb or a synonym on a related noun: `CreatePeriod` vs `CreateAcademicPeriod`);

@@ -21,6 +21,7 @@ import { buildCandidates, type BehaviorCandidate, type UnresolvedQuestion } from
 import { kebab, renderProposals, type RenderedProposal } from './renderer';
 import { compareWithSpec, type DedupReport } from './dedup';
 import { approvedOnly, readReview, type ScenarioStatus } from './review';
+import { acceptedFeatureText } from './sync';
 
 export const REVERSE_DIR = path.join('.ghe', 'reverse');
 
@@ -164,11 +165,8 @@ export interface AcceptResult {
 }
 
 /** The accepted text: reviewed, so no longer @needs-review; the evidence comments stay (traceability). */
-export function acceptedText(text: string): string {
-  return text
-    .replace(/^# Proposed by `ghk reverse` \(beta\) from the source code\.\n/m, '# Accepted from `ghk reverse` (beta). The `# evidence:` comments point to the code as it was when the proposal was made.\n')
-    .replace(/^# Review every scenario, then run `ghk reverse accept` to move it into the specifications\.\n/m, '')
-    .replace(/^@reverse-engineered @characterization @needs-review$/m, '@reverse-engineered @characterization');
+export function acceptedText(text: string, notAccepted: string[] = []): string {
+  return acceptedFeatureText(text, notAccepted);
 }
 
 export function readCandidates(root: string): BehaviorCandidate[] | undefined {
@@ -194,8 +192,17 @@ export function runAccept(root: string, scan: ScanResult, candidates: BehaviorCa
   // A review on file (`ghk reverse review`) decides: only approved scenarios whose evidence has not changed.
   const review = readReview(root, REVERSE_DIR);
   let notApproved: AcceptResult['notApproved'];
+  /** Operations of each aggregate the review left out entirely: written into the feature for `sync`. */
+  const leftOut = new Map<string, string[]>();
   if (Object.keys(review.decisions).length && !options.ignoreReview) {
     const filtered = approvedOnly(review, selected);
+    const kept = new Set(filtered.candidates.map(c => c.id));
+    for (const c of selected) {
+      const entries = kept.has(c.id)
+        ? filtered.left.filter(l => l.key.startsWith(`${c.operation.name}|`)).map(l => `${c.operation.name} — ${l.key.slice(c.operation.name.length + 1)}`)
+        : [c.operation.name];
+      if (entries.length) leftOut.set(c.aggregate, [...(leftOut.get(c.aggregate) ?? []), ...entries]);
+    }
     selected = filtered.candidates;
     notApproved = filtered.left;
   }
@@ -213,7 +220,7 @@ export function runAccept(root: string, scan: ScanResult, candidates: BehaviorCa
     if (fs.existsSync(target) && !options.force) { result.skipped.push({ file: rel, reason: 'exists (use --force to overwrite)' }); continue; }
     if (options.write !== false) {
       fs.mkdirSync(path.dirname(target), { recursive: true });
-      fs.writeFileSync(target, acceptedText(p.text));
+      fs.writeFileSync(target, acceptedText(p.text, leftOut.get(p.aggregate)));
     }
     result.written.push({ file: rel, aggregate: p.aggregate, scenarios: p.scenarios });
   }

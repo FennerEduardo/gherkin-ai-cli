@@ -28,9 +28,11 @@ npx gherkin-ai@3 reverse review --approve @PlaceOrder --reject "Cancel the order
 npx gherkin-ai@3 reverse accept order invoice --yes          # → features/discovered/
 npx gherkin-ai@3 reverse accept --all --merge --yes          # only what no feature specifies yet
 npx gherkin-ai@3 lint --all && npx gherkin-ai@3 converge --all
+# later, in CI, as the code changes:
+npx gherkin-ai@3 reverse sync                       # exit 7 when the code and the accepted features drift apart
 ```
 
-None of the subcommands needs `ghk init` or calls a language model. `scan`, `propose`, `coverage`, `explain` and `review` write nothing outside `.ghe/reverse/`. `accept` writes feature files only after you confirm interactively, or with `--yes`. Without a terminal and without `--yes`, it writes nothing and exits 2.
+None of the subcommands needs `ghk init` or calls a language model. `scan`, `propose`, `coverage`, `explain` and `review` write nothing outside `.ghe/reverse/`, and `sync` writes only its patches to `.ghe/patches/`. `accept` writes feature files only after you confirm interactively, or with `--yes`. Without a terminal and without `--yes`, it writes nothing and exits 2.
 
 ### explain
 
@@ -51,6 +53,24 @@ None of the subcommands needs `ghk init` or calls a language model. `scan`, `pro
 The decisions go to `.ghe/reverse/review.json`, keyed by operation and scenario name. Each decision remembers the evidence it was made on. When the code under a scenario changes (a moved line counts), the decision is **stale** and counts as not reviewed until someone decides again. Each decision is audited (`reverse:review`).
 
 Once a review is on file, `accept` takes only the approved scenarios that are not stale, and reports how many it left out. `--ignore-review` takes them all.
+
+### sync
+
+`reverse sync` keeps the accepted features alive. It reads the code as it is now and compares it, operation by operation, with every feature tagged `@reverse-engineered`. Those features are versioned in git, so CI needs nothing from `.ghe/`. It reports:
+
+| Finding | Meaning | Drift |
+|---|---|---|
+| new operation | an endpoint in an aggregate a feature already characterizes, not in that feature, not documented by another feature, and not left out by the review | yes |
+| missing operation | an operation the feature specifies that no aggregate in the code has any more | yes |
+| changed | for an operation both have, the scenarios or their outcomes differ: the status written, the event published, the success outcome, a failure added or removed | yes |
+| moved | the same behaviour, but its `# evidence:` lines moved | no |
+| uncovered | operations in aggregates no feature characterizes; `reverse coverage` lists them | no |
+
+Drift exits 7. `sync` never edits a feature. For each feature that differs it writes a patch to `.ghe/patches/`, which rewrites the feature as reverse proposes it today. A hand edit to the feature shows up as a removal in that patch, so review it before `git apply`. `--all-features` also reports, as drift, commands that other features declare and the code does not implement. `--dry-run` reports without writing.
+
+When `accept` runs after a review, it writes what the review left out into the feature (`# Not accepted in review: CancelOrder`, or `CancelOrder — <scenario>`). That way `sync` does not report it as new, in CI or anywhere else.
+
+Verified by `tests/core/reverse-sync.test.ts` on an Express service gherkin-ai did not generate. A renamed route, a removed event, a changed status and a deleted endpoint are each reported as drift, and the patch for the changed status, once applied, brings the run back to exit 0.
 
 ### accept
 
