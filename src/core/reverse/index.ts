@@ -16,12 +16,13 @@ import { CLI_VERSION } from '../../version';
 import { detectExistingStack } from '../stack-detector';
 import { discoverSources, type DiscoveryOptions } from './discovery';
 import { dedupeEvidence, type EvidenceConfidence, type SourceEvidence } from './evidence';
-import { loadBuiltinAnalyzers, type AnalysisContext, type AnalyzerMaturity } from './registry';
+import { listAnalyzers, loadBuiltinAnalyzers, registerAnalyzer, type AnalysisContext, type AnalyzerMaturity } from './registry';
 import { buildCandidates, type BehaviorCandidate, type UnresolvedQuestion } from './candidates';
 import { kebab, renderProposals, type RenderedProposal } from './renderer';
 import { compareWithSpec, existingFeatures, type DedupReport } from './dedup';
 import { knownTerm, loadGlossary } from './glossary';
 import { applyLineCoverage, readCoverageReport } from './coverage-lines';
+import { loadProjectPlugins } from '../plugins/load';
 import { approvedOnly, readReview, type ScenarioStatus } from './review';
 import { acceptedFeatureText } from './sync';
 import { applyConflicts, findConflicts, type Conflict } from './conflicts';
@@ -47,7 +48,8 @@ export interface ScanResult {
   files: number;
   truncated: boolean;
   secretsSkipped: number;
-  analyzers: { id: string; maturity: AnalyzerMaturity; evidence: number }[];
+  /** Each analyzer that ran; `plugin` names the plugin that contributed it. */
+  analyzers: { id: string; maturity: AnalyzerMaturity; evidence: number; plugin?: string }[];
   /** With --coverage: the reports read and how many evidence items they confirmed. */
   coverage?: { reports: { file: string; format: string; files: number }[]; confirmed: number };
   counts: Record<string, number>;
@@ -96,7 +98,13 @@ export function writeReverseFile(root: string, relative: string, content: string
 const stableJson = (data: unknown) => `${JSON.stringify(data, null, 2)}\n`;
 
 export async function runScan(root: string, options: ScanOptions = {}): Promise<ScanResult> {
-  const discovery = discoverSources(root, options);
+  // Built-in analyzers, then those of the project's plugins (PLAN-3.3.0-reverse-plus EC-01): an analyzer id is registered
+  // once, and a plugin analyzer may ask discovery for extensions of its own language.
+  await loadBuiltinAnalyzers();
+  const pluginOf = new Map<string, string>();
+  for (const a of loadProjectPlugins(root).getReverseAnalyzers()) { registerAnalyzer(a); pluginOf.set(a.id, a.plugin); }
+  const all = listAnalyzers();
+  const discovery = discoverSources(root, { ...options, extensions: [...new Set(all.flatMap(a => a.extensions ?? []))] });
   const detected = detectExistingStack(root);
   const ctx: AnalysisContext = {
     root,
@@ -105,13 +113,12 @@ export async function runScan(root: string, options: ScanOptions = {}): Promise<
     openapi: options.openapi?.map(p => rel(root, path.resolve(root, p))),
     includeTests: options.includeTests ?? true
   };
-  const all = await loadBuiltinAnalyzers();
   const selected = all.filter(a => (!options.analyzers?.length || options.analyzers.includes(a.id)) && a.detect(ctx));
   const perAnalyzer: ScanResult['analyzers'] = [];
   let evidence: SourceEvidence[] = [];
   for (const a of selected) {
     const found = await a.analyze(ctx);
-    perAnalyzer.push({ id: a.id, maturity: a.maturity, evidence: found.length });
+    perAnalyzer.push({ id: a.id, maturity: a.maturity, evidence: found.length, ...(pluginOf.has(a.id) ? { plugin: pluginOf.get(a.id) } : {}) });
     evidence.push(...found);
   }
   evidence = dedupeEvidence(evidence);
@@ -275,7 +282,7 @@ export function runPropose(root: string, scan: ScanResult, options: ProposeOptio
       if (!knownTerm(glossary, agg)) unresolved.push({ question: `${agg} is not a term of the glossary (${glossary.file}). Is it one of its terms under another name, or a new term?`, evidence: candidates.filter(c => c.aggregate === agg).flatMap(c => c.endpointEvidence).slice(0, 3) });
     }
   }
-  const rendered = renderProposals(candidates, scan.evidence, { minConfidence: options.minConfidence, threshold, glossary: glossary.terms });
+  const rendered = renderProposals(candidates, scan.evidence, { minConfidence: options.minConfidence, threshold, glossary: glossary.terms, rules: loadProjectPlugins(root).getLintRules() });
 
   if (options.write !== false) {
     // Proposals of an earlier run that no longer exist are removed, so the directory mirrors this run.

@@ -230,7 +230,9 @@ CSV export neutralizes spreadsheet formula injection.
 
 ## 10. Plugins
 
-Plugins are listed in `plugins.load`, as npm package names or paths relative to the project. When the organization sets `plugins.allow`, anything else is refused with exit code `5`. Relative plugin paths must stay inside the project. Each load is audited. A plugin exports a `GherkinAIPlugin` (as `default` or `plugin`) or a `register(registry)` function.
+Plugins are listed in `plugins.load`, as npm package names or paths relative to the project. When the organization sets `plugins.allow`, anything else is refused with exit code `5`. Relative plugin paths must stay inside the project. Each load is audited. A plugin exports a `GherkinAIPlugin` (as `default`, `plugin` or `module.exports`) or a `register(registry)` function.
+
+The plugin API is version 2 in 3.3.0. It adds extension points for `ghk reverse` analyzers, lint rules and `ghk expose` gateway providers, and a plugin declares the API and the gherkin-ai versions it supports (`apiVersion`, `engines`). An incompatible plugin is refused before any of its code runs. How to write one: [PLUGINS.md](PLUGINS.md).
 
 The 2.x form `"plugins": ["my-plugin"]` is still accepted as `plugins.load`.
 

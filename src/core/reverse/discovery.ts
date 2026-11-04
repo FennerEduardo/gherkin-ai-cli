@@ -25,6 +25,8 @@ export interface DiscoveryOptions {
   exclude?: string[];
   /** Hard cap; the result says when it was reached. */
   limit?: number;
+  /** Extra file extensions to read (`.blade.php`, `.erb`, …): plugin analyzers ask for their language (EC-01). */
+  extensions?: string[];
 }
 
 export interface DiscoveryResult {
@@ -103,7 +105,7 @@ export function discoverSources(root: string, options: DiscoveryOptions = {}): D
       if (!e.isFile()) continue;
       if (isSecretPath(rel)) { secretsSkipped++; continue; }
       const ext = path.extname(e.name).toLowerCase();
-      if (!SOURCE_EXT.has(ext)) continue;
+      if (!SOURCE_EXT.has(ext) && !(options.extensions ?? []).some(x => e.name.toLowerCase().endsWith(x.toLowerCase()))) continue;
       if (include.length && !include.some(r => r.test(rel))) continue;
       if (exclude.some(r => r.test(rel))) continue;
       if (found.length >= limit) { truncated = true; return; }

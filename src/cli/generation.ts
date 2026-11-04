@@ -49,6 +49,9 @@ export function registerGenerationCommands(program: Command): void {
       logger.info('');
       logger.info('ghk reverse (beta): analyzers that read existing code');
       for (const a of ANALYZER_CATALOG) logger.info(`reverse    ${a.maturity.padEnd(13)} ${a.parser.padEnd(10)} ${a.stacks}`);
+      // Analyzers the project's plugins add (PLAN-3.3.0-reverse-plus EC-01).
+      const { loadProjectPlugins } = await import('../core/plugins/load');
+      for (const a of loadProjectPlugins(process.cwd()).getReverseAnalyzers()) logger.info(`reverse    ${a.maturity.padEnd(13)} ${'plugin'.padEnd(10)} ${a.frameworks.join(', ')} (${a.id}, from ${a.plugin})`);
     });
 
   program

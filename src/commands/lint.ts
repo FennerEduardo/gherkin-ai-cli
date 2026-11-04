@@ -10,6 +10,7 @@ import chalk from 'chalk';
 import { parseGherkinText } from '../core/gherkin-parser';
 import { lintSpecification, LintDiagnostic, getAvailableRules } from '../core/specification-linter';
 import { loadGlossary } from '../core/reverse/glossary';
+import { loadProjectPlugins } from '../core/plugins/load';
 import { loadConstitution } from '../core/constitution';
 import { forEachProjectFeature, formatFeatureTable, requireProjectFeatures, resolveFeatureFile } from '../core/workspace-projects';
 import { loadResolvedConfig } from '../core/config';
@@ -104,7 +105,7 @@ export async function handleLintCommand(options: LintCommandOptions = {}): Promi
     const industries = new Map<string, ReturnType<typeof projectIndustry>>();
     const industryOf = (dir: string) => industries.get(dir) ?? industries.set(dir, projectIndustry(dir)).get(dir)!;
     const rows = forEachProjectFeature(process.cwd(), (projectDir, file) => {
-      const result = lintSpecification(parseGherkinText(fs.readFileSync(file, 'utf8')), file, { threshold, constitution: loadConstitution(projectDir), ...industryOf(projectDir).options, glossary: loadGlossary(projectDir).terms });
+      const result = lintSpecification(parseGherkinText(fs.readFileSync(file, 'utf8')), file, { threshold, constitution: loadConstitution(projectDir), ...industryOf(projectDir).options, rules: [...(industryOf(projectDir).options.rules ?? []), ...loadProjectPlugins(projectDir).getLintRules()], glossary: loadGlossary(projectDir).terms });
       return { score: result.score, passed: result.passed };
     });
     if (options.json) emitJson(rows);
@@ -166,6 +167,8 @@ export async function handleLintCommand(options: LintCommandOptions = {}): Promi
       threshold,
       constitution,
       ...industry.options,
+      // Rules contributed by the project's plugins (PLAN-3.3.0-reverse-plus EC-01).
+      rules: [...(industry.options.rules ?? []), ...loadProjectPlugins(process.cwd()).getLintRules()],
       // Domain terms (`reverse.glossary`, `Glossary:` lines) are business vocabulary for GHK007.
       glossary: loadGlossary(process.cwd(), [content]).terms,
     });

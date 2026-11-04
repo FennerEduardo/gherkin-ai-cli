@@ -112,6 +112,12 @@ All notable changes to this project will be documented in this file. See [commit
   - Tests that call concrete URLs (`/orders/o-1/cancel`) confirm the matching route template; .NET `HttpClient` calls are recognised. `InvalidOperationException` and `IllegalStateException` are read as 409.
   - The aggregate of an operation is the last collection in its path (`/institutions/{id}/members` → `Member`). The word after an id is the action (`POST /payments/{id}/settle` → `SettlePayment`).
 
+- **Plugin API 2** ([PLUGINS.md](docs/PLUGINS.md)).
+  - New extension points: `reverseAnalyzers()` for `ghk reverse`, `lintRules()` for `ghk lint` and the reverse proposals, and `gatewayProviders()` for `ghk expose`.
+  - A plugin declares `apiVersion` and `engines["gherkin-ai"]`. An incompatible plugin is refused with the reason before any of its code runs, and API 1 plugins keep working.
+  - `ghk reverse`, `ghk lint` and `ghk stacks` load the project's plugins without `ghk init`. A plugin analyzer may ask discovery for extensions of its own language, and `reverse scan --json` names the plugin each analyzer comes from.
+  - A CommonJS `module.exports = plugin` is accepted.
+  - Plugins are now loaded once per file, not per specifier: the same `./plugin.js` in two projects is two plugins.
 - **`--assist` verified against a real model** (`lint --assist` and `reverse propose --assist`, Gemini `gemini-flash-lite-latest`): both write a patch, change no step, and the validation rejected the one invalid name the model proposed. Other providers share the client and the validation but are untested with `--assist`; [docs/REVERSE.md](docs/REVERSE.md#--assist-opt-in) says how to report a run.
 
 - **`ghk reverse` scores on the golden-build dashboard** ([goldens.html#reverse](https://fennereduardo.github.io/gherkin-ai-cli/goldens.html#reverse)): every analyzer with its maturity, the validation on open-source code (rerun by the Pages workflow on every build), and the round trips on the reference projects and the LMS (release snapshot `docs/reverse-scores.json`, written by `scripts/reverse-scores.js`). `goldens.json` carries the same data under `reverse`.

@@ -29,6 +29,8 @@ export interface SourceAnalyzer {
   language: string;
   frameworks: string[];
   maturity: AnalyzerMaturity;
+  /** File extensions beyond the built-in ones that discovery must read for this analyzer (plugins, EC-01). */
+  extensions?: string[];
   /** Cheap check: does this project contain code this analyzer understands? */
   detect(ctx: AnalysisContext): boolean;
   analyze(ctx: AnalysisContext): Promise<SourceEvidence[]>;

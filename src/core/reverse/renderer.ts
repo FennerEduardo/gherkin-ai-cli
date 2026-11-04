@@ -15,7 +15,7 @@
 
 import { parseGherkinText } from '../gherkin-parser';
 import { buildIR } from '../ir-builder';
-import { lintSpecification } from '../specification-linter';
+import { lintSpecification, type LintRule } from '../specification-linter';
 import type { BehaviorCandidate, ProposedStep } from './candidates';
 import { atLeast, type EvidenceConfidence, type SourceEvidence } from './evidence';
 import { toKebab } from '../../utils/naming';
@@ -27,6 +27,8 @@ export interface RenderOptions {
   threshold?: number;
   /** Domain terms the lint reads as business vocabulary (RV-10). */
   glossary?: string[];
+  /** Extra lint rules (the project's plugins, EC-01). */
+  rules?: LintRule[];
 }
 
 export interface RenderedProposal {
@@ -112,7 +114,7 @@ export function renderAggregate(aggregate: string, candidates: BehaviorCandidate
   const declared = [...new Set(ordered.filter(c => c.operation.type === 'command' && c.scenarios.some(s => atLeast(s.confidence, min))).map(c => c.operation.name))];
   const missingCommands = declared.filter(n => !irCommands.has(n.toLowerCase()));
   const threshold = options.threshold ?? 80;
-  const lint = lintSpecification(parsed, file, { threshold, glossary: options.glossary });
+  const lint = lintSpecification(parsed, file, { threshold, glossary: options.glossary, rules: options.rules });
   const confidence = kept.reduce<EvidenceConfidence>((worst, c) => (atLeast(worst, c) ? c : worst), 'confirmed');
 
   return {

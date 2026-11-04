@@ -5,6 +5,11 @@ import { getTelemetry } from './telemetry';
 import { assertPathInside } from '../utils/path-guard';
 import { GherkinAIConfig } from './config';
 import { Constitution } from './constitution';
+import type { SourceAnalyzer } from './reverse/registry';
+import type { LintRule } from './specification-linter';
+import type { GatewayProvider } from './expose/provider-types';
+import { incompatibility } from './plugins/compat';
+import { CLI_VERSION } from '../version';
 
 export interface PluginContext {
   config: GherkinAIConfig;
@@ -40,7 +45,22 @@ export interface MCPToolDefinition {
 export interface GherkinAIPlugin {
   name: string;
   version: string;
-  
+  /**
+   * The plugin API it is written for (PLAN-3.3.0-reverse-plus EC-01). Absent means 1: the generation, validation and
+   * MCP hooks below. Version 2 adds the extension points `reverseAnalyzers`, `lintRules` and `gatewayProviders`.
+   */
+  apiVersion?: 1 | 2;
+  /** npm-style range of the gherkin-ai versions it supports: `{ "gherkin-ai": "^3.3" }`. */
+  engines?: { 'gherkin-ai'?: string };
+
+  // API 2: extension points.
+  /** Reverse-engineering analyzers (`ghk reverse scan`), each with its id, maturity and detect/analyze. */
+  reverseAnalyzers?(): SourceAnalyzer[];
+  /** Lint rules added to `ghk lint` and to the lint of reverse proposals. */
+  lintRules?(): LintRule[];
+  /** Gateway providers for `ghk expose` (Azure API Management, Google Cloud, …). */
+  gatewayProviders?(): GatewayProvider[];
+
   // Lifecycle hooks
   onInit?(context: PluginContext): void;
   
@@ -76,6 +96,9 @@ export class PluginRegistry {
     if (this.plugins.some(p => p.name === plugin.name)) {
       throw new Error(`Plugin ${plugin.name} is already registered.`);
     }
+    // A plugin written for another API or another gherkin-ai is refused here, before any of its hooks runs.
+    const problem = incompatibility(plugin, CLI_VERSION);
+    if (problem) throw new ConfigError(`Plugin "${plugin.name}" cannot be loaded: ${problem.reason}`);
     this.plugins.push(plugin);
     if (this.context && plugin.onInit) {
       plugin.onInit(this.context);
@@ -131,7 +154,6 @@ export class PluginRegistry {
     const telemetry = getTelemetry();
 
     for (const specifier of requested) {
-      if (this.loadedSpecifiers.has(specifier)) continue; // idempotent across runs in one process (MCP server)
       if (allow && !allow.includes(specifier)) {
         telemetry.recordAudit({ action: 'plugin:load', resource: specifier, status: 'BLOCKED', details: 'not in plugins.allow' });
         throw new PolicyError(`Plugin "${specifier}" is not in the organization allow-list (plugins.allow).`);
@@ -140,10 +162,13 @@ export class PluginRegistry {
       const resolved = isPath
         ? assertPathInside(projectDir, specifier, `Plugin path "${specifier}"`)
         : require.resolve(specifier, { paths: [projectDir] });
+      // Idempotent across runs in one process (MCP server), by the file loaded: the same `./plugin.js` of two projects is two plugins.
+      if (this.loadedSpecifiers.has(resolved)) continue;
 
       // eslint-disable-next-line @typescript-eslint/no-var-requires
       const mod = require(resolved);
-      const plugin: GherkinAIPlugin | undefined = mod?.default?.name ? mod.default : mod?.plugin;
+      // `export default plugin`, `export const plugin = …`, or `module.exports = plugin` (CommonJS).
+      const plugin: GherkinAIPlugin | undefined = mod?.default?.name ? mod.default : mod?.plugin ?? (typeof mod?.name === 'string' && typeof mod?.version === 'string' ? mod : undefined);
       if (plugin) {
         this.register(plugin);
       } else if (typeof mod?.register === 'function') {
@@ -152,10 +177,23 @@ export class PluginRegistry {
         throw new ConfigError(`Plugin "${specifier}" does not export a GherkinAIPlugin or a register(registry) function.`);
       }
       telemetry.recordAudit({ action: 'plugin:load', resource: specifier, status: 'SUCCESS', details: resolved });
-      this.loadedSpecifiers.add(specifier);
+      this.loadedSpecifiers.add(resolved);
       loaded.push(specifier);
     }
     return loaded;
+  }
+
+  /** Reverse analyzers contributed by plugins (API 2), each tagged with the plugin it comes from. */
+  public getReverseAnalyzers(): (SourceAnalyzer & { plugin: string })[] {
+    return this.plugins.flatMap(p => (p.reverseAnalyzers?.() ?? []).map(a => Object.assign(a, { plugin: p.name })));
+  }
+
+  public getLintRules(): LintRule[] {
+    return this.plugins.flatMap(p => p.lintRules?.() ?? []);
+  }
+
+  public getGatewayProviders(): (GatewayProvider & { plugin: string })[] {
+    return this.plugins.flatMap(p => (p.gatewayProviders?.() ?? []).map(g => Object.assign(g, { plugin: p.name })));
   }
 
   public getMCPTools(): MCPToolDefinition[] {
