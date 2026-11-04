@@ -1,0 +1,13 @@
+syntax = "proto3";
+
+package shop.payments;
+
+// Payments over gRPC (hand-written).
+service PaymentService {
+  rpc AuthorizePayment (AuthorizePaymentRequest) returns (Payment);
+  rpc GetPayment (GetPaymentRequest) returns (Payment);
+}
+
+message AuthorizePaymentRequest { string order_id = 1; int64 amount = 2; }
+message GetPaymentRequest { string id = 1; }
+message Payment { string id = 1; string status = 2; }

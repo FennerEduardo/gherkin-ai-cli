@@ -41,7 +41,7 @@ const SKIP_DIRS = new Set(['node_modules', '.git', 'dist', 'build', 'target', 'o
 // skipped by the OpenAPI adapter, because they were derived from the features.
 
 // .prisma and .sql: schemas and migrations, read for the database's own constraints (PLAN-3.3.0-reverse-plus RV-08).
-const SOURCE_EXT = new Set(['.ts', '.tsx', '.js', '.mjs', '.cjs', '.jsx', '.java', '.kt', '.cs', '.py', '.go', '.php', '.rb', '.ex', '.exs', '.rs', '.json', '.yaml', '.yml', '.feature', '.prisma', '.sql']);
+const SOURCE_EXT = new Set(['.ts', '.tsx', '.js', '.mjs', '.cjs', '.jsx', '.java', '.kt', '.cs', '.py', '.go', '.php', '.rb', '.ex', '.exs', '.rs', '.json', '.yaml', '.yml', '.feature', '.prisma', '.sql', '.graphql', '.gql', '.graphqls', '.proto']);
 
 /** Never read: they may hold credentials. */
 export function isSecretPath(rel: string): boolean {

@@ -24,6 +24,7 @@ import { joinPaths, makeEvidence, type EndpointMetadata, type EntryMetadata, typ
 import type { AnalysisContext, SourceAnalyzer } from '../../registry';
 import { failureKind, eventName } from '../typescript/ts-body';
 import { childOfType, lineRange, ofType, parserFor, unquote, type TSNode } from '../treesitter/loader';
+import { rpcEvidence } from '../contracts/graphql-grpc';
 import { annotation, classesIn, type Annotation, type JvmClass, type JvmLanguage, type JvmMethod } from './jvm-model';
 
 const ID = 'jvm/spring-quarkus';
@@ -369,7 +370,7 @@ const spring: SourceAnalyzer = {
   maturity: 'beta',
   detect(ctx) {
     return ctx.files.some(f => (f.ext === '.java' || f.ext === '.kt') && !isTestFile(f.rel) && (() => {
-      try { return /@(RestController|Controller|Path|KafkaListener|RabbitListener|JmsListener|SqsListener|Incoming|ConsumeEvent|Scheduled|EventListener|TransactionalEventListener)\b|import (?:jakarta|javax)\.ws\.rs/.test(fs.readFileSync(f.abs, 'utf8')); } catch { return false; }
+      try { return /@(RestController|Controller|Path|KafkaListener|RabbitListener|JmsListener|SqsListener|Incoming|ConsumeEvent|Scheduled|EventListener|TransactionalEventListener|MutationMapping|QueryMapping|SchemaMapping|GrpcService)\b|import (?:jakarta|javax)\.ws\.rs/.test(fs.readFileSync(f.abs, 'utf8')); } catch { return false; }
     })());
   },
   async analyze(ctx) {
@@ -404,6 +405,17 @@ const spring: SourceAnalyzer = {
         });
         out.push(entry);
         out.push(...analyzeBody(m, { ctx, index, endpointId: entry.id, owner: cls, depth: 0, visited: new Set() }).filter(e => e.kind !== 'success-response'));
+      }
+      // Spring for GraphQL (@MutationMapping, @QueryMapping, @SchemaMapping(typeName = "Mutation")) and gRPC services
+      // (@GrpcService on a class that extends the generated *ImplBase): the operations the schema declares (RV-14).
+      const grpc = cls.annotations.some(a => a.name === 'GrpcService') && /ImplBase$/.test(cls.superclass ?? '') ? (cls.superclass ?? '').replace(/Grpc\.\w*ImplBase$|ImplBase$/, '') : undefined;
+      for (const m of cls.methods) {
+        const gql = m.annotations.find(a => a.name === 'MutationMapping' || a.name === 'QueryMapping' || (a.name === 'SchemaMapping' && /typeName\s*=\s*"(Mutation|Query)"/.test(a.raw)));
+        if (!gql && !(grpc && m.body && /^[a-z]/.test(m.name) && !/^(toString|equals|hashCode)$/.test(m.name))) continue;
+        const kind = gql ? ((gql.name === 'MutationMapping' || /"Mutation"/.test(gql.raw)) ? 'mutation' as const : 'query' as const) : (/^(get|list|find|search|count|watch|lookup)/.test(m.name) ? 'query' as const : 'mutation' as const);
+        const operation = gql ? (unquote(gql.pairs.name ?? gql.pairs.field ?? gql.pairs.value ?? '') ?? gql.strings[0] ?? m.name) : m.name.charAt(0).toUpperCase() + m.name.slice(1);
+        const entry = rpcEvidence({ protocol: gql ? 'graphql' : 'grpc', kind, operation, service: grpc, args: [] }, loc(cls.file, m.node), ID, cls.name, m.name);
+        out.push(entry, ...analyzeBody(m, { ctx, index, endpointId: entry.id, owner: cls, depth: 0, visited: new Set() }).filter(e => e.kind !== 'success-response'));
       }
       const isController = cls.annotations.some(a => a.name === 'RestController' || a.name === 'Controller') || Boolean(annotation(cls.annotations, 'Path'));
       if (!isController) continue;

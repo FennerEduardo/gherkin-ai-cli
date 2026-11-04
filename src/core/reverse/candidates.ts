@@ -72,7 +72,8 @@ const VERBS = new Set([...Object.keys(VERB_PATTERNS), ...Object.keys(EXTENDED_VE
   'get', 'list', 'retrieve', 'find', 'fetch', 'register', 'enroll', 'initiate', 'execute', 'link', 'unlink', 'set', 'add', 'remove', 'mark', 'notify', 'capture', 'evaluate', 'provide', 'change', 'save', 'edit', 'replace', 'patch', 'put', 'post', 'upsert', 'generate', 'sync', 'count', 'check', 'validate', 'login', 'logout', 'refresh',
   // Verbs of jobs and reactions (PLAN-3.3.0-reverse-plus RV-06).
   'purge', 'release', 'expire', 'close', 'remind', 'reconcile', 'settle', 'charge', 'refund', 'renew', 'import', 'export', 'clean', 'recalculate',
-  'rotate', 'deliver', 'dispatch', 'reserve', 'invoice', 'bill', 'escalate', 'publish', 'index', 'backfill', 'calculate', 'compute']);
+  'rotate', 'deliver', 'dispatch', 'reserve', 'invoice', 'bill', 'escalate', 'publish', 'index', 'backfill', 'calculate', 'compute',
+  'authorize', 'authenticate', 'verify', 'confirm', 'decline', 'void', 'transfer', 'withdraw', 'deposit']);
 /** Handler names that are verbs of HTTP or CRUD plumbing rather than business verbs. */
 const PLUMBING: Record<string, string> = { post: 'create', put: 'update', patch: 'update', upsert: 'update', save: 'create', store: 'create', destroy: 'delete', remove: 'delete', index: 'list', show: 'get', findAll: 'list', findOne: 'get', getAll: 'list', getOne: 'get', fetch: 'get', retrieve: 'get' };
 const IGNORED_SEGMENTS = /^(api|apis|v\d+|rest|public|internal|admin|private|\{[^}]+\})$/i;
@@ -563,6 +564,7 @@ export function buildCandidates(evidence: SourceEvidence[]): CandidateResult {
     });
   }
   candidates.push(...entryCandidates(evidence, unresolved));
+  candidates.push(...rpcCandidates(evidence));
   attachConstraintsAndIntegrations(candidates, evidence, unresolved);
 
   // Same operation name on two endpoints (two POSTs on one aggregate): keep both, disambiguate the second.
@@ -742,4 +744,87 @@ function attachConstraintsAndIntegrations(candidates: BehaviorCandidate[], evide
       unresolved.push({ endpoint: `${c.operation.method} ${c.operation.path}`, question: `${c.operation.name} calls another system: ${x.description} (${x.location.file}:${x.location.startLine}). What does the user observe when that call fails or is slow?`, evidence: [x.id] });
     }
   }
+}
+
+// ---------------------------------------------------------------------------
+// GraphQL and gRPC operations (PLAN-3.3.0-reverse-plus RV-14)
+// ---------------------------------------------------------------------------
+
+/** `placeOrder` → PlaceOrder; a query field `order` → GetOrder, `orders` → ListOrders; gRPC names are kept. */
+export function rpcOperationName(operation: string, kind: 'mutation' | 'query', aggregate: string): { name: string; verb: string } {
+  const w = words(pascal(operation));
+  if (VERBS.has(w[0]) && w.length > 1) return { name: pascal(operation), verb: PLUMBING[w[0]] ?? w[0] };
+  if (kind === 'query') {
+    const many = /[a-z]s$/i.test(operation) && !/ss$/i.test(operation);
+    return many ? { name: `List${pascal(operation)}`, verb: 'list' } : { name: `Get${pascal(operation)}`, verb: 'get' };
+  }
+  return { name: `Handle${pascal(operation)}`, verb: 'handle' };
+}
+
+function rpcCandidates(evidence: SourceEvidence[]): BehaviorCandidate[] {
+  const out: BehaviorCandidate[] = [];
+  const groups = new Map<string, SourceEvidence[]>();
+  for (const e of evidence.filter(x => x.kind === 'rpc-operation')) {
+    const m = e.metadata as any;
+    const key = `${m.trigger}|${m.channel}`;
+    groups.set(key, [...(groups.get(key) ?? []), e]);
+  }
+  for (const [, group] of [...groups.entries()].sort(([a], [b]) => a.localeCompare(b))) {
+    const declared = group.find(e => e.extractor === 'contracts/graphql-grpc') ?? group[0];
+    const code = group.find(e => e.extractor !== 'contracts/graphql-grpc');
+    const m = { ...(declared.metadata as any), ...((code?.metadata as any) ?? {}) } as { trigger: 'graphql' | 'grpc'; channel: string; operation: string; service?: string; kind: 'mutation' | 'query'; returns?: string; owner?: string };
+    const ownerBase = m.owner?.replace(/(Resolver|Controller|GrpcService|Service|Impl|ImplBase)$/, '');
+    // gRPC: the service names the aggregate (PaymentService → Payment); GraphQL: the resolver, else the type returned.
+    const aggregate = pascal(singular(m.service ? m.service.replace(/Service$/, '') || m.service
+      : ownerBase && ownerBase !== m.owner ? ownerBase
+      : m.returns && !/^(Boolean|Int|Float|String|ID|Void|Empty)$/.test(m.returns) ? m.returns
+      : words(pascal(m.operation)).slice(-1)[0]));
+    const op = rpcOperationName(m.operation, m.kind, aggregate);
+    const ids = new Set(group.map(e => e.id));
+    const related = evidence.filter(e => e.references.some(r => ids.has(r)));
+    const endpointIds = group.map(e => e.id).sort();
+    const when: ProposedStep = {
+      keyword: 'When', evidence: endpointIds,
+      text: m.trigger === 'grpc' ? `the client calls ${m.service}.${m.operation}` : `the client sends the "${m.operation}" ${m.kind}`
+    };
+    const steps: ProposedStep[] = [];
+    const auths = related.filter(e => e.kind === 'authorization-rule');
+    if (auths.length) steps.push({ keyword: 'Given', text: 'a signed-in user', evidence: auths.map(a => a.id) });
+    steps.push(when);
+    const stateEvidence = related.filter(e => e.kind === 'state-value');
+    const written = stateEvidence.some(s => !(s.metadata as any)?.initial) ? stateEvidence.filter(s => !(s.metadata as any)?.initial) : stateEvidence;
+    const values = new Map<string, string[]>();
+    for (const s of written) values.set(String((s.metadata as any).value), [...(values.get(String((s.metadata as any).value)) ?? []), s.id]);
+    const noun = words(aggregate).join(' ');
+    for (const [v, evIds] of values) steps.push({ keyword: 'Then', text: `the ${noun} status is "${v}"`, evidence: evIds });
+    const events = new Map<string, string[]>();
+    for (const x of related.filter(e => e.kind === 'domain-event')) events.set(String((x.metadata as any).event), [...(events.get(String((x.metadata as any).event)) ?? []), x.id]);
+    for (const [n, evIds] of events) steps.push({ keyword: 'Then', text: `the "${n}" event is published`, evidence: evIds });
+    // The schema states what comes back: the outcome of a query, and of a mutation the code says nothing else about.
+    if (m.returns && !steps.some(s => s.keyword === 'Then') && !/^(Void|Empty)$/.test(m.returns)) {
+      const returned = words(pascal(m.returns)).join(' ');
+      steps.push({ keyword: 'Then', text: /^(Boolean)$/.test(m.returns) ? 'the call succeeds' : op.verb === 'list' ? `the ${plural(returned)} are returned` : op.verb === 'get' ? `the ${returned} is returned` : `${article(returned)} ${returned} is returned`, evidence: [declared.id] });
+    }
+    const phrase = operationPhrase(op.name, op.verb, false);
+    const conf = code ? 'confirmed' as EvidenceConfidence : 'strong' as EvidenceConfidence;
+    const scenarios: ScenarioCandidate[] = steps.some(s => s.keyword === 'Then')
+      ? [{ name: `${capitalise(baseForm(phrase))} (${m.trigger === 'grpc' ? 'gRPC' : 'GraphQL'})`, category: 'happy-path', steps: normaliseKeywords(steps), confidence: conf }]
+      : [];
+    for (const f of related.filter(x => x.kind === 'error-condition' && !(x.metadata as any)?.technical)) {
+      const fm = (f.metadata ?? {}) as any;
+      const sc = failureScenario({ status: fm.status, message: fm.message, condition: fm.condition, kind: f.kind, evidence: [f] }, { aggregate, noun, phrase, when });
+      if (sc && !scenarios.some(x => x.name === sc.name)) scenarios.push(sc);
+    }
+    out.push({
+      id: `bc-${op.name}-${m.trigger}`,
+      aggregate,
+      operation: { type: m.kind === 'query' ? 'query' : 'command', name: op.name, method: m.trigger === 'grpc' ? 'GRPC' : 'GRAPHQL', path: m.channel, phrase },
+      endpointEvidence: endpointIds,
+      extractors: [...new Set([...group, ...related].map(x => x.extractor))].sort(),
+      scenarios,
+      events: [...events.keys()],
+      confidence: scenarios[0]?.confidence ?? 'unknown'
+    });
+  }
+  return out;
 }

@@ -26,6 +26,8 @@ export type EvidenceKind =
   // PLAN-3.3.0-reverse-plus RV-06: entry points that are not HTTP.
   | 'message-handler'
   | 'scheduled-job'
+  // RV-14: a GraphQL field of Mutation/Query or a gRPC rpc (schema or resolver).
+  | 'rpc-operation'
   // RV-08: calls to other systems, and constraints the database enforces.
   | 'external-integration'
   | 'persistence-constraint';
@@ -86,7 +88,7 @@ export type EndpointMetadata = {
  * or on a schedule. Behaviour inside the handler references it, exactly as for an endpoint.
  */
 export type EntryMetadata = {
-  trigger: 'message' | 'schedule';
+  trigger: 'message' | 'schedule' | 'graphql' | 'grpc';
   /** Topic, queue, channel or event name the handler listens to (`order.placed`, `orders-topic`). */
   channel?: string;
   /** Cron expression or interval as written (`0 0 * * *`, `every 5m`, `fixedRate = 60000`). */

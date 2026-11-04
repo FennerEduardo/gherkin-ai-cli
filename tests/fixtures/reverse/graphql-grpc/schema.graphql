@@ -1,0 +1,16 @@
+# The shop's GraphQL API (hand-written).
+type Order {
+  id: ID!
+  status: String!
+}
+
+type Query {
+  orders: [Order!]!
+  order(id: ID!): Order
+}
+
+type Mutation {
+  "Places an order for the signed-in customer."
+  placeOrder(customerEmail: String!, items: [String!]!): Order!
+  cancelOrder(id: ID!): Order!
+}

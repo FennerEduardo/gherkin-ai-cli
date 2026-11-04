@@ -19,6 +19,7 @@ import { Node, SyntaxKind } from 'ts-morph';
 import type { Decorator, Project } from 'ts-morph';
 import { makeEvidence, type EntryMetadata, type SourceEvidence } from '../../evidence';
 import { analyzeBody, calleeName, relPath } from './ts-body';
+import { rpcEvidence } from '../contracts/graphql-grpc';
 
 const MESSAGE_DECORATORS = new Set(['EventPattern', 'MessagePattern', 'OnEvent', 'RabbitSubscribe', 'SqsMessageHandler', 'Process', 'Subscribe', 'Consumer']);
 const SCHEDULE_DECORATORS = new Set(['Cron', 'Interval', 'Timeout']);
@@ -75,6 +76,25 @@ export function tsEntryPoints(project: Project, root: string, extractor: string,
         for (const method of cls.getMethods()) {
           for (const d of method.getDecorators()) {
             const name = d.getName();
+            // GraphQL resolvers and gRPC methods (PLAN-3.3.0-reverse-plus RV-14): the same operation the schema declares.
+            if ((name === 'Mutation' || name === 'Query') && cls.getDecorator('Resolver')) {
+              const opts = d.getArguments().find(a => Node.isObjectLiteralExpression(a));
+              const named = opts && Node.isObjectLiteralExpression(opts) ? opts.getProperty('name') : undefined;
+              const opName = named && Node.isPropertyAssignment(named) ? named.getInitializer()?.getText().replace(/['"`]/g, '') : undefined;
+              const returns = d.getArguments()[0]?.getText().match(/=>\s*\[?\s*(\w+)/)?.[1];
+              const entry = rpcEvidence({ protocol: 'graphql', kind: name === 'Mutation' ? 'mutation' : 'query', operation: opName ?? method.getName(), returns, args: [] }, { file: relPath(root, method), startLine: method.getStartLineNumber(), endLine: method.getEndLineNumber() }, extractor, cls.getName(), method.getName());
+              out.push(entry, ...analyzeBody(method, { root, extractor, endpointId: entry.id }));
+              continue;
+            }
+            if (name === 'GrpcMethod') {
+              const [svc, rpc] = d.getArguments().map(a => a.getText().replace(/['"`]/g, ''));
+              if (svc) {
+                const operation = rpc ?? method.getName().charAt(0).toUpperCase() + method.getName().slice(1);
+                const entry = rpcEvidence({ protocol: 'grpc', kind: /^(Get|List|Find|Search|Count|Watch|Lookup)/.test(operation) ? 'query' : 'mutation', operation, service: svc, args: [] }, { file: relPath(root, method), startLine: method.getStartLineNumber(), endLine: method.getEndLineNumber() }, extractor, cls.getName(), method.getName());
+                out.push(entry, ...analyzeBody(method, { root, extractor, endpointId: entry.id }));
+              }
+              continue;
+            }
             if (MESSAGE_DECORATORS.has(name)) push('message-handler', method, { trigger: 'message', channel: decoratorChannel(d), handler: method.getName(), owner: cls.getName() }, method);
             else if (SCHEDULE_DECORATORS.has(name)) push('scheduled-job', method, { trigger: 'schedule', schedule: `${name === 'Cron' ? '' : `${name.toLowerCase()} `}${d.getArguments()[0]?.getText().replace(/['"`]/g, '') ?? ''}`.trim(), handler: method.getName(), owner: cls.getName() }, method);
           }

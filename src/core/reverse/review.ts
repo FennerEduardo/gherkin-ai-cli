@@ -47,6 +47,7 @@ const ROLE_OF: Record<EvidenceKind, ChainRole> = {
   'test-case': 'test',
   'message-handler': 'endpoint',
   'scheduled-job': 'endpoint',
+  'rpc-operation': 'endpoint',
   'external-integration': 'call',
   'persistence-constraint': 'persistence'
 };

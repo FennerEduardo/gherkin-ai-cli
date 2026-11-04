@@ -56,6 +56,11 @@ All notable changes to this project will be documented in this file. See [commit
   - **Data shapes, without invented values.**
     - The success `When` carries a data table of the request's fields and rules, read from NestJS DTOs, Java/Kotlin classes and records, and C# classes and records.
     - Validation of two or more fields is one `Scenario Outline`, with an `Examples` row per field and rule, each preceded by its evidence. A limit is quoted only when the code states it.
+  - **GraphQL and gRPC** (`contracts/graphql-grpc`, experimental, any stack).
+    - Contracts: GraphQL `Mutation`/`Query` fields and `.proto` rpcs.
+    - Resolvers: NestJS `@Resolver`/`@GrpcMethod` and Spring for GraphQL `@MutationMapping`/`@QueryMapping` and `@GrpcService`, merged with the contract.
+    - An operation the schema declares and the code implements is `confirmed`, and its body gives the outcome.
+    - gherkin-ai's own `contracts/` are skipped, as for OpenAPI.
   - **Django and Django REST framework** (`python/django`, beta).
     - Routes: `path()`, `re_path()`/`url()` regexes through every `include()`, and DRF routers with ViewSets, mixins, `@action` and `lookup_field`.
     - Views: generic views, `APIView` methods and `@api_view` functions.

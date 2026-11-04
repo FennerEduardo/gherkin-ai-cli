@@ -211,7 +211,7 @@ The Django app has no article deletion in its code, and it serves a `PATCH /user
 
 ### 2.3 The LMS (hand-written services)
 
-These are 23 features and the Spring services written by hand over the kernel. `reverse` scores a mean F1 of 0.35 against the LMS's own features, and behaviour coverage per service is between 0% and 50%. The low F1 mostly measures how far the code has drifted from the features. That drift is what reverse is meant to bring to light. It was 0.38 before message handlers and scheduled jobs were read: the enrollment service has a scheduled job that expires pending enrollment requests, and no LMS feature specifies it.
+These are 23 features and the Spring services written by hand over the kernel. `reverse` scores a mean F1 of 0.36 against the LMS's own features, and behaviour coverage per service is between 0% and 50%. The low F1 mostly measures how far the code has drifted from the features. That drift is what reverse is meant to bring to light. It was 0.38 before message handlers and scheduled jobs were read: the enrollment service has a scheduled job that expires pending enrollment requests, and no LMS feature specifies it.
 
 ### 2.4 Invariants and `--assist`
 
