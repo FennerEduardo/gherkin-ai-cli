@@ -122,6 +122,8 @@ export function registerSpecificationCommands(program: Command): void {
     .option('--context <lines>', 'review: lines of code shown around each evidence location (default: 3)')
     .option('--all-features', 'sync: also report commands any feature declares and the code does not implement')
     .option('--ignore-review', 'accept: take every scenario even when a review is on file')
+    .option('--format <format>', 'coverage: text (default) | markdown (a pull-request comment) | html (one static page)')
+    .option('--output <file>', 'coverage --format: write the report to this file instead of stdout')
     .option('--min <pct>', 'coverage: minimum share of operations specified by features; below it exits with code 7')
     .option('--json', 'Output as JSON')
     .action(async (subcommand, names, options) => {

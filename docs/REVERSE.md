@@ -95,6 +95,12 @@ With `--merge`, the operations a feature already specifies are left out, and the
 
 *Behaviour coverage* is the share of operations that are documented or renamed. `--min <pct>` exits 7 below it, so it can gate CI. `propose` prints the same summary.
 
+`--format markdown` prints the report as a pull-request comment, and `--format html` as one static page with no external dependency. `--output <file>` writes either to a file. Both group the operations by aggregate, and list what no feature specifies by kind of entry point: HTTP endpoints, message handlers, scheduled jobs, GraphQL and gRPC operations. [ADOPTION.md](ADOPTION.md#start-from-the-code-ghk-reverse-beta) has a CI workflow that comments the Markdown report on every pull request and fails on `sync` drift.
+
+### graph and impact
+
+The `# evidence:` comments of an accepted feature are part of the traceability graph. Each file a scenario cites is linked to that scenario: `implements`, or `tests` for a test file. `ghk graph --trace src/orders.js` shows the scenarios a file backs, and `ghk impact --file src/orders.js` lists them with how each is linked: cited as evidence, or through a domain symbol the file mentions.
+
 On the LMS (nine services, read-only), coverage goes from 0% to 50% per service. 16 of the 81 operations in the code are specified: 9 with the same name and 7 renamed. Most of the rest are reads (GET), which the LMS features do not specify.
 
 ## 2. What it reads
@@ -179,7 +185,7 @@ The proposal is redacted before it is sent and is treated as data, never as inst
 
 ### Over MCP
 
-`ghk_reverse_scan` and `ghk_reverse_get_evidence` are read-only. `ghk_reverse_propose` writes only `.ghe/reverse/` and needs `mcp.allowWrite`. `accept` is not exposed over MCP ([MCP_GUIDE.md](MCP_GUIDE.md#reverse-engineering-over-mcp-beta)).
+`ghk_reverse_scan`, `ghk_reverse_get_evidence`, `ghk_reverse_coverage`, `ghk_reverse_explain`, `ghk_reverse_sync` (the report, no patch) and `ghk_reverse_review` are read-only. `ghk_reverse_propose` writes only `.ghe/reverse/`, and `ghk_reverse_review_decide` only `.ghe/reverse/review.json`; both need `mcp.allowWrite`. `accept` is not exposed over MCP ([MCP_GUIDE.md](MCP_GUIDE.md#reverse-engineering-over-mcp-beta)).
 
 ## 3. How a proposal is built
 

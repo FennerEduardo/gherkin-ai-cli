@@ -94,6 +94,7 @@ export function registerVerificationCommands(program: Command): void {
     .command('impact')
     .description('Analyze blast radius of specification changes')
     .option('-f, --feature <file>', 'Feature file to analyze')
+    .option('--file <source>', 'The scenarios that depend on a source file: cited as evidence by accepted reverse features, or linked by domain symbols')
     .option('--json', 'Output as JSON')
     .action(async (options) => {
       const { handleImpactCommand } = await import('../commands/impact');

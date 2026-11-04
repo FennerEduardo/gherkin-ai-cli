@@ -56,6 +56,12 @@ All notable changes to this project will be documented in this file. See [commit
   - **Data shapes, without invented values.**
     - The success `When` carries a data table of the request's fields and rules, read from NestJS DTOs, Java/Kotlin classes and records, and C# classes and records.
     - Validation of two or more fields is one `Scenario Outline`, with an `Examples` row per field and rule, each preceded by its evidence. A limit is quoted only when the code states it.
+  - **More of reverse over MCP:**
+    - `ghk_reverse_coverage`, `ghk_reverse_explain`, `ghk_reverse_sync` (the report, without patches) and `ghk_reverse_review` are read-only;
+    - `ghk_reverse_review_decide` records the user's decisions in `.ghe/reverse/review.json` and needs `mcp.allowWrite`;
+    - `accept` stays a human CLI step.
+  - **Evidence in the graph.** The `# evidence:` comments of accepted features link each cited file to its scenario in `ghk graph`. The new `ghk impact --file <source>` lists the scenarios a file backs.
+  - **`reverse coverage --format markdown|html`** (`--output <file>`): a pull-request comment, or one static page by aggregate and by kind of entry point. ADOPTION.md has a CI workflow that comments it and fails on `sync` drift.
   - **GraphQL and gRPC** (`contracts/graphql-grpc`, experimental, any stack).
     - Contracts: GraphQL `Mutation`/`Query` fields and `.proto` rpcs.
     - Resolvers: NestJS `@Resolver`/`@GrpcMethod` and Spring for GraphQL `@MutationMapping`/`@QueryMapping` and `@GrpcService`, merged with the contract.

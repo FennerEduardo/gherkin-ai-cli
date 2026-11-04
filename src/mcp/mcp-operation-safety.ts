@@ -43,6 +43,10 @@ const TOOL_SAFETY_MAP: Record<string, OperationSafetyLevel> = {
   'run_cli_diff': 'safe',
   'ghk_reverse_scan': 'safe', // analyses the code in memory, writes nothing
   'ghk_reverse_get_evidence': 'safe',
+  'ghk_reverse_coverage': 'safe',
+  'ghk_reverse_explain': 'safe',
+  'ghk_reverse_sync': 'safe', // the report only: over MCP no patch is written
+  'ghk_reverse_review': 'safe', // reads the proposals, the code behind them and the decisions
 
   // === REQUIRES REVIEW: Generates files, modifies project ===
   'run_cli_generate': 'requires_review',
@@ -53,6 +57,7 @@ const TOOL_SAFETY_MAP: Record<string, OperationSafetyLevel> = {
   'init_enterprise': 'requires_review',
   'run_cli_agent_log': 'requires_review',
   'ghk_reverse_propose': 'requires_review', // writes .ghe/reverse/ only; accepting stays a human CLI step
+  'ghk_reverse_review_decide': 'requires_review', // writes .ghe/reverse/review.json only
 
   // === DESTRUCTIVE: Autonomous code modification, execution ===
   'run_cli_verify': 'destructive',

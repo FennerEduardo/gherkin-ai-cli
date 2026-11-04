@@ -63,6 +63,10 @@ export interface ReverseCommandOptions {
   allFeatures?: boolean;
   /** scan: line-coverage reports (lcov, JaCoCo, Cobertura) that confirm executed, tested evidence (RV-15). */
   coverageReport?: string[];
+  /** coverage: text (default), markdown or html (RV-18). */
+  format?: string;
+  /** coverage --format: write the report to this file instead of stdout. */
+  output?: string;
 }
 
 const SUBCOMMANDS = ['scan', 'propose', 'accept', 'coverage', 'explain', 'review', 'sync'];
@@ -170,6 +174,18 @@ export async function handleReverseCommand(subcommand: string | undefined, optio
     const report = runCoverage(root, scan);
     if (min !== undefined && report.coverage.percent < min) process.exitCode = ExitCode.DRIFT;
     if (options.json) { emitJson(report); return; }
+    // Publishable reports (RV-18): Markdown for a pull-request comment, HTML as one static page.
+    if (options.format && options.format !== 'text') {
+      const { coverageHtml, coverageMarkdown } = await import('../core/reverse/report');
+      if (options.format !== 'markdown' && options.format !== 'html') throw new UsageError(`Invalid --format: ${options.format}`, { hint: 'Use text, markdown or html.' });
+      const out = options.format === 'html' ? coverageHtml(report) : coverageMarkdown(report);
+      if (options.output) {
+        fs.mkdirSync(path.dirname(path.resolve(root, options.output)), { recursive: true });
+        fs.writeFileSync(path.resolve(root, options.output), out);
+        console.log(`  ${options.format} report written to ${options.output}`);
+      } else process.stdout.write(out);
+      return;
+    }
     const c = report.coverage;
     logger.info(`ghk reverse coverage (beta): ${c.percent}% of the ${c.operations} operation(s) in the code are specified by ${report.features} feature(s)`);
     console.log(`  documented ${c.documented}, renamed ${c.renamed}, undocumented ${c.undocumented}`);

@@ -116,6 +116,39 @@ export function symbolVariants(name: string): string[] {
 
 const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
+/**
+ * The files the `# evidence:` comments of a feature name, per scenario: the comments above a scenario and above its
+ * steps belong to it. Comments before the first scenario (the feature header) are ignored.
+ */
+export function evidenceFilesByScenario(featureFile: string): Map<string, string[]> {
+  const out = new Map<string, Set<string>>();
+  let text = '';
+  try { text = fs.readFileSync(featureFile, 'utf8'); } catch { return new Map(); }
+  if (!/#\s*evidence:/.test(text)) return new Map();
+  let pending: string[] = [];
+  let current: string | undefined;
+  for (const line of text.split(/\r?\n/)) {
+    const ev = line.match(/^\s*#\s*evidence:\s*(.+)$/);
+    if (ev) {
+      for (const part of ev[1].split(',')) {
+        const loc = part.trim().split(/\s+/)[1];
+        const file = loc?.replace(/:\d+$/, '');
+        if (file && !/^ev-/.test(file)) pending.push(file);
+      }
+      continue;
+    }
+    const sc = line.match(/^\s*Scenario(?: Outline)?:\s*(.+?)\s*$/);
+    if (sc) current = sc[1];
+    if (current && pending.length) {
+      const set = out.get(current) ?? new Set<string>();
+      for (const f of pending) set.add(f);
+      out.set(current, set);
+      pending = [];
+    }
+  }
+  return new Map([...out.entries()].map(([k, v]) => [k, [...v].sort()]));
+}
+
 export function buildRepositoryGraph(projectDir: string, options: GraphOptions = {}): RepositoryGraph {
   const nodes = new Map<string, GraphNode>();
   const edges = new Map<string, GraphEdge>();
@@ -185,6 +218,17 @@ export function buildRepositoryGraph(projectDir: string, options: GraphOptions =
       for (const command of scenario.commands) {
         const commandId = commandIds.get(command);
         if (commandId) addEdge(id, commandId, 'executes');
+      }
+    }
+    // Features accepted from `ghk reverse` carry `# evidence: ev-… src/orders.js:12` comments: each file they name
+    // implements (or, for a test, tests) the scenario it stands above (PLAN-3.3.0-reverse-plus RV-17).
+    for (const [scenarioName, evidenceFiles] of evidenceFilesByScenario(file)) {
+      const scenarioId = `scenario:${rel}#${scenarioName}`;
+      if (!nodes.has(scenarioId)) continue;
+      for (const evRel of evidenceFiles) {
+        const test = isTestPath(evRel);
+        const fileId = addNode({ id: `${test ? 'test' : 'file'}:${evRel}`, kind: test ? 'test' : 'file', label: evRel, path: evRel });
+        addEdge(fileId, scenarioId, test ? 'tests' : 'implements');
       }
     }
   }

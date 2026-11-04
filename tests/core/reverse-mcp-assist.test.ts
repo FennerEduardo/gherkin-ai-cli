@@ -56,8 +56,34 @@ describe('reverse MCP tools (R-18)', () => {
     expect(classifyOperation('ghk_reverse_scan').level).toBe('safe');
     expect(classifyOperation('ghk_reverse_get_evidence').level).toBe('safe');
     expect(classifyOperation('ghk_reverse_propose').level).toBe('requires_review');
-    expect(ALL_TOOLS.filter(t => t.name.startsWith('ghk_reverse_')).map(t => `${t.name}:${t.level}`).sort()).toEqual(['ghk_reverse_get_evidence:safe', 'ghk_reverse_propose:requires_review', 'ghk_reverse_scan:safe']);
+    expect(ALL_TOOLS.filter(t => t.name.startsWith('ghk_reverse_')).map(t => `${t.name}:${t.level}`).sort()).toEqual([
+      'ghk_reverse_coverage:safe', 'ghk_reverse_explain:safe', 'ghk_reverse_get_evidence:safe', 'ghk_reverse_propose:requires_review',
+      'ghk_reverse_review:safe', 'ghk_reverse_review_decide:requires_review', 'ghk_reverse_scan:safe', 'ghk_reverse_sync:safe'
+    ]);
+    for (const t of ALL_TOOLS.filter(x => x.name.startsWith('ghk_reverse_'))) expect(classifyOperation(t.name).level, t.name).toBe(t.level);
     expect(ALL_TOOLS.some(t => /reverse.*accept/.test(t.name))).toBe(false);
+  });
+
+  it('coverage, explain, review and sync answer read-only; decisions need write permission and stay in .ghe/reverse (RV-16)', async () => {
+    const tool = (n: string) => ALL_TOOLS.find(t => t.name === n)!;
+    const body = async (n: string, args: any, write = false) => JSON.parse(((await invokeTool(tool(n), args, perms(write))) as any).content[0].text);
+    const coverage = await body('ghk_reverse_coverage', {});
+    expect(coverage.coverage.operations).toBeGreaterThan(0);
+    const explain = await body('ghk_reverse_explain', { operation: 'POST /api/v1/orders/{id}/approve' });
+    expect(explain.found).toBe(true);
+    expect(explain.explanations[0].chain[0].role).toBe('endpoint');
+    const sync = await body('ghk_reverse_sync', {});
+    expect(sync).toMatchObject({ features: 0, patches: [] });
+    expect(fs.existsSync(path.join(workspace, '.ghe'))).toBe(false);
+    await invokeTool(tool('ghk_reverse_propose'), {}, perms(true));
+    const review = await body('ghk_reverse_review', {});
+    expect(review.counts.pending).toBeGreaterThan(0);
+    const denied: any = await invokeTool(tool('ghk_reverse_review_decide'), { approve: ['all'] }, perms(false));
+    expect(denied.isError).toBe(true);
+    const decided = await body('ghk_reverse_review_decide', { approve: ['@ApproveOrder'], note: 'checked with the user' }, true);
+    expect(decided.recorded.length).toBeGreaterThan(0);
+    expect(fs.existsSync(path.join(workspace, '.ghe', 'reverse', 'review.json'))).toBe(true);
+    expect(fs.existsSync(path.join(workspace, 'features'))).toBe(false);
   });
 
   it('scan returns analyzers and counts without writing; get_evidence filters by operation path', async () => {

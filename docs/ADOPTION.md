@@ -114,15 +114,41 @@ When the service has no features yet, `ghk reverse` drafts the characterization 
 ghk reverse scan                          # evidence: routes, DTO validation, states, events, tests, OpenAPI (file:line, confidence)
 ghk reverse propose                       # .ghe/reverse/proposals/<aggregate>.feature, every step after its "# evidence:" line
 ghk reverse propose --assist              # optional: the LLM proposes title, user story and scenario names as a patch, never steps
-ghk reverse accept order --yes            # after review: features/discovered/order.feature, without @needs-review
+ghk reverse explain PlaceOrder            # where a name, a confidence and every step come from
+ghk reverse review order                  # each scenario with the code behind it; --approve / --reject
+ghk reverse accept order --yes            # after review: features/discovered/order.feature, the approved scenarios only
 ghk lint --threshold 80 && ghk graph      # the accepted features join the gates and the traceability graph
 ghk reverse coverage --min 60             # share of the code's operations the features explain (exit 7 below)
+ghk reverse sync                          # later: exit 7 when the code and the accepted features drift apart
 ```
+
+Once features are accepted, two checks keep them true in CI: `sync` fails when the code changes behind a characterization feature, and `coverage` comments the share of the code the features explain:
+
+```yaml
+# .github/workflows/living-specifications.yml
+name: Living specifications
+on: [pull_request]
+jobs:
+  reverse:
+    runs-on: ubuntu-latest
+    permissions: { contents: read, pull-requests: write }
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with: { node-version: '24' }
+      - run: npx gherkin-ai@3 reverse sync --json > sync.json || echo "drift=1" >> "$GITHUB_ENV"
+      - run: npx gherkin-ai@3 reverse coverage --format markdown --output coverage.md
+      - run: gh pr comment "${{ github.event.pull_request.number }}" --body-file coverage.md --edit-last || gh pr comment "${{ github.event.pull_request.number }}" --body-file coverage.md
+        env: { GH_TOKEN: '${{ github.token }}' }
+      - run: test -z "$drift" || { echo "The code changed behind a characterization feature: run ghk reverse sync and review its patch."; exit 1; }
+```
+
+`ghk impact --file src/orders/orders.service.ts` lists the scenarios a file backs, from the `# evidence:` comments of the accepted features.
 
 - **Read the proposals as a draft.** They describe what the code does today (`@characterization`), including what it should not do. Rename commands to the business's words, delete what is technical, and add what the code cannot show (why a rule exists). Then accept.
 - **Deterministic by default.** `scan` and `propose` give the same output on every run, call no LLM and write only to `.ghe/reverse/`. Secret files (`.env`, keys) are never read.
 - **Keep the features and the code together.** With features already in the repository, `accept --merge` leaves out what they already specify and exits 7 when a feature names a command the code does not implement. `coverage` lists each operation as documented, renamed or undocumented.
-- **Maturity by stack.** TypeScript (Express, NestJS), Spring and Quarkus, ASP.NET Core, FastAPI, Go, OpenAPI documents and tests are beta (validated on code gherkin-ai did not write; [REVERSE.md](REVERSE.md#validation-on-open-source-code)). Any other stack is read through its OpenAPI document (`--openapi`). `ghk stacks` lists the analyzers.
+- **Maturity by stack.** TypeScript (Express, NestJS), Spring and Quarkus, ASP.NET Core, FastAPI, Django, Go, OpenAPI documents and tests are beta; GraphQL and gRPC contracts are experimental (validated on code gherkin-ai did not write; [REVERSE.md](REVERSE.md#validation-on-open-source-code)). Any other stack is read through its OpenAPI document (`--openapi`). `ghk stacks` lists the analyzers.
 
 ## 4. Gate pull requests, then tighten
 
