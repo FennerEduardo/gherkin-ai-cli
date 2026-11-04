@@ -179,11 +179,11 @@ export class ToolService {
     try {
       const res = await callUpstream(this.cfg, cap, args, identity, { trace, tenantClaim: this.manifest.identity.tenantClaim, scenario: cap.source.scenarios[0] });
       const ok = res.status >= 200 && res.status < 300;
-      this.audit.record({ action: 'tool:call', status: ok ? 'SUCCESS' : 'FAILURE', ...scope, upstreamStatus: res.status, durationMs: Date.now() - started });
+      this.audit.record({ action: 'tool:call', status: ok ? 'SUCCESS' : 'FAILED', ...scope, upstreamStatus: res.status, durationMs: Date.now() - started });
       return result(this.manifest.service, { status: res.status, data: redactValue(res.body, cap.pii) }, !ok);
     } catch (err) {
       const message = err instanceof UpstreamError ? err.message : 'The call failed.';
-      this.audit.record({ action: 'tool:call', status: 'FAILURE', ...scope, durationMs: Date.now() - started, details: message });
+      this.audit.record({ action: 'tool:call', status: 'FAILED', ...scope, durationMs: Date.now() - started, details: message });
       return refusal(message);
     }
   }

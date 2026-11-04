@@ -41,12 +41,19 @@ export interface ExposeCommandOptions {
   yes?: boolean;
   manifest?: string;
   against?: string;
-  /** generate */
+  /** generate, plan, publish */
+  image?: string;
+  discoveryUrl?: string;
+  audience?: string[];
+  region?: string;
+  /** drift */
+  url?: string;
+  tokenEnv?: string;
   target?: string;
   out?: string;
 }
 
-const SUBCOMMANDS = ['discover', 'review', 'approve', 'revoke', 'validate', 'generate'];
+const SUBCOMMANDS = ['discover', 'review', 'approve', 'revoke', 'validate', 'generate', 'plan', 'publish', 'drift'];
 
 /** Writes generated files under `dir`, replacing a previous generation (marked by .ghk-generated) and nothing else. */
 export function writeGenerated(dir: string, files: { path: string; content: string }[]): string[] {
@@ -241,11 +248,9 @@ export async function handleExposeCommand(subcommand: string | undefined, args: 
     return;
   }
 
-  if (subcommand === 'generate') {
+  /** The approved manifest, refused unless it passes validate (nothing is planned, generated or published from it otherwise). */
+  const validApproved = async (what: string) => {
     const { validateManifest, validationExitCode } = await import('../core/expose/validate');
-    const target = options.target ?? 'mcp-runtime';
-    const targets = ['mcp-runtime'];
-    if (!targets.includes(target)) throw new UsageError(`Unknown --target ${target}.`, { hint: `Use one of: ${targets.join(', ')}.` });
     const manifest = readApproved();
     if (!manifest) throw new UsageError(`No ${MANIFEST_FILE}: nothing is approved.`, { hint: 'Run `ghk expose discover`, review it, then `ghk expose approve <id> --env <environment>`.' });
     const contract = loadContract(root, options.contract ?? manifest.service.contract);
@@ -253,24 +258,156 @@ export async function handleExposeCommand(subcommand: string | undefined, args: 
     const exit = validationExitCode(issues);
     if (exit) {
       const text = issues.filter(i => i.severity === 'error').map(i => `  ${i.code} ${i.capability ?? ''} ${i.message}`).join('\n');
-      const message = `${MANIFEST_FILE} does not pass \`ghk expose validate\`; nothing was generated:\n${text}`;
+      const message = `${MANIFEST_FILE} does not pass \`ghk expose validate\`; nothing was ${what}:\n${text}`;
       throw exit === 5 ? new PolicyError(message) : new GhkError(message, ExitCode.GATE_FAILED);
     }
+    return manifest;
+  };
+  const providerOptions = (manifest: { capabilities: { approval?: { environments: string[] } }[] }) => {
+    const environment = options.env?.[0] ?? [...new Set(manifest.capabilities.flatMap(c => c.approval?.environments ?? []))].sort()[0];
+    if (!environment) throw new UsageError('Name the environment with --env.');
+    return { environment, image: options.image, discoveryUrl: options.discoveryUrl, audiences: options.audience, region: options.region };
+  };
+  const provider = async (id: string) => {
+    const { findProvider, availableProviders } = await import('../core/expose/providers');
+    const p = findProvider(root, id);
+    if (!p) throw new UsageError(`Unknown --target ${id}.`, { hint: `Use mcp-runtime or a provider: ${availableProviders(root).map(x => x.id).join(', ')}.` });
+    return p;
+  };
+
+  if (subcommand === 'generate') {
+    const target = options.target ?? 'mcp-runtime';
+    const gateway = target === 'mcp-runtime' ? undefined : await provider(target);
+    const manifest = await validApproved('generated');
     const { generateRuntime } = await import('../core/expose/runtime');
-    const files = generateRuntime(root, manifest);
-    const out = path.resolve(root, options.out ?? 'expose', target);
+    const outputs: { dir: string; files: { path: string; content: string }[] }[] = [
+      // A provider hosts the runtime, so it is generated with it.
+      { dir: path.resolve(root, options.out ?? 'expose', 'mcp-runtime'), files: generateRuntime(root, manifest) }
+    ];
+    if (gateway) {
+      const { providerView } = await import('../core/expose/providers');
+      outputs.push({ dir: path.resolve(root, options.out ?? 'expose', gateway.id), files: gateway.emit(providerView(manifest), providerOptions(manifest)) });
+    }
     if (options.dryRun) {
-      if (options.json) emitJson({ target, out: path.relative(root, out), files: files.map(f => f.path), dryRun: true });
-      else logger.info(`--dry-run: would write ${files.length} files to ${path.relative(root, out)}/.`);
+      if (options.json) emitJson({ target, outputs: outputs.map(o => ({ out: path.relative(root, o.dir), files: o.files.map(f => f.path) })), dryRun: true });
+      else for (const o of outputs) logger.info(`--dry-run: would write ${o.files.length} files to ${path.relative(root, o.dir)}/.`);
       return;
     }
-    const written = writeGenerated(out, files);
+    const written = outputs.map(o => ({ out: path.relative(root, o.dir).split(path.sep).join('/'), files: writeGenerated(o.dir, o.files) }));
     const { getTelemetry } = await import('../core/telemetry');
     const tools = manifest.capabilities.filter(c => c.status === 'approved').map(c => c.name);
-    getTelemetry().recordAudit({ action: 'expose:generate', status: 'SUCCESS', resource: path.relative(root, out), details: `${target}: ${tools.join(', ')}` });
-    if (options.json) { emitJson({ target, out: path.relative(root, out), files: written, tools }); return; }
-    logger.success(`${target}: ${written.length} files in ${path.relative(root, out)}/ (${tools.length} tool(s): ${tools.join(', ')}).`);
-    console.log(`  Build: docker build -t <image> ${path.relative(root, out)}  (AgentCore: --platform linux/arm64). Configure it with the variables of its README.`);
+    getTelemetry().recordAudit({ action: 'expose:generate', status: 'SUCCESS', resource: written.map(w => w.out).join(', '), details: `${target}: ${tools.join(', ')}` });
+    if (options.json) { emitJson({ target, outputs: written, out: written[written.length - 1].out, files: written[written.length - 1].files, tools }); return; }
+    for (const w of written) logger.success(`${w.out}/: ${w.files.length} files (${tools.length} tool(s): ${tools.join(', ')}).`);
+    console.log(`  Runtime image: docker build -t <image> ${written[0].out}  (AgentCore: --platform linux/arm64). Its README lists the variables.`);
+    if (gateway) console.log(`  Next: \`ghk expose plan --target ${gateway.id}\` to review, then \`ghk expose publish --target ${gateway.id} --yes\`.`);
+    return;
+  }
+
+  if (subcommand === 'plan') {
+    if (!options.target || options.target === 'mcp-runtime') throw new UsageError('Name the provider with --target.', { hint: 'For example: --target container, or a provider of a plugin (`ghk plugin list`).' });
+    const gateway = await provider(options.target);
+    const manifest = await validApproved('planned');
+    const { providerView, overclaimed, CONTROLS, CONTROL_LABELS } = await import('../core/expose/providers');
+    const plan = gateway.plan(providerView(manifest), providerOptions(manifest));
+    const over = overclaimed(gateway, plan);
+    const capabilities = gateway.capabilities();
+    const report = { provider: gateway.id, label: gateway.label, tier: gateway.tier, maturity: gateway.maturity, ...(gateway.plugin ? { plugin: gateway.plugin } : {}), capabilities, plan, tradeOffs: gateway.tradeOffs ?? [], overclaimed: over };
+    if (!options.dryRun) writeExposeFile(root, `plan-${gateway.id}.json`, `${JSON.stringify(report, null, 2)}\n`);
+    if (over.length) throw new GhkError(`Provider ${gateway.id} claims controls it does not provide (${over.join(', ')}): its plan is not trusted.`, ExitCode.GATE_FAILED);
+    if (options.json) { emitJson(report); return; }
+    logger.info(`ghk expose plan --target ${gateway.id}: ${gateway.label} (${gateway.tier}, ${gateway.maturity}${gateway.plugin ? `, plugin ${gateway.plugin}` : ''})`);
+    console.log('\n  Where each control is enforced:');
+    for (const c of CONTROLS) console.log(`    ${capabilities[c].padEnd(12)} ${CONTROL_LABELS[c]}`);
+    console.log('\n  Tools:');
+    for (const t of plan.tools) console.log(`    ${t.tool.padEnd(28)} ${t.effect.padEnd(18)} scopes ${t.scopes.join(' ') || '-'}${t.approval === 'human' ? '  (a person approves each call: refused by the stateless runtime)' : ''}`);
+    console.log('\n  Resources:');
+    for (const r of plan.resources) console.log(`    ${r}`);
+    if (plan.warnings.length) {
+      console.log('\n  What this provider does not guarantee:');
+      for (const w of plan.warnings) console.log(`    - ${w}`);
+    }
+    if (gateway.tradeOffs?.length) {
+      console.log('\n  Trade-offs:');
+      for (const t of gateway.tradeOffs) console.log(`    - ${t}`);
+    }
+    return;
+  }
+
+  if (subcommand === 'publish') {
+    if (!options.target || options.target === 'mcp-runtime') throw new UsageError('Name the provider with --target.');
+    const gateway = await provider(options.target);
+    await validApproved('published');
+    const dir = path.resolve(root, options.out ?? 'expose', gateway.id);
+    if (!fs.existsSync(path.join(dir, '.ghk-generated'))) throw new UsageError(`${path.relative(root, dir)}/ was not generated.`, { hint: `Run \`ghk expose generate --target ${gateway.id}\` first, and review it.` });
+    if (!gateway.applyCommands?.length) throw new UsageError(`Provider ${gateway.id} has no publish commands: apply ${path.relative(root, dir)}/ with its own tool.`);
+    const commands = gateway.applyCommands.map(c => c.join(' '));
+    if (!options.yes || options.dryRun) {
+      if (options.json) emitJson({ provider: gateway.id, dir: path.relative(root, dir), commands, published: false });
+      else {
+        logger.info(`ghk expose publish --target ${gateway.id} would run in ${path.relative(root, dir)}/:`);
+        for (const c of commands) console.log(`    ${c}`);
+        console.log('  Nothing was run: review `ghk expose plan`, then pass --yes.');
+      }
+      return;
+    }
+    const { AgentFirewall, BUILTIN_DENY_COMMANDS } = await import('../core/governance/agent-firewall');
+    const { projectConfig } = await import('../core/plugins/load');
+    const firewall = AgentFirewall.forWorkspace(root, projectConfig(root) ?? {});
+    const { getTelemetry } = await import('../core/telemetry');
+    for (const command of gateway.applyCommands) {
+      const line = command.join(' ');
+      const decision = firewall.check({ kind: 'execute', target: line, agent: 'cli' });
+      // The built-in deny list keeps agents from deploying; a person running publish --yes is the approval.
+      // A command the organization denies in its own policy is refused for everyone.
+      const builtin = decision.rule.startsWith('deny-command: ') && BUILTIN_DENY_COMMANDS.map(c => c.trim()).includes(decision.rule.slice('deny-command: '.length));
+      if (decision.verdict === 'DENY' && !builtin) throw new PolicyError(`publish refused: ${line} — ${decision.reason}`);
+      const { spawnSync } = await import('child_process');
+      const r = spawnSync(command[0], command.slice(1), { cwd: dir, stdio: 'inherit' });
+      getTelemetry().recordAudit({ action: 'expose:publish', status: r.status === 0 ? 'SUCCESS' : 'FAILED', resource: `${gateway.id}: ${line}`, details: `approved by a person (--yes); firewall ${decision.verdict} (${decision.rule})` });
+      if (r.status !== 0) throw new GhkError(`${line} failed (exit ${r.status ?? r.error?.message}).`, ExitCode.GENERIC);
+    }
+    if (options.json) emitJson({ provider: gateway.id, dir: path.relative(root, dir), commands, published: true });
+    else logger.success(`Published ${gateway.id}. Check what agents see with \`ghk expose drift --url <endpoint> --token-env <VAR>\`.`);
+    return;
+  }
+
+  if (subcommand === 'drift') {
+    const { compareTools, generatedRuntimeTools, servedTools } = await import('../core/expose/drift');
+    const { providerView } = await import('../core/expose/providers');
+    const manifest = readApproved();
+    if (!manifest) throw new UsageError(`No ${MANIFEST_FILE}: nothing is approved.`);
+    let source: string;
+    let served;
+    if (options.url) {
+      const url = new URL(options.url);
+      if (url.protocol !== 'https:' && !['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)) throw new UsageError('--url must be https (or a local runtime).');
+      const token = options.tokenEnv ? process.env[options.tokenEnv] : undefined;
+      if (options.tokenEnv && !token) throw new UsageError(`${options.tokenEnv} is empty.`, { hint: 'The token comes from an environment variable, never from the command line.' });
+      source = url.toString();
+      try {
+        served = await servedTools(source, token);
+      } catch (err) {
+        throw new GhkError(`drift: ${(err as Error).message}`, ExitCode.PROVIDER);
+      }
+    } else {
+      const dir = path.resolve(root, options.out ?? 'expose', 'mcp-runtime');
+      source = path.relative(root, dir).split(path.sep).join('/');
+      try {
+        served = generatedRuntimeTools(dir);
+      } catch (err) {
+        throw new UsageError((err as Error).message);
+      }
+    }
+    const items = compareTools(providerView(manifest), served);
+    if (options.json) emitJson({ source, drift: items.length > 0, items });
+    else if (!items.length) logger.success(`${source}: the served tools match ${MANIFEST_FILE}.`);
+    else {
+      logger.warn(`${source}: ${items.length} difference(s) with ${MANIFEST_FILE}:`);
+      for (const i of items) console.log(`    ${i.kind.padEnd(12)} ${i.tool}: ${i.detail}`);
+      console.log('  Regenerate and publish from the approved manifest, or revoke what should not be served.');
+    }
+    if (items.length) process.exitCode = ExitCode.DRIFT;
     return;
   }
 

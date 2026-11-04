@@ -95,6 +95,7 @@ export const BUILTIN_ALLOW_COMMANDS = [
 export const READ_ONLY_GHK_COMMANDS = [
   'lint', 'validate', 'converge', 'quality', 'q', 'graph', 'diff', 'report', 'detect', 'risk', 'verify', 'evaluate', 'eval',
   'config validate', 'config show', 'config schema', 'upgrade --check', 'firewall check', 'industry show', 'industry list',
+  'expose review', 'expose validate', 'expose plan', 'expose drift',
   'help', '--help', '-h', '--version', '-V'
 ];
 const GHK_BINARIES = new Set(['ghk', 'gherkin-ai', 'gherkin-cli', 'gherkin-ia']);

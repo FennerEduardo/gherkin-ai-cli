@@ -53,7 +53,26 @@ export interface GatewayPlan {
 /** The parts of the capability manifest a provider reads (see src/core/expose/manifest.ts). */
 export interface ProviderManifestView {
   service: string;
-  capabilities: { id: string; name: string; description: string; effect: string; status: string; authorization: { scopes: string[]; roles: string[] }; execution: { approval: 'none' | 'human' } }[];
+  /** Since 3.3.0: the industry profile and the identity claims of the manifest. */
+  industry?: string;
+  identity?: { tenantClaim: string; scopesClaim: string; rolesClaim: string };
+  /** Environment variable of the runtime that holds the service's base URL. */
+  baseUrlEnv?: string;
+  capabilities: {
+    id: string;
+    name: string;
+    description: string;
+    effect: string;
+    status: string;
+    authorization: { scopes: string[]; roles: string[] };
+    execution: { approval: 'none' | 'human'; idempotency?: 'required' | 'none'; timeoutMs?: number; rateLimitPerMinute?: number };
+    /** Since 3.3.0 (optional for providers written before): what the tool runs and where it is approved. */
+    version?: number;
+    title?: string;
+    input?: Record<string, unknown>;
+    handler?: { method: string; path: string };
+    environments?: string[];
+  }[];
 }
 
 export interface GatewayProviderOptions {
@@ -79,4 +98,11 @@ export interface GatewayProvider {
   emit(manifest: ProviderManifestView, options: GatewayProviderOptions): GeneratedFile[];
   /** The command that validates the emitted files offline (`terraform validate`, `bicep build`), for `ghk plugin verify` and the goldens. */
   validateCommand?: string[];
+  /**
+   * The commands `ghk expose publish` runs in the emitted directory, in order, after a person confirms
+   * (`terraform init`, `terraform apply`). Without them the provider cannot be published by the CLI.
+   */
+  applyCommands?: string[][];
+  /** Cold starts, cost drivers and lock-in, in plain words, for `ghk expose plan`. */
+  tradeOffs?: string[];
 }

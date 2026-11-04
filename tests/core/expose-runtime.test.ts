@@ -229,6 +229,19 @@ describe('expose runtime: live (EX-04, EX-05)', () => {
     await support.close();
   });
 
+  it('drift against the live endpoint: none for the approved manifest, one after a mutation (EX-11)', async () => {
+    const { servedTools, compareTools } = await import('../../src/core/expose/drift');
+    const { providerView } = await import('../../src/core/expose/providers');
+    const project = fs.mkdtempSync(path.join(os.tmpdir(), 'ghk-rt-drift-'));
+    fs.cpSync(path.join(FIXTURES, 'shop'), project, { recursive: true });
+    const view = providerView(approvedShopManifest(project));
+    const served = await servedTools(mcpUrl, token({ scope: 'order:read order:write', roles: ['support'] }));
+    expect(compareTools(view, served)).toEqual([]);
+    const mutated = { ...view, capabilities: view.capabilities.map(c => c.name === 'get_order' ? { ...c, description: 'Changed.' } : c) };
+    expect(compareTools(mutated, served)).toEqual([{ tool: 'get_order', kind: 'description', detail: 'the served description differs from the approved one' }]);
+    await expect(servedTools(mcpUrl, undefined)).rejects.toThrow(/answered 401/);
+  });
+
   it('serves the specification through the read-only context tools to callers with bdd:read', async () => {
     const client = await connect(token({ scope: 'bdd:read' }));
     expect((await client.listTools()).tools.map(t => t.name)).toEqual(['bdd_search_features', 'bdd_get_scenario', 'bdd_get_business_rules']);

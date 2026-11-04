@@ -7,7 +7,7 @@ import { appendFileSync } from 'node:fs';
 
 export interface AuditEvent {
   action: 'tool:list' | 'tool:call' | 'auth';
-  status: 'SUCCESS' | 'BLOCKED' | 'FAILURE';
+  status: 'SUCCESS' | 'BLOCKED' | 'FAILED';
   resource?: string;
   user?: string;
   tenant?: string;
