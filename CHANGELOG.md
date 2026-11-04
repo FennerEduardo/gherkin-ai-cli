@@ -123,6 +123,12 @@ All notable changes to this project will be documented in this file. See [commit
     - `verify <dir>` is the conformance kit, and a failed check exits 4. It checks compatibility and determinism, the evidence shape, and that the analyzer writes nothing and reads nothing outside the fixture. A planted `.env` must never be opened.
     - `verify` also measures F1 against the fixture's expected endpoints, which decides the maturity a plugin may claim. Lint-rule ids and gateway-provider controls are checked too.
   - **Plugin integrity.** `ghk plugin lock` writes `.ghk/plugins.lock` (a sha512 per plugin), and `plugins.integrity` pins the same values in the configuration, lockable. A pinned plugin whose bytes differ is refused with exit 5 and audited.
+  - **Official plugins for Laravel and Rails** (`plugins/reverse-laravel` and `plugins/reverse-rails`, published separately as `@gherkin-ai/reverse-laravel` and `@gherkin-ai/reverse-rails`, beta).
+    - Each ships its own tree-sitter grammar, so the CLI package does not grow.
+    - Laravel reads routes and groups, resources, `Route::match`, controllers and FormRequests; F1 0.93 on the Laravel RealWorld app.
+    - Rails reads `routes.rb` (resources, member/collection, namespaces, Devise), controllers, strong params and model validations; F1 0.95 on the Rails RealWorld app.
+    - Both pass `ghk plugin verify`; the golden `tests/golden/reverse-plugins.test.ts` runs them from a project's `plugins.load` and checks that a changed plugin is refused once locked.
+    - `scripts/reverse-oss.js` validates a plugin when its corpus entry names one.
   - **`@gherkin-ai/plugin-sdk`** (in `packages/plugin-sdk`, published separately) gives editors the types of plugin API 2 and has no runtime dependency.
     - The CLI hands analyzers their helpers in `ctx.sdk`: stable evidence ids, paths, and `loadGrammar(wasm)` with the CLI's own web-tree-sitter.
     - The types come from `gherkin-ai/dist/plugin-api`, the one public module for plugins.

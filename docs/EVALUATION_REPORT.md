@@ -202,12 +202,14 @@ This code was written by gherkin-ai, so the round trip is necessary but not suff
 | Quarkus (Java) | `diegocamara/realworld-api-quarkus` (`d4fe769`) | 19 / 19 | 1.00 | 1.00 | 1.00 |
 | Spring Boot (Kotlin) | `gothinkster/kotlin-spring-realworld-example-app` (`848c29e`) | 19 / 19 | 1.00 | 1.00 | 1.00 |
 | Django REST framework (new analyzer) | `gothinkster/django-realworld-example-app` (`29c9d42`) | 18 / 19 | 0.95 | 0.95 | 0.95 |
+| Laravel (plugin `@gherkin-ai/reverse-laravel`) | `gothinkster/laravel-realworld-example-app` (`e45c37c`) | 19 / 19 (22 found) | 0.86 | 1.00 | 0.93 |
+| Rails (plugin `@gherkin-ai/reverse-rails`) | `gothinkster/rails-realworld-example-app` (`a2ae4ff`) | 19 / 19 (21 found) | 0.90 | 1.00 | 0.95 |
 
 The Go analyzer first scored below the threshold on this corpus. The gin route groups are passed to registration functions in other packages, so the routes lost their prefix, and `""` and `"/"` counted as two routes. Both cases are fixed and have their own fixture (`tests/fixtures/reverse/go-gin-groups/`).
 
 Every beta analyzer now has at least one app. The NestJS and Express apps expose endpoints the specification does not list (`DELETE /users/{id}`, `GET /`); precision counts them, so 0.90 and 0.95 are not misreadings. The Spring app declares `method = POST` with a static import, which the analyzer first read as `GET` (F1 0.89); it is fixed.
 
-The Django app has no article deletion in its code, and it serves a `PATCH /user` that the specification does not list: both differences are real. The proposals for these nine apps score 94 to 99 on `ghk lint`. Before the fix for duplicated scenarios (GHK004) they scored 69 to 79. They still need review before `accept`, which is what `@needs-review` says. The golden-build dashboard shows the round-trip and open-source scores. The Pages workflow reruns the open-source validation on every build.
+The Django app has no article deletion in its code, and it serves a `PATCH /user` that the specification does not list: both differences are real. The Laravel and Rails analyzers are official plugins outside the CLI package. Their first runs scored 0.81 and 0.84, until `Route::match`, path-declared resources, Devise and `on: :collection` were read; the endpoints outside the specification that remain are the extra `PATCH` routes both frameworks add, and a web `GET /`. The proposals for these eleven apps score 94 to 99 on `ghk lint`. Before the fix for duplicated scenarios (GHK004) they scored 69 to 79. They still need review before `accept`, which is what `@needs-review` says. The golden-build dashboard shows the round-trip and open-source scores. The Pages workflow reruns the open-source validation on every build.
 
 ### 2.2a Against a person: CQRS and logic in the route handlers
 

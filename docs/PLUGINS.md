@@ -13,6 +13,7 @@ A plugin adds what the core does not ship: an analyzer that reads a stack for `g
 5. [Start, verify, list](#5-start-verify-list)
 6. [Integrity and security](#6-integrity-and-security)
 7. [The SDK](#7-the-sdk)
+8. [Official plugins](#8-official-plugins)
 
 ## 1. Loading plugins
 
@@ -127,3 +128,14 @@ The CLI hands each analyzer its helpers in `ctx.sdk`:
 - `tree`: `ofType`, `childOfType`, `lineRange`, `unquote`.
 
 The types come from `gherkin-ai/dist/plugin-api`, the one public module of the CLI for plugins. The rest of `dist/` is internal.
+
+## 8. Official plugins
+
+The maintainers develop these in the repository (`plugins/`). They are published as separate npm packages, never inside the CLI's. Each one passes `ghk plugin verify`, and the golden `tests/golden/reverse-plugins.test.ts` runs them on every change.
+
+| Package | Adds | Maturity | Validation |
+|---|---|---|---|
+| `@gherkin-ai/reverse-laravel` | `laravel/routes`: routes and groups, resources, controllers, FormRequests (tree-sitter-php, 800 KB, shipped in the plugin) | beta | F1 0.93 on the Laravel RealWorld app |
+| `@gherkin-ai/reverse-rails` | `rails/routes`: `routes.rb`, controllers, strong params, model validations, Devise (tree-sitter-ruby, 2 MB, shipped in the plugin) | beta | F1 0.95 on the Rails RealWorld app |
+
+Community plugins use the keyword `gherkin-ai-plugin` on npm. Run `ghk plugin verify` on a plugin before you load it. Its report shows what it reads, whether it is deterministic, and the maturity its fixtures support.

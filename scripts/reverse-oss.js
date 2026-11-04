@@ -69,8 +69,17 @@ async function main() {
   const { isInfrastructureEndpoint } = require(path.join(dist, 'candidates'));
   const expected = new Set(corpus.endpoints);
 
+  // An entry may name a plugin (plugins/reverse-laravel): its analyzers join the built-in ones for that run.
+  const { pluginRegistry } = require(path.join(ROOT, 'dist', 'core', 'plugin-system'));
+  const loadedPlugins = new Set();
+
   const rows = [];
   for (const repo of corpus.repositories) {
+    if (repo.plugin && !loadedPlugins.has(repo.plugin)) {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      pluginRegistry.register(require(path.join(ROOT, repo.plugin)));
+      loadedPlugins.add(repo.plugin);
+    }
     const dir = checkout(cache, repo);
     const scan = await runScan(dir, { write: false });
     const found = new Set(scan.evidence
@@ -84,6 +93,7 @@ async function main() {
     const lint = proposals.proposals?.map(p => p.lint?.score).filter(s => typeof s === 'number') ?? [];
     rows.push({
       analyzer: repo.analyzer,
+      ...(repo.plugin ? { plugin: repo.plugin } : {}),
       repository: repo.repository,
       commit: repo.commit,
       expected: expected.size,

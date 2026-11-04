@@ -1,0 +1,26 @@
+{
+  "name": "@gherkin-ai/reverse-rails",
+  "version": "0.1.0",
+  "description": "Ruby on Rails for gherkin-ai reverse engineering (plugin API 2, beta): routes, controllers, strong params, model validations, states and events.",
+  "license": "MIT",
+  "main": "index.js",
+  "files": ["index.js", "grammar", "README.md"],
+  "keywords": ["gherkin-ai", "gherkin-ai-plugin", "rails", "ruby", "reverse-engineering", "bdd"],
+  "peerDependencies": {
+    "gherkin-ai": "^3.3.0"
+  },
+  "devDependencies": {
+    "@gherkin-ai/plugin-sdk": "^2.0.0"
+  },
+  "scripts": {
+    "verify": "gherkin-ai plugin verify ."
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/FennerEduardo/gherkin-ai-cli.git",
+    "directory": "plugins/reverse-rails"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

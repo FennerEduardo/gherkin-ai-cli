@@ -1,0 +1,10 @@
+{
+  "endpoints": [
+    "GET /api/tags",
+    "GET /api/v1/orders",
+    "POST /api/v1/orders",
+    "GET /api/v1/orders/{order}",
+    "POST /api/v1/orders/{order}/cancel",
+    "POST /api/v1/orders/{order}/refund"
+  ]
+}

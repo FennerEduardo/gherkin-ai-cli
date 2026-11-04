@@ -76,6 +76,20 @@
       "repository": "https://github.com/gothinkster/django-realworld-example-app",
       "commit": "29c9d42831fa0cfc5a4aa7561f674396eacf20a2",
       "license": "none declared: cloned at test time, never copied"
+    },
+    {
+      "analyzer": "laravel/routes",
+      "plugin": "plugins/reverse-laravel",
+      "repository": "https://github.com/gothinkster/laravel-realworld-example-app",
+      "commit": "e45c37c8a5f57131c9d239f1fc104c227e66b6ee",
+      "license": "MIT"
+    },
+    {
+      "analyzer": "rails/routes",
+      "plugin": "plugins/reverse-rails",
+      "repository": "https://github.com/gothinkster/rails-realworld-example-app",
+      "commit": "a2ae4fff78b3337683cea988c023281dcb5551b9",
+      "license": "none declared: cloned at test time, never copied"
     }
   ]
 }

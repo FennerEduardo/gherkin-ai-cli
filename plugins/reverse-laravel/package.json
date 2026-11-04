@@ -1,0 +1,26 @@
+{
+  "name": "@gherkin-ai/reverse-laravel",
+  "version": "0.1.0",
+  "description": "Laravel for gherkin-ai reverse engineering (plugin API 2, beta): routes, groups, controllers, FormRequests, states and events.",
+  "license": "MIT",
+  "main": "index.js",
+  "files": ["index.js", "grammar", "README.md"],
+  "keywords": ["gherkin-ai", "gherkin-ai-plugin", "laravel", "php", "reverse-engineering", "bdd"],
+  "peerDependencies": {
+    "gherkin-ai": "^3.3.0"
+  },
+  "devDependencies": {
+    "@gherkin-ai/plugin-sdk": "^2.0.0"
+  },
+  "scripts": {
+    "verify": "gherkin-ai plugin verify ."
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/FennerEduardo/gherkin-ai-cli.git",
+    "directory": "plugins/reverse-laravel"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}
