@@ -1,0 +1,7 @@
+{
+  "description": "The model a person names after reading the features in this directory (golden G-R1): what reverse should recover, in the team's words.",
+  "aggregates": ["Order", "Stock"],
+  "commands": ["PlaceOrder", "CancelOrder", "ReserveStock"],
+  "events": ["OrderPlaced", "OrderCancelled", "StockReserved"],
+  "states": ["PLACED", "CANCELLED", "RESERVED"]
+}

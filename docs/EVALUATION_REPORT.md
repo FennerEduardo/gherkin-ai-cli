@@ -209,6 +209,21 @@ Every beta analyzer now has at least one app. The NestJS and Express apps expose
 
 The Django app has no article deletion in its code, and it serves a `PATCH /user` that the specification does not list: both differences are real. The proposals for these nine apps score 94 to 99 on `ghk lint`. Before the fix for duplicated scenarios (GHK004) they scored 69 to 79. They still need review before `accept`, which is what `@needs-review` says. The golden-build dashboard shows the round-trip and open-source scores. The Pages workflow reruns the open-source validation on every build.
 
+### 2.2a Against a person: CQRS and logic in the route handlers
+
+`tests/golden/reverse-human.test.ts` runs reverse on two services written by hand in shapes static analysis finds hard. Next to each, a person wrote features from the product's side and named the model in `expected/model.json`. The score compares reverse with those names, not with the generator's reading of the features.
+
+| Golden | Shape | Aggregates | Commands | Events | States | F1 |
+|---|---|---|---|---|---|---|
+| G-R1 `brownfield-nestjs-cqrs` | `@nestjs/cqrs`: controllers only dispatch commands; the behaviour is in `@CommandHandler` classes; stock is reserved in an `@EventsHandler` | 2/2 | 3/3 | 3/3 | 3/3 | 1.00 |
+| G-R2 `brownfield-fat-controller` | Express: validation, SQL, state changes and events inline in the route handlers | 1/1 | 3/3 | 3/3 | 3/3 | 1.00 |
+
+The first runs scored lower, and both gaps are fixed:
+- G-R1: the analyzer did not follow `commandBus.execute(new PlaceOrderCommand(…))` into its handler, and did not read `@EventsHandler` classes;
+- G-R2: an inline `POST /invoices` was named `CreateInvoice` by its path. A path-named POST whose success publishes `<Aggregate><Participle>` is now named after that act (`invoice.issued` → `IssueInvoice`).
+
+The generator's own reading of those hand-written features gives F1 0.50 and 0.17: it names the aggregate after the feature title (`Orders`) and defaults the events (`PlaceOrderCompleted`). That is why the comparison uses the person's names. These two fixtures were written for this plan, so the open-source apps and the LMS remain the evidence on code nobody wrote for gherkin-ai.
+
 ### 2.3 The LMS (hand-written services)
 
 These are 23 features and the Spring services written by hand over the kernel. `reverse` scores a mean F1 of 0.36 against the LMS's own features, and behaviour coverage per service is between 0% and 50%. The low F1 mostly measures how far the code has drifted from the features. That drift is what reverse is meant to bring to light. It was 0.38 before message handlers and scheduled jobs were read: the enrollment service has a scheduled job that expires pending enrollment requests, and no LMS feature specifies it.

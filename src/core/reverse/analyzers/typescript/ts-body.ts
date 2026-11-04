@@ -199,6 +199,17 @@ export function analyzeBody(fn: Node, ctx: BodyContext): SourceEvidence[] {
       if (integration) out.push(makeEvidence({ ...base, kind: 'external-integration', location: loc(ctx.root, node), confidence: 'strong', symbol: integration.client, description: integration.description, metadata: integration }));
       if (!Node.isPropertyAccessExpression(expr)) continue;
       const target = expr.getExpression().getText();
+      // CQRS (@nestjs/cqrs): commandBus.execute(new PlaceOrderCommand(…)) runs the @CommandHandler(PlaceOrderCommand).
+      if (name === 'execute' && /(command|query)Bus$|^this\.bus$/i.test(target)) {
+        const created = node.getArguments()[0];
+        const cls = created && Node.isNewExpression(created) ? created.getExpression().getText().split('.').pop() : undefined;
+        const handler = cls ? cqrsHandlerOf(node, cls) : undefined;
+        if (handler) {
+          out.push(makeEvidence({ ...base, kind: 'service-call', location: loc(ctx.root, node), confidence: 'strong', symbol: `${handler.getParentOrThrow().getFirstAncestorByKind(SyntaxKind.ClassDeclaration)?.getName() ?? cls}.execute`, description: `dispatches ${cls}`, metadata: { target: cls, method: 'execute', declaredIn: relPath(ctx.root, handler) } }));
+          out.push(...analyzeBody(handler, { ...ctx, depth: depth + 1, visited }));
+        }
+        continue;
+      }
       // Events: emitter.emit('order.placed', …) / eventBus.publish(new OrderPlacedEvent())
       if (EVENT_EMIT.test(name) && EVENT_TARGET.test(target)) {
         const first = node.getArguments()[0];
@@ -225,6 +236,17 @@ export function analyzeBody(fn: Node, ctx: BodyContext): SourceEvidence[] {
     }
   }
   return out;
+}
+
+/** The `execute` method of the class decorated `@CommandHandler(<cls>)` or `@QueryHandler(<cls>)`, in the same project. */
+export function cqrsHandlerOf(from: Node, cls: string): Node | undefined {
+  for (const sf of from.getSourceFile().getProject().getSourceFiles()) {
+    for (const c of sf.getClasses()) {
+      const d = c.getDecorator('CommandHandler') ?? c.getDecorator('QueryHandler');
+      if (d && d.getArguments()[0]?.getText().split('.').pop() === cls) return c.getMethod('execute');
+    }
+  }
+  return undefined;
 }
 
 const HTTP_CLIENT = /^(axios|got|ky|superagent|needle|undici|request|this\.(httpService|http|httpClient|apiClient|restClient))$/;

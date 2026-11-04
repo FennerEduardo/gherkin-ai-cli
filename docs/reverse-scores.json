@@ -202,20 +202,13 @@
         "unexpected": [],
         "aggregates": [
           "Article",
-          "ArticlePayload",
-          "ArticlesConnection",
           "Comment",
-          "CommentPayload",
           "CurrentUser",
-          "DeletionStatus",
           "Profile",
-          "ProfilePayload",
           "Tag",
-          "User",
-          "UserPayload",
-          "UserResult"
+          "User"
         ],
-        "lintMin": 89,
+        "lintMin": 94,
         "beta": true
       },
       {

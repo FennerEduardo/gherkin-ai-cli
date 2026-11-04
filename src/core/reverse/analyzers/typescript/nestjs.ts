@@ -117,11 +117,13 @@ const nestjs: SourceAnalyzer = {
           const verb = ROUTE_DECORATORS[routeDec.getName()];
           const fullPath = joinPaths(prefix, firstStringArg(routeDec));
           const handler = `${cls.getName()}.${method.getName()}`;
+          // CQRS: a handler that dispatches `new PlaceOrderCommand(…)` performs the PlaceOrder command (its class names it).
+          const dispatched = method.getBody()?.getText().match(/(?:commandBus|bus)\s*\.\s*execute\s*\(\s*new\s+(\w+?)Command\s*\(/i)?.[1];
           const endpoint = makeEvidence({
             kind: 'http-endpoint', extractor: ID, confidence: 'strong',
             location: { file: relPath(ctx.root, method), startLine: method.getStartLineNumber(), endLine: method.getEndLineNumber() },
             symbol: handler, description: `${verb} ${fullPath}`,
-            metadata: { method: verb, path: fullPath, handler: method.getName(), owner: cls.getName() } satisfies EndpointMetadata,
+            metadata: { method: verb, path: fullPath, handler: method.getName(), owner: cls.getName(), ...(dispatched ? { command: dispatched } : {}) } satisfies EndpointMetadata,
             key: `${verb} ${fullPath}`
           });
           out.push(endpoint);

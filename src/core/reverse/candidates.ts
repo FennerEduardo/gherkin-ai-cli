@@ -117,6 +117,21 @@ export function participle(verb: string): string {
 }
 
 /** "an order", "a user", "a unique id", "an hour" is not handled (no silent h in business nouns seen so far). */
+/** issued → issue, placed → place, submitted → submit, paid → pay, applied → apply; undefined when it is not a participle. */
+export function verbFromParticiple(word: string): string | undefined {
+  const irregular = Object.entries(IRREGULAR).find(([, p]) => p === word)?.[0];
+  if (irregular) return irregular;
+  if (!/ed$/.test(word)) return undefined;
+  if (/ied$/.test(word)) return word.slice(0, -3) + 'y';
+  if (/([bdgklmnprt])\1ed$/.test(word)) return word.slice(0, -3);
+  const dropD = word.slice(0, -1);
+  const dropEd = word.slice(0, -2);
+  if (VERBS.has(dropD)) return dropD;
+  if (VERBS.has(dropEd)) return dropEd;
+  // issued, placed, archived: a silent final e; registered, opened: none.
+  return /[^aeiou][aeiou]?[cgsvz]ed$|ued$|[^aeiouy][aeiou][^aeiouwxy]ed$/.test(word) && !/(er|en|el|on)ed$/.test(word) ? dropD : dropEd;
+}
+
 const article = (noun: string) => (/^(u[sn]i|use|usu|uti|ura|ure|eu|one\b)/i.test(noun) ? 'a' : /^[aeiou]/i.test(noun) ? 'an' : 'a');
 /** Leading prepositions of a handler name are not part of the object: `unsubscribeFromUser` → user. */
 const PREPOSITIONS = /^(from|to|by|for|of|on|in|into|with|at)$/;
@@ -426,9 +441,18 @@ export function buildCandidates(evidence: SourceEvidence[]): CandidateResult {
     }
   }
 
-  for (const { group, meta, aggregate, op } of entries) {
+  for (const { group, meta, aggregate, op: named, operationId } of entries) {
     const ids = new Set(group.map(e => e.id));
     const related = evidence.filter(e => e.references.some(r => ids.has(r)));
+    // A POST named only by its path (`Create<Aggregate>`) whose success publishes `<Aggregate><Participle>` performs
+    // that act: `invoice.issued` → IssueInvoice, `OrderPlaced` → PlaceOrder (golden G-R2, logic in the route handler).
+    let op = named;
+    if (op.verb === 'create' && !meta.handler && !operationId && !meta.command) {
+      const acts = [...new Set(related.filter(e => e.kind === 'domain-event').map(e => String((e.metadata as any)?.event ?? '')))]
+        .map(n => n.match(new RegExp(`^${aggregate}([A-Z][a-z]+)$`))?.[1]?.toLowerCase()).filter((v): v is string => Boolean(v));
+      const verb = acts.length === 1 ? verbFromParticiple(acts[0]) : undefined;
+      if (verb && verb !== 'create') op = { ...op, name: pascal(verb) + aggregate, verb };
+    }
     // A test calls a concrete URL (`/orders/o-1/cancel`) or the template itself.
     const testHits = tests.filter(t => (t.metadata as any)?.method === meta.method && pathMatchesTemplate(meta.path, String((t.metadata as any)?.path ?? '')));
     const onItem = /\{[^}]+\}/.test(meta.path);
@@ -597,7 +621,10 @@ const looksLikeEvent = (channel: string) => /(ed|Event)$/i.test(channel.split(/[
 export function entryOperation(meta: { trigger: 'message' | 'schedule'; channel?: string; handler?: string }, aggregate: string): { name: string; verb: string } {
   const handler = meta.handler?.split('.').pop();
   if (handler) {
-    const w = words(pascal(handler));
+    // `ReserveStockWhenOrderPlaced`, `NotifyCustomerOnOrderShipped`: the reaction is the part before the trigger.
+    const all = words(pascal(handler));
+    const cut = all.findIndex((x, i) => i > 0 && /^(when|on|after|upon|for|if)$/.test(x));
+    const w = (cut > 0 ? all.slice(0, cut) : all).filter(x => !/^(handler|listener|consumer|subscriber|saga|policy)$/.test(x));
     // `sendConfirmation` → SendConfirmation; a bare verb (`expire`) acts on the aggregate: ExpireSagaTimeout.
     if (VERBS.has(w[0]) && !/^(handle|process|consume|on|run|execute|receive)$/.test(w[0])) {
       const rest = w.slice(1);
@@ -621,7 +648,9 @@ function entryAggregate(meta: { trigger: 'message' | 'schedule'; channel?: strin
   const base = meta.owner?.replace(ENTRY_SUFFIX, '');
   const isEventName = Boolean(base && meta.channel && channelName(meta.channel) === base);
   if (base && base !== meta.owner && !isEventName) return pascal(singular(pascal(base)));
-  const hw = meta.handler ? words(pascal(meta.handler.split('.').pop()!)) : [];
+  const all = meta.handler ? words(pascal(meta.handler.split('.').pop()!)) : [];
+  const cut = all.findIndex((x, i) => i > 0 && /^(when|on|after|upon|for|if)$/.test(x));
+  const hw = cut > 0 ? all.slice(0, cut) : all;
   if (hw.length > 1 && VERBS.has(hw[0]) && !/^(handle|process|consume|on|run|execute|receive)$/.test(hw[0])) return pascal(singular(hw[hw.length - 1]));
   if (meta.channel) {
     const first = meta.channel.split(/[./:_-]/).filter(Boolean)[0];
@@ -774,11 +803,17 @@ function rpcCandidates(evidence: SourceEvidence[]): BehaviorCandidate[] {
     const code = group.find(e => e.extractor !== 'contracts/graphql-grpc');
     const m = { ...(declared.metadata as any), ...((code?.metadata as any) ?? {}) } as { trigger: 'graphql' | 'grpc'; channel: string; operation: string; service?: string; kind: 'mutation' | 'query'; returns?: string; owner?: string };
     const ownerBase = m.owner?.replace(/(Resolver|Controller|GrpcService|Service|Impl|ImplBase)$/, '');
-    // gRPC: the service names the aggregate (PaymentService → Payment); GraphQL: the resolver, else the type returned.
+    // gRPC: the service names the aggregate (PaymentService → Payment). GraphQL: the resolver; else the noun of a
+    // verb-first field (deleteArticle → Article); else the type returned without its wrapper (ArticlesConnection,
+    // ArticlePayload → Article), as GraphQL schemas wrap results in payload and connection types.
+    const opWords = words(pascal(m.operation));
+    const opNoun = VERBS.has(opWords[0]) && opWords.length > 1 ? pascal(opWords.slice(1).join(' ')) : undefined;
+    const unwrapped = m.returns?.replace(/(Payload|Connection|Result|Response|Edge|Output|Status|Info|Dto|DTO)$/, '');
     const aggregate = pascal(singular(m.service ? m.service.replace(/Service$/, '') || m.service
       : ownerBase && ownerBase !== m.owner ? ownerBase
-      : m.returns && !/^(Boolean|Int|Float|String|ID|Void|Empty)$/.test(m.returns) ? m.returns
-      : words(pascal(m.operation)).slice(-1)[0]));
+      : opNoun ? opNoun
+      : unwrapped && !/^(Boolean|Int|Float|String|ID|Void|Empty|Deletion)$/.test(unwrapped) ? unwrapped
+      : opWords.slice(-1)[0]));
     const op = rpcOperationName(m.operation, m.kind, aggregate);
     const ids = new Set(group.map(e => e.id));
     const related = evidence.filter(e => e.references.some(r => ids.has(r)));

@@ -56,6 +56,11 @@ All notable changes to this project will be documented in this file. See [commit
   - **Data shapes, without invented values.**
     - The success `When` carries a data table of the request's fields and rules, read from NestJS DTOs, Java/Kotlin classes and records, and C# classes and records.
     - Validation of two or more fields is one `Scenario Outline`, with an `Examples` row per field and rule, each preceded by its evidence. A limit is quoted only when the code states it.
+  - **CQRS and logic in route handlers.**
+    - `commandBus.execute(new PlaceOrderCommand(…))` is followed into its `@CommandHandler`, and the endpoint takes the command's name.
+    - `@EventsHandler` classes are message handlers, named by their class (`ReserveStockWhenOrderPlaced` → `ReserveStock`).
+    - A POST named only by its path that publishes `<Aggregate><Participle>` is named after that act (`invoice.issued` → `IssueInvoice`).
+    - Measured against what a person names in two new goldens (`tests/golden/reverse-human.test.ts`): F1 1.00 on both.
   - **More of reverse over MCP:**
     - `ghk_reverse_coverage`, `ghk_reverse_explain`, `ghk_reverse_sync` (the report, without patches) and `ghk_reverse_review` are read-only;
     - `ghk_reverse_review_decide` records the user's decisions in `.ghe/reverse/review.json` and needs `mcp.allowWrite`;

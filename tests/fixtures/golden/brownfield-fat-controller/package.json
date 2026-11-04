@@ -1,0 +1,9 @@
+{
+  "name": "billing-fat-controller",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "express": "5.1.0",
+    "pg": "8.13.0"
+  }
+}

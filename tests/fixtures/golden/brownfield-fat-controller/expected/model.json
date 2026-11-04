@@ -1,0 +1,7 @@
+{
+  "description": "The model a person names after reading the features in this directory (golden G-R2): what reverse should recover, in the team's words.",
+  "aggregates": ["Invoice"],
+  "commands": ["IssueInvoice", "PayInvoice", "VoidInvoice"],
+  "events": ["InvoiceIssued", "InvoicePaid", "InvoiceVoided"],
+  "states": ["ISSUED", "PAID", "VOIDED"]
+}

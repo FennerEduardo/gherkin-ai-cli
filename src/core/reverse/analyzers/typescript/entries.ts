@@ -18,7 +18,7 @@
 import { Node, SyntaxKind } from 'ts-morph';
 import type { Decorator, Project } from 'ts-morph';
 import { makeEvidence, type EntryMetadata, type SourceEvidence } from '../../evidence';
-import { analyzeBody, calleeName, relPath } from './ts-body';
+import { analyzeBody, calleeName, eventName, relPath } from './ts-body';
 import { rpcEvidence } from '../contracts/graphql-grpc';
 
 const MESSAGE_DECORATORS = new Set(['EventPattern', 'MessagePattern', 'OnEvent', 'RabbitSubscribe', 'SqsMessageHandler', 'Process', 'Subscribe', 'Consumer']);
@@ -73,6 +73,15 @@ export function tsEntryPoints(project: Project, root: string, extractor: string,
   for (const sf of project.getSourceFiles()) {
     if (options.decorators !== false) {
       for (const cls of sf.getDescendantsOfKind(SyntaxKind.ClassDeclaration)) {
+        // @nestjs/cqrs: @EventsHandler(OrderPlacedEvent) class ReserveStockWhenOrderPlaced { handle(event) { … } }.
+        const eventsHandler = cls.getDecorator('EventsHandler');
+        if (eventsHandler) {
+          const handle = cls.getMethod('handle');
+          for (const arg of eventsHandler.getArguments()) {
+            const event = arg.getText().split('.').pop()!;
+            push('message-handler', handle ?? cls, { trigger: 'message', channel: eventName(event), handler: cls.getName(), owner: cls.getName() }, handle);
+          }
+        }
         for (const method of cls.getMethods()) {
           for (const d of method.getDecorators()) {
             const name = d.getName();
