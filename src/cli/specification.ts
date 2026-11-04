@@ -109,6 +109,16 @@ export function registerSpecificationCommands(program: Command): void {
       await handlePluginCommand(subcommand, args ?? [], { ...options, json: options.json || program.opts().json });
     });
   program
+    .command('expose [subcommand] [args...]')
+    .description('Expose the service\'s business capabilities to agents as MCP tools: `discover` proposes the capability manifest from the features, the OpenAPI contract and the industry profile (never approves; writes only .ghe/expose/)')
+    .option('--contract <file>', 'discover: the service\'s OpenAPI document (default: <outputDir>/openapi.json, openapi.json, contracts/openapi.json)')
+    .option('--from-reverse', 'discover: also list the endpoints ghk reverse found that no feature specifies (pending-specification)')
+    .option('--json', 'Output as JSON')
+    .action(async (subcommand, args, options) => {
+      const { handleExposeCommand } = await import('../commands/expose');
+      await handleExposeCommand(subcommand, args ?? [], { ...options, json: options.json || program.opts().json, dryRun: program.opts().dryRun });
+    });
+  program
     .command('reverse [subcommand] [names...]')
     .description('(beta) Reverse engineering: `scan` reads controllers, services, repositories, models, tests and OpenAPI documents into evidence; `propose` turns it into candidate .feature files with source traceability; `accept <aggregate…>` moves reviewed proposals into the specifications; `coverage` reports the share of the code the features specify; `explain <operation>` shows where its names, confidence and evidence come from; `review [aggregate…]` shows each scenario with the code behind it and records approve/reject decisions that `accept` follows; `sync` compares the accepted features with the code and exits 7 on drift, with a patch to review. Deterministic, works without ghk init')
     .option('--path <dir>', 'scan: sub-directory to analyse (default: the whole project)')

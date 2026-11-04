@@ -1,0 +1,44 @@
+{
+  "openapi": "3.0.3",
+  "info": { "title": "expose-shop API", "version": "1.0.0" },
+  "paths": {
+    "/api/v1/order/{id}/{command}": {
+      "post": {
+        "summary": "Run a domain command on an aggregate",
+        "operationId": "executeOrderCommand",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "description": "Aggregate id (unique per tenant)", "schema": { "type": "string" } },
+          { "name": "command", "in": "path", "required": true, "schema": { "type": "string", "enum": ["place_order", "cancel_order"] } },
+          { "name": "Idempotency-Key", "in": "header", "required": false, "schema": { "type": "string" } },
+          { "name": "traceparent", "in": "header", "required": false, "schema": { "type": "string" } }
+        ],
+        "requestBody": { "required": false, "content": { "application/json": { "schema": { "type": "object", "additionalProperties": true, "properties": {} } } } },
+        "responses": {
+          "202": { "description": "Accepted", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CommandResult" } } } },
+          "422": { "description": "Domain validation error", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
+    "/api/v1/order/{id}": {
+      "get": {
+        "summary": "Read an order",
+        "operationId": "getOrder",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "The order", "content": { "application/json": { "schema": { "type": "object", "properties": { "id": { "type": "string" }, "status": { "type": "string", "nullable": true } } } } } } }
+      }
+    },
+    "/api/v1/reports/sales": {
+      "get": { "summary": "Sales report", "operationId": "salesReport", "responses": { "200": { "description": "ok" } } }
+    },
+    "/api/v1/health": {
+      "get": { "operationId": "health", "responses": { "200": { "description": "ok" } } }
+    }
+  },
+  "components": {
+    "schemas": {
+      "CommandResult": { "type": "object", "required": ["status", "aggregateId"], "properties": { "status": { "type": "string", "enum": ["created", "replayed", "in-progress"] }, "aggregateId": { "type": "string" }, "version": { "type": "integer", "nullable": true } } },
+      "Error": { "type": "object", "properties": { "message": { "type": "string" } } }
+    }
+  }
+}

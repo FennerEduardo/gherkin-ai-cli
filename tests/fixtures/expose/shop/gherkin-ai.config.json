@@ -1,0 +1,5 @@
+{
+  "projectName": "expose-shop",
+  "outputDir": "./generated-specs",
+  "stack": { "language": "typescript", "framework": "nestjs" }
+}

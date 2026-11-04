@@ -43,7 +43,7 @@ export function projectFeatureFiles(projectDir: string): string[] {
 }
 
 /** The project's feature files, or [] when it has no spec directory. */
-function featureFilesOrNone(projectDir: string): string[] {
+export function featureFilesOrNone(projectDir: string): string[] {
   try {
     return projectFeatureFiles(projectDir);
   } catch {

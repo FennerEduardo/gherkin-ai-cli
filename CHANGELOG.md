@@ -133,6 +133,23 @@ All notable changes to this project will be documented in this file. See [commit
   - **`@gherkin-ai/plugin-sdk`** (in `packages/plugin-sdk`, published separately) gives editors the types of plugin API 2 and has no runtime dependency.
     - The CLI hands analyzers their helpers in `ctx.sdk`: stable evidence ids, paths, and `loadGrammar(wasm)` with the CLI's own web-tree-sitter.
     - The types come from `gherkin-ai/dist/plugin-api`, the one public module for plugins.
+- **`ghk expose`: the service's business capabilities as MCP tools for agents** ([EXPOSE.md](docs/EXPOSE.md)). `ghk mcp` stays the development server; `ghk expose` builds the one that serves the business.
+  - **Capability manifest** (`.ghk/capabilities.yaml`, `apiVersion: gherkin-ai.dev/v1`, JSON Schema in `schemas/capabilities.schema.json`). It is the one artifact a person reviews before an agent can call the service, and every emitter reads only it. Per capability:
+    - the tool name and a description taken from the feature's scenarios;
+    - its effect: `read`, `analysis`, `test-execution`, `write`, `destructive` or `financial-critical`;
+    - its source: features, scenarios and evidence;
+    - the contract operation that runs it;
+    - its input and output JSON Schemas;
+    - scopes and roles; the tenant, always from the caller's identity;
+    - its execution: human approval, idempotency key, timeout and rate;
+    - its status: `proposed`, `approved` (by whom, when, for which environments, and a fingerprint of what was approved) or `pending-specification`.
+  - **`ghk expose discover`** proposes the manifest in `.ghe/expose/`, deterministically.
+    - Each domain command of the features becomes a tool that writes. Its handler, input and output schemas come from the OpenAPI contract, and its fields from the DataTables of its scenarios (examples without personal data). GET operations of a feature's aggregate become tools that read.
+    - Tags and the industry profile decide the effect: in banking, every write is `financial-critical`; `@readonly`, `@pii`, `@approval`, `@role:x`, `@scope:x`, `@rate:n/min` and `@effect:x` are read.
+    - Operations no feature specifies, and with `--from-reverse` the endpoints only the code shows, stay `pending-specification`: they are never exposed.
+    - It never approves. Descriptions leave out any sentence with an instruction to the model, a secret or personal data.
+    - Against an approved manifest, it reports each capability as new, unchanged, changed or removed, and keeps an approval only while the capability is unchanged.
+
 - **`--assist` verified against a real model** (`lint --assist` and `reverse propose --assist`, Gemini `gemini-flash-lite-latest`): both write a patch, change no step, and the validation rejected the one invalid name the model proposed. Other providers share the client and the validation but are untested with `--assist`; [docs/REVERSE.md](docs/REVERSE.md#--assist-opt-in) says how to report a run.
 
 - **`ghk reverse` scores on the golden-build dashboard** ([goldens.html#reverse](https://fennereduardo.github.io/gherkin-ai-cli/goldens.html#reverse)): every analyzer with its maturity, the validation on open-source code (rerun by the Pages workflow on every build), and the round trips on the reference projects and the LMS (release snapshot `docs/reverse-scores.json`, written by `scripts/reverse-scores.js`). `goldens.json` carries the same data under `reverse`.

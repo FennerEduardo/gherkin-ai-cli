@@ -1,0 +1,17 @@
+{
+  "openapi": "3.0.3",
+  "info": { "title": "expose-bank API", "version": "1.0.0" },
+  "paths": {
+    "/api/v1/payment-execution/{id}/{command}": {
+      "post": {
+        "operationId": "executePaymentExecutionCommand",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } },
+          { "name": "command", "in": "path", "required": true, "schema": { "type": "string", "enum": ["execute_payment"] } },
+          { "name": "Idempotency-Key", "in": "header", "schema": { "type": "string" } }
+        ],
+        "responses": { "202": { "description": "Accepted" } }
+      }
+    }
+  }
+}
