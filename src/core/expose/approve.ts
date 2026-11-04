@@ -16,7 +16,7 @@
    ========================================================================== */
 
 import {
-  MANIFEST_API_VERSION, MANIFEST_KIND, capabilityFingerprint, isWrite,
+  MANIFEST_API_VERSION, MANIFEST_KIND, capabilityFingerprint, isWrite, ordinal,
   type Capability, type CapabilityManifest
 } from './manifest';
 
@@ -110,7 +110,7 @@ export function planApproval(proposal: CapabilityManifest, fresh: CapabilityMani
     kind: MANIFEST_KIND,
     service: current?.service ?? proposal.service,
     identity: current?.identity ?? proposal.identity,
-    environments: environments.sort((a, b) => a.name.localeCompare(b.name)),
+    environments: environments.sort((a, b) => ordinal(a.name, b.name)),
     capabilities: [...kept, ...approved]
   };
   return { manifest, approved: approved.map(a => a.id).sort(), refused };

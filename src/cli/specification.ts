@@ -110,7 +110,7 @@ export function registerSpecificationCommands(program: Command): void {
     });
   program
     .command('expose [subcommand] [args...]')
-    .description('Expose the service\'s business capabilities to agents as MCP tools: `discover` proposes the capability manifest from the features, the OpenAPI contract and the industry profile (never approves; writes only .ghe/expose/); `review [id…]` shows each capability; `approve <id…> | --all --env <e>` writes the approved ones to .ghk/capabilities.yaml (exit 5 when a policy refuses); `revoke <id…>`; `validate` checks the approved manifest (exit 5: a write without approval; exit 4: tool poisoning, contract mismatch, incompatible change)')
+    .description('Expose the service\'s business capabilities to agents as MCP tools: `discover` proposes the capability manifest from the features, the OpenAPI contract and the industry profile (never approves; writes only .ghe/expose/); `review [id…]` shows each capability; `approve <id…> | --all --env <e>` writes the approved ones to .ghk/capabilities.yaml (exit 5 when a policy refuses); `revoke <id…>`; `validate` checks the approved manifest (exit 5: a write without approval; exit 4: tool poisoning, contract mismatch, incompatible change); `generate --target mcp-runtime` writes the MCP server of the approved capabilities (stateless Streamable HTTP on :8000/mcp)')
     .option('--contract <file>', 'discover, validate: the service\'s OpenAPI document (default: <outputDir>/openapi.json, openapi.json, contracts/openapi.json)')
     .option('--from-reverse', 'discover: also list the endpoints ghk reverse found that no feature specifies (pending-specification)')
     .option('--all', 'approve: every capability of the proposal that is not pending')
@@ -120,6 +120,8 @@ export function registerSpecificationCommands(program: Command): void {
     .option('--yes', 'approve, revoke: write without asking')
     .option('--manifest <file>', 'validate: the manifest to check (default: .ghk/capabilities.yaml)')
     .option('--against <file>', 'validate: the previous manifest, for incompatible changes (default: git HEAD)')
+    .option('--target <target>', 'generate: mcp-runtime (the MCP server of the approved capabilities)')
+    .option('--out <dir>', 'generate: output directory (default: expose; the target goes in a sub-directory)')
     .option('--json', 'Output as JSON')
     .action(async (subcommand, args, options) => {
       const { handleExposeCommand } = await import('../commands/expose');

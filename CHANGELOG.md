@@ -162,6 +162,22 @@ All notable changes to this project will be documented in this file. See [commit
       - an input that accepts undeclared properties;
       - a handler the contract no longer has;
       - an incompatible change of a tool's input or output against the previous manifest (git `HEAD`, or `--against`) without a new `version`.
+  - **`ghk expose generate --target mcp-runtime`** writes `expose/mcp-runtime/`, the MCP server of the approved capabilities. It validates the manifest first and generates nothing from one that fails. It replaces only a directory it generated itself.
+    - One TypeScript runtime (Node 24, CommonJS) for every backend stack, since it calls the service's HTTP API. Its only dependency is `@modelcontextprotocol/sdk`, at an exact version. JWT verification and JWKS use `node:crypto`. A Dockerfile and a README with every variable come with it.
+    - It serves Streamable HTTP, stateless, on `0.0.0.0:8000/mcp`: the AgentCore Runtime contract, and any container platform's. A request without a valid token gets a 401 with `WWW-Authenticate` and the OAuth protected-resource metadata.
+    - Every call is authorized again, whatever a gateway decided:
+      - the token's signature, issuer, audience and expiry; the tenant comes from a claim, never from the arguments;
+      - the tool's scopes and roles. A caller lists only the tools it may call, and any other name is "unknown", even when called directly;
+      - the environment its approval names; the rate; the input JSON Schema; size limits.
+    - `destructive` and `financial-critical` tools need a person per call. A stateless runtime cannot ask for that approval, so it refuses them with a message (an approval flow is planned for 3.4).
+    - The service is called only at the approved handler of the configured base URL, with no redirect:
+      - arguments only fill the handler's placeholders, encoded (no SSRF);
+      - `Idempotency-Key` is scoped to the caller, so a retry runs once;
+      - `traceparent`, plus `baggage: ghk.scenario=…`;
+      - the service gets its own credential, never the caller's token: a 60-second token for the caller's subject and tenant, as the generated kernels expect, or a service token.
+    - Responses are marked as data, with secrets redacted, and personal data too for `@pii` tools.
+    - One JSONL audit line per decision traces the call to its feature and scenarios, with the trace id and no argument values.
+  - **Context tools** in the runtime, read-only: `bdd_search_features`, `bdd_get_scenario`, `bdd_get_business_rules`. They serve the features behind the approved tools, by name and never by repository path, to callers with the `bdd:read` scope.
 
 - **`--assist` verified against a real model** (`lint --assist` and `reverse propose --assist`, Gemini `gemini-flash-lite-latest`): both write a patch, change no step, and the validation rejected the one invalid name the model proposed. Other providers share the client and the validation but are untested with `--assist`; [docs/REVERSE.md](docs/REVERSE.md#--assist-opt-in) says how to report a run.
 

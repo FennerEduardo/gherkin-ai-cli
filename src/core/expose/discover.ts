@@ -28,7 +28,7 @@ import { projectConfig } from '../plugins/load';
 import { aggregateTagName, featurePascalName, toCamel, toKebab, toSnake } from '../../utils/naming';
 import {
   EXPOSE_DIR, HUMAN_APPROVAL_EFFECTS, MANIFEST_API_VERSION, MANIFEST_FILE, MANIFEST_KIND, PROPOSAL_FILE, TOOL_NAME,
-  capabilityFingerprint, isWrite, parseManifest, serializeManifest, EFFECTS,
+  capabilityFingerprint, isWrite, parseManifest, serializeManifest, EFFECTS, ordinal,
   type Capability, type CapabilityEffect, type CapabilityHandler, type CapabilityManifest
 } from './manifest';
 
@@ -138,7 +138,7 @@ export function contractOperations(doc: Doc): ContractOperation[] {
       });
     }
   }
-  return ops.sort((a, b) => a.path.localeCompare(b.path) || a.method.localeCompare(b.method));
+  return ops.sort((a, b) => ordinal(a.path, b.path) || ordinal(a.method, b.method));
 }
 
 function findContract(root: string, explicit?: string): string | undefined {
@@ -505,7 +505,7 @@ export function discoverCapabilities(root: string, options: DiscoverOptions = {}
   if (options.write !== false) proposal = rel(root, writeExposeFile(root, PROPOSAL_FILE, text));
   const counts = { proposed: 0, approved: 0, 'pending-specification': 0 };
   for (const c of parsed.capabilities) counts[c.status]++;
-  return { manifest: parsed, contract: contractFile ? rel(root, contractFile) : undefined, features: features.length, proposal, counts, changes: changes.sort((a, b) => a.id.localeCompare(b.id)), warnings };
+  return { manifest: parsed, contract: contractFile ? rel(root, contractFile) : undefined, features: features.length, proposal, counts, changes: changes.sort((a, b) => ordinal(a.id, b.id)), warnings };
 }
 
 /** Endpoints found by `ghk reverse` and not run by any capability: pending until a feature specifies them. */
@@ -524,7 +524,7 @@ function addReverseCandidates(root: string, capabilities: Capability[], used: Se
     return;
   }
   const norm = (p: string) => p.replace(/\{[^}]+\}|:[A-Za-z_]+/g, '{}').replace(/\/+$/, '').toLowerCase();
-  for (const c of [...candidates].sort((a, b) => a.operation.name.localeCompare(b.operation.name))) {
+  for (const c of [...candidates].sort((a, b) => ordinal(a.operation.name, b.operation.name))) {
     const method = c.operation.method?.toUpperCase();
     if (!method || !c.operation.path) continue;
     if (capabilities.some(x => x.handler && x.handler.method === method && norm(x.handler.path) === norm(c.operation.path))) continue;

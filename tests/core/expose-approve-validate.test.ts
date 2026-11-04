@@ -162,11 +162,26 @@ describe('ghk expose (command)', () => {
     await handleExposeCommand('validate', [], {});
     expect(process.exitCode).toBeUndefined();
 
+    // generate: the runtime of the approved tools; again replaces it; a directory it did not write is refused
+    await handleExposeCommand('generate', [], {});
+    const caps = JSON.parse(fs.readFileSync(path.join(dir, 'expose/mcp-runtime/config/capabilities.json'), 'utf8'));
+    expect(caps.capabilities.map((c: any) => c.name)).toEqual(['get_order', 'place_order']);
+    fs.writeFileSync(path.join(dir, 'expose/mcp-runtime/stale.txt'), 'x');
+    await handleExposeCommand('generate', [], {});
+    expect(fs.existsSync(path.join(dir, 'expose/mcp-runtime/stale.txt'))).toBe(false);
+    fs.mkdirSync(path.join(dir, 'mine/mcp-runtime'), { recursive: true });
+    fs.writeFileSync(path.join(dir, 'mine/mcp-runtime/keep.txt'), 'x');
+    await expect(handleExposeCommand('generate', [], { out: 'mine' })).rejects.toMatchObject({ exitCode: 2 });
+    expect(fs.readFileSync(path.join(dir, 'mine/mcp-runtime/keep.txt'), 'utf8')).toBe('x');
+    await expect(handleExposeCommand('generate', [], { target: 'nope' })).rejects.toMatchObject({ exitCode: 2 });
+
     // a hand edit after approval is caught
     fs.writeFileSync(path.join(dir, MANIFEST_FILE), serializeManifest({ ...written, capabilities: written.capabilities.map(c => c.name === 'place_order' ? { ...c, execution: { ...c.execution, timeoutMs: 60000 } } : c) }));
     await handleExposeCommand('validate', [], {});
     expect(process.exitCode).toBe(5);
     process.exitCode = undefined;
+    // nothing is generated from a manifest that fails validation
+    await expect(handleExposeCommand('generate', [], {})).rejects.toMatchObject({ exitCode: 5 });
     await handleExposeCommand('revoke', ['place_order'], { yes: true });
     expect(parseManifest(fs.readFileSync(path.join(dir, MANIFEST_FILE), 'utf8')).capabilities.map(c => c.name)).toEqual(['get_order']);
   });

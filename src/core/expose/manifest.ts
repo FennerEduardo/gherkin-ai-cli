@@ -192,7 +192,7 @@ export function parseManifest(text: string, file = MANIFEST_FILE): CapabilityMan
 
 /** Stable YAML: capabilities by id, keys in schema order (zod's), so two runs give identical bytes. */
 export function serializeManifest(manifest: CapabilityManifest, header?: string): string {
-  const sorted: CapabilityManifest = { ...manifest, capabilities: [...manifest.capabilities].sort((a, b) => a.id.localeCompare(b.id)) };
+  const sorted: CapabilityManifest = { ...manifest, capabilities: [...manifest.capabilities].sort((a, b) => ordinal(a.id, b.id)) };
   const body = YAML.stringify(manifestSchema.parse(sorted), { lineWidth: 0, aliasDuplicateObjects: false });
   return header ? `${header.split('\n').map(l => `# ${l}`.trimEnd()).join('\n')}\n${body}` : body;
 }
@@ -202,3 +202,6 @@ export function buildManifestJsonSchema(): Record<string, unknown> {
   const { $schema: _draft, ...schema } = z.toJSONSchema(manifestSchema, { target: 'draft-7', io: 'input', reused: 'inline', unrepresentable: 'any' }) as Record<string, unknown>;
   return { $schema: 'http://json-schema.org/draft-07/schema#', $id: MANIFEST_SCHEMA_ID, title: 'gherkin-ai capability manifest (ghk expose)', ...schema };
 }
+
+/** Ordinal comparison: the same order in every locale, so generated files are byte-identical everywhere. */
+export const ordinal = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);

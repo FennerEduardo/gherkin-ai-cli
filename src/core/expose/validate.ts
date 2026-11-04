@@ -17,7 +17,7 @@
 
 import { containsSecret, detectPromptInjection, redactSensitive } from '../security';
 import type { ContractOperation } from './discover';
-import { HUMAN_APPROVAL_EFFECTS, capabilityFingerprint, isWrite, type Capability, type CapabilityManifest } from './manifest';
+import { HUMAN_APPROVAL_EFFECTS, capabilityFingerprint, isWrite, ordinal, type Capability, type CapabilityManifest } from './manifest';
 import { PRODUCTION_ENVIRONMENTS } from './approve';
 
 export interface ExposeIssue {
@@ -163,7 +163,7 @@ export function validateManifest(manifest: CapabilityManifest, options: Validate
   for (const p of options.previous?.capabilities ?? []) {
     if (!manifest.capabilities.some(c => c.id === p.id)) add('EXV052', 4, p.id, `Removed: agents calling ${p.name} break.`, 'warning');
   }
-  return issues.sort((a, b) => (a.capability ?? '').localeCompare(b.capability ?? '') || a.code.localeCompare(b.code));
+  return issues.sort((a, b) => ordinal(a.capability ?? '', b.capability ?? '') || ordinal(a.code, b.code));
 }
 
 /** 5 when a policy is broken, 4 when a quality gate fails, 0 otherwise (warnings never fail). */
