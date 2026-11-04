@@ -129,6 +129,7 @@ All notable changes to this project will be documented in this file. See [commit
     - Rails reads `routes.rb` (resources, member/collection, namespaces, Devise), controllers, strong params and model validations; F1 0.95 on the Rails RealWorld app.
     - Both pass `ghk plugin verify`; the golden `tests/golden/reverse-plugins.test.ts` runs them from a project's `plugins.load` and checks that a changed plugin is refused once locked.
     - `scripts/reverse-oss.js` validates a plugin when its corpus entry names one.
+    - The golden-build dashboard has an "Official plugins" section: what each plugin adds, its maturity, its F1 on open-source code, and the conformance kit, which runs again on every build of the page.
   - **`@gherkin-ai/plugin-sdk`** (in `packages/plugin-sdk`, published separately) gives editors the types of plugin API 2 and has no runtime dependency.
     - The CLI hands analyzers their helpers in `ctx.sdk`: stable evidence ids, paths, and `loadGrammar(wasm)` with the CLI's own web-tree-sitter.
     - The types come from `gherkin-ai/dist/plugin-api`, the one public module for plugins.

@@ -138,4 +138,4 @@ The maintainers develop these in the repository (`plugins/`). They are published
 | `@gherkin-ai/reverse-laravel` | `laravel/routes`: routes and groups, resources, controllers, FormRequests (tree-sitter-php, 800 KB, shipped in the plugin) | beta | F1 0.93 on the Laravel RealWorld app |
 | `@gherkin-ai/reverse-rails` | `rails/routes`: `routes.rb`, controllers, strong params, model validations, Devise (tree-sitter-ruby, 2 MB, shipped in the plugin) | beta | F1 0.95 on the Rails RealWorld app |
 
-Community plugins use the keyword `gherkin-ai-plugin` on npm. Run `ghk plugin verify` on a plugin before you load it. Its report shows what it reads, whether it is deterministic, and the maturity its fixtures support.
+The [golden-build dashboard](https://fennereduardo.github.io/gherkin-ai-cli/goldens.html#plugins) lists them with their maturity, their F1 on the open-source corpus, and the conformance kit, which runs again on every build of the page. Community plugins use the keyword `gherkin-ai-plugin` on npm. Run `ghk plugin verify` on a plugin before you load it. Its report shows what it reads, whether it is deterministic, and the maturity its fixtures support.

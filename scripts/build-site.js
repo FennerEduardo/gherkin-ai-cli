@@ -92,6 +92,40 @@ ${round || '<tr><td colspan="3" class="muted">not measured</td></tr>'}
 ${lms}`;
 }
 
+/**
+ * The official plugins in plugins/ (PLAN-3.3.0-reverse-plus EC-06): what each adds, its maturity, the conformance kit
+ * run on this build, and the F1 of its analyzers on the open-source corpus. The kit needs the built CLI (dist/).
+ */
+async function officialPlugins(reverse) {
+  const dir = path.join(root, 'plugins');
+  if (!fs.existsSync(dir)) return [];
+  const { verifyPlugin } = require(path.join(root, 'dist', 'core', 'plugins', 'verify'));
+  const out = [];
+  for (const name of fs.readdirSync(dir).filter(n => fs.existsSync(path.join(dir, n, 'package.json'))).sort()) {
+    const pkg = JSON.parse(fs.readFileSync(path.join(dir, name, 'package.json'), 'utf8'));
+    let report;
+    try { report = await verifyPlugin(path.join(dir, name)); } catch (e) { report = { passed: false, analyzers: [], error: String(e && e.message || e) }; }
+    const runs = (reverse.oss?.results ?? []).filter(r => r.plugin === `plugins/${name}`);
+    out.push({
+      package: pkg.name, version: pkg.version, description: pkg.description,
+      analyzers: report.analyzers.map(a => ({ id: a.id, declared: a.declared, eligible: a.eligible })),
+      verify: report.passed ? 'pass' : 'fail',
+      oss: runs.map(r => ({ repository: r.repository, commit: r.commit, f1: r.f1, matched: r.matched, expected: r.expected }))
+    });
+  }
+  return out;
+}
+
+function pluginsSection(plugins) {
+  if (!plugins.length) return '';
+  const rows = plugins.map(p => `<tr><td><code>${escape(p.package)}</code> <span class="muted">${escape(p.version)}</span></td><td>${p.analyzers.map(a => `<code>${escape(a.id)}</code>`).join(', ')}</td><td>${p.analyzers.map(a => escape(a.declared)).join(', ')}</td><td><span class="${p.verify === 'pass' ? 'ok' : 'bad'}">${p.verify}</span></td><td>${p.oss.map(r => `${f1Cell(r.f1)} <span class="muted">${r.matched}/${r.expected} on <a href="${escape(r.repository)}/tree/${escape(r.commit)}">${escape(r.repository.replace('https://github.com/', ''))}</a></span>`).join('<br>') || '<span class="muted">–</span>'}</td></tr>`).join('\n');
+  return `<h2 id="plugins">Official plugins</h2>
+<p>Analyzers kept out of the CLI package so their grammars weigh only on those who install them (<a href="PLUGINS.html">PLUGINS.md</a>). The conformance kit (<code>ghk plugin verify</code>) runs on every build of this page.</p>
+<table><thead><tr><th>Package</th><th>Adds</th><th>Maturity</th><th>Conformance kit</th><th>F1 on open-source code</th></tr></thead><tbody>
+${rows}
+</tbody></table>`;
+}
+
 function layout(title, body, version) {
   return `<!doctype html>
 <html lang="en">
@@ -166,7 +200,8 @@ async function main() {
     return { golden: name, stack: support ? support.label : name, maintenance: support ? support.maintenance : null, result: jobs.get(name) || null };
   });
   const reverse = reverseScores();
-  fs.writeFileSync(path.join(out, 'goldens.json'), JSON.stringify({ version, run, goldens: rows, reverse: { analyzers: reverse.catalog, oss: reverse.oss, ossLive: reverse.ossLive, roundTrip: reverse.snapshot?.roundTrip ?? null, lms: reverse.snapshot?.lms ?? null } }, null, 2) + '\n');
+  const plugins = await officialPlugins(reverse);
+  fs.writeFileSync(path.join(out, 'goldens.json'), JSON.stringify({ version, run, goldens: rows, reverse: { analyzers: reverse.catalog, oss: reverse.oss, ossLive: reverse.ossLive, roundTrip: reverse.snapshot?.roundTrip ?? null, lms: reverse.snapshot?.lms ?? null }, plugins }, null, 2) + '\n');
   const passed = rows.filter(r => r.result && r.result.conclusion === 'success').length;
   const table = rows.map(r => `<tr><td><code>${escape(r.golden)}</code></td><td>${escape(r.stack)}</td><td>${escape(r.maintenance || '')}</td><td>${r.result
     ? `<a class="${r.result.conclusion === 'success' ? 'ok' : 'bad'}" href="${escape(r.result.url)}">${escape(r.result.conclusion)}</a>${r.result.seconds != null ? ` <span class="muted">${r.result.seconds}s</span>` : ''}` : '<span class="muted">not run</span>'}</td></tr>`).join('\n');
@@ -175,7 +210,8 @@ async function main() {
 <table><thead><tr><th>Golden</th><th>Stack</th><th>Tier</th><th>Result</th></tr></thead><tbody>
 ${table}
 </tbody></table>
-${reverseSection(reverse)}`;
+${reverseSection(reverse)}
+${pluginsSection(plugins)}`;
   fs.writeFileSync(path.join(out, 'goldens.html'), layout('Golden builds', body, version));
   fs.writeFileSync(path.join(out, '.nojekyll'), '');
   console.log(`site: ${pages.length + 1} pages in ${path.relative(root, out)}${run ? `, ${passed}/${rows.length} goldens passed in run ${run.id}` : ''}`);
