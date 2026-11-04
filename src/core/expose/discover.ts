@@ -155,6 +155,12 @@ function findContract(root: string, explicit?: string): string | undefined {
   return candidates.map(c => path.resolve(root, c)).find(f => fs.existsSync(f));
 }
 
+/** The service contract's operations: `explicit`, else the manifest's `service.contract`, else the default places. */
+export function loadContract(root: string, explicit?: string): { file?: string; operations: ContractOperation[] } {
+  const file = findContract(root, explicit);
+  return { file: file ? rel(root, file) : undefined, operations: file ? contractOperations(readDoc(file)) : [] };
+}
+
 // ---------------------------------------------------------------------------
 // From the features
 // ---------------------------------------------------------------------------
@@ -189,7 +195,7 @@ function safeText(text: string): string | undefined {
   const clean = text.replace(/\s+/g, ' ').trim();
   if (!clean) return undefined;
   if (!detectPromptInjection(clean).isSafe) return undefined;
-  if (redactSensitive(clean, { pii: false }) !== clean) return undefined;
+  if (redactSensitive(clean, { pii: true }) !== clean) return undefined;
   return clean;
 }
 

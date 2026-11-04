@@ -149,6 +149,19 @@ All notable changes to this project will be documented in this file. See [commit
     - Operations no feature specifies, and with `--from-reverse` the endpoints only the code shows, stay `pending-specification`: they are never exposed.
     - It never approves. Descriptions leave out any sentence with an instruction to the model, a secret or personal data.
     - Against an approved manifest, it reports each capability as new, unchanged, changed or removed, and keeps an approval only while the capability is unchanged.
+  - **`ghk expose review | approve | revoke`.** `review` shows what each capability runs, its arguments, who may call it and what each call needs.
+    - `approve <id…> | --all` writes the approved capabilities to `.ghk/capabilities.yaml`, which holds only approved ones, after confirmation (or `--yes`). It goes through the firewall and the audit log.
+    - Each approval records who (`--by`, default git `user.name`), when, the environments (`--env`) and a fingerprint of what was approved.
+    - Nothing is written when one capability is refused. A pending capability is refused with exit 5, and so is a capability without a feature. A write needs `--env`. A write in production (`prod`, `production`, `prd`, `live`) needs that environment declared with `allowWrites: true` in the manifest, an explicit policy reviewed by PR. A proposal older than the features or the contract has to be discovered again.
+    - `.ghk/capabilities.yaml` and `.ghk/plugins.lock` are now approval paths of the agent firewall: an agent needs a person to change what agents may call, or which plugin bytes may run.
+  - **`ghk expose validate`** checks the approved manifest before anything is generated from it.
+    - Exit 5 (a policy) for: a write without an approval or changed since it was approved; a write approved for no environment, or for production without the policy; `destructive` or `financial-critical` without a person per call; a write without a required idempotency key; a tool without a feature, a scope or a role.
+    - Exit 4 for:
+      - tool poisoning: an instruction to the model, a secret or personal data in a title, a description, a schema description or an example;
+      - an effect the tags or the handler contradict;
+      - an input that accepts undeclared properties;
+      - a handler the contract no longer has;
+      - an incompatible change of a tool's input or output against the previous manifest (git `HEAD`, or `--against`) without a new `version`.
 
 - **`--assist` verified against a real model** (`lint --assist` and `reverse propose --assist`, Gemini `gemini-flash-lite-latest`): both write a patch, change no step, and the validation rejected the one invalid name the model proposed. Other providers share the client and the validation but are untested with `--assist`; [docs/REVERSE.md](docs/REVERSE.md#--assist-opt-in) says how to report a run.
 

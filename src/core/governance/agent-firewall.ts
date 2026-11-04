@@ -70,7 +70,9 @@ export const BUILTIN_DENY_PATHS = [
 /** Changes that need a human by default. */
 export const BUILTIN_APPROVAL_PATHS = [
   '.github/workflows/**', '.gitlab-ci.yml', 'Jenkinsfile', '**/migrations/**', '**/schema.prisma', 'Dockerfile', '**/Dockerfile', '**/docker-compose*.yml',
-  '**/infrastructure/**', '**/deploy/**', '**/*.tf', '**/*.tfvars', '**/*.tfbackend', '**/k8s/**', '**/helm/**', 'package.json'
+  '**/infrastructure/**', '**/deploy/**', '**/*.tf', '**/*.tfvars', '**/*.tfbackend', '**/k8s/**', '**/helm/**', 'package.json',
+  // What agents may call (ghk expose) and which plugin bytes may run: a person approves both.
+  '.ghk/capabilities.yaml', '.ghk/plugins.lock'
 ];
 /** Commands that are never run on an agent's behalf. Matched as whole words anywhere in the command line. */
 export const BUILTIN_DENY_COMMANDS = [

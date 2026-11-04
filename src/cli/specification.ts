@@ -110,13 +110,21 @@ export function registerSpecificationCommands(program: Command): void {
     });
   program
     .command('expose [subcommand] [args...]')
-    .description('Expose the service\'s business capabilities to agents as MCP tools: `discover` proposes the capability manifest from the features, the OpenAPI contract and the industry profile (never approves; writes only .ghe/expose/)')
-    .option('--contract <file>', 'discover: the service\'s OpenAPI document (default: <outputDir>/openapi.json, openapi.json, contracts/openapi.json)')
+    .description('Expose the service\'s business capabilities to agents as MCP tools: `discover` proposes the capability manifest from the features, the OpenAPI contract and the industry profile (never approves; writes only .ghe/expose/); `review [id…]` shows each capability; `approve <id…> | --all --env <e>` writes the approved ones to .ghk/capabilities.yaml (exit 5 when a policy refuses); `revoke <id…>`; `validate` checks the approved manifest (exit 5: a write without approval; exit 4: tool poisoning, contract mismatch, incompatible change)')
+    .option('--contract <file>', 'discover, validate: the service\'s OpenAPI document (default: <outputDir>/openapi.json, openapi.json, contracts/openapi.json)')
     .option('--from-reverse', 'discover: also list the endpoints ghk reverse found that no feature specifies (pending-specification)')
+    .option('--all', 'approve: every capability of the proposal that is not pending')
+    .option('--env <environment>', 'approve: an environment the capabilities may run in (repeatable; required for writes; production needs allowWrites in the manifest)', collect)
+    .option('--by <name>', 'approve: who approves (default: git user.name)')
+    .option('--note <text>', 'approve: a note kept with the approval')
+    .option('--yes', 'approve, revoke: write without asking')
+    .option('--manifest <file>', 'validate: the manifest to check (default: .ghk/capabilities.yaml)')
+    .option('--against <file>', 'validate: the previous manifest, for incompatible changes (default: git HEAD)')
     .option('--json', 'Output as JSON')
     .action(async (subcommand, args, options) => {
       const { handleExposeCommand } = await import('../commands/expose');
-      await handleExposeCommand(subcommand, args ?? [], { ...options, json: options.json || program.opts().json, dryRun: program.opts().dryRun });
+      const global = program.opts();
+      await handleExposeCommand(subcommand, args ?? [], { ...options, json: options.json || global.json, dryRun: global.dryRun, yes: options.yes || global.yes });
     });
   program
     .command('reverse [subcommand] [names...]')

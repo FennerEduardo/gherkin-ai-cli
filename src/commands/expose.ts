@@ -4,39 +4,111 @@
 
    ghk expose discover [--contract f] [--from-reverse] [--json]
        proposes the capability manifest in .ghe/expose/ (never approves)
+   ghk expose review [id…] [--json]
+       each proposed capability, what it does, what it needs, what changed
+   ghk expose approve <id…> | --all [--env e]… [--by name] [--note t] [--yes]
+       writes the approved capabilities to .ghk/capabilities.yaml (exit 5
+       when a policy refuses one; nothing is written then)
+   ghk expose revoke <id…> [--yes]
+   ghk expose validate [--manifest f] [--against f] [--contract f] [--json]
+       exit 5: a write without approval; exit 4: tool poisoning, a
+       contract mismatch or an incompatible change without a new version
 
    `ghk mcp` stays the development MCP server (features, lint, reverse);
    `ghk expose` builds the one that serves the business to agents.
    ========================================================================== */
 
-import { UsageError } from '../core/errors';
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
+import { execFileSync } from 'child_process';
+import { ExitCode, GhkError, PolicyError, UsageError } from '../core/errors';
 import { emitJson } from '../utils/output';
 import { logger } from '../utils/logger';
+import { parseManifest } from '../core/expose/manifest';
 
 export interface ExposeCommandOptions {
   contract?: string;
   fromReverse?: boolean;
   json?: boolean;
   dryRun?: boolean;
+  all?: boolean;
+  env?: string[];
+  by?: string;
+  note?: string;
+  yes?: boolean;
+  manifest?: string;
+  against?: string;
 }
 
-const SUBCOMMANDS = ['discover'];
+const SUBCOMMANDS = ['discover', 'review', 'approve', 'revoke', 'validate'];
+
+function approver(by?: string): string {
+  if (by?.trim()) return by.trim();
+  if (process.env.GHK_AUTHOR_NAME) return process.env.GHK_AUTHOR_NAME;
+  try {
+    const name = execFileSync('git', ['config', 'user.name'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+    if (name) return name;
+  } catch { /* not a git checkout */ }
+  return process.env.USER || process.env.USERNAME || os.userInfo().username || 'unknown';
+}
+
+async function confirm(message: string, options: ExposeCommandOptions, what: string): Promise<boolean> {
+  if (options.yes) return true;
+  if (!process.stdin.isTTY || options.json) throw new UsageError(`${what}. Nothing was written: pass --yes to confirm.`, { hint: 'Run `ghk expose review` first.' });
+  const inquirer = (await import('inquirer')).default;
+  const { ok } = await inquirer.prompt([{ type: 'confirm', name: 'ok', default: false, message }]);
+  return Boolean(ok);
+}
+
+/** The manifest of the base revision (`git show HEAD:<file>`), when there is one. */
+function previousManifest(root: string, file: string, against?: string) {
+
+  if (against) {
+    const p = path.resolve(root, against);
+    if (!fs.existsSync(p)) throw new UsageError(`--against: ${against} not found.`);
+    return parseManifest(fs.readFileSync(p, 'utf8'), against);
+  }
+  try {
+    const text = execFileSync('git', ['show', `HEAD:${file}`], { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+    return parseManifest(text, `HEAD:${file}`);
+  } catch {
+    return undefined; // first manifest, or not a git checkout
+  }
+}
 
 export async function handleExposeCommand(subcommand: string | undefined, args: string[], options: ExposeCommandOptions): Promise<void> {
   if (!subcommand || !SUBCOMMANDS.includes(subcommand)) {
     throw new UsageError(subcommand ? `Unknown expose subcommand: ${subcommand}` : 'Missing expose subcommand.', { hint: `Use one of: ${SUBCOMMANDS.join(', ')}.` });
   }
   const root = process.cwd();
+  const { discoverCapabilities, readApprovedManifest, writeExposeFile, loadContract } = await import('../core/expose/discover');
+  const { EXPOSE_DIR, MANIFEST_FILE, PROPOSAL_FILE, ManifestError, serializeManifest, isWrite, capabilityFingerprint } = await import('../core/expose/manifest');
 
-  if (subcommand === 'discover') {
-    const { discoverCapabilities } = await import('../core/expose/discover');
-    let result;
+  const discover = (write: boolean) => {
     try {
-      result = discoverCapabilities(root, { contract: options.contract, fromReverse: options.fromReverse, write: !options.dryRun });
+      return discoverCapabilities(root, { contract: options.contract, fromReverse: options.fromReverse, write });
     } catch (err) {
       if (/^Contract not found/.test((err as Error).message)) throw new UsageError((err as Error).message, { hint: 'Pass the OpenAPI document of the service with --contract <file>.' });
       throw err;
     }
+  };
+  const readProposal = () => {
+    const file = path.join(root, EXPOSE_DIR, PROPOSAL_FILE);
+    if (!fs.existsSync(file)) throw new UsageError('No proposal to review.', { hint: 'Run `ghk expose discover` first.' });
+    return parseManifest(fs.readFileSync(file, 'utf8'), `${EXPOSE_DIR}/${PROPOSAL_FILE}`);
+  };
+  const readApproved = () => {
+    try {
+      return readApprovedManifest(root);
+    } catch (err) {
+      if (err instanceof ManifestError) throw new GhkError(`${err.message}:\n  ${err.issues.join('\n  ')}`, ExitCode.GATE_FAILED);
+      throw err;
+    }
+  };
+
+  if (subcommand === 'discover') {
+    const result = discover(!options.dryRun);
     if (options.json) {
       emitJson({ ...result, manifest: undefined, capabilities: result.manifest.capabilities.map(c => ({ id: c.id, name: c.name, effect: c.effect, status: c.status, approval: c.execution.approval, handler: c.handler ? `${c.handler.method} ${c.handler.path}` : null, features: c.source.features, reason: c.reason })) });
       return;
@@ -47,9 +119,131 @@ export async function handleExposeCommand(subcommand: string | undefined, args: 
       console.log(`  ${c.status.padEnd(21)} ${c.effect.padEnd(18)} ${c.name}  (${where})${c.execution.approval === 'human' ? '  human approval per call' : ''}`);
       if (c.reason) console.log(`      ${c.reason}`);
     }
-    for (const ch of result.changes.filter(x => x.change !== 'unchanged')) console.log(`  ${ch.change} against .ghk/capabilities.yaml: ${ch.id}`);
+    for (const ch of result.changes.filter(x => x.change !== 'unchanged')) console.log(`  ${ch.change} against ${MANIFEST_FILE}: ${ch.id}`);
     for (const w of result.warnings) logger.warn(w);
-    if (result.proposal) console.log(`\n  Proposal: ${result.proposal}. Nothing is approved: review it, then \`ghk expose approve <id>\`.`);
+    if (result.proposal) console.log(`\n  Proposal: ${result.proposal}. Nothing is approved: \`ghk expose review\`, then \`ghk expose approve <id> --env dev\`.`);
     else console.log('\n  --dry-run: nothing written.');
+    return;
+  }
+
+  if (subcommand === 'review') {
+    const proposal = readProposal();
+    const approved = readApproved();
+    const rows = proposal.capabilities.filter(c => !args.length || args.includes(c.id) || args.includes(c.name)).map(c => {
+      const before = approved?.capabilities.find(a => a.id === c.id);
+      const change = !approved ? 'new' : !before ? 'new' : before.approval?.fingerprint === capabilityFingerprint(c) ? 'unchanged' : 'changed';
+      return {
+        id: c.id, name: c.name, status: c.status, effect: c.effect, change, reason: c.reason,
+        handler: c.handler ? `${c.handler.method} ${c.handler.path}` : null,
+        arguments: Object.keys((c.input.properties as object) ?? {}), required: (c.input.required as string[]) ?? [],
+        scopes: c.authorization.scopes, roles: c.authorization.roles, approval: c.execution.approval, idempotency: c.execution.idempotency,
+        rateLimitPerMinute: c.execution.rateLimitPerMinute ?? null, pii: c.pii, features: c.source.features, scenarios: c.source.scenarios,
+        description: c.description, approvedBy: before?.approval ? `${before.approval.by} (${before.approval.at})` : null
+      };
+    });
+    if (options.json) { emitJson({ capabilities: rows }); return; }
+    if (!rows.length) { logger.info('No capability matches.'); return; }
+    for (const r of rows) {
+      console.log(`\n${r.id}  [${r.status}, ${r.effect}${r.change !== 'unchanged' ? `, ${r.change}` : ''}]`);
+      if (r.reason) console.log(`  ${r.reason}`);
+      console.log(`  runs        ${r.handler ?? 'nothing (no handler)'}`);
+      console.log(`  arguments   ${r.arguments.map(a => (r.required.includes(a) ? `${a}*` : a)).join(', ') || '(none)'}`);
+      console.log(`  authorized  scopes ${r.scopes.join(', ') || '-'}; roles ${r.roles.join(', ') || '-'}`);
+      console.log(`  per call    ${r.approval === 'human' ? 'a person approves it' : 'no approval'}; idempotency ${r.idempotency}${r.rateLimitPerMinute ? `; ${r.rateLimitPerMinute}/min` : ''}${r.pii ? '; personal data redacted' : ''}`);
+      console.log(`  specified   ${r.features.join(', ') || 'by no feature'}${r.scenarios.length ? `: ${r.scenarios.join('; ')}` : ''}`);
+      console.log(`  description ${r.description}`);
+      if (r.approvedBy) console.log(`  approved    by ${r.approvedBy}`);
+    }
+    console.log(`\n  Approve with \`ghk expose approve <id> --env <environment>\`; writes need --env, and production writes an explicit policy.`);
+    return;
+  }
+
+  if (subcommand === 'approve') {
+    const { planApproval } = await import('../core/expose/approve');
+    const proposal = readProposal();
+    const fresh = discover(false).manifest;
+    const current = readApproved();
+    const plan = planApproval(proposal, fresh, current, {
+      ids: args, all: options.all, environments: options.env ?? [], by: approver(options.by), at: new Date().toISOString().slice(0, 10), note: options.note
+    });
+    if (plan.refused.length) {
+      const text = plan.refused.map(r => `  ${r.id}: ${r.reason}`).join('\n');
+      if (options.json) emitJson({ approved: [], refused: plan.refused });
+      const policy = plan.refused.some(r => r.policy);
+      const message = `Nothing was approved:\n${text}`;
+      throw policy ? new PolicyError(message) : new UsageError(message);
+    }
+    if (options.dryRun) {
+      if (options.json) emitJson({ approved: plan.approved, dryRun: true });
+      else logger.info(`--dry-run: would approve ${plan.approved.join(', ')}.`);
+      return;
+    }
+    const summary = plan.manifest.capabilities.filter(c => plan.approved.includes(c.id)).map(c => `${c.id} (${c.effect}${isWrite(c.effect) ? ` in ${c.approval!.environments.join(', ')}` : ''})`);
+    if (!await confirm(`Approve ${summary.length} capability(ies) for agents?\n  ${summary.join('\n  ')}\n`, options, `expose approve would approve ${summary.join(', ')}`)) {
+      logger.info('Not approved.');
+      return;
+    }
+    const { AgentFirewall } = await import('../core/governance/agent-firewall');
+    const { projectConfig } = await import('../core/plugins/load');
+    // A person confirmed: the approval path is granted, a DENY (allow-paths, deny-paths) still stops it.
+    AgentFirewall.forWorkspace(root, projectConfig(root) ?? {}).assert({ kind: 'write', target: MANIFEST_FILE, agent: 'cli' }, { approved: true });
+    const target = path.join(root, MANIFEST_FILE);
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    fs.writeFileSync(target, serializeManifest(plan.manifest, 'Approved capabilities of `ghk expose`. Review changes to this file by PR.\nApprove or revoke with `ghk expose approve` / `ghk expose revoke`; check with `ghk expose validate`.'));
+    const { getTelemetry } = await import('../core/telemetry');
+    getTelemetry().recordAudit({ action: 'expose:approve', status: 'SUCCESS', resource: plan.approved.join(', '), details: `by ${plan.manifest.capabilities.find(c => plan.approved.includes(c.id))?.approval?.by}; env ${(options.env ?? []).join(',') || '-'}` });
+    if (options.json) { emitJson({ approved: plan.approved, refused: [], manifest: MANIFEST_FILE }); return; }
+    logger.success(`Approved ${plan.approved.join(', ')} in ${MANIFEST_FILE}. Commit it and have the change reviewed.`);
+    return;
+  }
+
+  if (subcommand === 'revoke') {
+    const { planRevoke } = await import('../core/expose/approve');
+    const current = readApproved();
+    if (!current) throw new UsageError(`No ${MANIFEST_FILE}: nothing is approved.`);
+    if (!args.length) throw new UsageError('Name the capabilities to revoke.');
+    const plan = planRevoke(current, args);
+    if (plan.unknown.length) throw new UsageError(`Not approved: ${plan.unknown.join(', ')}.`);
+    if (options.dryRun) { logger.info(`--dry-run: would revoke ${plan.revoked.join(', ')}.`); return; }
+    if (!await confirm(`Revoke ${plan.revoked.join(', ')}?`, options, `expose revoke would revoke ${plan.revoked.join(', ')}`)) return;
+    const { AgentFirewall } = await import('../core/governance/agent-firewall');
+    const { projectConfig } = await import('../core/plugins/load');
+    AgentFirewall.forWorkspace(root, projectConfig(root) ?? {}).assert({ kind: 'write', target: MANIFEST_FILE, agent: 'cli' }, { approved: true });
+    fs.writeFileSync(path.join(root, MANIFEST_FILE), serializeManifest(plan.manifest, 'Approved capabilities of `ghk expose`. Review changes to this file by PR.\nApprove or revoke with `ghk expose approve` / `ghk expose revoke`; check with `ghk expose validate`.'));
+    const { getTelemetry } = await import('../core/telemetry');
+    getTelemetry().recordAudit({ action: 'expose:revoke', status: 'SUCCESS', resource: plan.revoked.join(', ') });
+    if (options.json) { emitJson({ revoked: plan.revoked }); return; }
+    logger.success(`Revoked ${plan.revoked.join(', ')}. Regenerate the runtime and the gateway so agents lose them.`);
+    return;
+  }
+
+  if (subcommand === 'validate') {
+    const { validateManifest, validationExitCode } = await import('../core/expose/validate');
+    const rel = options.manifest ?? MANIFEST_FILE;
+    const file = path.resolve(root, rel);
+    if (!fs.existsSync(file)) throw new UsageError(`${rel} not found.`, { hint: 'Approve capabilities with `ghk expose approve` first.' });
+    let manifest;
+    try {
+      manifest = parseManifest(fs.readFileSync(file, 'utf8'), rel);
+    } catch (err) {
+      if (!(err instanceof ManifestError)) throw err;
+      if (options.json) emitJson({ valid: false, issues: [{ code: 'EXV000', severity: 'error', exit: 4, message: err.message, details: err.issues }] });
+      throw new GhkError(`${err.message}:\n  ${err.issues.join('\n  ')}`, ExitCode.GATE_FAILED);
+    }
+    const contract = loadContract(root, options.contract ?? manifest.service.contract);
+    const previous = previousManifest(root, rel.split(path.sep).join('/'), options.against);
+    const issues = validateManifest(manifest, { previous, contract: contract.file ? contract.operations : undefined });
+    const exit = validationExitCode(issues);
+    if (options.json) emitJson({ valid: exit === 0, manifest: rel, contract: contract.file ?? null, against: options.against ?? (previous ? `HEAD:${rel}` : null), issues });
+    else {
+      for (const i of issues) {
+        const line = `${i.code}${i.capability ? ` ${i.capability}` : ''} ${i.message}`;
+        if (i.severity === 'error') logger.error(line);
+        else logger.warn(line);
+      }
+      if (!contract.file) logger.warn('No contract found: handlers were not checked against it (--contract).');
+      if (exit === 0) logger.success(`${rel}: ${manifest.capabilities.filter(c => c.status === 'approved').length} approved capability(ies), valid.`);
+    }
+    if (exit) process.exitCode = exit;
   }
 }
