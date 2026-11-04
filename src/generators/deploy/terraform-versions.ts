@@ -17,6 +17,8 @@ export const COLLECTOR_IMAGES = {
 /** Provider constraints (~> major.minor: patch and minor updates within the major). */
 export const PROVIDERS = {
   aws: '~> 6.69',
+  /** ghk expose aws-agentcore: 6.71.0 is the version whose schema was checked for every AgentCore resource it uses (MCP server targets, JWT passthrough). */
+  awsAgentCore: '~> 6.71',
   google: '~> 8.7',
   azurerm: '~> 5.10',
   random: '~> 3.9'

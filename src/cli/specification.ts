@@ -110,7 +110,7 @@ export function registerSpecificationCommands(program: Command): void {
     });
   program
     .command('expose [subcommand] [args...]')
-    .description('Expose the service\'s business capabilities to agents as MCP tools: `discover` proposes the capability manifest from the features, the OpenAPI contract and the industry profile (never approves; writes only .ghe/expose/); `review [id…]` shows each capability; `approve <id…> | --all --env <e>` writes the approved ones to .ghk/capabilities.yaml (exit 5 when a policy refuses); `revoke <id…>`; `validate` checks the approved manifest (exit 5: a write without approval; exit 4: tool poisoning, contract mismatch, incompatible change); `generate --target mcp-runtime` writes the MCP server of the approved capabilities (stateless Streamable HTTP on :8000/mcp), `--target <provider>` also the gateway files; `plan --target <provider>` shows where each control is enforced; `publish --target <provider> --yes` applies them; `drift` compares the served tools with the manifest (exit 7)')
+    .description('Expose the service\'s business capabilities to agents as MCP tools: `discover` proposes the capability manifest from the features, the OpenAPI contract and the industry profile (never approves; writes only .ghe/expose/); `review [id…]` shows each capability; `approve <id…> | --all --env <e>` writes the approved ones to .ghk/capabilities.yaml (exit 5 when a policy refuses); `revoke <id…>`; `validate` checks the approved manifest (exit 5: a write without approval; exit 4: tool poisoning, contract mismatch, incompatible change); `generate --target mcp-runtime` writes the MCP server of the approved capabilities (stateless Streamable HTTP on :8000/mcp), `--target <provider>` also the gateway files; `plan --target <provider>` shows where each control is enforced; `publish --target <provider> --yes` applies them; `drift` compares the served tools with the manifest (exit 7); `test --agent bedrock --url <endpoint>` runs a reference agent on Amazon Bedrock over the scenarios')
     .option('--contract <file>', 'discover, validate: the service\'s OpenAPI document (default: <outputDir>/openapi.json, openapi.json, contracts/openapi.json)')
     .option('--from-reverse', 'discover: also list the endpoints ghk reverse found that no feature specifies (pending-specification)')
     .option('--all', 'approve: every capability of the proposal that is not pending')
@@ -127,7 +127,9 @@ export function registerSpecificationCommands(program: Command): void {
     .option('--audience <id>', 'generate, plan: an accepted audience or client id (repeatable)', collect)
     .option('--region <region>', 'generate, plan: cloud region')
     .option('--url <url>', 'drift: a deployed MCP endpoint (default: the generated runtime in expose/mcp-runtime)')
-    .option('--token-env <var>', 'drift: environment variable that holds the bearer token for --url (a token with every scope)')
+    .option('--token-env <var>', 'drift, test: environment variable that holds the bearer token for --url (drift: a token with every scope)')
+    .option('--agent <agent>', 'test: the reference agent (bedrock: a model on Amazon Bedrock picks and calls a tool for each scenario; skipped without AWS credentials)')
+    .option('--model <id>', 'test: the Bedrock model (default: llm.model when llm.provider is bedrock, else the default Bedrock model)')
     .option('--json', 'Output as JSON')
     .action(async (subcommand, args, options) => {
       const { handleExposeCommand } = await import('../commands/expose');

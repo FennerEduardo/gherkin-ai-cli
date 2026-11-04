@@ -11,12 +11,13 @@
 import { loadProjectPlugins } from '../../plugins/load';
 import type { CapabilityManifest } from '../manifest';
 import type { GatewayProvider, ProviderManifestView } from '../provider-types';
+import { awsAgentCoreProvider } from './aws-agentcore';
 import { containerProvider } from './container';
 
 export { CONTROLS, CONTROL_LABELS, planTools, overclaimed } from './plan';
 
 export function coreProviders(): GatewayProvider[] {
-  return [containerProvider];
+  return [containerProvider, awsAgentCoreProvider];
 }
 
 /** Core providers, then the project's plugin providers (a plugin cannot replace a core id). */

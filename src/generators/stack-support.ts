@@ -124,6 +124,7 @@ export const STACK_SUPPORT: StackSupport[] = [
   { id: 'deploy/terraform-gcp-vm', label: 'Terraform for Google Cloud on one Compute Engine VM (deploy.compute "vm")', kind: 'infrastructure', tier: 'stable', golden: 'terraform-gcp-vm' },
   { id: 'deploy/terraform-azure-vm', label: 'Terraform for Azure on one Linux VM (deploy.compute "vm")', kind: 'infrastructure', tier: 'stable', golden: 'terraform-azure-vm' },
   { id: 'deploy/terraform-aws-base', label: 'Terraform for AWS with a shared base stack (deploy.base: one RDS instance and one Amazon MQ broker for the services of a repository)', kind: 'infrastructure', tier: 'stable', golden: 'terraform-aws-base' },
+  { id: 'expose/aws-agentcore', label: 'ghk expose on AWS Bedrock AgentCore (Gateway + Runtime, Terraform; validated and linted, not applied)', kind: 'infrastructure', tier: 'beta', golden: 'expose-aws' },
   { id: 'deploy/terraform-aws-bff', label: 'Terraform for AWS of a backend-for-frontend (stack.role "bff": no database, broker or relay; upstream URLs as inputs)', kind: 'infrastructure', tier: 'stable', golden: 'terraform-aws-bff' },
   { id: 'deploy/terraform-gcp-bff', label: 'Terraform for Google Cloud of a backend-for-frontend (one VM)', kind: 'infrastructure', tier: 'stable', golden: 'terraform-gcp-bff' },
   { id: 'deploy/terraform-azure-bff', label: 'Terraform for Azure of a backend-for-frontend (Container Apps)', kind: 'infrastructure', tier: 'stable', golden: 'terraform-azure-bff' },

@@ -88,6 +88,11 @@ function generate(name, def) {
     });
     if (res.code !== 0) throw new Error(`ghk generate failed for ${name} (${feature}):\n${res.out}`);
   }
+  // Further ghk commands on the generated project (e.g. `expose approve`, `expose generate`).
+  for (const cmd of def.after || []) {
+    const res = run(process.execPath, [CLI, ...cmd], { cwd: dir, env: { ...process.env, NO_COLOR: '1', GHK_NON_INTERACTIVE: 'true', GHK_TELEMETRY_DISABLED: 'true' } });
+    if (res.code !== 0) throw new Error(`ghk ${cmd.join(' ')} failed for ${name}:\n${res.out}`);
+  }
   return dir;
 }
 
@@ -118,6 +123,13 @@ function buildInDocker(dir, def, name) {
       // Tool images (terraform, helm) set the tool as entrypoint: run the shell instead.
       ...(def.entrypoint ? ['--entrypoint', def.entrypoint, def.image] : [def.image, 'sh']), '-c', script
     ], { env: { ...process.env, MSYS_NO_PATHCONV: '1' } });
+    // Other tools on the same directory, each in its own image (e.g. tflint next to terraform).
+    for (const extra of res.code === 0 ? def.extraRuns || [] : []) {
+      const more = run('docker', ['run', '--rm', '-v', `${dockerPath(dir)}:/work`, '-w', `/work${def.workdir ? `/${def.workdir}` : ''}`, extra.image, ...extra.args],
+        { env: { ...process.env, MSYS_NO_PATHCONV: '1' } });
+      res.out += `\n--- ${extra.image} ${extra.args.join(' ')} ---\n${more.out}`;
+      if (more.code !== 0) return { code: more.code, out: res.out };
+    }
     if (res.code !== 0 || !services || skipImage || !fs.existsSync(path.join(dir, 'Dockerfile'))) return res;
     const image = smokeImage(dir, def, name, services);
     return { code: image.code, out: `${res.out}\n--- production image ---\n${image.out}` };

@@ -80,42 +80,63 @@ function answer(text: string, contentType: string, id: number): any {
   return text ? JSON.parse(text) : undefined;
 }
 
-/** tools/list of a deployed MCP endpoint (Streamable HTTP), following pagination. */
-export async function servedTools(url: string, token: string | undefined, fetchImpl: typeof fetch = fetch): Promise<ServedTool[]> {
-  let session: string | undefined;
-  let id = 0;
-  const call = async (method: string, params?: unknown, notification = false) => {
-    const res = await fetchImpl(url, {
+/** A minimal MCP client over Streamable HTTP (JSON or SSE answers): what any agent sends, no SDK. */
+export class McpHttpClient {
+  private session?: string;
+  private id = 0;
+
+  constructor(private readonly url: string, private readonly token: string | undefined, private readonly fetchImpl: typeof fetch = fetch) {}
+
+  private async send(method: string, params?: unknown, notification = false): Promise<any> {
+    const id = ++this.id;
+    const res = await this.fetchImpl(this.url, {
       method: 'POST',
       redirect: 'error',
-      signal: AbortSignal.timeout(30_000),
+      signal: AbortSignal.timeout(60_000),
       headers: {
         'content-type': 'application/json',
         accept: 'application/json, text/event-stream',
         'mcp-protocol-version': '2025-06-18',
-        ...(token ? { authorization: `Bearer ${token}` } : {}),
-        ...(session ? { 'mcp-session-id': session } : {})
+        ...(this.token ? { authorization: `Bearer ${this.token}` } : {}),
+        ...(this.session ? { 'mcp-session-id': this.session } : {})
       },
-      body: JSON.stringify(notification ? { jsonrpc: '2.0', method, ...(params ? { params } : {}) } : { jsonrpc: '2.0', id: ++id, method, ...(params ? { params } : {}) })
+      body: JSON.stringify(notification ? { jsonrpc: '2.0', method, ...(params ? { params } : {}) } : { jsonrpc: '2.0', id, method, ...(params ? { params } : {}) })
     });
-    session = res.headers.get('mcp-session-id') ?? session;
-    if (res.status === 401 || res.status === 403) throw new Error(`${url} answered ${res.status}: the token (--token-env) is missing or not accepted.`);
+    this.session = res.headers.get('mcp-session-id') ?? this.session;
+    if (res.status === 401 || res.status === 403) throw new Error(`${this.url} answered ${res.status}: the token (--token-env) is missing or not accepted.`);
     const text = await res.text();
     if (notification) return undefined;
-    if (!res.ok) throw new Error(`${url} answered ${res.status} to ${method}.`);
+    if (!res.ok) throw new Error(`${this.url} answered ${res.status} to ${method}.`);
     const msg = answer(text, res.headers.get('content-type') ?? '', id);
     if (!msg || msg.error) throw new Error(`${method}: ${msg?.error?.message ?? 'no answer'}`);
     return msg.result;
-  };
-  await call('initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'ghk-expose-drift', version: '1.0.0' } });
-  await call('notifications/initialized', undefined, true);
-  const tools: ServedTool[] = [];
-  let cursor: string | undefined;
-  for (let page = 0; page < 50; page++) {
-    const result = await call('tools/list', cursor ? { cursor } : undefined);
-    tools.push(...(result?.tools ?? []));
-    cursor = result?.nextCursor;
-    if (!cursor) break;
   }
-  return tools;
+
+  async connect(): Promise<void> {
+    await this.send('initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'ghk-expose', version: '1.0.0' } });
+    await this.send('notifications/initialized', undefined, true);
+  }
+
+  async listTools(): Promise<ServedTool[]> {
+    const tools: ServedTool[] = [];
+    let cursor: string | undefined;
+    for (let page = 0; page < 50; page++) {
+      const result = await this.send('tools/list', cursor ? { cursor } : undefined);
+      tools.push(...(result?.tools ?? []));
+      cursor = result?.nextCursor;
+      if (!cursor) break;
+    }
+    return tools;
+  }
+
+  async callTool(name: string, args: Record<string, unknown>): Promise<{ isError?: boolean; content?: { type: string; text?: string }[] }> {
+    return this.send('tools/call', { name, arguments: args });
+  }
+}
+
+/** tools/list of a deployed MCP endpoint (Streamable HTTP), following pagination. */
+export async function servedTools(url: string, token: string | undefined, fetchImpl: typeof fetch = fetch): Promise<ServedTool[]> {
+  const client = new McpHttpClient(url, token, fetchImpl);
+  await client.connect();
+  return client.listTools();
 }

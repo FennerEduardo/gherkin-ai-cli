@@ -425,4 +425,19 @@ STACKS['ci-github-kubernetes'] = {
 STACKS['ci-gitlab'] = ciSchema('ci-gitlab', 'laravel', 'gitlab', 'vendor.gitlab-ci', '.gitlab-ci.yml');
 STACKS['ci-azure-pipelines'] = ciSchema('ci-azure-pipelines', 'dotnet', 'azure-devops', 'vendor.azure-pipelines', 'azure-pipelines.yml', { deploy: { cloud: 'azure' } });
 
+// ghk expose (PLAN-3.3.0-reverse-plus EX-07, G-E2): the AWS Bedrock AgentCore Terraform of the approved capabilities
+// validates, is formatted and passes tflint. Nothing is applied.
+STACKS['expose-aws'] = {
+  ...terraform('expose-aws', 'aws', 'nestjs'),
+  config: {},
+  workdir: 'expose/aws-agentcore',
+  after: [
+    ['expose', 'discover'],
+    ['expose', 'approve', '--all', '--env', 'dev', '--by', 'golden', '--yes'],
+    ['expose', 'validate'],
+    ['expose', 'generate', '--target', 'aws-agentcore', '--discovery-url', 'https://idp.example.com/.well-known/openid-configuration', '--audience', 'golden-mcp']
+  ],
+  extraRuns: [{ image: 'ghcr.io/terraform-linters/tflint:v0.59.1', args: ['--format', 'compact'] }]
+};
+
 module.exports = { STACKS, SERVICEBUS_EMULATOR, PUBSUB_EMULATOR };

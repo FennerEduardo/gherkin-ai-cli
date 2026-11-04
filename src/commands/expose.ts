@@ -49,11 +49,14 @@ export interface ExposeCommandOptions {
   /** drift */
   url?: string;
   tokenEnv?: string;
+  /** test */
+  agent?: string;
+  model?: string;
   target?: string;
   out?: string;
 }
 
-const SUBCOMMANDS = ['discover', 'review', 'approve', 'revoke', 'validate', 'generate', 'plan', 'publish', 'drift'];
+const SUBCOMMANDS = ['discover', 'review', 'approve', 'revoke', 'validate', 'generate', 'plan', 'publish', 'drift', 'test'];
 
 /** Writes generated files under `dir`, replacing a previous generation (marked by .ghk-generated) and nothing else. */
 export function writeGenerated(dir: string, files: { path: string; content: string }[]): string[] {
@@ -369,6 +372,48 @@ export async function handleExposeCommand(subcommand: string | undefined, args: 
     }
     if (options.json) emitJson({ provider: gateway.id, dir: path.relative(root, dir), commands, published: true });
     else logger.success(`Published ${gateway.id}. Check what agents see with \`ghk expose drift --url <endpoint> --token-env <VAR>\`.`);
+    return;
+  }
+
+  if (subcommand === 'test') {
+    const agent = options.agent ?? 'bedrock';
+    if (agent !== 'bedrock') throw new UsageError(`Unknown --agent ${agent}.`, { hint: 'Use --agent bedrock.' });
+    if (!options.url) throw new UsageError('Name the MCP endpoint with --url (the local runtime, e.g. http://127.0.0.1:8000/mcp, or the gateway URL).');
+    const manifest = readApproved();
+    if (!manifest) throw new UsageError(`No ${MANIFEST_FILE}: nothing is approved.`);
+    const { awsCredentialsAvailable, runReferenceAgent } = await import('../core/expose/agent');
+    if (!awsCredentialsAvailable()) {
+      const skipped = 'No AWS credentials (environment, profile, SSO or role): the Bedrock agent was not run. Nothing was stored.';
+      if (options.json) emitJson({ skipped, tools: [], steps: [], selectionAccuracy: 0 });
+      else logger.warn(skipped);
+      return;
+    }
+    const token = options.tokenEnv ? process.env[options.tokenEnv] : undefined;
+    if (options.tokenEnv && !token) throw new UsageError(`${options.tokenEnv} is empty.`);
+    const { featureDocs } = await import('../core/expose/runtime');
+    const docs = featureDocs(root, manifest);
+    const scenarios = manifest.capabilities.filter(c => c.status === 'approved').flatMap(c => c.source.scenarios.map(name => {
+      const sc = docs.flatMap(d => d.scenarios.map(s => ({ feature: d.id, ...s }))).find(s => s.name === name);
+      return { feature: sc?.feature ?? '', name, steps: sc?.steps ?? [], expectedTool: c.name };
+    }));
+    const { projectConfig } = await import('../core/plugins/load');
+    const { resolveLLMSettings, createLLMProvider } = await import('../core/llm');
+    const config = projectConfig(root) ?? ({} as any);
+    const llm = resolveLLMSettings({ config: { ...config, llm: { ...(config.llm ?? {}), provider: 'bedrock', model: options.model ?? (config.llm?.provider === 'bedrock' ? config.llm?.model : undefined) } } });
+    const model = await createLLMProvider(llm);
+    const { McpHttpClient } = await import('../core/expose/drift');
+    let report;
+    try {
+      report = await runReferenceAgent(new McpHttpClient(options.url, token), scenarios, async (system, user, jsonSchema) => (await model.complete({ system, user, jsonSchema, maxOutputTokens: 1024 })).text, { call: !options.dryRun });
+    } catch (err) {
+      throw new GhkError(`expose test: ${(err as Error).message}`, ExitCode.PROVIDER);
+    }
+    const { getTelemetry } = await import('../core/telemetry');
+    getTelemetry().recordAudit({ action: 'expose:test', status: 'SUCCESS', resource: options.url, details: `bedrock ${llm.model}; ${report.steps.length} scenario(s); selection ${Math.round(report.selectionAccuracy * 100)}%` });
+    if (options.json) { emitJson({ model: llm.model, ...report }); return; }
+    logger.info(`ghk expose test --agent bedrock (${llm.model}) against ${options.url}: ${report.tools.length} tool(s) listed`);
+    for (const s of report.steps) console.log(`  ${s.chosenTool === s.expectedTool ? '✔' : '✖'} ${s.scenario} → ${s.chosenTool ?? '(none)'}${s.chosenTool !== s.expectedTool ? ` (expected ${s.expectedTool})` : ''}: ${s.outcome}${s.detail ? ` — ${s.detail}` : ''}`);
+    console.log(`  The model chose the specified tool in ${Math.round(report.selectionAccuracy * 100)}% of the scenarios.`);
     return;
   }
 

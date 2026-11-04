@@ -14,6 +14,7 @@ import { AuthError, JwksVerifier, type Identity } from './jwt';
 import { AuditLog } from './audit';
 import { ToolService } from './tools';
 import { traceContext } from './upstream';
+import { resolveSecretReferences } from './aws-secret';
 import type { FeatureDoc, RuntimeManifest } from './types';
 
 const VERSION = '1.0.0';
@@ -113,16 +114,22 @@ if (require.main === module) {
   const dir = path.join(__dirname, '..', 'config');
   const manifest = readJson<RuntimeManifest>(path.join(dir, 'capabilities.json'), undefined as unknown as RuntimeManifest);
   const features = readJson<FeatureDoc[]>(path.join(dir, 'features.json'), []);
-  let cfg: RuntimeConfig;
-  try {
-    cfg = loadConfig(process.env, manifest.upstreamUrlEnv);
-  } catch (err) {
-    process.stderr.write('Configuration: ' + (err as Error).message + '\n');
+  // Secrets given by reference (*_ARN) are read before the configuration is checked.
+  resolveSecretReferences(process.env).then(() => {
+    let cfg: RuntimeConfig;
+    try {
+      cfg = loadConfig(process.env, manifest.upstreamUrlEnv);
+    } catch (err) {
+      process.stderr.write('Configuration: ' + (err as Error).message + '\n');
+      process.exit(78);
+    }
+    const server = createRuntime(cfg, manifest, features);
+    server.listen(cfg.port, cfg.host, () => process.stderr.write(manifest.service + ' MCP runtime on ' + cfg.host + ':' + cfg.port + '/mcp (' + cfg.environment + ', ' + manifest.capabilities.length + ' tools)\n'));
+    const stop = () => server.close(() => process.exit(0));
+    process.on('SIGTERM', stop);
+    process.on('SIGINT', stop);
+  }, err => {
+    process.stderr.write('Secrets: ' + (err as Error).message + '\n');
     process.exit(78);
-  }
-  const server = createRuntime(cfg, manifest, features);
-  server.listen(cfg.port, cfg.host, () => process.stderr.write(manifest.service + ' MCP runtime on ' + cfg.host + ':' + cfg.port + '/mcp (' + cfg.environment + ', ' + manifest.capabilities.length + ' tools)\n'));
-  const stop = () => server.close(() => process.exit(0));
-  process.on('SIGTERM', stop);
-  process.on('SIGINT', stop);
+  });
 }
