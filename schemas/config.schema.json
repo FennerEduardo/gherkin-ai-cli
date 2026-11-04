@@ -561,6 +561,16 @@
           "items": {
             "type": "string"
           }
+        },
+        "integrity": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {
+            "type": "string",
+            "pattern": "^sha512-[A-Za-z0-9+/=]+$"
+          }
         }
       },
       "additionalProperties": false

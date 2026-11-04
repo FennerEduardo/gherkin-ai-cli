@@ -22,6 +22,8 @@ export interface AnalysisContext {
   /** Explicit OpenAPI documents to read (`--openapi`), relative to the root. */
   openapi?: string[];
   includeTests: boolean;
+  /** Helpers for analyzers, built-in or from plugins: evidence ids, paths, tree-sitter (EC-02). */
+  sdk?: import('../plugins/sdk').PluginSdk;
 }
 
 export interface SourceAnalyzer {

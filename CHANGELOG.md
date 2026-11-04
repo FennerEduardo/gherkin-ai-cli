@@ -118,6 +118,14 @@ All notable changes to this project will be documented in this file. See [commit
   - `ghk reverse`, `ghk lint` and `ghk stacks` load the project's plugins without `ghk init`. A plugin analyzer may ask discovery for extensions of its own language, and `reverse scan --json` names the plugin each analyzer comes from.
   - A CommonJS `module.exports = plugin` is accepted.
   - Plugins are now loaded once per file, not per specifier: the same `./plugin.js` in two projects is two plugins.
+  - **`ghk plugin list | new | verify | lock`.**
+    - `new <analyzer|lint-rule|gateway> <name>` writes a working plugin; an analyzer comes with a fixture and its expected endpoints.
+    - `verify <dir>` is the conformance kit, and a failed check exits 4. It checks compatibility and determinism, the evidence shape, and that the analyzer writes nothing and reads nothing outside the fixture. A planted `.env` must never be opened.
+    - `verify` also measures F1 against the fixture's expected endpoints, which decides the maturity a plugin may claim. Lint-rule ids and gateway-provider controls are checked too.
+  - **Plugin integrity.** `ghk plugin lock` writes `.ghk/plugins.lock` (a sha512 per plugin), and `plugins.integrity` pins the same values in the configuration, lockable. A pinned plugin whose bytes differ is refused with exit 5 and audited.
+  - **`@gherkin-ai/plugin-sdk`** (in `packages/plugin-sdk`, published separately) gives editors the types of plugin API 2 and has no runtime dependency.
+    - The CLI hands analyzers their helpers in `ctx.sdk`: stable evidence ids, paths, and `loadGrammar(wasm)` with the CLI's own web-tree-sitter.
+    - The types come from `gherkin-ai/dist/plugin-api`, the one public module for plugins.
 - **`--assist` verified against a real model** (`lint --assist` and `reverse propose --assist`, Gemini `gemini-flash-lite-latest`): both write a patch, change no step, and the validation rejected the one invalid name the model proposed. Other providers share the client and the validation but are untested with `--assist`; [docs/REVERSE.md](docs/REVERSE.md#--assist-opt-in) says how to report a run.
 
 - **`ghk reverse` scores on the golden-build dashboard** ([goldens.html#reverse](https://fennereduardo.github.io/gherkin-ai-cli/goldens.html#reverse)): every analyzer with its maturity, the validation on open-source code (rerun by the Pages workflow on every build), and the round trips on the reference projects and the LMS (release snapshot `docs/reverse-scores.json`, written by `scripts/reverse-scores.js`). `goldens.json` carries the same data under `reverse`.

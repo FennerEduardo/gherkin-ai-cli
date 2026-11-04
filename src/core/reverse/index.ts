@@ -23,6 +23,7 @@ import { compareWithSpec, existingFeatures, type DedupReport } from './dedup';
 import { knownTerm, loadGlossary } from './glossary';
 import { applyLineCoverage, readCoverageReport } from './coverage-lines';
 import { loadProjectPlugins } from '../plugins/load';
+import { pluginSdk } from '../plugins/sdk';
 import { approvedOnly, readReview, type ScenarioStatus } from './review';
 import { acceptedFeatureText } from './sync';
 import { applyConflicts, findConflicts, type Conflict } from './conflicts';
@@ -111,7 +112,8 @@ export async function runScan(root: string, options: ScanOptions = {}): Promise<
     files: discovery.files,
     stack: detected.stack,
     openapi: options.openapi?.map(p => rel(root, path.resolve(root, p))),
-    includeTests: options.includeTests ?? true
+    includeTests: options.includeTests ?? true,
+    sdk: pluginSdk
   };
   const selected = all.filter(a => (!options.analyzers?.length || options.analyzers.includes(a.id)) && a.detect(ctx));
   const perAnalyzer: ScanResult['analyzers'] = [];

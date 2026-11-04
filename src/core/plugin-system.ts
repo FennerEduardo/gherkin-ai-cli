@@ -9,6 +9,7 @@ import type { SourceAnalyzer } from './reverse/registry';
 import type { LintRule } from './specification-linter';
 import type { GatewayProvider } from './expose/provider-types';
 import { incompatibility } from './plugins/compat';
+import { expectedIntegrity, pluginIntegrity } from './plugins/integrity';
 import { CLI_VERSION } from '../version';
 
 export interface PluginContext {
@@ -81,6 +82,12 @@ export class PluginRegistry {
   private plugins: GherkinAIPlugin[] = [];
   private context: PluginContext | null = null;
   private readonly loadedSpecifiers = new Set<string>();
+  /** Where each loaded plugin came from (`plugins.load` entry and the file resolved), for `ghk plugin list`. */
+  private readonly origins = new Map<string, { specifier: string; resolved: string }>();
+
+  public originOf(name: string): { specifier: string; resolved: string } | undefined {
+    return this.origins.get(name);
+  }
 
   public initialize(context: PluginContext): void {
     this.context = context;
@@ -164,11 +171,21 @@ export class PluginRegistry {
         : require.resolve(specifier, { paths: [projectDir] });
       // Idempotent across runs in one process (MCP server), by the file loaded: the same `./plugin.js` of two projects is two plugins.
       if (this.loadedSpecifiers.has(resolved)) continue;
+      // Integrity (PLAN-3.3.0-reverse-plus EC-04): when plugins.integrity or .ghk/plugins.lock pins this plugin, its bytes must match.
+      const expected = expectedIntegrity(projectDir, specifier, (config.plugins as { integrity?: Record<string, string> } | undefined)?.integrity);
+      if (expected) {
+        const actual = pluginIntegrity(resolved, isPath);
+        if (actual !== expected) {
+          telemetry.recordAudit({ action: 'plugin:load', resource: specifier, status: 'BLOCKED', details: `integrity mismatch: expected ${expected.slice(0, 22)}…, found ${actual.slice(0, 22)}…` });
+          throw new PolicyError(`Plugin "${specifier}" does not match its pinned integrity (plugins.integrity or .ghk/plugins.lock). Nothing was loaded.`);
+        }
+      }
 
       // eslint-disable-next-line @typescript-eslint/no-var-requires
       const mod = require(resolved);
       // `export default plugin`, `export const plugin = …`, or `module.exports = plugin` (CommonJS).
       const plugin: GherkinAIPlugin | undefined = mod?.default?.name ? mod.default : mod?.plugin ?? (typeof mod?.name === 'string' && typeof mod?.version === 'string' ? mod : undefined);
+      const before = new Set(this.plugins.map(p => p.name));
       if (plugin) {
         this.register(plugin);
       } else if (typeof mod?.register === 'function') {
@@ -178,6 +195,7 @@ export class PluginRegistry {
       }
       telemetry.recordAudit({ action: 'plugin:load', resource: specifier, status: 'SUCCESS', details: resolved });
       this.loadedSpecifiers.add(resolved);
+      for (const p of this.plugins.filter(x => !before.has(x.name))) this.origins.set(p.name, { specifier, resolved });
       loaded.push(specifier);
     }
     return loaded;

@@ -153,7 +153,9 @@ const pluginsSchema = z.preprocess(
     /** Plugins to load: npm package names or paths relative to the project. */
     load: z.array(z.string()).optional(),
     /** Organization allow-list. When set, only these specifiers may be loaded. */
-    allow: z.array(z.string()).optional()
+    allow: z.array(z.string()).optional(),
+    /** Pinned bytes per specifier (`sha512-…`, from `ghk plugin lock`): a plugin that differs is refused with exit 5. */
+    integrity: z.record(z.string(), z.string().regex(/^sha512-[A-Za-z0-9+/=]+$/)).optional()
   })
 );
 

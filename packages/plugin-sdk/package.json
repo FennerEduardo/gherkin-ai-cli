@@ -1,0 +1,24 @@
+{
+  "name": "@gherkin-ai/plugin-sdk",
+  "version": "2.0.0",
+  "description": "Types and helpers for gherkin-ai plugins (plugin API 2): reverse-engineering analyzers, lint rules and ghk expose gateway providers.",
+  "license": "MIT",
+  "main": "./index.js",
+  "types": "./index.d.ts",
+  "files": ["index.js", "index.d.ts", "README.md"],
+  "keywords": ["gherkin-ai", "gherkin-ai-plugin", "bdd", "gherkin", "plugin-sdk"],
+  "peerDependencies": {
+    "gherkin-ai": "^3.3.0"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/FennerEduardo/gherkin-ai-cli.git",
+    "directory": "packages/plugin-sdk"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

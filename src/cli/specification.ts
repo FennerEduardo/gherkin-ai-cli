@@ -98,6 +98,17 @@ export function registerSpecificationCommands(program: Command): void {
 
   const collect = (value: string, previous: string[] = []) => [...previous, value];
   program
+    .command('plugin [subcommand] [args...]')
+    .description('Plugins (API 2): `list` the project\'s plugins and what they add; `new <analyzer|lint-rule|gateway> <name>` creates a working plugin; `verify <dir>` runs the conformance kit (exit 4 on a failed check); `lock` pins their bytes in .ghk/plugins.lock')
+    .option('--dir <dir>', 'new: where to create the plugin (default: a directory named after it)')
+    .option('--force', 'new: write into a directory that is not empty')
+    .option('--run-tools', 'verify: also run each gateway provider\'s validation tool (terraform, bicep) on its files')
+    .option('--json', 'Output as JSON')
+    .action(async (subcommand, args, options) => {
+      const { handlePluginCommand } = await import('../commands/plugin');
+      await handlePluginCommand(subcommand, args ?? [], { ...options, json: options.json || program.opts().json });
+    });
+  program
     .command('reverse [subcommand] [names...]')
     .description('(beta) Reverse engineering: `scan` reads controllers, services, repositories, models, tests and OpenAPI documents into evidence; `propose` turns it into candidate .feature files with source traceability; `accept <aggregate…>` moves reviewed proposals into the specifications; `coverage` reports the share of the code the features specify; `explain <operation>` shows where its names, confidence and evidence come from; `review [aggregate…]` shows each scenario with the code behind it and records approve/reject decisions that `accept` follows; `sync` compares the accepted features with the code and exits 7 on drift, with a patch to review. Deterministic, works without ghk init')
     .option('--path <dir>', 'scan: sub-directory to analyse (default: the whole project)')

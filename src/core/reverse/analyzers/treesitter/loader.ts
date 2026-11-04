@@ -51,6 +51,25 @@ export async function parserFor(id: GrammarId): Promise<TSParser> {
   return parser;
 }
 
+const custom = new Map<string, Promise<TSLanguage>>();
+
+/**
+ * A parser for a grammar a plugin ships (`tree-sitter-php.wasm`), loaded with the CLI's own web-tree-sitter so the
+ * plugin needs no runtime dependency (PLAN-3.3.0-reverse-plus EC-02). Loaded once per file.
+ */
+export async function parserForWasm(wasmPath: string): Promise<TSParser> {
+  const { Parser, Language } = await loadRuntime();
+  const abs = path.resolve(wasmPath);
+  let lang = custom.get(abs);
+  if (!lang) {
+    lang = Language.load(abs);
+    custom.set(abs, lang);
+  }
+  const parser = new Parser();
+  parser.setLanguage(await lang);
+  return parser;
+}
+
 // ---------------------------------------------------------------------------
 // Walking helpers (grammar-agnostic)
 // ---------------------------------------------------------------------------

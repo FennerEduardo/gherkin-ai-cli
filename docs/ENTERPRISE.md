@@ -57,7 +57,7 @@ Every layer is validated against a JSON Schema (`schemas/config.schema.json`, al
   "mcp": { "allowWrite": false },
   "policy": { "allowUnattendedWrites": false, "protectedBranches": ["main", "release"], "redactPii": true },
   "plugins": { "allow": ["@contoso/ghk-plugin-standards"] },
-  "locked": ["llm.allowedProviders", "llm.allowedModels", "audit.enabled", "mcp.allowWrite", "plugins.allow", "policy"]
+  "locked": ["llm.allowedProviders", "llm.allowedModels", "audit.enabled", "mcp.allowWrite", "plugins.allow", "plugins.integrity", "policy"]
 }
 ```
 
@@ -233,6 +233,8 @@ CSV export neutralizes spreadsheet formula injection.
 Plugins are listed in `plugins.load`, as npm package names or paths relative to the project. When the organization sets `plugins.allow`, anything else is refused with exit code `5`. Relative plugin paths must stay inside the project. Each load is audited. A plugin exports a `GherkinAIPlugin` (as `default`, `plugin` or `module.exports`) or a `register(registry)` function.
 
 The plugin API is version 2 in 3.3.0. It adds extension points for `ghk reverse` analyzers, lint rules and `ghk expose` gateway providers, and a plugin declares the API and the gherkin-ai versions it supports (`apiVersion`, `engines`). An incompatible plugin is refused before any of its code runs. How to write one: [PLUGINS.md](PLUGINS.md).
+
+Integrity: `ghk plugin lock` writes `.ghk/plugins.lock` with a sha512 per plugin, and `plugins.integrity` pins the same values in the configuration, where the organization can lock it. A pinned plugin whose bytes differ is refused with exit code `5` and audited ([PLUGINS.md §6](PLUGINS.md#6-integrity-and-security)).
 
 The 2.x form `"plugins": ["my-plugin"]` is still accepted as `plugins.load`.
 

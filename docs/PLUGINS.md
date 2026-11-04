@@ -10,6 +10,9 @@ A plugin adds what the core does not ship: an analyzer that reads a stack for `g
 2. [Writing a plugin](#2-writing-a-plugin)
 3. [Extension points](#3-extension-points)
 4. [Compatibility](#4-compatibility)
+5. [Start, verify, list](#5-start-verify-list)
+6. [Integrity and security](#6-integrity-and-security)
+7. [The SDK](#7-the-sdk)
 
 ## 1. Loading plugins
 
@@ -31,7 +34,7 @@ A plugin runs in the CLI's process, with the CLI's permissions. It is trusted co
 
 ## 2. Writing a plugin
 
-A plugin is a module that exports an object (`module.exports = plugin`, `export default plugin` or `export const plugin`), or a `register(registry)` function:
+The quickest start is `ghk plugin new` ([§5](#5-start-verify-list)), which writes a plugin that passes the conformance kit as generated. A plugin is a module that exports an object (`module.exports = plugin`, `export default plugin` or `export const plugin`), or a `register(registry)` function:
 
 ```js
 // acme-lint.js
@@ -80,3 +83,47 @@ An analyzer receives the discovered files (`ctx.files`, relative and absolute pa
 - `engines["gherkin-ai"]` is an npm-style range (`^3.3`, `>=3.3 <4`, `^3 || ^4`). A CLI version outside it refuses the plugin.
 
 In both cases the error names the plugin and says why. Nothing of the plugin runs.
+
+## 5. Start, verify, list
+
+```bash
+ghk plugin new analyzer gherkin-ai-reverse-mystack     # or lint-rule, gateway; --dir to choose where
+ghk plugin verify ./gherkin-ai-reverse-mystack         # the conformance kit: exit 4 when a check fails
+ghk plugin list                                        # the project's plugins and what each adds
+ghk plugin lock                                        # pin their bytes in .ghk/plugins.lock
+```
+
+`ghk plugin new` writes `package.json`, `index.js` and a README. An analyzer also gets a fixture (`fixtures/example/`) and its expected endpoints (`fixtures/example.expected.json`). The template passes `verify` as generated.
+
+`ghk plugin verify <dir>` loads the plugin into a registry of its own and checks the following. A failed check exits 4 and says what to change.
+
+| For | Checks |
+|---|---|
+| every plugin | it exports a plugin; it is compatible with this gherkin-ai; it declares `apiVersion: 2` and `engines`; it contributes something |
+| an analyzer, on each `fixtures/<name>/` | `detect()` recognises it; two runs give identical evidence; each item has an id, a known kind, a location inside the fixture, its own analyzer id as extractor, and a confidence. The fixture is watched while the analyzer runs: nothing may be written, nothing read outside the fixture and the plugin, and a `.env` planted next to the code must never be opened or appear in the output. Then endpoint precision, recall and F1 against `<name>.expected.json`. The lowest F1 decides the maturity it may claim: beta from 0.80, experimental from 0.60. |
+| a lint rule | an id of its own (a prefix and three digits, never `GHKnnn`), a valid severity, a `check` that returns diagnostics on a sample feature, unique ids |
+| a gateway provider | every control declared (`native`, `runtime` or `unsupported`); `plan` and `emit` deterministic; no control claimed `native` beyond `capabilities()`; emitted paths inside their directory; with `--run-tools`, its `validateCommand` (`terraform validate`, `bicep build`) passes on the files |
+
+Run `verify` in the plugin's CI before every release.
+
+## 6. Integrity and security
+
+`plugins.allow` decides which plugins may load. Integrity decides which bytes:
+- `ghk plugin lock` writes `.ghk/plugins.lock` with a sha512 of each plugin of `plugins.load` as it is on disk: the package directory of an npm plugin (without `node_modules`), or the file of a path plugin. Commit it.
+- `plugins.integrity` (`{ "<specifier>": "sha512-…" }`) pins the same values in the configuration, where the organization can lock them. It takes precedence over the lock file.
+- A pinned plugin whose bytes differ is refused before it runs, with exit code 5, and the refusal is audited (`plugin:load`, `BLOCKED`). A plugin without a pinned value loads as before.
+
+A plugin is code running in the CLI's process with its permissions. Nothing sandboxes it, and gherkin-ai does not claim otherwise. `plugins.allow`, integrity and the audit log are how an organization controls what runs. The `mcpTools()` of a plugin are not served by `ghk mcp`. Any tool the MCP server does not know is classified `destructive`, so it needs explicit approval.
+
+## 7. The SDK
+
+`@gherkin-ai/plugin-sdk` gives editors the types of plugin API 2: `definePlugin`, `defineAnalyzer`, `defineLintRule` and `defineGatewayProvider`, plus every type the hooks use. It has no runtime dependency.
+
+The CLI hands each analyzer its helpers in `ctx.sdk`:
+- `makeEvidence` and `evidenceId`: the same stable ids as the built-in analyzers;
+- `normalisePath` and `joinPaths`;
+- `isTestFile`;
+- `loadGrammar(wasmPath)`: parses with the CLI's own web-tree-sitter, so a plugin ships only its `.wasm` grammar;
+- `tree`: `ofType`, `childOfType`, `lineRange`, `unquote`.
+
+The types come from `gherkin-ai/dist/plugin-api`, the one public module of the CLI for plugins. The rest of `dist/` is internal.
