@@ -93,7 +93,7 @@ export function generateInfra(config: GherkinAIConfig): { dockerComposeYaml: str
       MYSQL_PASSWORD: \${MYSQL_PASSWORD:-dev_password}`;
     dbPort = '3306:3306';
   } else if (db.includes('mongo')) {
-    dbImage = 'mongo:8.0';
+    dbImage = 'mongo:7.0';
     // No authentication in development (a replica set with users needs a key file). The healthcheck initiates the
     // single-node replica set once, with the service name as its host.
     dbEnv = `

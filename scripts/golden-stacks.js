@@ -70,7 +70,7 @@ const STACKS = {
   'nestjs-servicebus': { ...nestGolden({ messaging: 'servicebus' }), services: SERVICEBUS_EMULATOR('golden-nestjs-servicebus') },
   // stack.database "mysql" (TypeScript runtime kernel on MySQL 8.4).
   'nestjs-mysql': { ...nestGolden({ database: 'mysql', kernelDatabase: 'mysql' }), services: [MYSQL_DATABASE] },
-  // 3.3.0 (X-02): stack.kernelDatabase "mongodb" (TypeScript runtime kernel on a MongoDB 8 replica set; Prisma on MongoDB).
+  // 3.3.0 (X-02): stack.kernelDatabase "mongodb" (TypeScript runtime kernel on a MongoDB 7.0 replica set; Prisma on MongoDB).
   'nestjs-mongo': { ...nestGolden({ database: 'mongodb', kernelDatabase: 'mongodb' }), services: [MONGO_DATABASE] },
   'grpc-graphql': {
     stack: { ...base, language: 'typescript', framework: 'nestjs', orm: 'prisma', validation: 'zod', testing: 'jest' },
@@ -365,7 +365,7 @@ for (const [name, cloud, backend, extra, compute] of [['terraform-gcp-base', 'gc
 for (const key of ['java', 'kotlin', 'quarkus', 'kotlin-quarkus', 'fastapi', 'django', 'dotnet', 'go']) {
   STACKS[`${key}-mysql`] = { ...STACKS[key], stack: { ...STACKS[key].stack, database: 'mysql', kernelDatabase: 'mysql' }, services: [...(STACKS[key].services || []), MYSQL_DATABASE] };
 }
-// 3.3.0 (X-02): every core runtime kernel on a MongoDB 8 replica set (JVM, Python, .NET, Go; TypeScript above).
+// 3.3.0 (X-02): every core runtime kernel on a MongoDB 7.0 replica set (JVM, Python, .NET, Go; TypeScript above).
 for (const key of ['java', 'kotlin', 'quarkus', 'kotlin-quarkus', 'fastapi', 'django', 'dotnet', 'go']) {
   STACKS[`${key}-mongo`] = { ...STACKS[key], stack: { ...STACKS[key].stack, database: 'mongodb', kernelDatabase: 'mongodb' }, services: [...(STACKS[key].services || []), MONGO_DATABASE] };
 }

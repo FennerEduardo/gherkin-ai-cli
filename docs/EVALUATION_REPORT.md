@@ -8,7 +8,7 @@ This document lists what is verified for each release, how it is verified, and h
 
 - Ubuntu on WSL 2 with Docker Engine 29.9.2 (Linux, as on the CI runners), Node.js 26.13;
 - the official toolchain images listed below;
-- databases for the runtime kernel: PostgreSQL `postgres:17-alpine`, MySQL `mysql:8.4` and MongoDB `mongo:8.0` (a single-node replica set);
+- databases for the runtime kernel: PostgreSQL `postgres:17-alpine`, MySQL `mysql:8.4` and MongoDB `mongo:7.0` (a single-node replica set; the 3.3.0 matrix ran on `mongo:8.0` and the 10 MongoDB goldens were run again on `mongo:7.0` on 2026-11-05, see 1.1a);
 - RabbitMQ `rabbitmq:4-alpine` for the integration suites;
 - the official emulators or brokers of the broker variants: the Pub/Sub emulator (`google-cloud-cli:emulators`), the Service Bus emulator with Azure SQL Edge, and `apache/kafka:4.1.0` (single-node KRaft).
 
@@ -52,9 +52,9 @@ The generated Python projects no longer cap pytest below 9.2 (M-01): pytest-bdd 
 
 ### 1.1a Backends on MySQL and MongoDB
 
-`stack.kernelDatabase` (opt-in; PostgreSQL is the default) runs the runtime kernel on MySQL 8.4 or on MongoDB 8. In 3.2.2 only the TypeScript runtimes ran on MySQL. In 3.3.0 every core runtime runs on both. [RUNTIME-KERNEL.md](RUNTIME-KERNEL.md) lists the driver of each runtime and what changes on each database. The goldens are the same as on PostgreSQL: IT1–IT7, the HTTP tests, and a production image that creates its tables (or collections and unique indexes) in a fresh database.
+`stack.kernelDatabase` (opt-in; PostgreSQL is the default) runs the runtime kernel on MySQL 8.4 or on MongoDB (7.0 or later). In 3.2.2 only the TypeScript runtimes ran on MySQL. In 3.3.0 every core runtime runs on both. [RUNTIME-KERNEL.md](RUNTIME-KERNEL.md) lists the driver of each runtime and what changes on each database. The goldens are the same as on PostgreSQL: IT1–IT7, the HTTP tests, and a production image that creates its tables (or collections and unique indexes) in a fresh database.
 
-| Stack | MySQL 8.4 | Time | MongoDB 8 | Time |
+| Stack | MySQL 8.4 | Time | MongoDB 8.0 | Time |
 |---|---|---|---|---|
 | NestJS 11 | pass | 262 s | pass (new) | 274 s |
 | Express 5 | pass | 154 s | pass (new) | 116 s |
@@ -66,6 +66,8 @@ The generated Python projects no longer cap pytest below 9.2 (M-01): pytest-bdd 
 | Django + DRF | pass (new) | 96 s | pass (new) | 85 s |
 | ASP.NET Core 8 | pass (new) | 96 s | pass (new) | 89 s |
 | Go (chi) | pass (new) | 99 s | pass (new) | 129 s |
+
+MongoDB 7.0 since 2026-11-05: the GitHub-hosted runners moved to Linux 6.19 or later, where MongoDB 8 refuses to start (SERVER-121912; [RUNTIME-KERNEL.md](RUNTIME-KERNEL.md#mongodb-and-linux-619-and-later)). The generated compose file now runs `mongo:7.0`. The 10 MongoDB goldens were run again on `mongo:7.0` in WSL 2 (kernel 6.18) and all pass. Their times are not compared with the table, because the build caches were warm. The full suite passes too (1317, 1 skipped).
 
 On MongoDB, IT3 (two relays, 20 events published once) relies on an atomic `findOneAndUpdate` lease per event instead of `FOR UPDATE SKIP LOCKED`. IT1, IT2, IT5 and IT6 run in multi-document transactions, which is why the kernel needs a replica set; the generated `docker-compose.yml` starts one.
 

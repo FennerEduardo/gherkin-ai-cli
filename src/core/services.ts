@@ -48,12 +48,12 @@ export const MYSQL_DATABASE: ExtraService = {
 };
 
 /**
- * MongoDB 8 as a single-node replica set (transactions need one) for stack.kernelDatabase "mongodb": its
+ * MongoDB 7.0 as a single-node replica set (transactions need one) for stack.kernelDatabase "mongodb": its
  * DATABASE_URL replaces PostgreSQL's. The probe initiates the replica set once and is ready when the node is primary.
  */
 export const MONGO_DATABASE: ExtraService = {
   name: 'mongo',
-  image: 'mongo:8.0',
+  image: 'mongo:7.0',
   command: ['mongod', '--replSet', 'rs0', '--bind_ip_all'],
   env: { DATABASE_URL: 'mongodb://mongo:27017/ghk?replicaSet=rs0' },
   ready: ['mongosh', '--quiet', '--eval',

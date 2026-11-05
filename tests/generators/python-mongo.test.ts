@@ -1,6 +1,6 @@
 /* ==========================================================================
    The FastAPI runtime kernel on MongoDB (stack.kernelDatabase "mongodb";
-   PLAN-3.3.0 X-02). The golden fastapi-mongo runs IT1-IT7 against a MongoDB 8
+   PLAN-3.3.0 X-02). The golden fastapi-mongo runs IT1-IT7 against a MongoDB 7.0
    replica set; this checks the generated sources.
    ========================================================================== */
 

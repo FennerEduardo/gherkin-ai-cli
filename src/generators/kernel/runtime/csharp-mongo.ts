@@ -1,5 +1,5 @@
 /* ==========================================================================
-   gherkin-ai-cli - The .NET runtime kernel on MongoDB 8 (stack.kernelDatabase
+   gherkin-ai-cli - The .NET runtime kernel on MongoDB 7.0 (stack.kernelDatabase
    "mongodb"; PLAN-3.3.0 X-02). ASP.NET Core.
 
    Same design as the TypeScript kernel on MongoDB (typescript-mongo.ts):

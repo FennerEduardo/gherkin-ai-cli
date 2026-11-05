@@ -133,10 +133,7 @@ jobs:
     # The CLI under test is the packaged tarball (GHK_CLI); the repository build only provides the harness.
     name: golden (${{ matrix.stack }})
     needs: [golden-matrix, package]
-    # Pinned: ubuntu-latest moved to Ubuntu 26 (kernel 7.0), and MongoDB 8 refuses to start on
-    # Linux 6.19 to 7.0.13 (SERVER-121912, SERVER-136848). The *-mongo goldens need a 6.x kernel.
-    # See docs/RUNTIME-KERNEL.md, "MongoDB and Linux 6.19 and later".
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     timeout-minutes: 45
     strategy:
       fail-fast: false

@@ -1,5 +1,5 @@
 /* ==========================================================================
-   gherkin-ai-cli - The TypeScript runtime kernel on MongoDB 8 (stack.kernelDatabase
+   gherkin-ai-cli - The TypeScript runtime kernel on MongoDB 7.0 (stack.kernelDatabase
    "mongodb"; PLAN-3.3.0 X-02). NestJS and Express.
 
    The PostgreSQL kernel is generated, then its database layer is replaced;
@@ -28,7 +28,7 @@ type File = { filename: string; content: string };
 
 export const MONGO_DRIVER = { mongodb: '^6.12.0' };
 
-const DB_TS = `// MongoDB 8 for the runtime kernel (stack.kernelDatabase "mongodb"). Transactions need a replica set (one node is enough).
+const DB_TS = `// MongoDB 7.0 for the runtime kernel (stack.kernelDatabase "mongodb"). Transactions need a replica set (one node is enough).
 import { MongoClient, MongoError, type ClientSession, type Db } from 'mongodb';
 
 /** The database in the URL path ("app" when it names none). */

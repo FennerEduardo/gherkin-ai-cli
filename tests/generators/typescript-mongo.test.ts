@@ -1,7 +1,7 @@
 /* ==========================================================================
    The TypeScript runtime kernel on MongoDB (stack.kernelDatabase "mongodb";
    PLAN-3.3.0 X-02). The goldens express-mongo and nestjs-mongo run IT1-IT7
-   against a MongoDB 8 replica set; this checks the generated sources, the
+   against a MongoDB 7.0 replica set; this checks the generated sources, the
    dependencies and the developer compose file.
    ========================================================================== */
 
@@ -42,7 +42,7 @@ describe('TypeScript kernel on MongoDB (X-02)', () => {
 
   it('the compose file runs a single-node replica set and the URLs name it', () => {
     const { dockerComposeYaml, envExample } = generateInfra(configOf('express', 'mongodb'));
-    expect(dockerComposeYaml).toContain('image: mongo:8.0');
+    expect(dockerComposeYaml).toContain('image: mongo:7.0');
     expect(dockerComposeYaml).toContain('"--replSet", "rs0"');
     expect(dockerComposeYaml).toContain('mongodb://mongodb:27017/payments_db?replicaSet=rs0');
     expect(envExample).toContain('mongodb://localhost:27017/payments_db?directConnection=true');
