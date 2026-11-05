@@ -27,6 +27,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { spawnSync } from 'child_process';
+import { fileURLToPath } from 'url';
 import { PluginRegistry, type GherkinAIPlugin } from '../plugin-system';
 import { incompatibility, PLUGIN_API_VERSION } from './compat';
 import { pluginSdk } from './sdk';
@@ -78,7 +79,8 @@ async function watchFs<T>(root: string, allowed: string[], fn: () => Promise<T>)
   const inside = (p: string) => [root, ...allowed].some(r => path.resolve(String(p)).startsWith(path.resolve(r)));
   const onRead = (p: unknown) => {
     if (typeof p !== 'string' && !(p instanceof URL)) return;
-    const abs = path.resolve(String(p instanceof URL ? p.pathname : p));
+    // fileURLToPath, not URL.pathname: on Windows the pathname is /D:/a/..., which path.resolve turns into D:\D:\a\...
+    const abs = path.resolve(p instanceof URL ? fileURLToPath(p) : p.startsWith('file:') ? fileURLToPath(p) : p);
     if (/(^|[\\/])\.env(\.|$)/.test(abs)) secrets.push(abs);
     else if (!inside(abs)) outside.push(abs);
   };

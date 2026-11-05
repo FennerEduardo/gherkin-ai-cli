@@ -31,7 +31,8 @@ const dirs: string[] = [];
 const git = (cwd: string, ...args: string[]) => execFileSync('git', args, { cwd, stdio: ['ignore', 'pipe', 'pipe'] }).toString();
 const commit = (dir: string, m: string) => { git(dir, 'add', '-A'); git(dir, '-c', 'user.name=t', '-c', 'user.email=t@example.com', 'commit', '-q', '-m', m); };
 const ORDERS = 'src/orders.js';
-const edit = (dir: string, fn: (s: string) => string) => fs.writeFileSync(path.join(dir, ORDERS), fn(fs.readFileSync(path.join(dir, ORDERS), 'utf8')));
+// A Windows checkout (core.autocrlf) gives the fixture CRLF line ends: the edits below match LF.
+const edit = (dir: string, fn: (s: string) => string) => fs.writeFileSync(path.join(dir, ORDERS), fn(fs.readFileSync(path.join(dir, ORDERS), 'utf8').replace(/\r\n/g, '\n')));
 
 async function scanAndCandidates(dir: string) {
   clearTsProjects();
