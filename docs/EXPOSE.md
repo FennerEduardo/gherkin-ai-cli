@@ -143,11 +143,29 @@ Each approval records who approved it (`--by`, default git `user.name`), when, t
 
 `ghk expose generate` writes `expose/mcp-runtime/`:
 - one TypeScript server (Node 24, CommonJS) for every backend stack, since it calls the service's HTTP API;
-- its only dependency, `@modelcontextprotocol/sdk`, at an exact version;
+- its only dependency, `@modelcontextprotocol/server` 2.4.0 (the MCP TypeScript SDK v2), at an exact version;
 - a Dockerfile, and `config/capabilities.json` (the approved tools only) and `config/features.json` (the features behind them, by name);
 - a README with every variable.
 
 The protocol is Streamable HTTP, stateless, on `0.0.0.0:8000/mcp`: the AWS AgentCore Runtime contract, and that of any container platform. `GET /health` and `GET /ping` answer probes. `/.well-known/oauth-protected-resource` publishes the issuer and the scopes. A request without a valid token gets a `401` with `WWW-Authenticate`.
+
+### MCP protocol revisions
+
+The runtime serves the **2026-07-28** revision of MCP and, on the same endpoint, 2025-era clients (2025-11-25 and earlier). It uses `createMcpHandler` from the SDK v2, with one server definition for both.
+
+| | 2026-07-28 client | 2025-era client |
+|---|---|---|
+| Connection | no handshake; `server/discover` optional | `initialize`, then `notifications/initialized` |
+| Each request | `MCP-Protocol-Version`, `Mcp-Method` and, for `tools/call`, `Mcp-Name` headers, plus the protocol version, client info and capabilities in `params._meta` | `MCP-Protocol-Version` header |
+| Headers that disagree with the body, or are missing | `400`, JSON-RPC `-32020` (`HeaderMismatch`), and the call never runs | – |
+| Session | none: the protocol has no session | none: served statelessly, one server per request |
+| `tools/list` | carries `ttlMs: 0` and `cacheScope: "private"`, because the list depends on the caller's token | no cache fields |
+| Results | `resultType: "complete"`, and the server identity in `_meta` | as in 2025 |
+
+- **The session id a platform adds** (AgentCore Runtime adds `Mcp-Session-Id` to every request) is accepted and ignored, and never echoed, in both eras. This is what the AgentCore contract asks for, and what the 2026-07-28 revision prescribes.
+- **`Origin`.** A request with an `Origin` header that `GHK_ALLOWED_ORIGINS` does not list gets a `403`, as the specification requires. Agents and gateways send no `Origin`.
+- **Audit.** Each audit line records the era of the call (`protocol: "modern"` or `"legacy"`).
+- **Server-to-client requests are not used.** In 2026-07-28, elicitation and sampling go through multi round-trip requests (`input_required`), which do not need a session. The runtime does not ask the client anything yet (§9).
 
 Each call goes through these steps, in order. A call refused at any step never reaches the service, and the decision is audited.
 1. **Identity.** The bearer token is verified with the issuer's JWKS (`node:crypto`: RS, PS, ES and EdDSA): signature, issuer, audience or client id, expiry. The **tenant** comes from the `identity.tenantClaim` claim. A token without it gets a 403.
@@ -205,20 +223,40 @@ A plan that claims a control natively beyond `capabilities()` is refused. Plugin
 | Resource | What it does |
 |---|---|
 | `aws_ecr_repository` | The runtime image, with immutable tags and scan on push. AgentCore needs **linux/arm64**: `docker buildx build --platform linux/arm64` |
-| `aws_bedrockagentcore_agent_runtime` | The generated runtime as an MCP server (`server_protocol = "MCP"`). Its own JWT authorizer, on the same identity provider, is the second boundary. `Authorization` and `traceparent` reach the container. Its environment carries only references |
-| `aws_bedrockagentcore_gateway` | What agents connect to: MCP, `CUSTOM_JWT` (first boundary), semantic tool search |
+| `aws_bedrockagentcore_agent_runtime` | The generated runtime as an MCP server (`server_protocol = "MCP"`). Its own JWT authorizer, on the same identity provider, is the second boundary. `Authorization`, `traceparent` and the MCP 2026-07-28 headers (`MCP-Protocol-Version`, `Mcp-Method`, `Mcp-Name`) are in the request header allowlist, so they reach the container. Its environment carries only references |
+| `aws_bedrockagentcore_gateway` | What agents connect to: MCP, `CUSTOM_JWT` (first boundary), semantic tool search. `supported_versions` comes from `mcp_supported_versions` (empty: the AgentCore default) |
 | `aws_bedrockagentcore_gateway_target` | The runtime as an MCP server target. The caller's token is passed through (`jwt_passthrough`) so the runtime can authorize again (third boundary). The approved tools' schema is **inline**, so the gateway serves exactly what was approved |
 | `aws_iam_role` × 2, inline policy | The runtime pulls its image, writes logs and traces, and reads the backend credential (`secretsmanager:GetSecretValue` on its ARN). Nothing else |
 | `aws_cloudwatch_log_group` | The runtime's logs and audit lines, with retention |
 
-The variables are `discovery_url`, `allowed_audiences`, `allowed_clients`, `upstream_url`, `upstream_secret_arn`, `upstream_auth`, `region`, `environment`, `runtime_image` and `runtime_image_tag`. The outputs are `gateway_url`, `runtime_arn`, `ecr_repository_url` and `scopes`.
+The variables are `discovery_url`, `allowed_audiences`, `allowed_clients`, `upstream_url`, `upstream_secret_arn`, `upstream_auth`, `region`, `environment`, `runtime_image`, `runtime_image_tag` and `mcp_supported_versions`. The outputs are `gateway_url`, `runtime_arn`, `ecr_repository_url` and `scopes`.
 
 **Not emitted, on purpose:**
 - **AgentCore Policy (Cedar) rules per tool.** The resources exist in the provider, but the Cedar entity model for tool calls was not verified. Per-tool authorization stays in the runtime, and `plan` says so.
 - **A Cognito user pool.** Its access tokens carry no tenant claim without a pre-token-generation trigger. Use an identity provider that issues the tenant claim and the scopes in the `scopes` output.
 - **A private network.** `network_mode = "PUBLIC"`.
 
-The facts were re-verified on 2026-11-03 (`ghk_versions/3.3.0/evidence/aws-agentcore-facts.md`). The MCP server target and `private_endpoint` are in the provider now, so CloudFormation is not needed. Two behaviours could not be checked without an AWS account: whether `Authorization` is passed to the container, and how the gateway uses the inline schema.
+The facts were re-verified on 2026-11-03 and again on 2026-11-04 for MCP 2026-07-28 (`ghk_versions/3.3.0/evidence/aws-agentcore-facts.md`). The MCP server target and `private_endpoint` are in the provider now, so CloudFormation is not needed.
+
+**MCP 2026-07-28 on AgentCore.** The AgentCore Runtime contract asks for:
+- Streamable HTTP on `0.0.0.0:8000/mcp`;
+- stateless mode by default;
+- a server that accepts the `Mcp-Session-Id` the platform adds;
+- a linux/arm64 image.
+
+The runtime meets all four. AgentCore notes that from 2026-07-28 elicitation and sampling use multi round-trip requests and do not need stateful mode. The gateway's `supportedVersions` and `sessionConfiguration` (session timeout 900–28800 s, default 3600) are in the API and in the provider.
+
+What AWS does not document (checked 2026-11-04):
+- the values `supportedVersions` accepts and its default;
+- which revision the gateway speaks to an MCP server target;
+- whether the runtime forwards `MCP-Protocol-Version`, `Mcp-Method` and `Mcp-Name` without the allowlist.
+
+Because the runtime serves both eras, any of those answers works. The allowlist entries make sure the headers reach it.
+
+Behaviours that could not be checked without an AWS account:
+- whether `Authorization` is passed to the container;
+- how the gateway uses the inline schema;
+- which MCP revision a deployed gateway actually negotiates.
 
 ## 8. Security model and its verification
 
@@ -247,11 +285,18 @@ Each check is made against the service's database or the runtime's audit log.
 | 7 | A reconnection does not run the operation twice | The same key on a new connection → `replayed`; still one row |
 | 8 | Every call is traced to its scenario | The audit line carries the scenario and the caller's trace id, and the outbox stores the same `traceparent` |
 
-Result in 3.3.0: **8/8**. The golden `expose-aws` validates, formats and lints the AgentCore Terraform. Unit tests run the generated runtime in process against a test issuer and a fake service through the MCP SDK's client, and cover each step of §5.
+The client speaks MCP 2026-07-28 and adds the `Mcp-Session-Id` AgentCore would add. The reconnection of property 7 is a 2025-era client, so the idempotency key is shown to hold across protocol revisions. Next to the 8 properties, the golden checks the protocol:
+- missing or disagreeing standard headers → `400` / `-32020`;
+- the platform session id accepted and not echoed;
+- the cache fields of `tools/list`;
+- a 2025-11-25 client on the same endpoint;
+- the era of each call in the audit log.
+
+Result in 3.3.0: **8/8**, protocol **6/6**. The golden `expose-aws` validates, formats and lints the AgentCore Terraform. Unit tests run the generated runtime in process against a test issuer and a fake service through the MCP SDK's client, and cover each step of §5.
 
 ## 9. Limits and trade-offs
 
-- **Stateless means no approval per call.** Tools that need a person per call are refused. Plan for that until the approval flow of 3.4.
+- **No approval per call yet.** Tools that need a person per call are refused. MCP 2026-07-28 makes an in-band request possible without a session: the server returns `input_required` with an elicitation, and the client retries the call with the answer. The 3.3 runtime does not use it. An elicitation is answered by the agent's host, which may be automated, so it does not prove that a person approved the call. The approval flow planned for 3.4 has to combine `input_required` with an approver outside the agent (a signed approval bound to the tool, the arguments and the caller).
 - **Events are not exposed.** MCP is request/response, and the AsyncAPI channels stay out.
 - **Rate limits in the runtime are per instance.** With N replicas the effective limit is N times the limit. Use a gateway's native limit (APIM) for a global one.
 - **AgentCore:**

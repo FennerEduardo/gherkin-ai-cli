@@ -31,6 +31,8 @@ export interface RuntimeConfig {
   contextScope: string;
   /** Public URL of /mcp, for the OAuth protected-resource metadata. */
   publicUrl?: string;
+  /** Origins a browser-based client may call from (GHK_ALLOWED_ORIGINS). A request with any other Origin gets 403. */
+  allowedOrigins: string[];
 }
 
 export class ConfigurationError extends Error {}
@@ -88,6 +90,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, upstreamUrlEnv 
     auditFile: env.GHK_AUDIT_FILE || undefined,
     contextTools: env.GHK_CONTEXT_TOOLS === undefined ? true : yes(env.GHK_CONTEXT_TOOLS),
     contextScope: env.GHK_CONTEXT_SCOPE || 'bdd:read',
-    publicUrl: env.GHK_PUBLIC_URL || undefined
+    publicUrl: env.GHK_PUBLIC_URL || undefined,
+    allowedOrigins: (env.GHK_ALLOWED_ORIGINS ?? '').split(',').map(s => s.trim().replace(/\/+$/, '')).filter(Boolean)
   };
 }

@@ -3,7 +3,7 @@
  * destructive and financial-critical tools, the rate, and the input schema. Responses are data, never
  * instructions, and secrets (and personal data for @pii tools) are redacted. */
 
-import { AjvJsonSchemaValidator } from '@modelcontextprotocol/sdk/validation/ajv-provider.js';
+import { AjvJsonSchemaValidator } from '@modelcontextprotocol/server/validators/ajv';
 import type { RuntimeConfig } from './config';
 import type { Identity } from './jwt';
 import { AuditLog } from './audit';
@@ -139,7 +139,7 @@ export class ToolService {
   async call(name: string, rawArgs: unknown, identity: Identity, trace: TraceContext): Promise<ToolResult> {
     const started = Date.now();
     const args = (rawArgs && typeof rawArgs === 'object' && !Array.isArray(rawArgs) ? rawArgs : {}) as Record<string, unknown>;
-    const base = { resource: name, user: identity.subject, tenant: identity.tenant, client: identity.clientId, traceId: trace.traceId, arguments: Object.keys(args).sort() };
+    const base = { resource: name, user: identity.subject, tenant: identity.tenant, client: identity.clientId, traceId: trace.traceId, ...(trace.protocol ? { protocol: trace.protocol } : {}), arguments: Object.keys(args).sort() };
     const blocked = (details: string, message = 'Not allowed.') => {
       this.audit.record({ action: 'tool:call', status: 'BLOCKED', ...base, details });
       return refusal(message);

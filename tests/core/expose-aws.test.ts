@@ -36,8 +36,9 @@ describe('aws-agentcore provider (EX-07)', () => {
     expect(files.map(f => f.path)).toEqual(['README.md', 'main.tf', 'outputs.tf', 'variables.tf', 'versions.tf']);
     const main = files.find(f => f.path === 'main.tf')!.content;
     for (const fragment of [
-      'resource "aws_bedrockagentcore_agent_runtime" "mcp"', 'server_protocol = "MCP"', 'request_header_allowlist = ["Authorization", "traceparent"]',
+      'resource "aws_bedrockagentcore_agent_runtime" "mcp"', 'server_protocol = "MCP"', 'request_header_allowlist = ["Authorization", "traceparent", "MCP-Protocol-Version", "Mcp-Method", "Mcp-Name"]',
       'resource "aws_bedrockagentcore_gateway" "mcp"', 'authorizer_type = "CUSTOM_JWT"', 'search_type  = "SEMANTIC"',
+      'supported_versions = length(var.mcp_supported_versions) > 0 ? var.mcp_supported_versions : null',
       'resource "aws_bedrockagentcore_gateway_target" "runtime"', 'jwt_passthrough {}', 'actions   = ["secretsmanager:GetSecretValue"]', 'resources = [var.upstream_secret_arn]',
       'GHK_UPSTREAM_JWT_SECRET_ARN = var.upstream_auth == "mint-hs256" ? var.upstream_secret_arn : ""'
     ]) expect(main).toContain(fragment);

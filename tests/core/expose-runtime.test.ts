@@ -15,6 +15,7 @@ import { generateKeyPairSync, sign, createHmac, type KeyObject } from 'crypto';
 import ts from 'typescript';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+import { Client as ModernClient, StreamableHTTPClientTransport as ModernTransport } from '@modelcontextprotocol/client';
 import { discoverCapabilities } from '../../src/core/expose/discover';
 import { planApproval } from '../../src/core/expose/approve';
 import { RUNTIME_VERSIONS, generateRuntime } from '../../src/core/expose/runtime';
@@ -47,7 +48,7 @@ describe('expose generate: files (EX-04)', () => {
     expect(JSON.parse(features)[0]).toMatchObject({ id: 'order', name: 'Order placement' });
     expect(features).not.toContain('features/');
     const pkg = JSON.parse(files.find(f => f.path === 'package.json')!.content);
-    expect(pkg.dependencies).toEqual({ '@modelcontextprotocol/sdk': RUNTIME_VERSIONS.mcpSdk });
+    expect(pkg.dependencies).toEqual({ '@modelcontextprotocol/server': RUNTIME_VERSIONS.mcpServer });
     expect(Object.values(pkg.devDependencies).every(v => /^\d+\.\d+\.\d+$/.test(String(v)))).toBe(true);
     expect(files.find(f => f.path === 'Dockerfile')!.content).toMatch(/EXPOSE 8000/);
     // a revoked or unapproved capability is not served
@@ -229,6 +230,76 @@ describe('expose runtime: live (EX-04, EX-05)', () => {
     expect(text(r)).toMatch(/needs a person to approve each call/);
     expect(received.length).toBe(n);
     await support.close();
+  });
+
+  it('MCP 2026-07-28: a modern client discovers and calls without a session; the legacy client above still works', async () => {
+    const client = new ModernClient({ name: 'modern-agent', version: '1.0.0' }, { versionNegotiation: { mode: 'auto' } } as any);
+    await client.connect(new ModernTransport(new URL(mcpUrl), { requestInit: { headers: { Authorization: `Bearer ${token({ scope: 'order:read order:write', sub: 'user-m', tenant_id: 'modern' })}` } } }));
+    const listed: any = await client.listTools();
+    expect(listed.tools.map((t: any) => t.name)).toEqual(['get_order', 'place_order']);
+    upstreamReply = { status: 200, body: { id: 'o-7', status: 'placed' } };
+    const r: any = await client.callTool({ name: 'get_order', arguments: { id: 'o-7' } });
+    expect(r.isError).toBeFalsy();
+    expect(text(r)).toContain('"status":"placed"');
+    await client.close();
+    const line = audit().filter(e => e.action === 'tool:call' && e.user === 'user-m').at(-1)!;
+    expect(line).toMatchObject({ resource: 'get_order', status: 'SUCCESS', tenant: 'modern', protocol: 'modern' });
+    expect(audit().some(e => e.action === 'tool:call' && e.protocol === 'legacy')).toBe(true);
+  });
+
+  it('MCP 2026-07-28 on the wire: standard headers checked against the body, the platform session id ignored, Origin refused', async () => {
+    const bearer = token({ scope: 'order:read' });
+    const envelope = { 'io.modelcontextprotocol/protocolVersion': '2026-07-28', 'io.modelcontextprotocol/clientInfo': { name: 'raw', version: '1' }, 'io.modelcontextprotocol/clientCapabilities': {} };
+    const call = { jsonrpc: '2.0', id: 9, method: 'tools/call', params: { name: 'get_order', arguments: { id: 'o-1' }, _meta: envelope } };
+    const post = (headers: Record<string, string>, body: unknown = call) => fetch(mcpUrl, { method: 'POST', headers: { authorization: `Bearer ${bearer}`, 'content-type': 'application/json', accept: 'application/json, text/event-stream', ...headers }, body: JSON.stringify(body) });
+    const n = received.length;
+    const missing = await post({ 'mcp-protocol-version': '2026-07-28' });
+    expect(missing.status).toBe(400);
+    expect((await missing.json()).error.code).toBe(-32020);
+    const mismatch = await post({ 'mcp-protocol-version': '2026-07-28', 'mcp-method': 'tools/call', 'mcp-name': 'place_order' });
+    expect(mismatch.status).toBe(400);
+    expect((await mismatch.json()).error.code).toBe(-32020);
+    expect(received.length).toBe(n); // neither reached the service
+    // AgentCore Runtime adds Mcp-Session-Id to every request: accepted and ignored, never echoed
+    const ok = await post({ 'mcp-protocol-version': '2026-07-28', 'mcp-method': 'tools/call', 'mcp-name': 'get_order', 'mcp-session-id': 'agentcore-session-1' });
+    expect(ok.status).toBe(200);
+    expect((await ok.json()).result).toMatchObject({ resultType: 'complete' });
+    expect(ok.headers.get('mcp-session-id')).toBeNull();
+    const legacyInit = await post({ 'mcp-session-id': 'agentcore-session-1' }, { jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-11-25', capabilities: {}, clientInfo: { name: 'legacy', version: '1' } } });
+    expect(legacyInit.status).toBe(200);
+    // the 2026-07-28 list carries the cache fields: private, not reused
+    const list = await post({ 'mcp-protocol-version': '2026-07-28', 'mcp-method': 'tools/list' }, { jsonrpc: '2.0', id: 3, method: 'tools/list', params: { _meta: envelope } });
+    expect((await list.json()).result).toMatchObject({ ttlMs: 0, cacheScope: 'private' });
+    const browser = await post({ origin: 'https://evil.example', 'mcp-protocol-version': '2026-07-28', 'mcp-method': 'tools/call', 'mcp-name': 'get_order' });
+    expect(browser.status).toBe(403);
+  });
+
+  it('the drift client speaks 2026-07-28 to the runtime and the 2025 handshake to a server that does not', async () => {
+    const { McpHttpClient } = await import('../../src/core/expose/drift');
+    const modern = new McpHttpClient(mcpUrl, token({ scope: 'order:read' }));
+    await modern.connect();
+    expect(modern.protocol).toBe('2026-07-28');
+    expect((await modern.listTools()).map(t => t.name)).toEqual(['get_order']);
+    // a 2025-only server: server/discover is unknown before initialize
+    const legacyServer = http.createServer((req, res) => {
+      let body = '';
+      req.on('data', c => { body += c; });
+      req.on('end', () => {
+        const msg = JSON.parse(body);
+        res.setHeader('content-type', 'application/json');
+        if (msg.method === 'initialize') return res.end(JSON.stringify({ jsonrpc: '2.0', id: msg.id, result: { protocolVersion: '2025-11-25', capabilities: { tools: {} }, serverInfo: { name: 'old', version: '1' } } }));
+        if (msg.method === 'notifications/initialized') { res.statusCode = 202; return res.end(); }
+        if (msg.method === 'tools/list') return res.end(JSON.stringify({ jsonrpc: '2.0', id: msg.id, result: { tools: [{ name: 'old_tool', inputSchema: { type: 'object' } }] } }));
+        res.statusCode = 400;
+        res.end(JSON.stringify({ jsonrpc: '2.0', id: msg.id, error: { code: -32600, message: 'Bad Request: Server not initialized' } }));
+      });
+    });
+    const port = await listen(legacyServer);
+    const legacy = new McpHttpClient(`http://127.0.0.1:${port}/mcp`, 't');
+    await legacy.connect();
+    expect(legacy.protocol).toBe('2025-11-25');
+    expect((await legacy.listTools()).map(t => t.name)).toEqual(['old_tool']);
+    legacyServer.close();
   });
 
   it('drift against the live endpoint: none for the approved manifest, one after a mutation (EX-11)', async () => {

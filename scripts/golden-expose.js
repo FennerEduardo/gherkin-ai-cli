@@ -99,26 +99,57 @@ function token(claims = {}) {
 let mcpUrl = '';
 const transcript = [];
 
-async function post(bearer, message, headers = {}) {
+// MCP 2026-07-28: no session; the version, client info and capabilities travel in each request's _meta, and
+// MCP-Protocol-Version, Mcp-Method and Mcp-Name mirror the body. 2025-era clients still use initialize.
+const MODERN = '2026-07-28';
+const LEGACY = '2025-11-25';
+const ENVELOPE = { 'io.modelcontextprotocol/protocolVersion': MODERN, 'io.modelcontextprotocol/clientInfo': { name: 'golden-agent', version: '1.0.0' }, 'io.modelcontextprotocol/clientCapabilities': {} };
+
+/** One JSON-RPC message from a JSON or an event-stream answer (2025-era stateless answers are SSE). */
+function parseAnswer(text, contentType) {
+  if (!text) return undefined;
+  if (!contentType.includes('text/event-stream')) return JSON.parse(text);
+  const data = text.split('\n').filter(l => l.startsWith('data:')).map(l => l.slice(5).trim()).filter(Boolean);
+  return data.length ? JSON.parse(data[data.length - 1]) : undefined;
+}
+
+async function post(bearer, message, headers = {}, era = LEGACY) {
+  const modern = era === MODERN && message.id !== undefined;
+  const body = modern ? { ...message, params: { ...(message.params ?? {}), _meta: ENVELOPE } } : message;
+  const standard = modern
+    ? { 'mcp-protocol-version': MODERN, 'mcp-method': message.method, ...(message.params?.name ? { 'mcp-name': message.params.name } : {}) }
+    : { 'mcp-protocol-version': LEGACY };
   const res = await fetch(mcpUrl, {
     method: 'POST',
-    headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream', 'mcp-protocol-version': '2025-06-18', ...(bearer ? { authorization: `Bearer ${bearer}` } : {}), ...headers },
-    body: JSON.stringify(message)
+    headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream', ...standard, ...(bearer ? { authorization: `Bearer ${bearer}` } : {}), ...headers },
+    body: JSON.stringify(body)
   });
   const text = await res.text();
   transcript.push(text);
-  return { status: res.status, headers: res.headers, body: text ? JSON.parse(text) : undefined };
+  return { status: res.status, headers: res.headers, body: parseAnswer(text, res.headers.get('content-type') ?? '') };
 }
 
-/** A new connection: initialize + initialized, as an agent that reconnects does. */
-async function connect(bearer) {
-  const init = await post(bearer, { jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'golden-agent', version: '1.0.0' } } });
-  if (init.status !== 200 || !init.body?.result) throw new Error(`initialize: ${init.status} ${JSON.stringify(init.body)}`);
-  await post(bearer, { jsonrpc: '2.0', method: 'notifications/initialized' });
+/**
+ * A new connection, as an agent that reconnects makes one. MCP 2026-07-28 by default: server/discover, then
+ * stateless calls, each with the Mcp-Session-Id that AgentCore Runtime adds (the runtime must accept and ignore it).
+ * `era: LEGACY` is a 2025 client: initialize + initialized.
+ */
+async function connect(bearer, { era = MODERN, platformSession = `agentcore-${crypto.randomBytes(6).toString('hex')}` } = {}) {
+  const session = platformSession ? { 'mcp-session-id': platformSession } : {};
+  if (era === MODERN) {
+    const discover = await post(bearer, { jsonrpc: '2.0', id: 1, method: 'server/discover' }, session, MODERN);
+    if (discover.status !== 200 || !discover.body?.result) throw new Error(`server/discover: ${discover.status} ${JSON.stringify(discover.body)}`);
+  } else {
+    const init = await post(bearer, { jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: LEGACY, capabilities: {}, clientInfo: { name: 'golden-agent', version: '1.0.0' } } }, session);
+    if (init.status !== 200 || !init.body?.result) throw new Error(`initialize: ${init.status} ${JSON.stringify(init.body)}`);
+    await post(bearer, { jsonrpc: '2.0', method: 'notifications/initialized' }, session);
+  }
   let id = 2;
   return {
-    list: async () => (await post(bearer, { jsonrpc: '2.0', id: id++, method: 'tools/list' })).body.result.tools.map(t => t.name).sort(),
-    call: async (name, args, headers) => (await post(bearer, { jsonrpc: '2.0', id: id++, method: 'tools/call', params: { name, arguments: args } }, headers)).body.result
+    era,
+    list: async () => (await post(bearer, { jsonrpc: '2.0', id: id++, method: 'tools/list' }, session, era)).body.result.tools.map(t => t.name).sort(),
+    listRaw: async () => (await post(bearer, { jsonrpc: '2.0', id: id++, method: 'tools/list' }, session, era)).body.result,
+    call: async (name, args, headers) => (await post(bearer, { jsonrpc: '2.0', id: id++, method: 'tools/call', params: { name, arguments: args } }, { ...session, ...headers }, era)).body.result
   };
 }
 const data = result => JSON.parse(result.content[0].text.split('\n')[1] ?? '{}');
@@ -127,6 +158,7 @@ const data = result => JSON.parse(result.content[0].text.split('\n')[1] ?? '{}')
 
 async function main() {
   const results = [];
+  const protocol = [];
   const check = (n, title, ok, detail) => {
     results.push({ test: n, title, pass: Boolean(ok), detail });
     process.stdout.write(`  ${ok ? '✔' : '✖'} ${n}. ${title}${detail ? ` — ${detail}` : ''}\n`);
@@ -194,10 +226,11 @@ async function main() {
     check(5, 'a critical operation needs its approval', refund.isError && /needs a person to approve/.test(refund.content[0].text) && outbox("aggregate_id = 'order-1' AND event_type ILIKE '%refund%'") === 0,
       `refund_order → "${refund.content[0].text.slice(0, 90)}…"; no refund event stored`);
 
-    // 7. A retry on a new connection does not run the operation twice
-    const again = await (await connect(token({ scope: 'order:read order:write' }))).call('place_order', { id: 'order-1', idempotency_key: 'golden-0001' });
+    // 7. A retry on a new connection does not run the operation twice (the retry comes from a 2025-era client:
+    //    the idempotency key holds across protocol revisions)
+    const again = await (await connect(token({ scope: 'order:read order:write' }), { era: LEGACY })).call('place_order', { id: 'order-1', idempotency_key: 'golden-0001' });
     check(7, 'a reconnection does not run the operation twice', data(again).data?.status === 'replayed' && outbox("aggregate_id = 'order-1' AND tenant_id = 'tenant-a'") === 1,
-      `same key after reconnecting → ${data(again).status} ${data(again).data?.status}; tenant-a outbox rows still 1`);
+      `same key after reconnecting (first call ${MODERN}, retry ${LEGACY}) → ${data(again).status} ${data(again).data?.status}; tenant-a outbox rows still 1`);
 
     // 8. Every call is traced to its scenario
     const traceId = crypto.randomBytes(16).toString('hex');
@@ -227,6 +260,29 @@ async function main() {
     const everything = transcript.join('\n') + logs;
     const leaks = [JWT_SECRET, 'eyJ', 'Bearer ', keys.privateKey.export({ format: 'jwk' }).d].filter(s => everything.includes(s));
     check(4, 'no secret in responses or logs', leaks.length === 0, leaks.length ? `found: ${leaks.map(s => s.slice(0, 6)).join(', ')}` : `${transcript.length} responses and ${logs.split('\n').length} log lines checked: no secret, token or key`);
+
+    // MCP protocol conformance (not one of the 8 security properties; reported next to them)
+    const bearer = token({ scope: 'order:read' });
+    const callBody = { jsonrpc: '2.0', id: 50, method: 'tools/call', params: { name: 'get_order', arguments: { id: 'order-1' }, _meta: ENVELOPE } };
+    const raw = async headers => {
+      const res = await fetch(mcpUrl, { method: 'POST', headers: { authorization: `Bearer ${bearer}`, 'content-type': 'application/json', accept: 'application/json, text/event-stream', ...headers }, body: JSON.stringify(callBody) });
+      return { status: res.status, body: parseAnswer(await res.text(), res.headers.get('content-type') ?? ''), session: res.headers.get('mcp-session-id') };
+    };
+    const noHeaders = await raw({ 'mcp-protocol-version': MODERN });
+    const wrongName = await raw({ 'mcp-protocol-version': MODERN, 'mcp-method': 'tools/call', 'mcp-name': 'place_order' });
+    const withSession = await raw({ 'mcp-protocol-version': MODERN, 'mcp-method': 'tools/call', 'mcp-name': 'get_order', 'mcp-session-id': 'agentcore-session-1' });
+    const modernList = await (await connect(bearer)).listRaw();
+    const legacyTools = await (await connect(token({ scope: 'order:read order:write' }), { era: LEGACY })).list();
+    const eras = new Set(run('docker', ['logs', names.mcp]).out.split('\n').filter(l => l.startsWith('{')).map(l => JSON.parse(l)).filter(l => l.action === 'tool:call').map(l => l.protocol));
+    protocol.push(
+      { check: 'Mcp-Method missing → 400 / -32020', pass: noHeaders.status === 400 && noHeaders.body?.error?.code === -32020 },
+      { check: 'Mcp-Name disagrees with the body → 400 / -32020', pass: wrongName.status === 400 && wrongName.body?.error?.code === -32020 },
+      { check: 'AgentCore Mcp-Session-Id accepted, ignored, not echoed', pass: withSession.status === 200 && withSession.body?.result?.resultType === 'complete' && !withSession.session },
+      { check: '2026-07-28 tools/list carries ttlMs 0 and cacheScope private', pass: modernList.ttlMs === 0 && modernList.cacheScope === 'private' },
+      { check: '2025-11-25 client (initialize) served on the same endpoint', pass: legacyTools.includes('place_order') },
+      { check: 'audit records the protocol of each call (modern and legacy)', pass: eras.has('modern') && eras.has('legacy') }
+    );
+    for (const p of protocol) process.stdout.write(`  ${p.pass ? '✔' : '✖'} protocol: ${p.check}\n`);
   } finally {
     if (!keep) {
       run('docker', ['rm', '-f', names.app, names.issuer, names.mcp]);
@@ -237,9 +293,10 @@ async function main() {
   }
   results.sort((a, b) => a.test - b.test);
   const passed = results.filter(r => r.pass).length;
-  process.stdout.write(`\n  expose-nestjs: ${passed}/8\n`);
-  if (evidenceFile) fs.writeFileSync(evidenceFile, `${JSON.stringify({ golden: 'expose-nestjs', date: new Date().toISOString().slice(0, 10), stack: 'typescript/nestjs + PostgreSQL + RabbitMQ', passed, total: 8, results }, null, 2)}\n`);
-  process.exit(passed === 8 ? 0 : 1);
+  const protocolPassed = protocol.filter(p => p.pass).length;
+  process.stdout.write(`\n  expose-nestjs: ${passed}/8; MCP protocol ${protocolPassed}/${protocol.length} (${MODERN} and ${LEGACY})\n`);
+  if (evidenceFile) fs.writeFileSync(evidenceFile, `${JSON.stringify({ golden: 'expose-nestjs', date: new Date().toISOString().slice(0, 10), stack: 'typescript/nestjs + PostgreSQL + RabbitMQ', mcp: { revisions: [MODERN, LEGACY], server: '@modelcontextprotocol/server' }, passed, total: 8, results, protocol }, null, 2)}\n`);
+  process.exit(passed === 8 && protocol.length > 0 && protocolPassed === protocol.length ? 0 : 1);
 }
 
 main().catch(err => {

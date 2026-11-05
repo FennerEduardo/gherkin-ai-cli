@@ -163,8 +163,14 @@ All notable changes to this project will be documented in this file. See [commit
       - a handler the contract no longer has;
       - an incompatible change of a tool's input or output against the previous manifest (git `HEAD`, or `--against`) without a new `version`.
   - **`ghk expose generate --target mcp-runtime`** writes `expose/mcp-runtime/`, the MCP server of the approved capabilities. It validates the manifest first and generates nothing from one that fails. It replaces only a directory it generated itself.
-    - One TypeScript runtime (Node 24, CommonJS) for every backend stack, since it calls the service's HTTP API. Its only dependency is `@modelcontextprotocol/sdk`, at an exact version. JWT verification and JWKS use `node:crypto`. A Dockerfile and a README with every variable come with it.
+    - One TypeScript runtime (Node 24, CommonJS) for every backend stack, since it calls the service's HTTP API. Its only dependency is `@modelcontextprotocol/server` 2.4.0 (MCP TypeScript SDK v2), at an exact version. JWT verification and JWKS use `node:crypto`. A Dockerfile and a README with every variable come with it.
     - It serves Streamable HTTP, stateless, on `0.0.0.0:8000/mcp`: the AgentCore Runtime contract, and any container platform's. A request without a valid token gets a 401 with `WWW-Authenticate` and the OAuth protected-resource metadata.
+    - **MCP 2026-07-28** (the revision published on 2026-07-28), and 2025-era clients on the same endpoint (`createMcpHandler`, one server definition for both):
+      - there is no session; `MCP-Protocol-Version`, `Mcp-Method` and `Mcp-Name` are checked against the body, and a request whose headers are missing or disagree gets `400` / `-32020` and never runs;
+      - the `Mcp-Session-Id` AgentCore Runtime adds is accepted and ignored;
+      - `tools/list` carries `ttlMs: 0` and `cacheScope: "private"`, since it depends on the caller;
+      - each audit line records the era of the call;
+      - a request with an `Origin` that `GHK_ALLOWED_ORIGINS` does not list gets `403`.
     - Every call is authorized again, whatever a gateway decided:
       - the token's signature, issuer, audience and expiry; the tenant comes from a claim, never from the arguments;
       - the tool's scopes and roles. A caller lists only the tools it may call, and any other name is "unknown", even when called directly;
@@ -188,11 +194,12 @@ All notable changes to this project will be documented in this file. See [commit
     - `generate --target <provider>` writes the gateway's files and the runtime they host.
     - `plan --target <provider>` is a dry run that writes only `.ghe/expose/`. It lists each tool with its scopes and approval, where each control is enforced, the resources, what the provider does not guarantee, and its trade-offs.
     - `publish --target <provider> --yes` runs the provider's commands (`terraform apply`, `docker compose up`) in the generated directory. Without `--yes` it shows them and runs nothing. A command the organization's firewall policy denies is refused (exit 5). The built-in agent deny list does not stop a person who passed `--yes`. Each command is audited.
-    - `drift` compares the tools agents see with the approved manifest: served but not approved, approved but not served, a different description, input schema or effect. It exits 7 on drift. The source is a deployed endpoint (`--url`, with the token from `--token-env`, never from the command line) or the generated runtime.
+    - `drift` compares the tools agents see with the approved manifest: served but not approved, approved but not served, a different description, input schema or effect. It exits 7 on drift. The source is a deployed endpoint (`--url`, with the token from `--token-env`, never from the command line) or the generated runtime. Its client, also used by `expose test`, speaks MCP 2026-07-28 (`server/discover`) and falls back to the 2025 `initialize` handshake.
     - `expose review | validate | plan | drift` are read-only commands for the agent firewall.
   - **AWS Bedrock AgentCore** (core provider `aws-agentcore`, beta): `ghk expose generate --target aws-agentcore` writes Terraform (`hashicorp/aws ~> 6.71`; every resource checked against the 6.71.0 provider schema).
     - An ECR repository for the runtime image (linux/arm64).
-    - AgentCore Runtime hosting the generated runtime as an MCP server, with its own JWT authorizer, and `Authorization` and `traceparent` passed to the container.
+    - AgentCore Runtime hosting the generated runtime as an MCP server, with its own JWT authorizer. `Authorization`, `traceparent` and the MCP 2026-07-28 headers (`MCP-Protocol-Version`, `Mcp-Method`, `Mcp-Name`) are allowlisted, so they reach the container.
+    - The gateway's MCP revisions are set from `mcp_supported_versions`; when it is empty, the AgentCore default applies.
     - AgentCore Gateway: MCP, `CUSTOM_JWT` inbound, semantic tool search. It has one target: the runtime, as an MCP server, with the caller's token passed through and the approved tools' schema inline, so agents see exactly what was approved.
     - Least-privilege IAM: the runtime pulls its image, writes its logs and traces, and reads the backend credential from Secrets Manager by ARN.
     - Three boundaries authorize each call: the gateway, the runtime's authorizer and the generated runtime.
@@ -205,6 +212,7 @@ All notable changes to this project will be documented in this file. See [commit
     - For each scenario behind an approved tool, the model picks a tool and its arguments, and the tool is called (`--dry-run`: chosen, not called). The report gives the tool chosen against the tool specified, and the endpoint's answer.
     - Without AWS credentials it is skipped with a message. Credentials come from the AWS chain and are never stored.
   - **Conformance golden `expose-nestjs`** (`scripts/golden-expose.js`, CI job `golden-expose`), independent of any cloud. It runs in Docker: a NestJS service generated by ghk, its approved capabilities, the generated runtime, a test OIDC issuer, PostgreSQL and RabbitMQ.
+    - A plain JSON-RPC client checks MCP itself, 6/6 next to the 8 properties: headers, the platform session id, cache fields, a 2025-11-25 client, and the protocol in the audit log. The client speaks 2026-07-28, with the AgentCore session id, and the reconnection uses 2025-11-25.
     - A plain JSON-RPC client, with no SDK, checks the 8 properties: an authorized tool runs; an unauthorized one does not, even called directly; tenants are isolated; no secret in responses or logs; a critical operation needs its approval; an incompatible contract change is flagged; a reconnection does not run the operation twice; each call is traced to its scenario.
     - Each property is verified in the service's database or the runtime's audit log, not only in the answer: the outbox rows per tenant, the stored `traceparent`. **8/8.**
   - **Context tools** in the runtime, read-only: `bdd_search_features`, `bdd_get_scenario`, `bdd_get_business_rules`. They serve the features behind the approved tools, by name and never by repository path, to callers with the `bdd:read` scope.

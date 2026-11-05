@@ -25,6 +25,8 @@ export class UpstreamError extends Error {
 export interface TraceContext {
   traceId: string;
   traceparent: string;
+  /** MCP protocol era of the call: modern (2026-07-28) or legacy (2025-era, initialize). */
+  protocol?: 'modern' | 'legacy';
 }
 
 /** A child of the caller's trace when it sent one, else a new trace. */

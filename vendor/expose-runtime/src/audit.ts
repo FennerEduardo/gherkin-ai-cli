@@ -15,6 +15,8 @@ export interface AuditEvent {
   scenarios?: string[];
   features?: string[];
   traceId?: string;
+  /** MCP protocol era: modern (2026-07-28) or legacy (2025-era). */
+  protocol?: 'modern' | 'legacy';
   arguments?: string[];
   upstreamStatus?: number;
   durationMs?: number;

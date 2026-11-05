@@ -80,15 +80,30 @@ function answer(text: string, contentType: string, id: number): any {
   return text ? JSON.parse(text) : undefined;
 }
 
-/** A minimal MCP client over Streamable HTTP (JSON or SSE answers): what any agent sends, no SDK. */
+/** The MCP revisions this client speaks: 2026-07-28 first (stateless, per-request envelope), then the 2025 handshake. */
+export const MCP_MODERN = '2026-07-28';
+export const MCP_LEGACY = '2025-11-25';
+const CLIENT_INFO = { name: 'ghk-expose', version: '1.0.0' };
+
+/**
+ * A minimal MCP client over Streamable HTTP (JSON or SSE answers): what any agent sends, no SDK.
+ * It speaks MCP 2026-07-28 (server/discover; MCP-Protocol-Version, Mcp-Method and Mcp-Name headers; the
+ * protocol version, client info and capabilities in each request's _meta) and falls back to the 2025
+ * initialize handshake when the server does not answer server/discover.
+ */
 export class McpHttpClient {
   private session?: string;
   private id = 0;
+  /** The revision in use after connect(). */
+  protocol: typeof MCP_MODERN | typeof MCP_LEGACY = MCP_LEGACY;
 
   constructor(private readonly url: string, private readonly token: string | undefined, private readonly fetchImpl: typeof fetch = fetch) {}
 
-  private async send(method: string, params?: unknown, notification = false): Promise<any> {
+  private async post(method: string, params: Record<string, unknown> | undefined, notification: boolean, modern: boolean): Promise<{ res: Response; text: string; id: number }> {
     const id = ++this.id;
+    const envelope = modern ? { _meta: { 'io.modelcontextprotocol/protocolVersion': MCP_MODERN, 'io.modelcontextprotocol/clientInfo': CLIENT_INFO, 'io.modelcontextprotocol/clientCapabilities': {} } } : {};
+    const body = { ...(params ?? {}), ...envelope };
+    const name = typeof params?.name === 'string' ? params.name : typeof params?.uri === 'string' ? params.uri : undefined;
     const res = await this.fetchImpl(this.url, {
       method: 'POST',
       redirect: 'error',
@@ -96,24 +111,42 @@ export class McpHttpClient {
       headers: {
         'content-type': 'application/json',
         accept: 'application/json, text/event-stream',
-        'mcp-protocol-version': '2025-06-18',
+        'mcp-protocol-version': modern ? MCP_MODERN : this.protocol,
+        ...(modern ? { 'mcp-method': method, ...(name ? { 'mcp-name': name } : {}) } : {}),
         ...(this.token ? { authorization: `Bearer ${this.token}` } : {}),
-        ...(this.session ? { 'mcp-session-id': this.session } : {})
+        ...(!modern && this.session ? { 'mcp-session-id': this.session } : {})
       },
-      body: JSON.stringify(notification ? { jsonrpc: '2.0', method, ...(params ? { params } : {}) } : { jsonrpc: '2.0', id, method, ...(params ? { params } : {}) })
+      body: JSON.stringify(notification ? { jsonrpc: '2.0', method, ...(Object.keys(body).length ? { params: body } : {}) } : { jsonrpc: '2.0', id, method, ...(Object.keys(body).length ? { params: body } : {}) })
     });
-    this.session = res.headers.get('mcp-session-id') ?? this.session;
+    if (!modern) this.session = res.headers.get('mcp-session-id') ?? this.session;
     if (res.status === 401 || res.status === 403) throw new Error(`${this.url} answered ${res.status}: the token (--token-env) is missing or not accepted.`);
-    const text = await res.text();
+    return { res, text: await res.text(), id };
+  }
+
+  private async send(method: string, params?: Record<string, unknown>, notification = false): Promise<any> {
+    const { res, text, id } = await this.post(method, params, notification, this.protocol === MCP_MODERN);
     if (notification) return undefined;
-    if (!res.ok) throw new Error(`${this.url} answered ${res.status} to ${method}.`);
-    const msg = answer(text, res.headers.get('content-type') ?? '', id);
+    const msg = res.ok || res.status === 400 ? answer(text, res.headers.get('content-type') ?? '', id) : undefined;
+    if (!res.ok && !msg?.error) throw new Error(`${this.url} answered ${res.status} to ${method}.`);
     if (!msg || msg.error) throw new Error(`${method}: ${msg?.error?.message ?? 'no answer'}`);
     return msg.result;
   }
 
   async connect(): Promise<void> {
-    await this.send('initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'ghk-expose', version: '1.0.0' } });
+    // 2026-07-28: no handshake; server/discover tells whether the server speaks it.
+    try {
+      const { res, text, id } = await this.post('server/discover', undefined, false, true);
+      const msg = res.ok ? answer(text, res.headers.get('content-type') ?? '', id) : undefined;
+      if (msg?.result && Array.isArray(msg.result.supportedVersions) ? msg.result.supportedVersions.includes(MCP_MODERN) : Boolean(msg?.result)) {
+        this.protocol = MCP_MODERN;
+        return;
+      }
+    } catch (err) {
+      if (/answered 40[13]/.test((err as Error).message)) throw err;
+    }
+    this.protocol = MCP_LEGACY;
+    this.session = undefined;
+    await this.send('initialize', { protocolVersion: MCP_LEGACY, capabilities: {}, clientInfo: CLIENT_INFO });
     await this.send('notifications/initialized', undefined, true);
   }
 
