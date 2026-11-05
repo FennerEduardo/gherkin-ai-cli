@@ -186,6 +186,8 @@ Tools that are not enabled are not registered, so agents never see them. Every c
 
 `ghk mcp install` writes client configuration that pins the package version (`npx -y gherkin-ai@<version> mcp`).
 
+`ghk mcp` is the development server: it gives agents gherkin-ai itself. To give agents the **service's business operations**, use `ghk expose` (beta). It builds a separate MCP server from a capability manifest that a person approves (`.ghk/capabilities.yaml`). That server authorizes every call again: the token, the tool's scopes and roles, and the tenant from the identity. It can sit behind AWS Bedrock AgentCore Gateway or another gateway provider ([EXPOSE.md](EXPOSE.md)). `.ghk/capabilities.yaml` and `.ghk/plugins.lock` are approval paths of the agent firewall.
+
 ## 8. Web Studio
 
 `ghk web` binds to `127.0.0.1` and prints a URL containing a random session token. API calls require that token in the `x-ghk-token` header. The server also enforces:
@@ -237,6 +239,8 @@ The plugin API is version 2 in 3.3.0. It adds extension points for `ghk reverse`
 Integrity: `ghk plugin lock` writes `.ghk/plugins.lock` with a sha512 per plugin, and `plugins.integrity` pins the same values in the configuration, where the organization can lock it. A pinned plugin whose bytes differ is refused with exit code `5` and audited ([PLUGINS.md §6](PLUGINS.md#6-integrity-and-security)).
 
 The 2.x form `"plugins": ["my-plugin"]` is still accepted as `plugins.load`.
+
+Official plugins are published separately from the CLI ([PLUGINS.md §8](PLUGINS.md#8-official-plugins)): `@gherkin-ai/reverse-laravel` and `@gherkin-ai/reverse-rails` (beta), and the experimental gateway providers `@gherkin-ai/expose-azure-apim` and `@gherkin-ai/expose-gcp`. A gateway provider must declare where each control is enforced, and a plan that claims more than the provider declares is refused (exit 4).
 
 ## 11. Stack support tiers
 

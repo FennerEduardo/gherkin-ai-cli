@@ -1,0 +1,26 @@
+{
+  "name": "@gherkin-ai/expose-azure-apim",
+  "version": "0.1.0",
+  "description": "Azure API Management in front of the MCP runtime of ghk expose (plugin API 2, experimental): validate-jwt, rate limits and trace headers as APIM policy, in Terraform.",
+  "license": "MIT",
+  "main": "index.js",
+  "files": ["index.js", "README.md"],
+  "keywords": ["gherkin-ai", "gherkin-ai-plugin", "azure", "api-management", "mcp", "bdd"],
+  "peerDependencies": {
+    "gherkin-ai": "^3.3.0"
+  },
+  "devDependencies": {
+    "@gherkin-ai/plugin-sdk": "^2.0.0"
+  },
+  "scripts": {
+    "verify": "gherkin-ai plugin verify ."
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/FennerEduardo/gherkin-ai-cli.git",
+    "directory": "plugins/expose-azure-apim"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

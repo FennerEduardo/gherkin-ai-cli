@@ -76,6 +76,8 @@ ghk firewall check --exec "npm test && git push"  # what an agent may write, run
 | Industry profiles: reference standards as lint rules, constraints and agent guidance | `industry`, `init --industry` | Stable |
 | Code generation for the supported stacks | `init`, `generate`, `add`, `upgrade` | Stable |
 | Reverse engineering: proposed features from existing code, with evidence | `reverse` | Beta |
+| Business capabilities as MCP tools for agents: approved manifest, generated MCP runtime, AWS Bedrock AgentCore | `expose` | Beta |
+| Plugins: analyzers, lint rules and gateway providers, with a conformance kit and integrity lock | `plugin` | Beta |
 | Runtime kernel: PostgreSQL, MySQL or MongoDB; outbox/inbox over RabbitMQ, Pub/Sub, Service Bus or Kafka, sagas, OpenTelemetry | generated with each backend | Stable |
 | Production image and deployment: Dockerfile, Terraform (AWS, GCP, Azure), Helm | generated with each backend; `deploy` in the configuration | Stable |
 | Spec-to-code convergence and drift | `converge`, `diff`, `impact` | Stable |

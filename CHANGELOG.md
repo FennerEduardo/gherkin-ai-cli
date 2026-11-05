@@ -208,6 +208,11 @@ All notable changes to this project will be documented in this file. See [commit
     - A plain JSON-RPC client, with no SDK, checks the 8 properties: an authorized tool runs; an unauthorized one does not, even called directly; tenants are isolated; no secret in responses or logs; a critical operation needs its approval; an incompatible contract change is flagged; a reconnection does not run the operation twice; each call is traced to its scenario.
     - Each property is verified in the service's database or the runtime's audit log, not only in the answer: the outbox rows per tenant, the stored `traceparent`. **8/8.**
   - **Context tools** in the runtime, read-only: `bdd_search_features`, `bdd_get_scenario`, `bdd_get_business_rules`. They serve the features behind the approved tools, by name and never by repository path, to callers with the `bdd:read` scope.
+  - **Gateway plugin templates for Azure and Google Cloud** (experimental, in `plugins/`, published separately, not in the CLI package):
+    - `@gherkin-ai/expose-azure-apim` (`--target azure-apim`): an API on an existing Azure API Management instance in front of the runtime, with `validate-jwt` and `rate-limit-by-key` per token subject.
+    - `@gherkin-ai/expose-gcp` (`--target gcp-apigateway`): Google Cloud API Gateway in front of the runtime, with JWT validation from the identity provider's JWKS.
+    - Both pass `ghk plugin verify`, and their Terraform passes `fmt -check` and `validate`. gherkin-ai never applies it. Per-tool authorization, tenants and approvals stay in the runtime. The full providers are planned for 3.4.
+    - The golden-build dashboard lists them with the reverse plugins.
 
 - **`--assist` verified against a real model** (`lint --assist` and `reverse propose --assist`, Gemini `gemini-flash-lite-latest`): both write a patch, change no step, and the validation rejected the one invalid name the model proposed. Other providers share the client and the validation but are untested with `--assist`; [docs/REVERSE.md](docs/REVERSE.md#--assist-opt-in) says how to report a run.
 

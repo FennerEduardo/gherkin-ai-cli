@@ -95,6 +95,23 @@ Exit codes are listed in [ENTERPRISE.md §5](ENTERPRISE.md#5-automation-contract
 | `web` (`w`, `ui`) | Local Web Studio (token-protected, localhost only) | `-p <port>` |
 | `doc` (`site`) | Static documentation site from the features | – |
 
+### Exposing business capabilities to agents (`expose`, beta)
+
+`ghk expose <subcommand>` serves the service's approved business operations to agents as MCP tools ([EXPOSE.md](EXPOSE.md)). None of the subcommands needs `ghk init`.
+
+| Subcommand | Purpose | Main options | Exit |
+|---|---|---|---|
+| `discover` | Propose the capability manifest from the features, the OpenAPI contract, the tags and the industry profile; writes only `.ghe/expose/`, never approves | `--contract <file>`, `--from-reverse`, `--json` | 2 |
+| `review [id…]` | What each proposed tool runs, its arguments, who may call it, what changed | `--json` | – |
+| `approve <id…>` / `--all` | Write the approved capabilities to `.ghk/capabilities.yaml` (firewall, audit, confirmation) | `--env <e>` (repeatable; required for writes), `--by`, `--note`, `--yes` | 5 policy, 2 usage |
+| `revoke <id…>` | Remove approved capabilities | `--yes` | – |
+| `validate` | Check the approved manifest | `--manifest`, `--against <file>` (default git `HEAD`), `--contract`, `--json` | 5 write without approval; 4 poisoning, contract, compatibility |
+| `generate` | The MCP runtime (`--target mcp-runtime`, default) or a gateway provider's files and the runtime | `--target`, `--out`, `--image`, `--discovery-url`, `--audience`, `--region` | 5 / 4 when validate fails |
+| `plan` | Dry run per provider: controls (native, runtime, unsupported), resources, warnings, trade-offs | `--target <provider>`, `--env`, `--json` | 4 when a provider overclaims |
+| `publish` | Run the provider's commands (`terraform apply`, `docker compose up`); without `--yes` it only shows them | `--target <provider>`, `--yes` | 5 when the firewall policy denies |
+| `drift` | The tools agents see against the manifest | `--url <endpoint>`, `--token-env <VAR>`, `--json` | 7 on drift |
+| `test` | Reference agent on Amazon Bedrock over the scenarios; skipped without AWS credentials | `--agent bedrock`, `--url`, `--token-env`, `--model`, `--dry-run` | 6 provider |
+
 `verify --auto-fix --apply` and `autopilot --apply` write files only after these guards pass:
 
 - the CI guard and the protected-branch guard;

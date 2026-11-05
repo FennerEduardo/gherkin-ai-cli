@@ -109,6 +109,8 @@ async function officialPlugins(reverse) {
     out.push({
       package: pkg.name, version: pkg.version, description: pkg.description,
       analyzers: report.analyzers.map(a => ({ id: a.id, declared: a.declared, eligible: a.eligible })),
+      // Gateway providers of ghk expose (their maturity is declared; the kit checks their controls, not an F1).
+      gateways: (() => { try { return (require(path.join(dir, name)).gatewayProviders?.() ?? []).map(g => ({ id: g.id, declared: g.maturity })); } catch { return []; } })(),
       verify: report.passed ? 'pass' : 'fail',
       oss: runs.map(r => ({ repository: r.repository, commit: r.commit, f1: r.f1, matched: r.matched, expected: r.expected }))
     });
@@ -118,9 +120,9 @@ async function officialPlugins(reverse) {
 
 function pluginsSection(plugins) {
   if (!plugins.length) return '';
-  const rows = plugins.map(p => `<tr><td><code>${escape(p.package)}</code> <span class="muted">${escape(p.version)}</span></td><td>${p.analyzers.map(a => `<code>${escape(a.id)}</code>`).join(', ')}</td><td>${p.analyzers.map(a => escape(a.declared)).join(', ')}</td><td><span class="${p.verify === 'pass' ? 'ok' : 'bad'}">${p.verify}</span></td><td>${p.oss.map(r => `${f1Cell(r.f1)} <span class="muted">${r.matched}/${r.expected} on <a href="${escape(r.repository)}/tree/${escape(r.commit)}">${escape(r.repository.replace('https://github.com/', ''))}</a></span>`).join('<br>') || '<span class="muted">–</span>'}</td></tr>`).join('\n');
+  const rows = plugins.map(p => `<tr><td><code>${escape(p.package)}</code> <span class="muted">${escape(p.version)}</span></td><td>${[...p.analyzers, ...(p.gateways || [])].map(a => `<code>${escape(a.id)}</code>`).join(', ')}</td><td>${[...p.analyzers, ...(p.gateways || [])].map(a => escape(a.declared)).join(', ')}</td><td><span class="${p.verify === 'pass' ? 'ok' : 'bad'}">${p.verify}</span></td><td>${p.oss.map(r => `${f1Cell(r.f1)} <span class="muted">${r.matched}/${r.expected} on <a href="${escape(r.repository)}/tree/${escape(r.commit)}">${escape(r.repository.replace('https://github.com/', ''))}</a></span>`).join('<br>') || '<span class="muted">–</span>'}</td></tr>`).join('\n');
   return `<h2 id="plugins">Official plugins</h2>
-<p>Analyzers kept out of the CLI package so their grammars weigh only on those who install them (<a href="PLUGINS.html">PLUGINS.md</a>). The conformance kit (<code>ghk plugin verify</code>) runs on every build of this page.</p>
+<p>Reverse analyzers and <code>ghk expose</code> gateway providers kept out of the CLI package, so their grammars and clouds weigh only on those who install them (<a href="PLUGINS.html">PLUGINS.md</a>). The conformance kit (<code>ghk plugin verify</code>) runs on every build of this page.</p>
 <table><thead><tr><th>Package</th><th>Adds</th><th>Maturity</th><th>Conformance kit</th><th>F1 on open-source code</th></tr></thead><tbody>
 ${rows}
 </tbody></table>`;

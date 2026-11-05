@@ -137,5 +137,9 @@ The maintainers develop these in the repository (`plugins/`). They are published
 |---|---|---|---|
 | `@gherkin-ai/reverse-laravel` | `laravel/routes`: routes and groups, resources, controllers, FormRequests (tree-sitter-php, 800 KB, shipped in the plugin) | beta | F1 0.93 on the Laravel RealWorld app |
 | `@gherkin-ai/reverse-rails` | `rails/routes`: `routes.rb`, controllers, strong params, model validations, Devise (tree-sitter-ruby, 2 MB, shipped in the plugin) | beta | F1 0.95 on the Rails RealWorld app |
+| `@gherkin-ai/expose-azure-apim` | gateway provider `azure-apim` for `ghk expose`: an API on an existing Azure API Management instance in front of the generated MCP runtime, with `validate-jwt` and `rate-limit-by-key` (Terraform, `azurerm`) | experimental | `terraform fmt -check` and `validate`; never applied |
+| `@gherkin-ai/expose-gcp` | gateway provider `gcp-apigateway` for `ghk expose`: Google Cloud API Gateway in front of the generated MCP runtime, with JWT validation from the OIDC JWKS (Terraform, `google-beta`) | experimental | `terraform fmt -check` and `validate`; never applied |
+
+The two gateway providers are templates for 3.3: the runtime still enforces per-tool authorization, tenants and approvals, and the full providers are planned for 3.4 ([EXPOSE.md §6](EXPOSE.md#6-gateway-providers)). The golden `tests/golden/expose-plugins.test.ts` runs them through the conformance kit and through `expose plan` and `expose generate` from a project's `plugins.load`.
 
 The [golden-build dashboard](https://fennereduardo.github.io/gherkin-ai-cli/goldens.html#plugins) lists them with their maturity, their F1 on the open-source corpus, and the conformance kit, which runs again on every build of the page. Community plugins use the keyword `gherkin-ai-plugin` on npm. Run `ghk plugin verify` on a plugin before you load it. Its report shows what it reads, whether it is deterministic, and the maturity its fixtures support.

@@ -215,6 +215,7 @@ ghk firewall policy -f features/invoicing.feature
 - **MCP is read-only by default.** Write tools need `mcp.allowWrite`, destructive tools also `GHK_ALLOW_DESTRUCTIVE=true`; an organization can lock both ([MCP_GUIDE.md](MCP_GUIDE.md)).
 - **The firewall governs the agent's own actions.** In Claude Code, register `ghk firewall hook` as a `PreToolUse` hook, so edits and shell commands outside the feature's scope or on approval paths are stopped ([ENTERPRISE.md §14](ENTERPRISE.md#14-agent-firewall)).
 - **Keep the LLM repair loops for review.** `ghk verify --auto-fix` and `ghk autopilot` are experimental. They write `.patch` proposals by default, and `--apply` is refused in CI and on protected branches.
+- **Expose the business to agents only through an approved manifest.** `ghk expose discover` proposes the service's operations as MCP tools. Operations no feature specifies are never proposed for exposure. A person approves each tool with `ghk expose approve`, and the approval is reviewed by PR in `.ghk/capabilities.yaml`. Run `ghk expose validate` and `ghk expose drift` in CI. The generated runtime authorizes every call again, whatever gateway sits in front of it ([EXPOSE.md](EXPOSE.md)).
 - **Measure before you scale.** `ghk bench` compares your agent on your own tasks with and without the specifications ([ENTERPRISE.md §18](ENTERPRISE.md#18-measuring-value-ab-benchmark)).
 
 ## 7. Generate code next to the existing code (levels 2 and 3)

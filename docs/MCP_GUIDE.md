@@ -49,6 +49,10 @@ An agent can ask gherkin-ai what an existing codebase does, and gherkin-ai keeps
 
 Accepting proposals into the specification is not available over MCP: a person runs `ghk reverse accept`.
 
+## `ghk mcp` and `ghk expose`
+
+`ghk mcp` is a development server: it gives an agent gherkin-ai's own tools on a developer's machine. `ghk expose` (beta) builds a different server. It is a generated MCP runtime over Streamable HTTP that gives agents the service's business operations, and only the ones a person approved in `.ghk/capabilities.yaml`. It authorizes each call with the caller's token, and it can run behind AWS Bedrock AgentCore Gateway or another gateway provider. See [EXPOSE.md](EXPOSE.md).
+
 ## Governing the agent beyond MCP
 
 MCP only governs the calls an agent makes to gherkin-ai. To apply the same policy to the agent's own edits and shell commands in Claude Code, register `ghk firewall hook` as a `PreToolUse` hook ([ENTERPRISE.md §14](ENTERPRISE.md#14-agent-firewall)).

@@ -1,8 +1,19 @@
 # Migrating to 3.3
 
-3.3 adds `ghk reverse` (beta), which reads an existing codebase and proposes specifications from it ([REVERSE.md](REVERSE.md)). It is opt-in: no command changes behaviour unless you run it.
+3.3 adds three opt-in families of commands:
 
-The configuration does not have to change. The CLI contract (commands, flags, exit codes, `--json` shapes) is unchanged, apart from the new `reverse` command and the new optional `reverse` section of the configuration.
+- `ghk reverse` (beta) reads an existing codebase and proposes specifications from it ([REVERSE.md](REVERSE.md));
+- `ghk plugin` works with plugin API 2: analyzers, lint rules and gateway providers ([PLUGINS.md](PLUGINS.md));
+- `ghk expose` (beta) serves the service's approved business operations to agents as MCP tools ([EXPOSE.md](EXPOSE.md)).
+
+Existing commands keep their behaviour unless you run the new ones.
+
+The configuration does not have to change. The CLI contract (commands, flags, exit codes, `--json` shapes) is unchanged, apart from:
+
+- the new commands;
+- the new optional configuration keys `reverse` (with `reverse.glossary`) and `plugins.integrity`.
+
+`ghk expose` has no configuration section. Its configuration is the capability manifest `.ghk/capabilities.yaml`, which has its own JSON Schema (`schemas/capabilities.schema.json`).
 
 ## Command names derived from features
 
@@ -36,3 +47,5 @@ Running `ghk reverse` on real projects exposed two naming defects. They date fro
 | Generated Python `pyproject.toml` | `pytest>=8.3,<9.2`, `pytest-bdd>=7.3` | `pytest>=8.3`, `pytest-bdd>=9.0.1` | regenerate, or edit the two lines |
 | `converge` on a generated feature whose step definitions are all still the pending stubs, with no coverage report | Code Coverage "n/a", left out of the score: the scaffold could converge | Code Coverage 0, with the reason; the overall score drops and may exit 7 | implement the steps (or run the tests with coverage). In CI for a fresh scaffold, expect exit 7 until the behaviour exists |
 | `ghk stacks` (text output) | generation stacks | also lists the `ghk reverse` analyzers and their maturity; the `--json` output is unchanged | – |
+| Agent firewall approval paths | the configured ones | also `.ghk/capabilities.yaml` and `.ghk/plugins.lock`: an agent that edits them gets REQUIRE_APPROVAL (refused over MCP) | a person edits them, or approves through `ghk expose approve` and `ghk plugin lock` |
+| Plugins | API 1, loaded per specifier | API 2 adds `apiVersion` and `engines`; an incompatible plugin is refused before it runs; API 1 plugins keep working; the same file under two specifiers is loaded once | nothing for API 1 plugins; declare `apiVersion: 2` to use the new extension points |
