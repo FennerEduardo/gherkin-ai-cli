@@ -197,6 +197,18 @@ Since 3.3.0 every core runtime kernel also runs on MongoDB 8: TypeScript (NestJS
 
 Transactions need a replica set. One node is enough: `mongod --replSet rs0`, initiated once. The developer compose file does this: `mongo:8.0`, a healthcheck that initiates the set, `DATABASE_URL=mongodb://mongodb:27017/<db>?replicaSet=rs0`, and `directConnection=true` from the host. Managed services (MongoDB Atlas, Azure Cosmos DB for MongoDB vCore) are replica sets already.
 
+### MongoDB and Linux 6.19 and later
+
+A known limitation of MongoDB, not of the generated code. MongoDB 8.0 and 8.2 refuse to start on Linux kernels 6.19 through 7.0.13: a change in the kernel's `rseq` behaviour can crash their memory allocator. The `mongod` log says `MongoDB cannot start: Linux kernel versions 6.19 and newer has a known incompatibility with this version of MongoDB` ([SERVER-121912](https://jira.mongodb.org/browse/SERVER-121912)).
+
+- A container uses the host's kernel, so `mongo:8.0` in the developer compose file fails on such a host. This includes Ubuntu 26.04 and the GitHub `ubuntu-latest` runners since October 2026.
+- MongoDB 8.0.30 and later start on kernels 7.0.14 and later ([SERVER-125742](https://jira.mongodb.org/browse/SERVER-125742)). On Ubuntu the check still reads the kernel as 7.0.0 and refuses to start, until MongoDB ships an Ubuntu exemption ([SERVER-136848](https://jira.mongodb.org/browse/SERVER-136848)).
+- MongoDB documents no flag that skips the check. The check prevents crashes and possible data corruption.
+- What works today:
+  - a host on a 6.18 or earlier kernel, such as Ubuntu 24.04, WSL 2 or Docker Desktop;
+  - a managed MongoDB service, such as MongoDB Atlas;
+  - in CI, a runner pinned to `ubuntu-24.04`. The gherkin-ai CI does this for its golden builds.
+
 A transaction can run more than once, so an inbox handler should keep its effects in the transaction (`meta.session`). An effect outside it, such as a call to another service, can happen again.
 
 With `stack.orm: "prisma"` (NestJS), the Prisma datasource is MongoDB too, which needs Prisma 6: Prisma 7 does not support MongoDB.
