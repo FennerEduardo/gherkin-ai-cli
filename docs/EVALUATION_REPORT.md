@@ -2,7 +2,7 @@
 
 This document lists what is verified for each release, how it is verified, and how to reproduce it. Every result below comes from a command you can run yourself; nothing is scored by hand.
 
-**Run of record:** 2026-11-03, gherkin-ai 3.3.0 (branch `feat/3.3.0`, `40219a5`). The CLI under test is the branch's build (`npm run build`, `dist/`). CI runs the same goldens against the packaged tarball (`npm pack`, installed in a clean directory and passed as `GHK_CLI`), the file `release.yml` publishes. The 3.2.2 and earlier reports are in the git history of this file.
+**Run of record:** 2026-11-03, gherkin-ai 3.3.0 (branch `feat/3.3.0`, `40219a5`) for the golden matrix (section 1) and the reference projects (section 3), whose generators have not changed since. The closing run is 2026-11-04 on `9edef2a`. It covers `ghk reverse`, plugins, `ghk expose` with MCP 2026-07-28, the LMS, the suite and the release preflight (sections 2, 2b, 2c, 4 and 5). The CLI under test is the branch's build (`npm run build`, `dist/`). CI runs the same goldens against the packaged tarball (`npm pack`, installed in a clean directory and passed as `GHK_CLI`), the file `release.yml` publishes. The 3.2.2 and earlier reports are in the git history of this file.
 
 **Environment:**
 
@@ -230,6 +230,12 @@ The generator's own reading of those hand-written features gives F1 0.50 and 0.1
 
 These are 23 features and the Spring services written by hand over the kernel. `reverse` scores a mean F1 of 0.36 against the LMS's own features, and behaviour coverage per service is between 0% and 50%. The low F1 mostly measures how far the code has drifted from the features. That drift is what reverse is meant to bring to light. It was 0.38 before message handlers and scheduled jobs were read: the enrollment service has a scheduled job that expires pending enrollment requests, and no LMS feature specifies it.
 
+The closing run (2026-11-04) ran these commands in process with nothing written, and the LMS's `git status` was clean before and after:
+- `reverse coverage`, `reverse sync --all-features` and `reverse review` on each of its 9 services;
+- `expose discover` on each of the same 9 services.
+
+`sync` reports drift in 8 of 9 services. Each is a command an LMS feature declares under a name the code does not use (`specOnly`, 1 to 8 per service), the same difference coverage shows. `expose discover` proposes 6 tools (3 in the identity service, 3 in the learning service) and leaves 171 operations `pending-specification`, because their names in the code match no feature command. Nothing without a feature is exposed. The data is in `ghk_versions/3.3.0/evidence/lms/close-2026-11-04.json`.
+
 ### 2.4 Invariants and `--assist`
 
 `tests/golden/reverse.test.ts` and the reverse unit tests check:
@@ -241,6 +247,40 @@ These are 23 features and the Spring services written by hand over the kernel. `
 - `accept --merge` reports a command that a feature declares but the code does not implement, as drift (exit 7).
 
 `reverse --assist` and `lint --assist` were run against a real provider: Google Gemini, `gemini-flash-lite-latest`, the default for `llm.provider: "gemini"` since 3.3.0. Both returned a patch, and the validation rejected a name the model made up (`ShelfBook`) that had no evidence in the code. No other provider was tested. The mocked-provider tests stay in CI.
+
+`reverse sync` is checked by G-R3. A route is renamed, an event removed, a status changed and an endpoint deleted: each is drift (exit 7), and the applied patch returns to exit 0. G-R4 runs `accept --all`, `--rescan` and `--merge`: nothing new is proposed. `review` decisions are keyed by operation and scenario and carry a fingerprint of their evidence (`tests/core/reverse-sync.test.ts`, `tests/core/reverse-review.test.ts`).
+
+## 2b. Plugins (beta)
+
+Plugin API 2 adds analyzers for `ghk reverse`, lint rules and gateway providers for `ghk expose` ([PLUGINS.md](PLUGINS.md)). `ghk plugin verify` is the conformance kit. It checks:
+- compatibility and determinism;
+- that a plugin writes nothing, reads nothing outside its fixture, and never opens a planted `.env`;
+- F1 against the fixture's expected endpoints;
+- gateway providers: that they claim no control beyond what they declare.
+
+| Plugin | Adds | Maturity | Evidence |
+|---|---|---|---|
+| `@gherkin-ai/reverse-laravel` | Laravel analyzer, own tree-sitter grammar | beta | kit passes; F1 0.93 on the Laravel RealWorld app |
+| `@gherkin-ai/reverse-rails` | Rails analyzer, own grammar | beta | kit passes; F1 0.95 on the Rails RealWorld app |
+| `@gherkin-ai/expose-azure-apim` | gateway provider `azure-apim` | experimental | kit passes; `terraform fmt -check` and `validate` |
+| `@gherkin-ai/expose-gcp` | gateway provider `gcp-apigateway` | experimental | kit passes; `terraform fmt -check` and `validate` |
+| `ghk plugin new` templates (analyzer, lint rule, gateway) | – | – | each passes `verify` as generated |
+
+`tests/golden/reverse-plugins.test.ts` (G-P1) loads the reverse plugins from a project's `plugins.load` and refuses them with exit 5 once they are locked (`ghk plugin lock`) and their bytes change. `tests/golden/expose-plugins.test.ts` runs `expose plan` and `expose generate` through the gateway plugins. No plugin is in the CLI package.
+
+## 2c. `ghk expose` (beta): business capabilities as MCP tools
+
+`ghk expose` turns the operations the features specify into MCP tools. A person approves each tool in `.ghk/capabilities.yaml`, and the generated runtime authorizes every call again ([EXPOSE.md](EXPOSE.md)).
+
+| Check | Result |
+|---|---|
+| Golden `expose-nestjs` (`scripts/golden-expose.js`, Docker: a generated NestJS service, the approved manifest, the generated runtime, a test OIDC issuer, PostgreSQL, RabbitMQ) | **8/8** security properties: authorized call, unauthorized call refused even directly, tenant isolation, no secret in responses or logs, critical operation needs approval, incompatible contract flagged, a reconnection does not run twice, each call traced to its scenario |
+| The same golden, MCP protocol | **6/6**: missing or disagreeing `Mcp-Method`/`Mcp-Name` → 400 / -32020; the `Mcp-Session-Id` AgentCore adds accepted and not echoed; `tools/list` cache fields; a 2025-11-25 client on the same endpoint; the era of each call in the audit log. The client speaks MCP 2026-07-28, and the reconnection of property 7 uses 2025-11-25 |
+| Golden `expose-aws` | `terraform init`/`validate`/`fmt -check`/`tflint` on the AgentCore module (Runtime, Gateway, MCP server target, IAM), with `hashicorp/aws` 6.72.0; nothing applied |
+| Unit tests in process (`tests/core/expose-*.test.ts`) | the runtime against a test issuer and a fake service, through an MCP SDK v2 client (2026-07-28) and a v1 client (2025); token, scopes, roles, tenant, environment, rate, schema, SSRF, idempotency, trace, redaction, `Origin`; manifest, discover, approve and validate rules; drift (exit 7); providers that overclaim are refused |
+| `ghk expose test --agent bedrock` | verified: skipped without AWS credentials, and the loop with a simulated model against the live runtime. **Not run against Amazon Bedrock** |
+
+Evidence: `ghk_versions/3.3.0/evidence/expose-conformance.json` and `aws-agentcore-facts.md`. The second file lists the MCP 2026-07-28 changes and what AWS does not document.
 
 ## 3. Reference projects
 
@@ -289,7 +329,7 @@ In 3.2.2 `converge` passed a scaffold whose steps were still pending, as if it w
 
 | Check | Result |
 |---|---|
-| Unit and integration tests (`vitest`) | 1206 tests passing, 1 skipped (Maven opt-in) |
+| Unit and integration tests (`vitest`) | 1317 tests passing, 1 skipped (Maven opt-in) |
 | Type check (`tsc --noEmit`) | clean |
 | CI matrix | Linux, macOS and Windows × Node.js 22, 24 and 26 |
 | Brownfield adoption (`tests/golden/brownfield.test.ts`) | an Express and a Spring repository without `ghk init`, without a terminal: `detect`, `validate`, `converge` (also `--openapi`), `risk`, `firewall check`, feature resolution, `lint` and `converge` without features, and no files left behind; 18 of 18 pass |
@@ -297,8 +337,9 @@ In 3.2.2 `converge` passed a scaffold whose steps were still pending, as if it w
 | CLI contract tests | the built binary is run with `--json` for each command; exit codes and the JSON envelope are asserted |
 | Agent firewall | 48 command-evasion vectors (`tests/security/firewall-evasion.test.ts`), none allowed; one write verdict for the firewall, the repair-loop guardrails and the MCP governance check (`tests/security/policy-consistency.test.ts`). `ghk reverse accept` goes through the firewall and is not exposed over MCP |
 | Startup migration | 12 concurrent migrations of an empty PostgreSQL 17 database, 3 rounds: 0 of 36 fail with the advisory lock, 17 of 36 without it. MySQL uses `GET_LOCK` on a single connection |
-| Dependency audit | `npm audit --audit-level=high`: 0 vulnerabilities; blocking in CI and in the release |
-| Release preflight | `npm run release:preflight` on `40219a5` in a clean worktree: npm ci, build, golden matrix (94 stacks), JSON Schemas, type check, audit, `npm publish --dry-run`, actionlint and the quick goldens; 9 of 9 pass |
+| Dependency audit | `npm audit --audit-level=high`: 0 high or critical; blocking in CI and in the release. Three moderate advisories have no compatible fix (section 6) |
+| Release preflight | `npm run release:preflight` on `9edef2a` in a clean worktree: npm ci, build, golden matrix (95 stacks with `expose-aws`), JSON Schemas, type check, audit, `npm publish --dry-run`, actionlint and the quick goldens; 9 of 9 pass |
+| Package size | 3.10 MB packed, 17.0 MB unpacked, 1,558 files (3.2.2: 1.9 MB packed). Most of it is the tree-sitter grammars of `ghk reverse` and the expose runtime template; the Laravel and Rails grammars live in their plugins |
 
 ## 6. What this report does not claim
 
@@ -308,6 +349,14 @@ In 3.2.2 `converge` passed a scaffold whose steps were still pending, as if it w
 - **`--assist` with providers other than Gemini.** The other providers share the same client and validation, but no real run with them is recorded.
 - **Cloud deployments.** The Terraform and Helm targets are validated and linted, not applied: no golden creates cloud resources. The CI/CD pipelines are checked against actionlint and the official schemas, not run in the providers.
 - **Stacks outside the matrix.** Combinations not listed in section 1 generate contracts and prompts only, and are labeled experimental.
+- **`ghk expose` on a real AWS account.** None of these has been run:
+  - an AgentCore deployment;
+  - the Bedrock agent against a real model;
+  - a gateway negotiating MCP 2026-07-28 with the runtime.
+
+  AWS does not document the revisions AgentCore Gateway accepts, nor whether its runtime forwards the MCP headers without the allowlist. The runtime serves both revisions, so either answer works.
+- **Approval per call in `expose`.** Tools that need a person per call are refused, not asked about.
+- **No moderate advisories.** `minimatch` < 11.0.1 (GHSA-g3hv-75wg-m249, a denial of service through crafted glob patterns, 2026-10-30) comes in through `ts-morph` 28, whose `@ts-morph/common` requires `minimatch` ^10. gherkin-ai passes it only its own fixed patterns joined to the project path, never external input. It goes away when ts-morph accepts minimatch 11.
 
 ## 7. Reproducing
 
@@ -320,6 +369,9 @@ node scripts/golden-build.js nestjs --keep   # keep the generated project for in
 node scripts/golden-build.js --no-image go   # skip the production image step
 node scripts/golden-build.js --list          # stacks and images
 node scripts/reverse-oss.js                  # ghk reverse on the pinned open-source apps (git required)
+node scripts/golden-expose.js                # ghk expose conformance: 8 properties + MCP protocol (Docker)
+node scripts/golden-build.js expose-aws      # AgentCore Terraform: validate, fmt, tflint
+node bin/gherkin-ai.js plugin verify plugins/reverse-laravel   # the plugin conformance kit
 npm test                                     # the CLI's own suite
 ```
 

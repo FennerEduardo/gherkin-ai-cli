@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
-## [3.3.0] - 2026-11-03
+## [3.3.0] - 2026-11-04
 
 ### Added
 - **`ghk reverse` (beta): from existing code to proposed specifications** ([REVERSE.md](docs/REVERSE.md)).
@@ -279,6 +279,13 @@ All notable changes to this project will be documented in this file. See [commit
   - Retriable coordinator errors (`COORDINATOR_LOAD_IN_PROGRESS`, `NOT_COORDINATOR`, rebalances) are retried on consume and commit.
   - The golden now passes 5 runs out of 5; `dotnet` (RabbitMQ) is unchanged.
 - **Generated Python projects no longer cap pytest below 9.2.** pytest-bdd 9.0.1 (2026-10-31) works with pytest 9.2: `pytest>=8.3` and `pytest-bdd>=9.0.1`. Verified by the `fastapi` and `django` goldens.
+
+### Security
+- **MCP 2026-07-28 for `ghk expose`.** The generated runtime moves from `@modelcontextprotocol/sdk` 1.32 to `@modelcontextprotocol/server` 2.4.0 (see Added). It checks the standard headers against the body and validates `Origin`, as the new revision requires.
+- **Known moderate advisory, no compatible fix:** `minimatch` < 11.0.1 (GHSA-g3hv-75wg-m249, a denial of service through crafted glob patterns, published 2026-10-30).
+  - It comes in through `ts-morph` 28, whose `@ts-morph/common` requires `minimatch` ^10.
+  - gherkin-ai passes it only its own fixed patterns joined to the project path, never input from outside.
+  - `npm audit --audit-level=high` reports nothing. The CI and release gate is unchanged.
 
 ## [3.2.2] - 2026-10-30
 
